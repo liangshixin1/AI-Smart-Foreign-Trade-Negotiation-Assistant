@@ -27,8 +27,12 @@ const startLevelBtn = document.getElementById("start-level");
 const difficultySelect = document.getElementById("difficulty-select");
 const loadingPanel = document.getElementById("loading-panel");
 const experienceSection = document.getElementById("experience");
-const studentTabButtons = document.querySelectorAll("#student-dashboard [data-tab]");
-const studentTabPanels = document.querySelectorAll("#student-dashboard [data-tab-panel]");
+const studentOptionButtons = document.querySelectorAll("[data-student-option]");
+const studentModalOverlay = document.getElementById("student-modal-overlay");
+const studentModal = document.getElementById("student-modal");
+const studentModalCloseBtn = document.getElementById("student-modal-close");
+const studentModalTabButtons = document.querySelectorAll("#student-modal [data-modal-tab]");
+const studentModalPanels = document.querySelectorAll("#student-modal [data-modal-panel]");
 const adminTabButtons = document.querySelectorAll("#admin-panel [data-admin-tab]");
 const adminTabPanels = document.querySelectorAll("#admin-panel [data-admin-panel]");
 const reopenLevelMapBtn = document.getElementById("reopen-level-map");
@@ -88,6 +92,7 @@ const adminActionHotspots = document.getElementById("admin-action-hotspots");
 const adminKnowledgeWeakness = document.getElementById("admin-knowledge-weakness");
 
 let abilityRadarChart = null;
+let currentStudentModalTab = null;
 
 const state = {
   auth: {
@@ -264,27 +269,76 @@ function updateSessionControls() {
   }
 }
 
-function activateStudentTab(tabId) {
-  if (!studentTabButtons || studentTabButtons.length === 0) {
+function updateStudentOptionState(activeTab) {
+  if (!studentOptionButtons || studentOptionButtons.length === 0) {
     return;
   }
-  const buttonList = Array.from(studentTabButtons);
-  const panelList = Array.from(studentTabPanels || []);
-  const defaultTab = buttonList[0] ? buttonList[0].dataset.tab : null;
-  const targetTab = buttonList.some((btn) => btn.dataset.tab === tabId)
+  studentOptionButtons.forEach((button) => {
+    const isActive = button.dataset.studentOption === activeTab;
+    button.classList.toggle("student-option-active", isActive);
+    button.classList.toggle("shadow-lg", isActive);
+    button.classList.toggle("shadow-blue-500/30", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+function activateStudentModalTab(tabId) {
+  if (!studentModalTabButtons || studentModalTabButtons.length === 0) {
+    updateStudentOptionState(null);
+    return;
+  }
+  const buttonList = Array.from(studentModalTabButtons);
+  const panelList = Array.from(studentModalPanels || []);
+  const defaultTab = buttonList[0] ? buttonList[0].dataset.modalTab : null;
+  const targetTab = buttonList.some((btn) => btn.dataset.modalTab === tabId)
     ? tabId
     : defaultTab;
 
   buttonList.forEach((button) => {
-    const isActive = button.dataset.tab === targetTab;
+    const isActive = button.dataset.modalTab === targetTab;
     button.classList.toggle("tab-trigger-active", isActive);
     button.setAttribute("aria-selected", isActive ? "true" : "false");
   });
 
   panelList.forEach((panel) => {
-    const isActive = panel.dataset.tabPanel === targetTab;
+    const isActive = panel.dataset.modalPanel === targetTab;
     panel.classList.toggle("tab-panel-active", isActive);
   });
+
+  currentStudentModalTab = targetTab || null;
+  updateStudentOptionState(currentStudentModalTab);
+  if (studentModal) {
+    studentModal.setAttribute("data-active-tab", currentStudentModalTab || "");
+  }
+}
+
+function openStudentModal(tabId) {
+  if (!studentModalOverlay) {
+    return;
+  }
+  studentModalOverlay.classList.remove("hidden");
+  if (document.body) {
+    document.body.classList.add("overflow-hidden");
+  }
+  activateStudentModalTab(tabId);
+  if (studentModalCloseBtn) {
+    studentModalCloseBtn.focus();
+  }
+}
+
+function closeStudentModal() {
+  if (!studentModalOverlay) {
+    return;
+  }
+  studentModalOverlay.classList.add("hidden");
+  if (document.body) {
+    document.body.classList.remove("overflow-hidden");
+  }
+  currentStudentModalTab = null;
+  updateStudentOptionState(null);
+  if (studentModal) {
+    studentModal.removeAttribute("data-active-tab");
+  }
 }
 
 function activateAdminTab(tabId) {
@@ -316,10 +370,46 @@ function showExperience() {
   }
   studentDashboard.classList.remove("hidden");
   experienceSection.classList.remove("hidden");
+  if (chatInputEl) {
+    chatInputEl.disabled = false;
+    chatInputEl.focus();
+  }
+  if (sendMessageBtn) {
+    sendMessageBtn.disabled = false;
+  }
 }
 
 function hideExperience() {
   experienceSection.classList.add("hidden");
+  if (chatInputEl) {
+    chatInputEl.disabled = true;
+  }
+  if (sendMessageBtn) {
+    sendMessageBtn.disabled = true;
+  }
+}
+
+function goToLevelSelection({ clearSelection = false } = {}) {
+  if (clearSelection) {
+    state.selectedLevel = { chapterId: null, sectionId: null };
+  }
+  state.sessionId = null;
+  state.activeLevel = {
+    chapterId: null,
+    sectionId: null,
+    difficulty: difficultySelect ? difficultySelect.value : "balanced",
+  };
+  state.messages = [];
+  renderChat();
+  renderScenario({});
+  resetEvaluation();
+  hideExperience();
+  expandLevelSelection();
+  updateSelectedLevelDetail();
+  updateSessionControls();
+  if (chatInputEl) {
+    chatInputEl.value = "";
+  }
 }
 
 function resetEvaluation() {
@@ -1393,15 +1483,13 @@ function updateAuthUI() {
     if (state.auth.user.role === "student") {
       studentDashboard.classList.remove("hidden");
       adminPanel.classList.add("hidden");
-      chatInputEl.disabled = false;
-      sendMessageBtn.disabled = false;
-      activateStudentTab();
+      goToLevelSelection();
+      closeStudentModal();
     } else {
       studentDashboard.classList.add("hidden");
       hideExperience();
       adminPanel.classList.remove("hidden");
-      chatInputEl.disabled = true;
-      sendMessageBtn.disabled = true;
+      closeStudentModal();
       renderAdminAnalytics(state.admin.analytics);
       activateAdminTab();
     }
@@ -1418,6 +1506,7 @@ function updateAuthUI() {
     resetEvaluation();
     state.messages = [];
     renderChat();
+    closeStudentModal();
   }
 }
 
@@ -1647,29 +1736,9 @@ async function resetCurrentSession() {
       throw new Error(errorData.error || "重置对话失败");
     }
 
-    const data = await response.json();
-    state.messages = [];
-    renderScenario(data.scenario || {});
-    resetEvaluation();
-    renderChat();
-
-    const opening = data.openingMessage;
-    if (opening) {
-      appendMessage("assistant", opening);
-    }
-
-    state.activeLevel = {
-      chapterId: data.chapterId,
-      sectionId: data.sectionId,
-      difficulty: data.difficulty || state.activeLevel.difficulty || "balanced",
-    };
-    state.selectedLevel = {
-      chapterId: state.activeLevel.chapterId,
-      sectionId: state.activeLevel.sectionId,
-    };
-    collapseLevelSelection();
-    updateSelectedLevelDetail();
-
+    await response.json().catch(() => ({}));
+    goToLevelSelection({ clearSelection: true });
+    closeStudentModal();
     await loadSessions();
     await loadStudentDashboardInsights();
   } catch (error) {
@@ -1804,21 +1873,14 @@ function handleLogout() {
   adminSessionScenario.innerHTML = "";
   adminSessionConversation.innerHTML = "";
   adminSessionEvaluation.innerHTML = "";
-  renderScenario({});
   renderStudentInsights(null);
   renderAdminAnalytics(null);
   renderAdminLevelList();
   updateChapterForm();
   updateSectionForm();
-  resetEvaluation();
-  state.messages = [];
-  renderChat();
-  expandLevelSelection();
-  updateSelectedLevelDetail();
-  hideExperience();
-  activateStudentTab();
+  goToLevelSelection({ clearSelection: true });
+  closeStudentModal();
   activateAdminTab();
-  updateSessionControls();
   updateAuthUI();
 }
 
@@ -1862,13 +1924,41 @@ if (sessionHistoryList) {
   });
 }
 
-if (studentTabButtons) {
-  studentTabButtons.forEach((button) => {
+if (studentOptionButtons && studentOptionButtons.length > 0) {
+  studentOptionButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      activateStudentTab(button.dataset.tab);
+      openStudentModal(button.dataset.studentOption);
     });
   });
 }
+
+if (studentModalTabButtons && studentModalTabButtons.length > 0) {
+  studentModalTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activateStudentModalTab(button.dataset.modalTab);
+    });
+  });
+}
+
+if (studentModalCloseBtn) {
+  studentModalCloseBtn.addEventListener("click", () => {
+    closeStudentModal();
+  });
+}
+
+if (studentModalOverlay) {
+  studentModalOverlay.addEventListener("click", (event) => {
+    if (event.target === studentModalOverlay) {
+      closeStudentModal();
+    }
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && studentModalOverlay && !studentModalOverlay.classList.contains("hidden")) {
+    closeStudentModal();
+  }
+});
 
 if (reopenLevelMapBtn) {
   reopenLevelMapBtn.addEventListener("click", () => {
