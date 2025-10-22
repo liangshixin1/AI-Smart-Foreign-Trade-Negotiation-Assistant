@@ -282,6 +282,26 @@ function updateStudentOptionState(activeTab) {
   });
 }
 
+function activateStudentTab(tabId = null) {
+  if (tabId) {
+    openStudentModal(tabId);
+    return;
+  }
+
+  currentStudentModalTab = null;
+  updateStudentOptionState(null);
+
+  if (studentModal) {
+    studentModal.removeAttribute("data-active-tab");
+  }
+  if (studentModalOverlay) {
+    studentModalOverlay.classList.add("hidden");
+  }
+  if (document.body) {
+    document.body.classList.remove("overflow-hidden");
+  }
+}
+
 function activateStudentModalTab(tabId) {
   if (!studentModalTabButtons || studentModalTabButtons.length === 0) {
     updateStudentOptionState(null);
