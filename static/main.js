@@ -1,266 +1,392 @@
-const channelSelect = document.getElementById("channel-select");
-const moduleSelect = document.getElementById("module-select");
-const loadPromptsBtn = document.getElementById("load-prompts");
-const systemPromptTextarea = document.getElementById("system-prompt");
-const loadUserSampleBtn = document.getElementById("load-user-sample");
-const userPromptTextarea = document.getElementById("user-prompt");
-const sendRequestBtn = document.getElementById("send-request");
-const streamContainer = document.getElementById("stream-container");
-const rawJsonPre = document.getElementById("raw-json");
-const clearOutputBtn = document.getElementById("clear-output");
-const channelBadge = document.getElementById("channel-badge");
+const chapterSelect = document.getElementById("chapter-select");
+const sectionSelect = document.getElementById("section-select");
+const sectionDescription = document.getElementById("section-description");
+const startLevelBtn = document.getElementById("start-level");
+const levelSelector = document.getElementById("level-selector");
+const loadingPanel = document.getElementById("loading-panel");
+const experienceSection = document.getElementById("experience");
 
-const roleAssignmentEl = document.getElementById("role-assignment");
-const scenarioListEl = document.getElementById("scenario-list");
-const knowledgeGraphEl = document.getElementById("knowledge-graph");
-const taskStepsEl = document.getElementById("task-steps");
-const templatesEl = document.getElementById("templates");
-const checklistEl = document.getElementById("checklist");
-const rubricEl = document.getElementById("rubric");
-const nextActionsEl = document.getElementById("next-actions");
-const streamTagsEl = document.getElementById("stream-tags");
+const scenarioTitleEl = document.getElementById("scenario-title");
+const scenarioSummaryEl = document.getElementById("scenario-summary");
+const studentRoleEl = document.getElementById("student-role");
+const studentCompanyEl = document.getElementById("student-company");
+const aiRoleEl = document.getElementById("ai-role");
+const aiCompanyEl = document.getElementById("ai-company");
+const productDetailsEl = document.getElementById("product-details");
+const negotiationFocusEl = document.getElementById("negotiation-focus");
+const riskListEl = document.getElementById("risk-list");
+const taskChecklistEl = document.getElementById("task-checklist");
+const chatCompanyEl = document.getElementById("chat-company");
+const chatToneEl = document.getElementById("chat-tone");
+const chatBodyEl = document.getElementById("chat-body");
+const chatInputEl = document.getElementById("chat-input");
+const sendMessageBtn = document.getElementById("send-message");
+const evaluationScoreEl = document.getElementById("evaluation-score");
+const evaluationScoreLabelEl = document.getElementById("evaluation-score-label");
+const evaluationCommentaryEl = document.getElementById("evaluation-commentary");
+const evaluationActionsEl = document.getElementById("evaluation-actions");
+const evaluationKnowledgeEl = document.getElementById("evaluation-knowledge");
 
-const CHANNEL_LABELS = {
-  collab: "协作生成 · Collaboration",
-  critic: "批判反馈 · Critique",
+const state = {
+  chapters: [],
+  sectionsByChapter: {},
+  sessionId: null,
+  scenario: null,
+  messages: [],
 };
 
-function populateModuleOptions(channel) {
-  moduleSelect.innerHTML = "";
-  const modules = MODULE_PROMPTS[channel];
-  Object.keys(modules)
-    .sort((a, b) => Number(a) - Number(b))
-    .forEach((key) => {
-      const option = document.createElement("option");
-      option.value = key;
-      option.textContent = `${key} 章`;
-      moduleSelect.appendChild(option);
-    });
-}
-
-function updateChannelBadge(channel) {
-  channelBadge.textContent = CHANNEL_LABELS[channel];
-  channelBadge.className =
-    "rounded-full px-3 py-1 text-xs" +
-    (channel === "collab"
-      ? " bg-blue-500/20 text-blue-200"
-      : " bg-rose-500/20 text-rose-200");
-}
-
-function fillSystemPrompts() {
-  const channel = channelSelect.value;
-  const module = moduleSelect.value;
-  const globalPrompt = GLOBAL_PROMPTS[channel] ?? "";
-  const modulePrompt = MODULE_PROMPTS[channel]?.[module] ?? "";
-  systemPromptTextarea.value = `${globalPrompt}\n\n${modulePrompt}`.trim();
-}
-
-function fillUserSample() {
-  const channel = channelSelect.value;
-  const module = moduleSelect.value;
-  userPromptTextarea.value = SAMPLE_USER_PROMPTS[channel]?.[module] ?? "";
-}
-
-function resetParsedInsights() {
-  roleAssignmentEl.textContent = "";
-  scenarioListEl.innerHTML = "";
-  knowledgeGraphEl.innerHTML = "";
-  taskStepsEl.innerHTML = "";
-  templatesEl.innerHTML = "";
-  checklistEl.innerHTML = "";
-  rubricEl.innerHTML = "";
-  nextActionsEl.innerHTML = "";
-  streamTagsEl.innerHTML = "";
-  rawJsonPre.textContent = "";
-}
-
-function renderScenario(scenario = {}) {
-  const entries = Object.entries(scenario).filter(([, value]) => value);
-  scenarioListEl.innerHTML = "";
-  entries.forEach(([key, value]) => {
-    const item = document.createElement("li");
-    item.innerHTML = `<span class="font-semibold text-slate-200">${key}：</span>${Array.isArray(value) ? value.join("；") : value}`;
-    scenarioListEl.appendChild(item);
-  });
-}
-
-function renderBadges(container, items = []) {
-  container.innerHTML = "";
-  items.forEach((item) => {
-    const badge = document.createElement("span");
-    badge.className = "rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-200";
-    badge.textContent = item;
-    container.appendChild(badge);
-  });
-}
-
-function renderList(container, items = [], ordered = false) {
-  container.innerHTML = "";
-  items.forEach((item) => {
-    const element = document.createElement("li");
-    element.textContent = item;
-    container.appendChild(element);
-  });
-}
-
-function renderTemplates(templates = {}) {
-  templatesEl.innerHTML = "";
-  if (!templates.cn && !templates.en) {
+function renderOptions(selectEl, items, placeholder) {
+  selectEl.innerHTML = "";
+  if (!items || items.length === 0) {
+    const option = document.createElement("option");
+    option.textContent = placeholder;
+    option.value = "";
+    selectEl.appendChild(option);
     return;
   }
-  if (templates.cn) {
-    const cnBlock = document.createElement("div");
-    cnBlock.innerHTML = `<p class="font-semibold text-slate-200">中文模板</p><p class="mt-1 whitespace-pre-wrap">${templates.cn}</p>`;
-    templatesEl.appendChild(cnBlock);
-  }
-  if (templates.en) {
-    const enBlock = document.createElement("div");
-    enBlock.innerHTML = `<p class="font-semibold text-slate-200">English Template</p><p class="mt-1 whitespace-pre-wrap">${templates.en}</p>`;
-    templatesEl.appendChild(enBlock);
-  }
-}
 
-function renderRubric(rubric = []) {
-  rubricEl.innerHTML = "";
-  rubric.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "rounded-xl border border-slate-800 bg-slate-900/60 p-3";
-    const criteria = Array.isArray(item.criteria)
-      ? item.criteria.map((crit) => `<li>${crit}</li>`).join("")
-      : "";
-    card.innerHTML = `
-      <p class="font-semibold text-slate-200">${item.dimension} · ${(item.weight * 100).toFixed(0)}%</p>
-      <ul class="mt-2 list-disc space-y-1 pl-5">${criteria}</ul>
-    `;
-    rubricEl.appendChild(card);
+  items.forEach((item, index) => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.title;
+    if (index === 0) {
+      option.selected = true;
+    }
+    selectEl.appendChild(option);
   });
 }
 
-function renderNextActions(actions = []) {
-  nextActionsEl.innerHTML = "";
-  actions.forEach((action) => {
+function updateSectionDescription(chapterId, sectionId) {
+  const sections = state.sectionsByChapter[chapterId] || [];
+  const section = sections.find((item) => item.id === sectionId);
+  sectionDescription.textContent = section ? section.description : "";
+}
+
+function toggleLoading(isLoading) {
+  if (isLoading) {
+    loadingPanel.classList.remove("hidden");
+  } else {
+    loadingPanel.classList.add("hidden");
+  }
+}
+
+function showExperience() {
+  levelSelector.classList.add("hidden");
+  loadingPanel.classList.add("hidden");
+  experienceSection.classList.remove("hidden");
+}
+
+function resetEvaluation() {
+  evaluationScoreEl.textContent = "--";
+  evaluationScoreLabelEl.textContent = "";
+  evaluationCommentaryEl.textContent = "等待新的对话内容...";
+  evaluationActionsEl.innerHTML = "";
+  evaluationKnowledgeEl.innerHTML = "";
+}
+
+function renderList(container, items, ordered = false) {
+  const values = Array.isArray(items)
+    ? items
+    : items
+    ? [items]
+    : [];
+
+  container.innerHTML = "";
+  if (values.length === 0) {
+    const empty = document.createElement("li");
+    empty.textContent = "暂无信息";
+    empty.className = "text-xs text-slate-500";
+    if (ordered) {
+      container.appendChild(empty);
+    } else {
+      container.appendChild(empty);
+    }
+    return;
+  }
+
+  values.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = action;
-    nextActionsEl.appendChild(li);
+    li.textContent = item;
+    container.appendChild(li);
   });
 }
 
-function renderStreamTags(tags = []) {
-  streamTagsEl.innerHTML = "";
-  tags.forEach((tag) => {
-    const badge = document.createElement("span");
-    badge.className = "rounded-full bg-indigo-500/20 px-3 py-1 text-xs text-indigo-200";
-    badge.textContent = tag;
-    streamTagsEl.appendChild(badge);
+function renderKnowledge(container, items) {
+  const values = Array.isArray(items)
+    ? items
+    : items
+    ? [items]
+    : [];
+
+  container.innerHTML = "";
+  values.forEach((item) => {
+    const pill = document.createElement("span");
+    pill.className = "knowledge-pill";
+    pill.dataset.tooltip = "待开发";
+    pill.textContent = item;
+    container.appendChild(pill);
   });
 }
 
-function applyParsedData(data) {
-  const role = data.role_assignment ?? {};
-  roleAssignmentEl.textContent = role.student_role
-    ? `Student: ${role.student_role} ｜ AI: ${role.ai_role} ｜ ${role.why || ""}`
-    : "";
-  renderScenario(data.scenario ?? {});
-  renderBadges(knowledgeGraphEl, data.knowledge_graph_focus ?? []);
-  renderList(taskStepsEl, data.task_steps ?? []);
-  renderTemplates(data.templates ?? {});
-  renderList(checklistEl, data.checklist ?? []);
-  renderRubric(data.rubric ?? []);
-  renderNextActions(data.next_actions ?? []);
-  renderStreamTags(data.stream_tags ?? []);
+function renderScenario(scenario) {
+  state.scenario = scenario;
+  scenarioTitleEl.textContent = scenario.title || "";
+  scenarioSummaryEl.textContent = scenario.summary || "";
+  studentRoleEl.textContent = scenario.studentRole || "";
+  const studentCompany = scenario.studentCompany || {};
+  studentCompanyEl.textContent = studentCompany.profile
+    ? `${studentCompany.name || ""} · ${studentCompany.profile}`
+    : studentCompany.name || "";
+  aiRoleEl.textContent = scenario.aiRole || "";
+  const aiCompany = scenario.aiCompany || {};
+  aiCompanyEl.textContent = aiCompany.profile
+    ? `${aiCompany.name || ""} · ${aiCompany.profile}`
+    : aiCompany.name || "";
+
+  const product = scenario.product || {};
+  const price = product.price_expectation || {};
+  const productDetails = [];
+  if (product.name) productDetails.push(`品名：${product.name}`);
+  if (product.specifications) productDetails.push(`规格：${product.specifications}`);
+  if (product.quantity_requirement)
+    productDetails.push(`数量/产能：${product.quantity_requirement}`);
+  if (price.student_target)
+    productDetails.push(`学生目标：${price.student_target}`);
+  if (price.ai_bottom_line)
+    productDetails.push(`AI 底线：${price.ai_bottom_line}`);
+  if (scenario.timeline) productDetails.push(`交期：${scenario.timeline}`);
+  if (scenario.logistics) productDetails.push(`物流条款：${scenario.logistics}`);
+  productDetailsEl.innerHTML = "";
+  if (productDetails.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "暂无产品信息";
+    item.className = "text-xs text-slate-500";
+    productDetailsEl.appendChild(item);
+  } else {
+    productDetails.forEach((detail) => {
+      const item = document.createElement("li");
+      item.textContent = detail;
+      productDetailsEl.appendChild(item);
+    });
+  }
+
+  renderList(negotiationFocusEl, scenario.negotiationTargets || []);
+  renderList(riskListEl, scenario.risks || []);
+  renderList(taskChecklistEl, scenario.checklist || [], true);
+
+  chatCompanyEl.textContent = aiCompany.name || "AI 虚拟公司";
+  chatToneEl.textContent = scenario.communicationTone || "";
+  renderKnowledge(evaluationKnowledgeEl, scenario.knowledgePoints || []);
 }
 
-async function streamRequest() {
-  const channel = channelSelect.value;
-  const endpoint = channel === "critic" ? "/api/critique_stream" : "/api/collab_stream";
-  const systemPrompt = systemPromptTextarea.value.trim();
-  const userPrompt = userPromptTextarea.value.trim();
+function renderChat() {
+  chatBodyEl.innerHTML = "";
+  state.messages.forEach((message) => {
+    const row = document.createElement("div");
+    row.className = "flex gap-3";
+    const avatar = document.createElement("div");
+    avatar.className = "mt-1 h-10 w-10 flex-shrink-0 rounded-full";
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble whitespace-pre-wrap text-sm leading-6";
+    bubble.textContent = message.content;
 
-  if (!systemPrompt || !userPrompt) {
-    alert("请填写 System Prompt 和 User Prompt。");
+    if (message.role === "assistant") {
+      row.classList.add("items-start");
+      avatar.classList.add("bg-blue-500/80", "flex", "items-center", "justify-center", "text-white", "text-sm", "font-semibold");
+      avatar.textContent = "AI";
+      bubble.classList.add("bubble-assistant");
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+    } else {
+      row.classList.add("items-start", "justify-end");
+      avatar.classList.add("bg-emerald-500/80", "flex", "items-center", "justify-center", "text-white", "text-sm", "font-semibold");
+      avatar.textContent = "我";
+      bubble.classList.add("bubble-user");
+      row.appendChild(bubble);
+      row.appendChild(avatar);
+    }
+
+    chatBodyEl.appendChild(row);
+  });
+  chatBodyEl.scrollTop = chatBodyEl.scrollHeight;
+}
+
+function appendMessage(role, content) {
+  state.messages.push({ role, content });
+  renderChat();
+}
+
+function renderEvaluation(evaluation) {
+  if (!evaluation) {
+    resetEvaluation();
     return;
   }
 
-  streamContainer.textContent = "";
-  rawJsonPre.textContent = "";
-  resetParsedInsights();
+  evaluationScoreEl.textContent =
+    evaluation.score !== null && evaluation.score !== undefined && evaluation.score !== ""
+      ? evaluation.score
+      : evaluation.bargainingWinRate !== null && evaluation.bargainingWinRate !== undefined
+      ? `${evaluation.bargainingWinRate}%`
+      : "--";
+  evaluationScoreLabelEl.textContent = evaluation.scoreLabel || "";
+  evaluationCommentaryEl.textContent = evaluation.commentary || "等待新的对话内容...";
 
-  sendRequestBtn.disabled = true;
-  sendRequestBtn.textContent = "Streaming...";
+  evaluationActionsEl.innerHTML = "";
+  const actionItems = Array.isArray(evaluation.actionItems)
+    ? evaluation.actionItems
+    : evaluation.actionItems
+    ? [evaluation.actionItems]
+    : [];
+  actionItems.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    evaluationActionsEl.appendChild(li);
+  });
+
+  renderKnowledge(evaluationKnowledgeEl, evaluation.knowledgePoints || []);
+}
+
+async function loadLevels() {
+  try {
+    const response = await fetch("/api/levels");
+    if (!response.ok) {
+      throw new Error("无法载入章节信息");
+    }
+    const data = await response.json();
+    state.chapters = data.chapters || [];
+    state.sectionsByChapter = {};
+    state.chapters.forEach((chapter) => {
+      state.sectionsByChapter[chapter.id] = chapter.sections || [];
+    });
+
+    renderOptions(chapterSelect, state.chapters, "暂无章节");
+    const firstChapter = state.chapters[0];
+    if (firstChapter) {
+      renderOptions(sectionSelect, firstChapter.sections || [], "暂无小节");
+      updateSectionDescription(firstChapter.id, sectionSelect.value);
+    }
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "加载章节失败");
+  }
+}
+
+async function startLevel() {
+  const chapterId = chapterSelect.value;
+  const sectionId = sectionSelect.value;
+
+  if (!chapterId || !sectionId) {
+    alert("请选择章节与小节");
+    return;
+  }
+
+  startLevelBtn.disabled = true;
+  startLevelBtn.textContent = "加载中...";
+  toggleLoading(true);
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetch("/api/start_level", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ system: systemPrompt, user: userPrompt }),
+      body: JSON.stringify({ chapterId, sectionId }),
     });
 
-    if (!response.ok || !response.body) {
-      const text = await response.text();
-      throw new Error(text || "请求失败");
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "无法生成场景");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = "";
+    const data = await response.json();
+    state.sessionId = data.sessionId;
+    state.messages = [];
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      fullText += chunk;
+    renderScenario(data.scenario || {});
+    resetEvaluation();
 
-      const jsonStart = fullText.indexOf("--JSON_START--");
-      const displayText = jsonStart >= 0 ? fullText.slice(0, jsonStart) : fullText;
-      streamContainer.textContent = displayText;
-      streamContainer.scrollTop = streamContainer.scrollHeight;
+    const opening = data.openingMessage;
+    if (opening) {
+      appendMessage("assistant", opening);
     }
 
-    const jsonStart = fullText.indexOf("--JSON_START--");
-    const jsonEnd = fullText.indexOf("--JSON_END--");
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      const jsonString = fullText.slice(jsonStart + "--JSON_START--".length, jsonEnd).trim();
-      rawJsonPre.textContent = jsonString;
-      try {
-        const parsed = JSON.parse(jsonString);
-        applyParsedData(parsed);
-      } catch (error) {
-        rawJsonPre.textContent += `\n\nJSON 解析失败：${error.message}`;
-      }
-    }
+    showExperience();
   } catch (error) {
-    streamContainer.textContent = `请求出错：${error.message}`;
+    console.error(error);
+    alert(error.message || "生成场景失败，请稍后再试");
+    toggleLoading(false);
   } finally {
-    sendRequestBtn.disabled = false;
-    sendRequestBtn.textContent = "🚀 启动流式对话 · Start Streaming";
+    startLevelBtn.disabled = false;
+    startLevelBtn.textContent = "🚀 进入关卡";
   }
 }
 
-channelSelect.addEventListener("change", () => {
-  populateModuleOptions(channelSelect.value);
-  fillSystemPrompts();
-  fillUserSample();
-  updateChannelBadge(channelSelect.value);
+async function sendMessage() {
+  const message = chatInputEl.value.trim();
+  if (!message) {
+    return;
+  }
+  if (!state.sessionId) {
+    alert("请先选择关卡并加载场景");
+    return;
+  }
+
+  chatInputEl.value = "";
+  chatInputEl.disabled = true;
+  sendMessageBtn.disabled = true;
+
+  appendMessage("user", message);
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sessionId: state.sessionId, message }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "发送消息失败");
+    }
+
+    const data = await response.json();
+    if (data.reply) {
+      appendMessage("assistant", data.reply);
+    }
+    renderEvaluation(data.evaluation);
+  } catch (error) {
+    console.error(error);
+    appendMessage("assistant", `系统提示：${error.message || "对话失败"}`);
+  } finally {
+    chatInputEl.disabled = false;
+    sendMessageBtn.disabled = false;
+    chatInputEl.focus();
+  }
+}
+
+chapterSelect.addEventListener("change", () => {
+  const chapterId = chapterSelect.value;
+  const sections = state.sectionsByChapter[chapterId] || [];
+  renderOptions(sectionSelect, sections, "暂无小节");
+  updateSectionDescription(chapterId, sectionSelect.value);
 });
 
-moduleSelect.addEventListener("change", () => {
-  fillSystemPrompts();
-  fillUserSample();
+sectionSelect.addEventListener("change", () => {
+  const chapterId = chapterSelect.value;
+  updateSectionDescription(chapterId, sectionSelect.value);
 });
 
-loadPromptsBtn.addEventListener("click", fillSystemPrompts);
-loadUserSampleBtn.addEventListener("click", fillUserSample);
-sendRequestBtn.addEventListener("click", streamRequest);
-clearOutputBtn.addEventListener("click", () => {
-  streamContainer.textContent = "";
-  rawJsonPre.textContent = "";
-  resetParsedInsights();
+startLevelBtn.addEventListener("click", startLevel);
+
+sendMessageBtn.addEventListener("click", sendMessage);
+
+chatInputEl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendMessage();
+  }
 });
 
-// Initialize defaults
-populateModuleOptions(channelSelect.value);
-fillSystemPrompts();
-fillUserSample();
-updateChannelBadge(channelSelect.value);
+loadLevels();
