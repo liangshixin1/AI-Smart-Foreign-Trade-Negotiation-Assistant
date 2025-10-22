@@ -13,138 +13,262 @@
     />
     <style>
       body {
-        font-family: 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont,
-          'Segoe UI', sans-serif;
+        font-family: "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
       textarea {
-        font-family: 'Noto Sans SC', 'Segoe UI', sans-serif;
+        font-family: "Noto Sans SC", "Segoe UI", sans-serif;
+      }
+      .chat-bubble {
+        max-width: 80%;
+        padding: 0.75rem 1rem;
+        border-radius: 1rem;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+      }
+      .bubble-assistant {
+        background: linear-gradient(135deg, #1d4ed8, #2563eb);
+        color: #fff;
+        border-bottom-left-radius: 0.25rem;
+      }
+      .bubble-user {
+        background: linear-gradient(135deg, #059669, #10b981);
+        color: #fff;
+        margin-left: auto;
+        border-bottom-right-radius: 0.25rem;
+      }
+      .knowledge-pill {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        background: rgba(14, 165, 233, 0.15);
+        color: #0ea5e9;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: help;
+        transition: transform 0.2s ease;
+      }
+      .knowledge-pill:hover {
+        transform: translateY(-2px);
+      }
+      .knowledge-pill::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 50%;
+        bottom: 125%;
+        transform: translate(-50%, 10px);
+        padding: 0.35rem 0.6rem;
+        border-radius: 0.5rem;
+        background: rgba(15, 23, 42, 0.9);
+        color: #e2e8f0;
+        font-size: 0.7rem;
+        opacity: 0;
+        pointer-events: none;
+        white-space: nowrap;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .knowledge-pill:hover::after {
+        opacity: 1;
+        transform: translate(-50%, 0);
       }
     </style>
   </head>
   <body class="bg-slate-900 text-slate-100 min-h-screen">
-    <header class="border-b border-slate-800 bg-slate-950/60 backdrop-blur">
-      <div class="mx-auto max-w-7xl px-4 py-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <header class="border-b border-slate-800 bg-slate-950/70 backdrop-blur">
+      <div
+        class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 lg:flex-row lg:items-center lg:justify-between"
+      >
         <div>
           <h1 class="text-2xl font-semibold">G-Tutor · AI 外贸谈判课助手</h1>
           <p class="text-sm text-slate-400">
-            Flask × Tailwind 单页应用 · 协作生成与批判反馈双通道 · DeepSeek
-            Streaming
+            章节式关卡体验 · 协作生成 × 批判评价 · DeepSeek Streaming
           </p>
         </div>
-        <div class="text-xs text-right text-slate-400 leading-5">
-          <p>后端使用环境变量载入 API Key：</p>
+        <div class="text-xs text-right leading-5 text-slate-400">
+          <p>服务器需配置：</p>
           <p><code>DEEPSEEK_COLLAB_KEY</code>（协作生成）</p>
-          <p><code>DEEPSEEK_CRITIC_KEY</code>（批判反馈）</p>
+          <p><code>DEEPSEEK_CRITIC_KEY</code>（评价反馈）</p>
         </div>
       </div>
     </header>
 
-    <main class="mx-auto max-w-7xl px-4 py-6">
-      <div class="grid gap-6 lg:grid-cols-3">
-        <section class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <div class="flex items-center justify-between gap-4">
-            <h2 class="text-lg font-semibold">System Prompt 组合</h2>
-            <span id="channel-badge" class="rounded-full bg-blue-500/20 px-3 py-1 text-xs text-blue-200">
-              协作生成 · Collaboration
-            </span>
+    <main class="mx-auto max-w-6xl px-4 py-8 space-y-6">
+      <section
+        id="level-selector"
+        class="rounded-3xl border border-slate-800 bg-slate-950/70 p-6 shadow-xl shadow-blue-500/5"
+      >
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div class="space-y-4 md:flex-1">
+            <div>
+              <p class="text-sm text-slate-400">STEP 1</p>
+              <h2 class="text-xl font-semibold text-white">选择章节与小节</h2>
+              <p class="text-sm text-slate-400">
+                像选择游戏关卡一样，为学生挑选训练目标。
+              </p>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="space-y-2">
+                <span class="text-sm font-semibold text-slate-200">章节</span>
+                <select
+                  id="chapter-select"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                ></select>
+              </label>
+              <label class="space-y-2">
+                <span class="text-sm font-semibold text-slate-200">小节</span>
+                <select
+                  id="section-select"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                ></select>
+              </label>
+            </div>
+            <p id="section-description" class="text-sm text-slate-400"></p>
           </div>
-          <div class="grid gap-3 text-sm">
-            <label class="space-y-1">
-              <span class="font-semibold text-slate-200">选择通道 Channel</span>
-              <select id="channel-select" class="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-blue-400 focus:outline-none">
-                <option value="collab">协作生成 · Collaboration</option>
-                <option value="critic">批判反馈 · Critique</option>
-              </select>
-            </label>
-            <label class="space-y-1">
-              <span class="font-semibold text-slate-200">选择章节子 System</span>
-              <select id="module-select" class="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-blue-400 focus:outline-none"></select>
-            </label>
-            <button id="load-prompts" class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">
-              填充系统提示 · Load System Prompts
-            </button>
-            <label class="space-y-1">
-              <span class="font-semibold text-slate-200">System Prompt</span>
-              <textarea id="system-prompt" rows="14" class="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 focus:border-blue-400 focus:outline-none"></textarea>
-            </label>
-            <button id="load-user-sample" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600">
-              插入起始用户 Prompt · Load Sample User Prompt
-            </button>
-            <label class="space-y-1">
-              <span class="font-semibold text-slate-200">User Prompt / 学生输入</span>
-              <textarea id="user-prompt" rows="8" class="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 focus:border-blue-400 focus:outline-none" placeholder="在此输入学生提问或草稿..."></textarea>
-            </label>
-            <button id="send-request" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-600">
-              🚀 启动流式对话 · Start Streaming
-            </button>
-          </div>
-          <p class="text-xs text-slate-400">
-            提示：请确保服务器环境变量已设置对应 API Key。系统将自动按
-            --JSON_START-- / --JSON_END-- 捕获结构化契约并在右侧展示。
+          <button
+            id="start-level"
+            class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-600"
+          >
+            🚀 进入关卡
+          </button>
+        </div>
+      </section>
+
+      <section
+        id="loading-panel"
+        class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center"
+      >
+        <div class="mx-auto flex max-w-md flex-col items-center gap-4">
+          <div class="h-12 w-12 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
+          <p class="text-lg font-semibold text-blue-100">场景生成中...</p>
+          <p class="text-sm text-blue-200">
+            协作 AI 正根据隐藏的系统提示构建市场环境，请稍候。
           </p>
-        </section>
-
-        <section class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:col-span-1">
-          <div class="flex items-center justify-between gap-4">
-            <h2 class="text-lg font-semibold">流式响应 · Streaming Output</h2>
-            <button id="clear-output" class="text-xs text-blue-300 hover:text-blue-200">清空</button>
+          <div class="w-full space-y-2 rounded-2xl bg-slate-900/60 p-4 text-left text-sm text-slate-300">
+            <p>AI：正在读取贸易数据库...</p>
+            <p>AI：匹配行业案例...</p>
+            <p>AI：生成角色设定与谈判目标...</p>
           </div>
-          <div id="stream-container" class="h-[520px] overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm leading-6 whitespace-pre-wrap"></div>
-          <details class="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-xs text-slate-300">
-            <summary class="cursor-pointer select-none text-slate-200">JSON 原文</summary>
-            <pre id="raw-json" class="mt-2 whitespace-pre-wrap text-xs"></pre>
-          </details>
-        </section>
+        </div>
+      </section>
 
-        <section class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <h2 class="text-lg font-semibold">结构化洞察 · Parsed Insights</h2>
-          <div class="space-y-4 text-sm">
+      <section id="experience" class="hidden">
+        <div
+          class="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)_300px]"
+        >
+          <aside
+            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+          >
             <div>
-              <h3 class="text-sm font-semibold text-slate-200">角色分配</h3>
-              <p id="role-assignment" class="mt-1 text-slate-300"></p>
+              <p class="text-xs uppercase tracking-widest text-slate-500">
+                Scenario Briefing
+              </p>
+              <h2 id="scenario-title" class="mt-2 text-xl font-semibold text-white"></h2>
+              <p id="scenario-summary" class="mt-3 text-sm text-slate-300"></p>
             </div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">角色与公司</h3>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
+                <p class="font-semibold text-blue-200">学生</p>
+                <p id="student-role" class="mt-1 text-slate-300"></p>
+                <p id="student-company" class="mt-1 text-xs text-slate-400"></p>
+                <div class="mt-3 h-px bg-slate-800"></div>
+                <p class="mt-3 font-semibold text-emerald-200">AI</p>
+                <p id="ai-role" class="mt-1 text-slate-300"></p>
+                <p id="ai-company" class="mt-1 text-xs text-slate-400"></p>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">交易要点</h3>
+              <ul id="product-details" class="space-y-1 text-sm text-slate-300"></ul>
+            </div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">谈判焦点</h3>
+              <ul id="negotiation-focus" class="list-disc space-y-1 pl-5 text-sm text-slate-300"></ul>
+            </div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">风险提示</h3>
+              <ul id="risk-list" class="list-disc space-y-1 pl-5 text-sm text-slate-400"></ul>
+            </div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">任务清单</h3>
+              <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-300"></ol>
+            </div>
+          </aside>
+
+          <section
+            class="flex min-h-[620px] flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-100"
+          >
+            <div
+              id="chat-header"
+              class="flex items-center justify-between bg-blue-600 px-6 py-4 text-sm text-blue-50"
+            >
+              <div>
+                <p class="text-xs uppercase tracking-wider text-blue-200">对话对象</p>
+                <p id="chat-company" class="text-base font-semibold"></p>
+              </div>
+              <span id="chat-tone" class="rounded-full bg-blue-500/30 px-3 py-1 text-xs text-blue-100"></span>
+            </div>
+            <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6"></div>
+            <div class="border-t border-slate-200 bg-white px-6 py-4">
+              <div class="flex gap-3">
+                <textarea
+                  id="chat-input"
+                  rows="2"
+                  class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
+                  placeholder="请输入你的回复，按 Enter 发送"
+                ></textarea>
+                <button
+                  id="send-message"
+                  class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
+                >
+                  发送
+                </button>
+              </div>
+              <p class="mt-2 text-xs text-slate-400">
+                提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
+              </p>
+            </div>
+          </section>
+
+          <aside
+            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+          >
             <div>
-              <h3 class="text-sm font-semibold text-slate-200">场景概览 Scenario</h3>
-              <ul id="scenario-list" class="mt-1 space-y-1 text-slate-300"></ul>
+              <p class="text-xs uppercase tracking-widest text-slate-500">
+                Evaluation
+              </p>
+              <h2 class="mt-2 text-xl font-semibold text-white">即时反馈</h2>
             </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">知识图谱节点 Knowledge Graph Focus</h3>
-              <div id="knowledge-graph" class="mt-1 flex flex-wrap gap-2"></div>
+            <div class="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+              <p class="text-xs uppercase tracking-widest text-emerald-200">
+                当前得分 / 胜率
+              </p>
+              <p id="evaluation-score" class="mt-3 text-4xl font-bold text-emerald-300">--</p>
+              <p id="evaluation-score-label" class="text-sm text-emerald-200"></p>
             </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">任务步骤 Task Steps</h3>
-              <ol id="task-steps" class="mt-1 list-decimal space-y-1 pl-5 text-slate-300"></ol>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">评语</h3>
+              <p id="evaluation-commentary" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"></p>
             </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">模板 Templates</h3>
-              <div id="templates" class="mt-1 space-y-2 text-slate-300"></div>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">改进建议</h3>
+              <ul id="evaluation-actions" class="list-disc space-y-2 pl-5 text-sm text-slate-300"></ul>
             </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">检查清单 Checklist</h3>
-              <ul id="checklist" class="mt-1 list-disc space-y-1 pl-5 text-slate-300"></ul>
+            <div class="space-y-3">
+              <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
+              <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
             </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">Rubric 评分维度</h3>
-              <div id="rubric" class="mt-1 space-y-3 text-slate-300"></div>
-            </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">下一步动作 Next Actions</h3>
-              <ul id="next-actions" class="mt-1 list-disc space-y-1 pl-5 text-slate-300"></ul>
-            </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">Stream Tags</h3>
-              <div id="stream-tags" class="mt-1 flex flex-wrap gap-2"></div>
-            </div>
-          </div>
-        </section>
-      </div>
+          </aside>
+        </div>
+      </section>
     </main>
 
-    <footer class="border-t border-slate-800 bg-slate-950/60 py-4 text-center text-xs text-slate-500">
+    <footer class="border-t border-slate-800 bg-slate-950/70 py-4 text-center text-xs text-slate-500">
       © 2024 G-Tutor · 模拟教学使用 / For Educational Simulation Only
     </footer>
 
-    <script src="/static/prompts.js"></script>
-    <script src="/static/main.js"></script>
+    <script src="/static/main.js" type="module"></script>
   </body>
 </html>
