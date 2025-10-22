@@ -6,9 +6,13 @@ import json
 import os
 import secrets
 import sqlite3
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from levels import ChapterConfig
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -20,6 +24,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join(os.path.dirname(__file__
 def get_connection() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
     finally:
@@ -82,6 +87,33 @@ def init_database() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS level_chapters (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT,
+                order_index INTEGER DEFAULT 0,
+                is_default INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS level_sections (
+                id TEXT PRIMARY KEY,
+                chapter_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                environment_prompt_template TEXT NOT NULL,
+                environment_user_message TEXT NOT NULL,
+                conversation_prompt_template TEXT NOT NULL,
+                evaluation_prompt_template TEXT NOT NULL,
+                expects_bargaining INTEGER DEFAULT 0,
+                order_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_default INTEGER DEFAULT 0,
+                FOREIGN KEY(chapter_id) REFERENCES level_chapters(id) ON DELETE CASCADE
+            );
             """
         )
         conn.commit()
@@ -118,6 +150,440 @@ def ensure_schema() -> None:
             conn.execute(
                 "ALTER TABLE chat_sessions ADD COLUMN difficulty TEXT DEFAULT 'balanced'"
             )
+
+        chapter_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(level_chapters)").fetchall()
+        }
+        if chapter_columns and "is_default" not in chapter_columns:
+            conn.execute(
+                "ALTER TABLE level_chapters ADD COLUMN is_default INTEGER DEFAULT 0"
+            )
+        if chapter_columns and "order_index" not in chapter_columns:
+            conn.execute(
+                "ALTER TABLE level_chapters ADD COLUMN order_index INTEGER DEFAULT 0"
+            )
+
+        section_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(level_sections)").fetchall()
+        }
+        if section_columns and "is_default" not in section_columns:
+            conn.execute(
+                "ALTER TABLE level_sections ADD COLUMN is_default INTEGER DEFAULT 0"
+            )
+        if section_columns and "order_index" not in section_columns:
+            conn.execute(
+                "ALTER TABLE level_sections ADD COLUMN order_index INTEGER DEFAULT 0"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_level_chapters_order ON level_chapters(order_index, title)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_level_sections_chapter_order ON level_sections(chapter_id, order_index)"
+        )
+        conn.commit()
+
+
+def _next_order_index(
+    conn: sqlite3.Connection, table: str, where_clause: str = "", params: Tuple[object, ...] = ()
+) -> int:
+    query = f"SELECT COALESCE(MAX(order_index), 0) AS max_index FROM {table}"
+    if where_clause:
+        query = f"{query} WHERE {where_clause}"
+    row = conn.execute(query, params).fetchone()
+    max_value = row["max_index"] if row and row["max_index"] is not None else 0
+    return int(max_value) + 1
+
+
+def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
+    with get_connection() as conn:
+        for chapter_order, chapter in enumerate(chapters, start=1):
+            chapter_row = conn.execute(
+                "SELECT id, order_index FROM level_chapters WHERE id = ?", (chapter.id,)
+            ).fetchone()
+            if not chapter_row:
+                conn.execute(
+                    """
+                    INSERT INTO level_chapters (id, title, description, order_index, is_default)
+                    VALUES (?, ?, ?, ?, 1)
+                    """,
+                    (chapter.id, chapter.title, "", chapter_order),
+                )
+            else:
+                conn.execute(
+                    "UPDATE level_chapters SET is_default = 1 WHERE id = ?",
+                    (chapter.id,),
+                )
+                if not chapter_row["order_index"]:
+                    conn.execute(
+                        "UPDATE level_chapters SET order_index = ? WHERE id = ?",
+                        (chapter_order, chapter.id),
+                    )
+
+            for section_order, section in enumerate(chapter.sections, start=1):
+                section_row = conn.execute(
+                    "SELECT id, order_index FROM level_sections WHERE id = ?",
+                    (section.id,),
+                ).fetchone()
+                if not section_row:
+                    conn.execute(
+                        """
+                        INSERT INTO level_sections (
+                            id, chapter_id, title, description,
+                            environment_prompt_template, environment_user_message,
+                            conversation_prompt_template, evaluation_prompt_template,
+                            expects_bargaining, order_index, is_default
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """,
+                        (
+                            section.id,
+                            chapter.id,
+                            section.title,
+                            section.description,
+                            section.environment_prompt_template,
+                            section.environment_user_message,
+                            section.conversation_prompt_template,
+                            section.evaluation_prompt_template,
+                            1 if section.expects_bargaining else 0,
+                            section_order,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE level_sections SET is_default = 1 WHERE id = ?",
+                        (section.id,),
+                    )
+                    if not section_row["order_index"]:
+                        conn.execute(
+                            "UPDATE level_sections SET order_index = ? WHERE id = ?",
+                            (section_order, section.id),
+                        )
+        conn.commit()
+
+
+def list_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object]]:
+    with get_connection() as conn:
+        chapter_rows = conn.execute(
+            """
+            SELECT id, title, description, order_index, is_default
+            FROM level_chapters
+            ORDER BY order_index, title
+            """
+        ).fetchall()
+        section_rows = conn.execute(
+            """
+            SELECT
+                id,
+                chapter_id,
+                title,
+                description,
+                environment_prompt_template,
+                environment_user_message,
+                conversation_prompt_template,
+                evaluation_prompt_template,
+                expects_bargaining,
+                order_index,
+                is_default
+            FROM level_sections
+            ORDER BY chapter_id, order_index, title
+            """
+        ).fetchall()
+
+    chapter_map: Dict[str, Dict[str, object]] = {}
+    for chapter in chapter_rows:
+        chapter_map[chapter["id"]] = {
+            "id": chapter["id"],
+            "title": chapter["title"],
+            "description": chapter["description"] or "",
+            "orderIndex": chapter["order_index"],
+            "isDefault": bool(chapter["is_default"]),
+            "sections": [],
+        }
+
+    for section in section_rows:
+        chapter = chapter_map.get(section["chapter_id"])
+        if not chapter:
+            continue
+        section_payload = {
+            "id": section["id"],
+            "chapterId": section["chapter_id"],
+            "title": section["title"],
+            "description": section["description"],
+            "expectsBargaining": bool(section["expects_bargaining"]),
+            "orderIndex": section["order_index"],
+            "isDefault": bool(section["is_default"]),
+        }
+        if include_prompts:
+            section_payload.update(
+                {
+                    "environmentPromptTemplate": section["environment_prompt_template"],
+                    "environmentUserMessage": section["environment_user_message"],
+                    "conversationPromptTemplate": section["conversation_prompt_template"],
+                    "evaluationPromptTemplate": section["evaluation_prompt_template"],
+                }
+            )
+        chapter["sections"].append(section_payload)
+
+    for chapter in chapter_map.values():
+        chapter["sections"].sort(key=lambda s: (s["orderIndex"], s["title"]))
+
+    return sorted(chapter_map.values(), key=lambda c: (c["orderIndex"], c["title"]))
+
+
+def get_chapter(chapter_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, title, description, order_index, is_default
+            FROM level_chapters
+            WHERE id = ?
+            """,
+            (chapter_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "description": row["description"] or "",
+            "orderIndex": row["order_index"],
+            "isDefault": bool(row["is_default"]),
+        }
+
+
+def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                id,
+                chapter_id,
+                title,
+                description,
+                environment_prompt_template,
+                environment_user_message,
+                conversation_prompt_template,
+                evaluation_prompt_template,
+                expects_bargaining,
+                order_index,
+                is_default
+            FROM level_sections
+            WHERE id = ? AND chapter_id = ?
+            """,
+            (section_id, chapter_id),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "chapter_id": row["chapter_id"],
+            "title": row["title"],
+            "description": row["description"],
+            "environment_prompt_template": row["environment_prompt_template"],
+            "environment_user_message": row["environment_user_message"],
+            "conversation_prompt_template": row["conversation_prompt_template"],
+            "evaluation_prompt_template": row["evaluation_prompt_template"],
+            "expects_bargaining": bool(row["expects_bargaining"]),
+            "order_index": row["order_index"],
+            "is_default": bool(row["is_default"]),
+        }
+
+
+def get_section(section_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT chapter_id FROM level_sections WHERE id = ?",
+            (section_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return get_section_template(row["chapter_id"], section_id)
+
+
+def create_chapter(
+    title: str,
+    description: str = "",
+    order_index: Optional[int] = None,
+    chapter_id: Optional[str] = None,
+) -> Dict[str, object]:
+    chapter_id = chapter_id or f"chapter-{uuid.uuid4().hex[:8]}"
+    with get_connection() as conn:
+        if order_index is None:
+            order_index = _next_order_index(conn, "level_chapters")
+        conn.execute(
+            """
+            INSERT INTO level_chapters (id, title, description, order_index, is_default)
+            VALUES (?, ?, ?, ?, 0)
+            """,
+            (chapter_id, title, description, order_index),
+        )
+        conn.commit()
+    chapter = get_chapter(chapter_id)
+    assert chapter is not None
+    return chapter
+
+
+def update_chapter(
+    chapter_id: str,
+    *,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    order_index: Optional[int] = None,
+) -> Optional[Dict[str, object]]:
+    fields = []
+    params: List[object] = []
+    if title is not None:
+        fields.append("title = ?")
+        params.append(title)
+    if description is not None:
+        fields.append("description = ?")
+        params.append(description)
+    if order_index is not None:
+        fields.append("order_index = ?")
+        params.append(order_index)
+    if not fields:
+        return get_chapter(chapter_id)
+    params.append(chapter_id)
+    with get_connection() as conn:
+        conn.execute(
+            f"UPDATE level_chapters SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            tuple(params),
+        )
+        conn.commit()
+    return get_chapter(chapter_id)
+
+
+def delete_chapter(chapter_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM level_chapters WHERE id = ?", (chapter_id,))
+        conn.commit()
+
+
+def create_section(
+    chapter_id: str,
+    title: str,
+    description: str,
+    environment_prompt_template: str,
+    environment_user_message: str,
+    conversation_prompt_template: str,
+    evaluation_prompt_template: str,
+    expects_bargaining: bool = False,
+    order_index: Optional[int] = None,
+    section_id: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        chapter_exists = conn.execute(
+            "SELECT 1 FROM level_chapters WHERE id = ?",
+            (chapter_id,),
+        ).fetchone()
+        if not chapter_exists:
+            return None
+        section_id = section_id or f"section-{uuid.uuid4().hex[:10]}"
+        if order_index is None:
+            order_index = _next_order_index(
+                conn, "level_sections", "chapter_id = ?", (chapter_id,)
+            )
+        conn.execute(
+            """
+            INSERT INTO level_sections (
+                id, chapter_id, title, description,
+                environment_prompt_template, environment_user_message,
+                conversation_prompt_template, evaluation_prompt_template,
+                expects_bargaining, order_index, is_default
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                section_id,
+                chapter_id,
+                title,
+                description,
+                environment_prompt_template,
+                environment_user_message,
+                conversation_prompt_template,
+                evaluation_prompt_template,
+                1 if expects_bargaining else 0,
+                order_index,
+            ),
+        )
+        conn.commit()
+    return get_section(section_id)
+
+
+def update_section(
+    section_id: str,
+    *,
+    chapter_id: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    environment_prompt_template: Optional[str] = None,
+    environment_user_message: Optional[str] = None,
+    conversation_prompt_template: Optional[str] = None,
+    evaluation_prompt_template: Optional[str] = None,
+    expects_bargaining: Optional[bool] = None,
+    order_index: Optional[int] = None,
+) -> Optional[Dict[str, object]]:
+    section = get_section(section_id)
+    if not section:
+        return None
+
+    with get_connection() as conn:
+        if chapter_id and chapter_id != section["chapter_id"]:
+            chapter_exists = conn.execute(
+                "SELECT 1 FROM level_chapters WHERE id = ?",
+                (chapter_id,),
+            ).fetchone()
+            if not chapter_exists:
+                return None
+        updates = []
+        params: List[object] = []
+        if chapter_id is not None:
+            updates.append("chapter_id = ?")
+            params.append(chapter_id)
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+        if environment_prompt_template is not None:
+            updates.append("environment_prompt_template = ?")
+            params.append(environment_prompt_template)
+        if environment_user_message is not None:
+            updates.append("environment_user_message = ?")
+            params.append(environment_user_message)
+        if conversation_prompt_template is not None:
+            updates.append("conversation_prompt_template = ?")
+            params.append(conversation_prompt_template)
+        if evaluation_prompt_template is not None:
+            updates.append("evaluation_prompt_template = ?")
+            params.append(evaluation_prompt_template)
+        if expects_bargaining is not None:
+            updates.append("expects_bargaining = ?")
+            params.append(1 if expects_bargaining else 0)
+        target_chapter_id = chapter_id if chapter_id is not None else section["chapter_id"]
+        if order_index is not None:
+            updates.append("order_index = ?")
+            params.append(order_index)
+        elif chapter_id and chapter_id != section["chapter_id"]:
+            new_index = _next_order_index(
+                conn, "level_sections", "chapter_id = ?", (target_chapter_id,)
+            )
+            updates.append("order_index = ?")
+            params.append(new_index)
+
+        if updates:
+            params.append(section_id)
+            conn.execute(
+                f"UPDATE level_sections SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                tuple(params),
+            )
+            conn.commit()
+
+    return get_section(section_id)
+
+
+def delete_section(section_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM level_sections WHERE id = ?", (section_id,))
         conn.commit()
 
 
@@ -224,6 +690,17 @@ def remove_last_message(session_id: str) -> None:
         if not row:
             return
         conn.execute("DELETE FROM messages WHERE id = ?", (row["id"],))
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (session_id,),
+        )
+        conn.commit()
+
+
+def reset_session(session_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM evaluations WHERE session_id = ?", (session_id,))
         conn.execute(
             "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (session_id,),

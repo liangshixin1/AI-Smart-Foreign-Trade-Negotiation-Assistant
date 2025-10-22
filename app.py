@@ -9,17 +9,16 @@ from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
 import database
-from levels import CHAPTERS, SectionConfig, build_chapter_lookup, flatten_scenario_for_template
+from levels import CHAPTERS, flatten_scenario_for_template
 
 load_dotenv()
 database.init_database()
+database.seed_default_levels(CHAPTERS)
 
 DEEPSEEK_BASE = "https://api.deepseek.com"
 MODEL = "deepseek-chat"
 
 app = Flask(__name__, static_folder="static")
-
-CHAPTER_LOOKUP = build_chapter_lookup()
 
 DEFAULT_DIFFICULTY = "balanced"
 DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
@@ -64,6 +63,16 @@ DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
         "bottom_line_hint": "可根据学生的回报方案灵活调整底线范围。",
     },
 }
+
+SCENARIO_DIVERSITY_HINT = (
+    "请在设计谈判情境时兼顾制造业、服务业、数字贸易、农业、文化创意等多元行业，"
+    "避免始终聚焦于电子产品或消费电子案例，使学生能够接触不同的外贸品类。"
+)
+
+CONVERSATION_DIVERSITY_HINT = (
+    "在与学生的每轮对话中，选择贴合场景的行业背景示例，可结合原材料、工业品、"
+    "生活消费品、服务解决方案等不同类型，刻意避免反复引用电子产品为例。"
+)
 
 
 def _get_difficulty_profile(key: Optional[str]) -> Dict[str, str]:
@@ -206,14 +215,11 @@ def _build_transcript(history: List[Dict[str, str]], scenario: Dict[str, object]
     return "\n".join(lines)
 
 
-def _get_section(chapter_id: str, section_id: str) -> SectionConfig:
-    chapter = CHAPTER_LOOKUP.get(chapter_id)
-    if not chapter:
-        raise KeyError("Invalid chapter id")
-    for section in chapter.sections:
-        if section.id == section_id:
-            return section
-    raise KeyError("Invalid section id")
+def _get_section(chapter_id: str, section_id: str) -> Dict[str, object]:
+    section = database.get_section_template(chapter_id, section_id)
+    if not section:
+        raise KeyError("Invalid section id")
+    return section
 
 
 def _extract_token() -> Optional[str]:
@@ -224,6 +230,19 @@ def _extract_token() -> Optional[str]:
     if token:
         return token.strip()
     return None
+
+
+def _as_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized in {"1", "true", "yes", "on", "y"}
+    return default
 
 
 def _require_user(required_role: Optional[str] = None) -> Tuple[Optional[Dict[str, object]], Optional[Tuple[Dict[str, str], int]]]:
@@ -262,23 +281,8 @@ def login():
 
 @app.get("/api/levels")
 def list_levels():
-    chapters_payload = []
-    for chapter in CHAPTERS:
-        chapters_payload.append(
-            {
-                "id": chapter.id,
-                "title": chapter.title,
-                "sections": [
-                    {
-                        "id": section.id,
-                        "title": section.title,
-                        "description": section.description,
-                    }
-                    for section in chapter.sections
-                ],
-            }
-        )
-    return jsonify({"chapters": chapters_payload})
+    chapters = database.list_level_hierarchy(include_prompts=False)
+    return jsonify({"chapters": chapters})
 
 
 @app.post("/api/start_level")
@@ -309,8 +313,9 @@ def start_level():
         return jsonify({"error": str(exc)}), 404
 
     messages = [
-        {"role": "system", "content": section.environment_prompt_template},
-        {"role": "user", "content": section.environment_user_message},
+        {"role": "system", "content": section["environment_prompt_template"]},
+        {"role": "system", "content": SCENARIO_DIVERSITY_HINT},
+        {"role": "user", "content": section["environment_user_message"]},
     ]
 
     try:
@@ -333,14 +338,18 @@ def start_level():
     if not flat_context.get("knowledge_points_hint"):
         flat_context["knowledge_points_hint"] = (
             "報盤結構, 議價策略, 跨文化溝通"
-            if section.expects_bargaining
+            if section.get("expects_bargaining")
             else "英文商務函電寫作, 信息提取, 跨文化表達"
         )
-    conversation_prompt = section.conversation_prompt_template.format_map(flat_context)
+    conversation_prompt = section["conversation_prompt_template"].format_map(flat_context)
     prompt_suffix = difficulty_profile.get("prompt_suffix")
     if prompt_suffix:
         conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
-    evaluation_prompt = section.evaluation_prompt_template.format_map(flat_context)
+    if CONVERSATION_DIVERSITY_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[案例多样性提醒]\n{CONVERSATION_DIVERSITY_HINT}"
+        )
+    evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
 
     session_id = uuid.uuid4().hex
 
@@ -352,7 +361,7 @@ def start_level():
         system_prompt=conversation_prompt,
         evaluation_prompt=evaluation_prompt,
         scenario=scenario,
-        expects_bargaining=section.expects_bargaining,
+        expects_bargaining=bool(section.get("expects_bargaining")),
         difficulty=difficulty_key,
     )
 
@@ -365,6 +374,9 @@ def start_level():
         "scenario": _prepare_scenario_payload(scenario),
         "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "chapterId": chapter_id,
+        "sectionId": section_id,
+        "difficulty": difficulty_key,
     }
     return jsonify(payload)
 
@@ -556,6 +568,35 @@ def get_session_detail(session_id: str):
     return jsonify(payload)
 
 
+@app.post("/api/sessions/<session_id>/reset")
+def reset_session_endpoint(session_id: str):
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    session = database.get_session(session_id)
+    if not session or int(session["user_id"]) != int(user["id"]):
+        return jsonify({"error": "Session not found"}), 404
+
+    database.reset_session(session_id)
+    scenario = session["scenario"]
+    opening_message = scenario.get("opening_message")
+    if isinstance(opening_message, str) and opening_message.strip():
+        database.add_message(session_id, "assistant", opening_message.strip())
+
+    payload = {
+        "sessionId": session_id,
+        "scenario": _prepare_scenario_payload(scenario),
+        "openingMessage": opening_message or "",
+        "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "chapterId": session["chapter_id"],
+        "sectionId": session["section_id"],
+        "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,
+    }
+    return jsonify(payload)
+
+
 @app.get("/api/admin/students")
 def list_students_progress_endpoint():
     user, error = _require_user(required_role="teacher")
@@ -591,6 +632,191 @@ def get_admin_analytics_endpoint():
 
     analytics = database.get_class_analytics()
     return jsonify(analytics)
+
+
+@app.get("/api/admin/levels")
+def get_admin_levels():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    chapters = database.list_level_hierarchy(include_prompts=True)
+    return jsonify({"chapters": chapters})
+
+
+@app.post("/api/admin/chapters")
+def create_admin_chapter():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    description = (data.get("description") or "").strip()
+    order_index = data.get("orderIndex")
+    try:
+        order_value = int(order_index) if order_index is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    chapter_id = (data.get("id") or "").strip() or None
+    chapter = database.create_chapter(
+        title=title,
+        description=description,
+        order_index=order_value,
+        chapter_id=chapter_id,
+    )
+    return jsonify({"chapter": chapter}), 201
+
+
+@app.put("/api/admin/chapters/<chapter_id>")
+def update_admin_chapter(chapter_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    kwargs: Dict[str, object] = {}
+    if "title" in data:
+        kwargs["title"] = (data.get("title") or "").strip()
+    if "description" in data:
+        kwargs["description"] = (data.get("description") or "").strip()
+    if "orderIndex" in data:
+        try:
+            kwargs["order_index"] = int(data.get("orderIndex"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    chapter = database.update_chapter(chapter_id, **kwargs)
+    if not chapter:
+        return jsonify({"error": "Chapter not found"}), 404
+    return jsonify({"chapter": chapter})
+
+
+@app.delete("/api/admin/chapters/<chapter_id>")
+def delete_admin_chapter(chapter_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    existing = database.get_chapter(chapter_id)
+    if not existing:
+        return jsonify({"error": "Chapter not found"}), 404
+    database.delete_chapter(chapter_id)
+    return ("", 204)
+
+
+@app.post("/api/admin/sections")
+def create_admin_section():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    chapter_id = (data.get("chapterId") or "").strip()
+    if not chapter_id:
+        return jsonify({"error": "chapterId is required"}), 400
+
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    env_prompt = (data.get("environmentPromptTemplate") or "").strip()
+    env_user = (data.get("environmentUserMessage") or "").strip()
+    convo_prompt = (data.get("conversationPromptTemplate") or "").strip()
+    eval_prompt = (data.get("evaluationPromptTemplate") or "").strip()
+
+    if not all([title, description, env_prompt, env_user, convo_prompt, eval_prompt]):
+        return jsonify({"error": "title, description and all prompt templates are required"}), 400
+
+    expects_bargaining = _as_bool(data.get("expectsBargaining"), False)
+    order_index = data.get("orderIndex")
+    try:
+        order_value = int(order_index) if order_index is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    section_id = (data.get("id") or "").strip() or None
+    section = database.create_section(
+        chapter_id=chapter_id,
+        title=title,
+        description=description,
+        environment_prompt_template=env_prompt,
+        environment_user_message=env_user,
+        conversation_prompt_template=convo_prompt,
+        evaluation_prompt_template=eval_prompt,
+        expects_bargaining=expects_bargaining,
+        order_index=order_value,
+        section_id=section_id,
+    )
+    if not section:
+        return jsonify({"error": "Chapter not found"}), 404
+    return jsonify({"section": section}), 201
+
+
+@app.put("/api/admin/sections/<section_id>")
+def update_admin_section(section_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    kwargs: Dict[str, object] = {}
+    if "chapterId" in data:
+        kwargs["chapter_id"] = (data.get("chapterId") or "").strip()
+    if "title" in data:
+        kwargs["title"] = (data.get("title") or "").strip()
+    if "description" in data:
+        kwargs["description"] = (data.get("description") or "").strip()
+    if "environmentPromptTemplate" in data:
+        kwargs["environment_prompt_template"] = (
+            data.get("environmentPromptTemplate") or ""
+        ).strip()
+    if "environmentUserMessage" in data:
+        kwargs["environment_user_message"] = (
+            data.get("environmentUserMessage") or ""
+        ).strip()
+    if "conversationPromptTemplate" in data:
+        kwargs["conversation_prompt_template"] = (
+            data.get("conversationPromptTemplate") or ""
+        ).strip()
+    if "evaluationPromptTemplate" in data:
+        kwargs["evaluation_prompt_template"] = (
+            data.get("evaluationPromptTemplate") or ""
+        ).strip()
+    if "expectsBargaining" in data:
+        kwargs["expects_bargaining"] = _as_bool(data.get("expectsBargaining"))
+    if "orderIndex" in data:
+        try:
+            kwargs["order_index"] = int(data.get("orderIndex"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    section = database.update_section(section_id, **kwargs)
+    if not section:
+        return jsonify({"error": "Section not found"}), 404
+    return jsonify({"section": section})
+
+
+@app.delete("/api/admin/sections/<section_id>")
+def delete_admin_section(section_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    section = database.get_section(section_id)
+    if not section:
+        return jsonify({"error": "Section not found"}), 404
+    database.delete_section(section_id)
+    return ("", 204)
 
 
 if __name__ == "__main__":  # pragma: no cover
