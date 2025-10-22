@@ -45,6 +45,18 @@ const evaluationScoreLabelEl = document.getElementById("evaluation-score-label")
 const evaluationCommentaryEl = document.getElementById("evaluation-commentary");
 const evaluationActionsEl = document.getElementById("evaluation-actions");
 const evaluationKnowledgeEl = document.getElementById("evaluation-knowledge");
+const abilityRadarCanvas = document.getElementById("ability-radar");
+const abilityRadarEmpty = document.getElementById("ability-radar-empty");
+const abilityHistoryList = document.getElementById("ability-history");
+const abilityKnowledgeEl = document.getElementById("ability-knowledge");
+const difficultySelect = document.getElementById("difficulty-select");
+const scenarioDifficultyEl = document.getElementById("scenario-difficulty");
+
+const adminTrendList = document.getElementById("admin-trend-list");
+const adminActionHotspots = document.getElementById("admin-action-hotspots");
+const adminKnowledgeWeakness = document.getElementById("admin-knowledge-weakness");
+
+let abilityRadarChart = null;
 
 const state = {
   auth: {
@@ -62,7 +74,9 @@ const state = {
     selectedStudentId: null,
     selectedSessionId: null,
     studentDetail: null,
+    analytics: null,
   },
+  studentInsights: null,
 };
 
 function renderOptions(selectEl, items, placeholder) {
@@ -160,6 +174,153 @@ function renderKnowledge(container, items) {
   });
 }
 
+function renderAbilityKnowledge(container, items) {
+  container.innerHTML = "";
+  if (!items || items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "text-xs text-slate-500";
+    empty.textContent = "暂无知识点数据";
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const pill = document.createElement("span");
+    pill.className = "knowledge-pill";
+    const label = item.label || item.name || item;
+    pill.textContent = label;
+    const tooltipParts = [];
+    if (item.count !== undefined) {
+      tooltipParts.push(`出现 ${item.count} 次`);
+    }
+    if (item.latestScore !== undefined && item.latestScore !== null) {
+      tooltipParts.push(`最近得分 ${item.latestScore}`);
+    }
+    if (item.averageScore !== undefined && item.averageScore !== null) {
+      tooltipParts.push(`平均分 ${Math.round(item.averageScore)}`);
+    }
+    pill.dataset.tooltip = tooltipParts.join(" · ") || "知识点";
+    container.appendChild(pill);
+  });
+}
+
+function renderStudentInsights(insights) {
+  state.studentInsights = insights || null;
+
+  if (abilityHistoryList) {
+    abilityHistoryList.innerHTML = "";
+    const timeline = (insights && insights.timeline) || [];
+    if (timeline.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-500";
+      empty.textContent = "暂无评估记录，完成一次谈判即可生成成长轨迹。";
+      abilityHistoryList.appendChild(empty);
+    } else {
+      timeline
+        .slice()
+        .reverse()
+        .forEach((item) => {
+          const li = document.createElement("li");
+          li.className = "rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-xs text-slate-300";
+          const scoreText =
+            item.score !== null && item.score !== undefined
+              ? `得分 ${item.score}${item.scoreLabel ? ` · ${item.scoreLabel}` : ""}`
+              : item.bargainingWinRate !== null && item.bargainingWinRate !== undefined
+              ? `胜率 ${item.bargainingWinRate}%`
+              : "暂无分数";
+          const difficulty = item.difficultyLabel ? ` · ${item.difficultyLabel}` : "";
+          const knowledge = (item.knowledgePoints || []).join("、");
+          li.innerHTML = `
+            <p class="text-slate-200">${item.title || item.sectionId || "关卡"}${difficulty}</p>
+            <p class="mt-1 text-slate-400">${scoreText}</p>
+            <p class="mt-1 text-slate-500">${item.createdAt || "-"}</p>
+            ${knowledge ? `<p class="mt-1 text-slate-400">知识点：${knowledge}</p>` : ""}
+          `;
+          abilityHistoryList.appendChild(li);
+        });
+    }
+  }
+
+  if (abilityKnowledgeEl) {
+    renderAbilityKnowledge(abilityKnowledgeEl, (insights && insights.recentKnowledge) || []);
+  }
+
+  if (!abilityRadarCanvas) {
+    return;
+  }
+
+  const radarData = (insights && insights.knowledgeRadar) || [];
+  const hasRadarData = radarData.length > 0;
+  if (abilityRadarEmpty) {
+    abilityRadarEmpty.textContent = hasRadarData
+      ? ""
+      : "暂无评估数据，完成一次谈判后即可查看能力雷达图。";
+  }
+
+  if (!hasRadarData) {
+    if (abilityRadarChart) {
+      abilityRadarChart.destroy();
+      abilityRadarChart = null;
+    }
+    return;
+  }
+
+  const labels = radarData.map((item) => item.label || item.name || "能力");
+  const values = radarData.map((item) => {
+    const value = item.averageScore !== undefined && item.averageScore !== null ? item.averageScore : 0;
+    return Math.round(value);
+  });
+
+  if (abilityRadarChart) {
+    abilityRadarChart.destroy();
+  }
+
+  abilityRadarChart = new Chart(abilityRadarCanvas, {
+    type: "radar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "平均得分",
+          data: values,
+          borderColor: "rgba(16, 185, 129, 0.8)",
+          backgroundColor: "rgba(16, 185, 129, 0.25)",
+          borderWidth: 2,
+          pointBackgroundColor: "rgba(16, 185, 129, 0.9)",
+        },
+      ],
+    },
+    options: {
+      scales: {
+        r: {
+          suggestedMin: 0,
+          suggestedMax: 100,
+          ticks: {
+            stepSize: 20,
+            color: "rgba(226, 232, 240, 0.6)",
+          },
+          grid: {
+            color: "rgba(148, 163, 184, 0.2)",
+          },
+          angleLines: {
+            color: "rgba(148, 163, 184, 0.2)",
+          },
+          pointLabels: {
+            color: "rgba(226, 232, 240, 0.9)",
+          },
+        },
+      },
+      plugins: {
+        legend: {
+          labels: {
+            color: "rgba(226, 232, 240, 0.9)",
+          },
+        },
+      },
+    },
+  });
+}
+
 function renderScenario(scenario) {
   state.scenario = scenario;
   scenarioTitleEl.textContent = scenario.title || "";
@@ -207,7 +368,23 @@ function renderScenario(scenario) {
   renderList(taskChecklistEl, scenario.checklist || [], true);
 
   chatCompanyEl.textContent = aiCompany.name || "AI 虚拟公司";
-  chatToneEl.textContent = scenario.communicationTone || "";
+  const difficultyLabel = scenario.difficultyLabel || "";
+  const difficultyDescription = scenario.difficultyDescription || "";
+  if (scenarioDifficultyEl) {
+    const descriptionParts = [];
+    if (difficultyLabel) {
+      descriptionParts.push(difficultyLabel);
+    }
+    if (difficultyDescription) {
+      descriptionParts.push(difficultyDescription);
+    }
+    scenarioDifficultyEl.textContent =
+      descriptionParts.length > 0 ? descriptionParts.join(" · ") : "默认 · 平衡博弈";
+  }
+  const toneText = scenario.communicationTone || "";
+  chatToneEl.textContent = difficultyLabel
+    ? `${difficultyLabel}${toneText ? ` · ${toneText}` : ""}`
+    : toneText;
   renderKnowledge(evaluationKnowledgeEl, scenario.knowledgePoints || []);
 }
 
@@ -316,6 +493,13 @@ function renderSessionHistory() {
     summary.className = "mt-1 text-xs text-slate-400";
     summary.textContent = session.summary || "暂无摘要";
 
+    let difficultyMeta = null;
+    if (session.difficultyLabel) {
+      difficultyMeta = document.createElement("p");
+      difficultyMeta.className = "mt-1 text-[11px] text-slate-500";
+      difficultyMeta.textContent = `难度：${session.difficultyLabel}`;
+    }
+
     const footer = document.createElement("div");
     footer.className = "mt-3 flex items-center justify-between text-xs text-slate-500";
     footer.innerHTML = `<span>最近更新：${session.updatedAt || "-"}</span>`;
@@ -328,6 +512,9 @@ function renderSessionHistory() {
 
     li.appendChild(title);
     li.appendChild(summary);
+    if (difficultyMeta) {
+      li.appendChild(difficultyMeta);
+    }
     li.appendChild(footer);
     sessionHistoryList.appendChild(li);
   });
@@ -415,6 +602,7 @@ function renderAdminStudentDetail(detail) {
         </div>
         <p class="mt-1 text-slate-400">${session.summary || "暂无摘要"}</p>
         <p class="mt-1 text-slate-500">最近更新：${session.updatedAt || "-"}</p>
+        ${session.difficultyLabel ? `<p class="mt-1 text-slate-500">难度：${session.difficultyLabel}</p>` : ""}
       `;
       if (session.latestEvaluation) {
         li.innerHTML += `
@@ -444,6 +632,7 @@ function renderAdminSessionDetail(data) {
     <p>标题：${scenario.title || "-"}</p>
     <p>学生角色：${scenario.studentRole || "-"}</p>
     <p>AI 角色：${scenario.aiRole || "-"}</p>
+    <p>难度设定：${data.session.difficultyLabel || scenario.difficultyLabel || "默认 · 平衡博弈"}</p>
   `;
 
   adminSessionConversation.innerHTML = "";
@@ -479,6 +668,62 @@ function renderAdminSessionDetail(data) {
     }
     adminSessionEvaluation.innerHTML = lines.map((line) => `<p>${line}</p>`).join("");
   }
+}
+
+function renderAnalyticsList(container, items, formatItem, emptyText) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!items || items.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-xl border border-white/20 bg-white/5 p-3 text-xs opacity-80";
+    empty.textContent = emptyText;
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "rounded-xl border border-white/20 bg-white/10 p-3 text-xs";
+    li.textContent = formatItem(item);
+    container.appendChild(li);
+  });
+}
+
+function renderAdminAnalytics(analytics) {
+  state.admin.analytics = analytics || null;
+  renderAnalyticsList(
+    adminTrendList,
+    analytics ? analytics.weeklyTrends : [],
+    (trend) => {
+      const label = trend.sectionTitle || `${trend.chapterId} · ${trend.sectionId}`;
+      const week = trend.weekLabel || trend.week;
+      const avg = trend.averageScore !== null && trend.averageScore !== undefined
+        ? `平均 ${Math.round(trend.averageScore)}分`
+        : "暂无评分";
+      const samples = trend.sampleSize ? ` · 样本 ${trend.sampleSize}` : "";
+      return `${label}｜${week}｜${avg}${samples}`;
+    },
+    "暂无趋势数据"
+  );
+
+  renderAnalyticsList(
+    adminActionHotspots,
+    analytics ? analytics.actionHotspots : [],
+    (item) => `${item.label || item.actionItem}｜${item.count} 次`,
+    "暂无改进建议统计"
+  );
+
+  renderAnalyticsList(
+    adminKnowledgeWeakness,
+    analytics ? analytics.knowledgeWeakness : [],
+    (item) => {
+      const avg = item.averageScore !== null && item.averageScore !== undefined
+        ? ` · 平均 ${Math.round(item.averageScore)}分`
+        : "";
+      return `${item.label || item.knowledgePoint}｜${item.count} 次${avg}`;
+    },
+    "暂无知识点统计"
+  );
 }
 
 async function loadLevels() {
@@ -535,6 +780,7 @@ function updateAuthUI() {
       adminPanel.classList.remove("hidden");
       chatInputEl.disabled = true;
       sendMessageBtn.disabled = true;
+      renderAdminAnalytics(state.admin.analytics);
     }
   } else {
     authPanel.classList.remove("hidden");
@@ -567,6 +813,23 @@ async function loadSessions() {
   } catch (error) {
     console.error(error);
     alert(error.message || "加载历史会话失败");
+  }
+}
+
+async function loadStudentDashboardInsights() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/student/dashboard");
+    if (!response.ok) {
+      throw new Error("无法加载成长数据");
+    }
+    const data = await response.json();
+    renderStudentInsights(data);
+  } catch (error) {
+    console.error(error);
+    renderStudentInsights(null);
   }
 }
 
@@ -644,6 +907,23 @@ async function loadAdminSessionDetail(sessionId) {
   }
 }
 
+async function loadAdminAnalytics() {
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/admin/analytics");
+    if (!response.ok) {
+      throw new Error("无法加载班级数据");
+    }
+    const data = await response.json();
+    renderAdminAnalytics(data);
+  } catch (error) {
+    console.error(error);
+    renderAdminAnalytics(null);
+  }
+}
+
 async function startLevel() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请先使用学生账号登录");
@@ -652,6 +932,7 @@ async function startLevel() {
 
   const chapterId = chapterSelect.value;
   const sectionId = sectionSelect.value;
+  const difficulty = difficultySelect ? difficultySelect.value : "balanced";
 
   if (!chapterId || !sectionId) {
     alert("请选择章节与小节");
@@ -666,7 +947,7 @@ async function startLevel() {
     const response = await fetchWithAuth("/api/start_level", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapterId, sectionId }),
+      body: JSON.stringify({ chapterId, sectionId, difficulty }),
     });
 
     if (!response.ok) {
@@ -688,6 +969,7 @@ async function startLevel() {
 
     showExperience();
     await loadSessions();
+    await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
     alert(error.message || "生成场景失败，请稍后再试");
@@ -737,6 +1019,7 @@ async function sendMessage() {
     }
     renderEvaluation(data.evaluation);
     await loadSessions();
+    await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
     state.messages.pop();
@@ -781,9 +1064,11 @@ async function handleLogin(event) {
 
     if (state.auth.user.role === "student") {
       await loadSessions();
+      await loadStudentDashboardInsights();
       showExperience();
     } else {
       await loadAdminStudents();
+      await loadAdminAnalytics();
     }
   } catch (error) {
     console.error(error);
@@ -796,7 +1081,8 @@ function handleLogout() {
   state.sessions = [];
   state.sessionId = null;
   state.messages = [];
-  state.admin = { students: [], selectedStudentId: null, selectedSessionId: null, studentDetail: null };
+  state.admin = { students: [], selectedStudentId: null, selectedSessionId: null, studentDetail: null, analytics: null };
+  state.studentInsights = null;
   sessionHistoryList.innerHTML = "";
   adminStudentList.innerHTML = "";
   adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -804,6 +1090,8 @@ function handleLogout() {
   adminSessionScenario.innerHTML = "";
   adminSessionConversation.innerHTML = "";
   adminSessionEvaluation.innerHTML = "";
+  renderStudentInsights(null);
+  renderAdminAnalytics(null);
   hideExperience();
   updateAuthUI();
 }
@@ -859,5 +1147,7 @@ adminSessionList.addEventListener("click", (event) => {
   loadAdminSessionDetail(sessionId);
 });
 
+renderStudentInsights(null);
+renderAdminAnalytics(null);
 loadLevels();
 updateAuthUI();

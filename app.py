@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import uuid
@@ -19,6 +20,97 @@ MODEL = "deepseek-chat"
 app = Flask(__name__, static_folder="static")
 
 CHAPTER_LOOKUP = build_chapter_lookup()
+
+DEFAULT_DIFFICULTY = "balanced"
+DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
+    "friendly": {
+        "label": "友好型 · 引导与鼓励",
+        "description": "语气温暖，适度让步以支持学生梳理思路并建立自信。",
+        "prompt_suffix": (
+            "你是一位友好型的谈判对手，会主动给予积极反馈、概括要点，"
+            "并在学生出现疏漏时给出提醒或示范句型。适度分享行业见解，鼓励学生提出更多澄清问题，"
+            "在价格或条款上可在原底线上最多让步约 5% 以换取长期合作。"
+        ),
+        "tone_hint": "语气更温暖、积极，主动给予肯定与指导。",
+        "bottom_line_hint": "可在原有底线上额外让步约 5%，强调合作诚意。",
+    },
+    "balanced": {
+        "label": "默认 · 平衡博弈",
+        "description": "保持专业礼貌，兼顾自身立场与合作机会。",
+        "prompt_suffix": "",
+        "tone_hint": "",
+        "bottom_line_hint": "",
+    },
+    "tough": {
+        "label": "强硬型 · 严守底线",
+        "description": "语气坚定谨慎，强调风险控制与公司底线。",
+        "prompt_suffix": (
+            "你是一位强硬型的谈判对手，强调风控与底线意识。"
+            "当学生尝试议价时，请要求其提供充分理由或额外让步，"
+            "并重申关键条款的重要性。只有在获得确凿价值回报时才考虑微量让步。"
+        ),
+        "tone_hint": "语气更为坚定，明确指出风险与不可退让的条件。",
+        "bottom_line_hint": "底线不可轻易突破，除非学生提供充分价值交换。",
+    },
+    "shrewd": {
+        "label": "精明型 · 灵活试探",
+        "description": "善于条件交换与试探，关注整体收益最大化。",
+        "prompt_suffix": (
+            "你是一位精明型的谈判对手，善于抛出条件交换并观察学生反应。"
+            "请通过试探问题与设定多种方案，引导学生思考让步条件，"
+            "在关键价格或条款上保持敏锐并要求对等回报。"
+        ),
+        "tone_hint": "语气务实敏锐，喜欢提出条件交换与方案比较。",
+        "bottom_line_hint": "可根据学生的回报方案灵活调整底线范围。",
+    },
+}
+
+
+def _get_difficulty_profile(key: Optional[str]) -> Dict[str, str]:
+    normalized = str(key or DEFAULT_DIFFICULTY)
+    return DIFFICULTY_PROFILES.get(normalized, DIFFICULTY_PROFILES[DEFAULT_DIFFICULTY])
+
+
+def _apply_difficulty_profile(
+    scenario: Dict[str, object], difficulty_key: str
+) -> Tuple[Dict[str, object], Dict[str, str]]:
+    profile = _get_difficulty_profile(difficulty_key)
+    scenario_copy: Dict[str, object] = copy.deepcopy(scenario)
+    scenario_copy["difficulty_key"] = difficulty_key
+    scenario_copy["difficulty_label"] = profile["label"]
+    scenario_copy["difficulty_description"] = profile["description"]
+
+    tone_hint = profile.get("tone_hint")
+    if tone_hint:
+        base_tone = scenario_copy.get("communication_tone", "") or ""
+        if tone_hint not in base_tone:
+            scenario_copy["communication_tone"] = (
+                f"{base_tone}（{tone_hint}）" if base_tone else tone_hint
+            )
+
+    product = scenario_copy.get("product")
+    if isinstance(product, dict):
+        price_expectation = product.get("price_expectation")
+        if isinstance(price_expectation, dict):
+            hint = profile.get("bottom_line_hint")
+            if hint:
+                ai_bottom_line = price_expectation.get("ai_bottom_line")
+                if isinstance(ai_bottom_line, str) and ai_bottom_line.strip():
+                    if hint not in ai_bottom_line:
+                        price_expectation["ai_bottom_line"] = f"{ai_bottom_line}（{hint}）"
+                else:
+                    price_expectation["ai_bottom_line"] = hint
+
+    return scenario_copy, profile
+
+
+def _inject_difficulty_metadata(item: Dict[str, object]) -> None:
+    difficulty_key = str(item.get("difficulty") or DEFAULT_DIFFICULTY)
+    profile = _get_difficulty_profile(difficulty_key)
+    item["difficulty"] = difficulty_key
+    item["difficultyLabel"] = profile["label"]
+    if "difficultyDescription" not in item or not item["difficultyDescription"]:
+        item["difficultyDescription"] = profile["description"]
 
 
 class MissingKeyError(RuntimeError):
@@ -59,6 +151,8 @@ def _extract_json_block(text: str) -> Dict[str, object]:
 
 
 def _prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
+    difficulty_key = (raw.get("difficulty_key") or DEFAULT_DIFFICULTY)
+    profile = _get_difficulty_profile(difficulty_key)
     return {
         "title": raw.get("scenario_title", ""),
         "summary": raw.get("scenario_summary", ""),
@@ -75,6 +169,10 @@ def _prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "communicationTone": raw.get("communication_tone", ""),
         "checklist": raw.get("checklist", []) or [],
         "knowledgePoints": raw.get("knowledge_points", []) or [],
+        "difficulty": difficulty_key,
+        "difficultyLabel": raw.get("difficulty_label") or profile["label"],
+        "difficultyDescription": raw.get("difficulty_description")
+        or profile["description"],
     }
 
 
@@ -198,6 +296,9 @@ def start_level():
     data = request.get_json(force=True)
     chapter_id = data.get("chapterId")
     section_id = data.get("sectionId")
+    difficulty_key = str(data.get("difficulty") or DEFAULT_DIFFICULTY).lower()
+    if difficulty_key not in DIFFICULTY_PROFILES:
+        difficulty_key = DEFAULT_DIFFICULTY
 
     if not chapter_id or not section_id:
         return jsonify({"error": "chapterId and sectionId are required"}), 400
@@ -226,6 +327,8 @@ def start_level():
             500,
         )
 
+    scenario, difficulty_profile = _apply_difficulty_profile(scenario, difficulty_key)
+
     flat_context = flatten_scenario_for_template(scenario)
     if not flat_context.get("knowledge_points_hint"):
         flat_context["knowledge_points_hint"] = (
@@ -234,6 +337,9 @@ def start_level():
             else "英文商務函電寫作, 信息提取, 跨文化表達"
         )
     conversation_prompt = section.conversation_prompt_template.format_map(flat_context)
+    prompt_suffix = difficulty_profile.get("prompt_suffix")
+    if prompt_suffix:
+        conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
     evaluation_prompt = section.evaluation_prompt_template.format_map(flat_context)
 
     session_id = uuid.uuid4().hex
@@ -247,6 +353,7 @@ def start_level():
         evaluation_prompt=evaluation_prompt,
         scenario=scenario,
         expects_bargaining=section.expects_bargaining,
+        difficulty=difficulty_key,
     )
 
     opening_message = scenario.get("opening_message")
@@ -398,7 +505,22 @@ def list_sessions_for_user_endpoint():
         target_user_id = int(query_param)
 
     sessions = database.list_sessions_for_user(target_user_id)
+    for session in sessions:
+        _inject_difficulty_metadata(session)
     return jsonify({"sessions": sessions})
+
+
+@app.get("/api/student/dashboard")
+def get_student_dashboard_endpoint():
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    dashboard = database.get_student_dashboard(int(user["id"]))
+    for entry in dashboard.get("timeline", []):
+        _inject_difficulty_metadata(entry)
+    return jsonify(dashboard)
 
 
 @app.get("/api/sessions/<session_id>")
@@ -425,10 +547,12 @@ def get_session_detail(session_id: str):
             "sectionId": session["section_id"],
             "scenario": _prepare_scenario_payload(session["scenario"]),
             "expectsBargaining": session["expects_bargaining"],
+            "difficulty": session.get("difficulty"),
         },
         "messages": history,
         "evaluation": evaluation,
     }
+    _inject_difficulty_metadata(payload["session"])
     return jsonify(payload)
 
 
@@ -453,7 +577,20 @@ def get_student_detail_endpoint(student_id: int):
     detail = database.get_student_detail(student_id)
     if not detail:
         return jsonify({"error": "Student not found"}), 404
+    for session in detail.get("sessions", []):
+        _inject_difficulty_metadata(session)
     return jsonify(detail)
+
+
+@app.get("/api/admin/analytics")
+def get_admin_analytics_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    analytics = database.get_class_analytics()
+    return jsonify(analytics)
 
 
 if __name__ == "__main__":  # pragma: no cover
