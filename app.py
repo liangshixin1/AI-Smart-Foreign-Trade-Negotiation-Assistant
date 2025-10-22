@@ -122,6 +122,17 @@ def _inject_difficulty_metadata(item: Dict[str, object]) -> None:
         item["difficultyDescription"] = profile["description"]
 
 
+def _ensure_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object]]:
+    """Load level hierarchy, reseeding defaults if database is empty."""
+
+    chapters = database.list_level_hierarchy(include_prompts=include_prompts)
+    if chapters:
+        return chapters
+
+    database.seed_default_levels(CHAPTERS)
+    return database.list_level_hierarchy(include_prompts=include_prompts)
+
+
 class MissingKeyError(RuntimeError):
     pass
 
@@ -281,7 +292,7 @@ def login():
 
 @app.get("/api/levels")
 def list_levels():
-    chapters = database.list_level_hierarchy(include_prompts=False)
+    chapters = _ensure_level_hierarchy(include_prompts=False)
     return jsonify({"chapters": chapters})
 
 
@@ -641,7 +652,7 @@ def get_admin_levels():
         body, status = error
         return jsonify(body), status
 
-    chapters = database.list_level_hierarchy(include_prompts=True)
+    chapters = _ensure_level_hierarchy(include_prompts=True)
     return jsonify({"chapters": chapters})
 
 
