@@ -6,8 +6,9 @@ import json
 import os
 import secrets
 import sqlite3
+from collections import defaultdict
 from contextlib import contextmanager
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -85,6 +86,7 @@ def init_database() -> None:
         )
         conn.commit()
 
+    ensure_schema()
     ensure_default_users()
 
 
@@ -103,6 +105,18 @@ def ensure_default_users() -> None:
             conn.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 (username, generate_password_hash(password), role),
+            )
+        conn.commit()
+
+
+def ensure_schema() -> None:
+    with get_connection() as conn:
+        chat_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
+        }
+        if "difficulty" not in chat_columns:
+            conn.execute(
+                "ALTER TABLE chat_sessions ADD COLUMN difficulty TEXT DEFAULT 'balanced'"
             )
         conn.commit()
 
@@ -162,15 +176,16 @@ def create_session(
     evaluation_prompt: str,
     scenario: Dict[str, object],
     expects_bargaining: bool,
+    difficulty: str,
 ) -> None:
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO chat_sessions (
                 id, user_id, chapter_id, section_id, system_prompt,
-                evaluation_prompt, scenario_json, expects_bargaining
+                evaluation_prompt, scenario_json, expects_bargaining, difficulty
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id,
@@ -181,6 +196,7 @@ def create_session(
                 evaluation_prompt,
                 json.dumps(scenario, ensure_ascii=False),
                 1 if expects_bargaining else 0,
+                difficulty,
             ),
         )
         conn.commit()
@@ -220,7 +236,7 @@ def get_session(session_id: str) -> Optional[Dict[str, object]]:
         row = conn.execute(
             """
             SELECT id, user_id, chapter_id, section_id, system_prompt,
-                   evaluation_prompt, scenario_json, expects_bargaining
+                   evaluation_prompt, scenario_json, expects_bargaining, difficulty
             FROM chat_sessions WHERE id = ?
             """,
             (session_id,),
@@ -236,6 +252,7 @@ def get_session(session_id: str) -> Optional[Dict[str, object]]:
             "evaluation_prompt": row["evaluation_prompt"],
             "scenario": json.loads(row["scenario_json"]),
             "expects_bargaining": bool(row["expects_bargaining"]),
+            "difficulty": row["difficulty"],
         }
 
 
@@ -256,6 +273,7 @@ def list_sessions_for_user(user_id: int) -> List[Dict[str, object]]:
         rows = conn.execute(
             """
             SELECT s.id, s.chapter_id, s.section_id, s.updated_at, s.created_at,
+                   s.difficulty,
                    json_extract(s.scenario_json, '$.scenario_title') AS scenario_title,
                    json_extract(s.scenario_json, '$.scenario_summary') AS scenario_summary
             FROM chat_sessions s
@@ -273,6 +291,7 @@ def list_sessions_for_user(user_id: int) -> List[Dict[str, object]]:
                 "summary": row["scenario_summary"],
                 "updatedAt": row["updated_at"],
                 "createdAt": row["created_at"],
+                "difficulty": row["difficulty"],
             }
             for row in rows
         ]
@@ -373,6 +392,7 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
         sessions = conn.execute(
             """
             SELECT s.id, s.chapter_id, s.section_id, s.updated_at, s.created_at,
+                   s.difficulty,
                    json_extract(s.scenario_json, '$.scenario_title') AS title,
                    json_extract(s.scenario_json, '$.scenario_summary') AS summary
             FROM chat_sessions s
@@ -403,6 +423,7 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
                     "summary": session["summary"],
                     "updatedAt": session["updated_at"],
                     "createdAt": session["created_at"],
+                    "difficulty": session["difficulty"],
                     "latestEvaluation": {
                         "score": eval_row["score"] if eval_row else None,
                         "scoreLabel": eval_row["score_label"] if eval_row else None,
@@ -421,6 +442,207 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
             "createdAt": user_row["created_at"],
             "sessions": result_sessions,
         }
+
+
+def get_student_dashboard(user_id: int) -> Dict[str, object]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.session_id, e.score, e.score_label, e.commentary,
+                   e.action_items_json, e.knowledge_points_json, e.bargaining_win_rate,
+                   e.created_at,
+                   s.chapter_id, s.section_id, s.difficulty,
+                   json_extract(s.scenario_json, '$.scenario_title') AS title
+            FROM evaluations e
+            JOIN chat_sessions s ON s.id = e.session_id
+            WHERE s.user_id = ?
+            ORDER BY e.created_at ASC, e.id ASC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    timeline: List[Dict[str, object]] = []
+    knowledge_totals: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: {"score_sum": 0.0, "score_count": 0, "count": 0}
+    )
+    knowledge_latest: Dict[str, Dict[str, object]] = {}
+
+    for row in rows:
+        knowledge = []
+        if row["knowledge_points_json"]:
+            try:
+                knowledge = json.loads(row["knowledge_points_json"])
+            except json.JSONDecodeError:
+                knowledge = []
+
+        score = row["score"]
+        bargaining = row["bargaining_win_rate"]
+        score_for_skill: Optional[float] = None
+        if score is not None:
+            score_for_skill = float(score)
+        elif bargaining is not None:
+            score_for_skill = float(bargaining)
+
+        timeline.append(
+            {
+                "sessionId": row["session_id"],
+                "title": row["title"],
+                "chapterId": row["chapter_id"],
+                "sectionId": row["section_id"],
+                "score": row["score"],
+                "scoreLabel": row["score_label"],
+                "bargainingWinRate": bargaining,
+                "createdAt": row["created_at"],
+                "knowledgePoints": knowledge,
+                "difficulty": row["difficulty"],
+            }
+        )
+
+        for kp in knowledge:
+            stats = knowledge_totals[kp]
+            stats["count"] += 1
+            if score_for_skill is not None:
+                stats["score_sum"] += score_for_skill
+                stats["score_count"] += 1
+
+            latest = knowledge_latest.get(kp)
+            if not latest or row["created_at"] >= latest.get("created_at", ""):
+                knowledge_latest[kp] = {
+                    "latest_score": score_for_skill,
+                    "created_at": row["created_at"],
+                }
+
+    knowledge_radar: List[Dict[str, object]] = []
+    for kp, stats in knowledge_totals.items():
+        average = None
+        if stats["score_count"]:
+            average = stats["score_sum"] / stats["score_count"]
+        knowledge_radar.append(
+            {
+                "label": kp,
+                "averageScore": average,
+                "count": stats["count"],
+            }
+        )
+
+    knowledge_radar.sort(key=lambda item: (-item["count"], item["label"]))
+
+    recent_knowledge: List[Dict[str, object]] = []
+    for kp, latest in knowledge_latest.items():
+        stats = knowledge_totals[kp]
+        entry = {
+            "label": kp,
+            "count": stats["count"],
+            "latestScore": latest.get("latest_score"),
+        }
+        if stats["score_count"]:
+            entry["averageScore"] = stats["score_sum"] / stats["score_count"]
+        recent_knowledge.append(entry)
+
+    recent_knowledge.sort(key=lambda item: (-item["count"], item["label"]))
+
+    return {
+        "timeline": timeline,
+        "knowledgeRadar": knowledge_radar[:10],
+        "recentKnowledge": recent_knowledge[:12],
+    }
+
+
+def get_class_analytics() -> Dict[str, object]:
+    with get_connection() as conn:
+        trend_rows = conn.execute(
+            """
+            SELECT s.chapter_id, s.section_id,
+                   json_extract(s.scenario_json, '$.scenario_title') AS title,
+                   strftime('%Y-%W', e.created_at) AS week,
+                   AVG(e.score) AS avg_score,
+                   AVG(e.bargaining_win_rate) AS avg_bargaining,
+                   COUNT(*) AS sample_size
+            FROM evaluations e
+            JOIN chat_sessions s ON s.id = e.session_id
+            GROUP BY s.chapter_id, s.section_id, week
+            ORDER BY week DESC, s.chapter_id, s.section_id
+            LIMIT 60
+            """
+        ).fetchall()
+
+        knowledge_rows = conn.execute(
+            """
+            SELECT kp.value AS knowledge_point, e.score, e.bargaining_win_rate
+            FROM evaluations e
+            JOIN json_each(e.knowledge_points_json) AS kp
+            WHERE kp.value IS NOT NULL AND kp.value != ''
+            """
+        ).fetchall()
+
+        action_rows = conn.execute(
+            """
+            SELECT kp.value AS action_item
+            FROM evaluations e
+            JOIN json_each(e.action_items_json) AS kp
+            WHERE kp.value IS NOT NULL AND kp.value != ''
+            """
+        ).fetchall()
+
+    weekly_trends: List[Dict[str, object]] = []
+    for row in trend_rows:
+        week_label = row["week"] or ""
+        if week_label and "-" in week_label:
+            year, week_num = week_label.split("-", 1)
+            week_label = f"{year}年第{week_num}周"
+        average_score = row["avg_score"] if row["avg_score"] is not None else row["avg_bargaining"]
+        weekly_trends.append(
+            {
+                "chapterId": row["chapter_id"],
+                "sectionId": row["section_id"],
+                "sectionTitle": row["title"],
+                "week": row["week"],
+                "weekLabel": week_label,
+                "averageScore": average_score,
+                "sampleSize": row["sample_size"],
+            }
+        )
+
+    knowledge_stats: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: {"count": 0, "score_sum": 0.0, "score_count": 0}
+    )
+    for row in knowledge_rows:
+        kp = row["knowledge_point"]
+        stats = knowledge_stats[kp]
+        stats["count"] += 1
+        value = row["score"] if row["score"] is not None else row["bargaining_win_rate"]
+        if value is not None:
+            stats["score_sum"] += float(value)
+            stats["score_count"] += 1
+
+    knowledge_weakness = []
+    for kp, stats in knowledge_stats.items():
+        entry = {
+            "label": kp,
+            "knowledgePoint": kp,
+            "count": stats["count"],
+        }
+        if stats["score_count"]:
+            entry["averageScore"] = stats["score_sum"] / stats["score_count"]
+        knowledge_weakness.append(entry)
+
+    knowledge_weakness.sort(key=lambda item: (-item["count"], item["label"]))
+
+    action_counts: Dict[str, int] = defaultdict(int)
+    for row in action_rows:
+        action_counts[row["action_item"]] += 1
+
+    action_hotspots = [
+        {"label": label, "actionItem": label, "count": count}
+        for label, count in action_counts.items()
+    ]
+    action_hotspots.sort(key=lambda item: (-item["count"], item["label"]))
+
+    return {
+        "weeklyTrends": weekly_trends[:20],
+        "knowledgeWeakness": knowledge_weakness[:15],
+        "actionHotspots": action_hotspots[:15],
+    }
 
 
 def delete_session(session_id: str) -> None:
