@@ -86,71 +86,154 @@
             章节式关卡体验 · 协作生成 × 批判评价 · DeepSeek Streaming
           </p>
         </div>
-        <div class="text-xs text-right leading-5 text-slate-400">
-          <p>服务器需配置：</p>
-          <p><code>DEEPSEEK_COLLAB_KEY</code>（协作生成）</p>
-          <p><code>DEEPSEEK_CRITIC_KEY</code>（评价反馈）</p>
+        <div class="flex flex-col items-end gap-2 text-xs text-slate-400">
+          <div id="user-status" class="flex items-center gap-3 text-sm">
+            <span id="user-status-label" class="text-slate-400">未登录</span>
+            <button
+              id="logout-btn"
+              class="hidden rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              退出登录
+            </button>
+          </div>
+          <div class="leading-5 text-right">
+            <p>服务器需配置：</p>
+            <p><code>DEEPSEEK_COLLAB_KEY</code>（协作生成）</p>
+            <p><code>DEEPSEEK_CRITIC_KEY</code>（评价反馈）</p>
+          </div>
         </div>
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl px-4 py-8 space-y-6">
+    <main class="mx-auto max-w-6xl space-y-6 px-4 py-8">
       <section
-        id="level-selector"
+        id="auth-panel"
         class="rounded-3xl border border-slate-800 bg-slate-950/70 p-6 shadow-xl shadow-blue-500/5"
       >
-        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div class="space-y-4 md:flex-1">
-            <div>
-              <p class="text-sm text-slate-400">STEP 1</p>
-              <h2 class="text-xl font-semibold text-white">选择章节与小节</h2>
-              <p class="text-sm text-slate-400">
-                像选择游戏关卡一样，为学生挑选训练目标。
-              </p>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="space-y-2">
-                <span class="text-sm font-semibold text-slate-200">章节</span>
-                <select
-                  id="chapter-select"
-                  class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                ></select>
-              </label>
-              <label class="space-y-2">
-                <span class="text-sm font-semibold text-slate-200">小节</span>
-                <select
-                  id="section-select"
-                  class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                ></select>
-              </label>
-            </div>
-            <p id="section-description" class="text-sm text-slate-400"></p>
+        <div class="grid gap-6 md:grid-cols-2">
+          <div class="space-y-4">
+            <h2 class="text-xl font-semibold text-white">登录教学系统</h2>
+            <p class="text-sm text-slate-400">
+              使用测试账号体验教学-练习-评估-反馈的全流程闭环。
+            </p>
+            <ul class="list-disc space-y-1 pl-5 text-xs text-slate-400">
+              <li>学生账号：<code>0000 / 0000</code></li>
+              <li>教师账号：<code>0001 / 0001</code></li>
+            </ul>
           </div>
-          <button
-            id="start-level"
-            class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-600"
-          >
-            🚀 进入关卡
-          </button>
+          <form id="login-form" class="space-y-4">
+            <label class="block space-y-2">
+              <span class="text-sm font-semibold text-slate-200">账号</span>
+              <input
+                id="username-input"
+                type="text"
+                class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+                placeholder="请输入账号"
+              />
+            </label>
+            <label class="block space-y-2">
+              <span class="text-sm font-semibold text-slate-200">密码</span>
+              <input
+                id="password-input"
+                type="password"
+                class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+                placeholder="请输入密码"
+              />
+            </label>
+            <button
+              id="login-btn"
+              type="submit"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600"
+            >
+              登录系统
+            </button>
+            <p id="login-error" class="text-sm text-rose-300"></p>
+          </form>
         </div>
       </section>
 
-      <section
-        id="loading-panel"
-        class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center"
-      >
-        <div class="mx-auto flex max-w-md flex-col items-center gap-4">
-          <div class="h-12 w-12 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
-          <p class="text-lg font-semibold text-blue-100">场景生成中...</p>
-          <p class="text-sm text-blue-200">
-            协作 AI 正根据隐藏的系统提示构建市场环境，请稍候。
-          </p>
-          <div class="w-full space-y-2 rounded-2xl bg-slate-900/60 p-4 text-left text-sm text-slate-300">
-            <p>AI：正在读取贸易数据库...</p>
-            <p>AI：匹配行业案例...</p>
-            <p>AI：生成角色设定与谈判目标...</p>
-          </div>
+      <section id="student-dashboard" class="hidden space-y-6">
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <section
+            id="level-selector"
+            class="rounded-3xl border border-slate-800 bg-slate-950/70 p-6 shadow-xl shadow-blue-500/5"
+          >
+            <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div class="space-y-4 md:flex-1">
+                <div>
+                  <p class="text-sm text-slate-400">STEP 1</p>
+                  <h2 class="text-xl font-semibold text-white">选择章节与小节</h2>
+                  <p class="text-sm text-slate-400">
+                    像选择游戏关卡一样，为学生挑选训练目标。
+                  </p>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <label class="space-y-2">
+                    <span class="text-sm font-semibold text-slate-200">章节</span>
+                    <select
+                      id="chapter-select"
+                      class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                    ></select>
+                  </label>
+                  <label class="space-y-2">
+                    <span class="text-sm font-semibold text-slate-200">小节</span>
+                    <select
+                      id="section-select"
+                      class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                    ></select>
+                  </label>
+                </div>
+                <p id="section-description" class="text-sm text-slate-400"></p>
+              </div>
+              <button
+                id="start-level"
+                class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-600"
+              >
+                🚀 进入关卡
+              </button>
+            </div>
+          </section>
+
+          <section
+            id="history-panel"
+            class="rounded-3xl border border-slate-800 bg-slate-950/70 p-6 shadow-xl shadow-emerald-500/5"
+          >
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-sm text-slate-400">STEP 2</p>
+                <h2 class="text-xl font-semibold text-white">历史会话与进度</h2>
+              </div>
+              <button
+                id="refresh-sessions"
+                class="rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
+              >
+                刷新
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+              学生可在此继续未完成的谈判，教师可查看每一次训练的摘要与评估。
+            </p>
+            <ul id="session-history" class="mt-4 space-y-3 text-sm"></ul>
+          </section>
         </div>
+
+        <section
+          id="loading-panel"
+          class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center"
+        >
+          <div class="mx-auto flex max-w-md flex-col items-center gap-4">
+            <div class="h-12 w-12 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
+            <p class="text-lg font-semibold text-blue-100">场景生成中...</p>
+            <p class="text-sm text-blue-200">
+              协作 AI 正根据隐藏的系统提示构建市场环境，请稍候。
+            </p>
+            <div class="w-full space-y-2 rounded-2xl bg-slate-900/60 p-4 text-left text-sm text-slate-300">
+              <p>AI：正在读取贸易数据库...</p>
+              <p>AI：匹配行业案例...</p>
+              <p>AI：生成角色设定与谈判目标...</p>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section id="experience" class="hidden">
@@ -263,12 +346,51 @@
           </aside>
         </div>
       </section>
+
+      <section
+        id="admin-panel"
+        class="hidden rounded-3xl border border-slate-800 bg-slate-950/70 p-6 shadow-xl shadow-purple-500/10"
+      >
+        <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <div class="space-y-4">
+            <div>
+              <p class="text-sm text-slate-400">教师视角</p>
+              <h2 class="text-xl font-semibold text-white">学生学习总览</h2>
+              <p class="text-xs text-slate-400">
+                跟踪每位学生的谈判会话、评估得分与最近活跃时间，实现教学闭环追踪。
+              </p>
+            </div>
+            <ul id="admin-student-list" class="space-y-3 text-sm"></ul>
+          </div>
+          <div
+            id="admin-student-detail"
+            class="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+          >
+            <div id="admin-student-meta" class="text-sm text-slate-300">
+              <p class="text-slate-400">请选择学生查看详情</p>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-slate-200">谈判会话</h3>
+              <ul id="admin-session-list" class="mt-2 space-y-2 text-sm"></ul>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-slate-200">会话详情</h3>
+              <div id="admin-session-scenario" class="mt-2 space-y-1 text-xs text-slate-400"></div>
+              <div
+                id="admin-session-conversation"
+                class="mt-3 max-h-60 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-200"
+              ></div>
+              <div id="admin-session-evaluation" class="mt-3 space-y-1 text-xs text-emerald-200"></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="border-t border-slate-800 bg-slate-950/70 py-4 text-center text-xs text-slate-500">
       © 2024 G-Tutor · 模拟教学使用 / For Educational Simulation Only
     </footer>
 
-    <script src="/static/main.js" type="module"></script>
+    <script src="main.js"></script>
   </body>
 </html>

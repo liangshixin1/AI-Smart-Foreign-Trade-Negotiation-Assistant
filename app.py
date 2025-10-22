@@ -1,12 +1,17 @@
 import json
 import os
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
+import database
 from levels import CHAPTERS, SectionConfig, build_chapter_lookup, flatten_scenario_for_template
+
+load_dotenv()
+database.init_database()
 
 DEEPSEEK_BASE = "https://api.deepseek.com"
 MODEL = "deepseek-chat"
@@ -14,7 +19,6 @@ MODEL = "deepseek-chat"
 app = Flask(__name__, static_folder="static")
 
 CHAPTER_LOOKUP = build_chapter_lookup()
-SESSIONS: Dict[str, Dict[str, object]] = {}
 
 
 class MissingKeyError(RuntimeError):
@@ -114,9 +118,48 @@ def _get_section(chapter_id: str, section_id: str) -> SectionConfig:
     raise KeyError("Invalid section id")
 
 
+def _extract_token() -> Optional[str]:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    token = request.headers.get("X-Auth-Token")
+    if token:
+        return token.strip()
+    return None
+
+
+def _require_user(required_role: Optional[str] = None) -> Tuple[Optional[Dict[str, object]], Optional[Tuple[Dict[str, str], int]]]:
+    token = _extract_token()
+    if not token:
+        return None, ({"error": "Authentication required"}, 401)
+    user = database.get_user_by_token(token)
+    if not user:
+        return None, ({"error": "Invalid or expired token"}, 401)
+    if required_role and user.get("role") != required_role:
+        return None, ({"error": "Forbidden"}, 403)
+    return user, None
+
+
 @app.route("/")
 def index() -> str:
     return send_from_directory(app.static_folder, "index.html")
+
+
+@app.post("/api/login")
+def login():
+    data = request.get_json(force=True)
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
+
+    user = database.authenticate_user(username, password)
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    token = database.issue_auth_token(int(user["id"]))
+    payload = {"token": token, "user": user}
+    return jsonify(payload)
 
 
 @app.get("/api/levels")
@@ -142,6 +185,11 @@ def list_levels():
 
 @app.post("/api/start_level")
 def start_level():
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
     try:
         collab_key = _require_key("DEEPSEEK_COLLAB_KEY")
     except MissingKeyError as exc:  # pragma: no cover - runtime environment guard
@@ -189,21 +237,21 @@ def start_level():
     evaluation_prompt = section.evaluation_prompt_template.format_map(flat_context)
 
     session_id = uuid.uuid4().hex
-    history: List[Dict[str, str]] = []
+
+    database.create_session(
+        session_id=session_id,
+        user_id=int(user["id"]),
+        chapter_id=chapter_id,
+        section_id=section_id,
+        system_prompt=conversation_prompt,
+        evaluation_prompt=evaluation_prompt,
+        scenario=scenario,
+        expects_bargaining=section.expects_bargaining,
+    )
 
     opening_message = scenario.get("opening_message")
     if isinstance(opening_message, str) and opening_message.strip():
-        history.append({"role": "assistant", "content": opening_message.strip()})
-
-    SESSIONS[session_id] = {
-        "chapterId": chapter_id,
-        "sectionId": section_id,
-        "system_prompt": conversation_prompt,
-        "evaluation_prompt": evaluation_prompt,
-        "scenario": scenario,
-        "history": history,
-        "expects_bargaining": section.expects_bargaining,
-    }
+        database.add_message(session_id, "assistant", opening_message.strip())
 
     payload = {
         "sessionId": session_id,
@@ -216,6 +264,11 @@ def start_level():
 
 @app.post("/api/chat")
 def chat():
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
     try:
         collab_key = _require_key("DEEPSEEK_COLLAB_KEY")
     except MissingKeyError as exc:  # pragma: no cover
@@ -228,25 +281,34 @@ def chat():
     if not session_id or not user_message:
         return jsonify({"error": "sessionId and message are required"}), 400
 
-    session = SESSIONS.get(session_id)
+    session = database.get_session(session_id)
     if not session:
         return jsonify({"error": "Session not found"}), 404
 
-    history: List[Dict[str, str]] = session["history"]  # type: ignore[assignment]
-    history.append({"role": "user", "content": user_message})
+    if int(user["id"]) != int(session["user_id"]):
+        return jsonify({"error": "Forbidden"}), 403
 
-    messages = [{"role": "system", "content": session["system_prompt"]}]  # type: ignore[index]
+    database.add_message(session_id, "user", user_message)
+
+    history_rows = database.get_messages(session_id)
+    history: List[Dict[str, str]] = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+
+    messages = [{"role": "system", "content": session["system_prompt"]}]
     messages.extend(history)
 
     try:
         ai_reply = _complete_chat(collab_key, messages, temperature=0.7).strip()
     except Exception as exc:  # pragma: no cover
-        history.pop()  # remove last user message to keep state clean
+        database.remove_last_message(session_id)
         return jsonify({"error": f"Failed to fetch assistant reply: {exc}"}), 500
 
-    history.append({"role": "assistant", "content": ai_reply})
+    database.add_message(session_id, "assistant", ai_reply)
 
-    evaluation = _evaluate_session(session_id)
+    evaluation = _evaluate_session(session_id, session)
+
+    latest_evaluation = database.get_latest_evaluation(session_id)
+    if latest_evaluation:
+        evaluation = latest_evaluation
 
     return jsonify(
         {
@@ -256,11 +318,10 @@ def chat():
     )
 
 
-def _evaluate_session(session_id: str) -> Dict[str, object]:
+def _evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
     try:
         critic_key = _require_key("DEEPSEEK_CRITIC_KEY")
     except MissingKeyError:
-        session = SESSIONS.get(session_id)
         scenario = session.get("scenario", {}) if session else {}
         return {
             "score": None,
@@ -271,20 +332,11 @@ def _evaluate_session(session_id: str) -> Dict[str, object]:
             "bargainingWinRate": None,
         }
 
-    session = SESSIONS.get(session_id)
-    if not session:
-        return {
-            "score": None,
-            "scoreLabel": None,
-            "commentary": "會話已失效。",
-            "actionItems": [],
-            "knowledgePoints": [],
-            "bargainingWinRate": None,
-        }
-
     scenario = session.get("scenario", {})
     scenario_knowledge = scenario.get("knowledge_points", []) or []
-    transcript = _build_transcript(session.get("history", []), scenario)
+    history_rows = database.get_messages(session_id)
+    transcript_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+    transcript = _build_transcript(transcript_history, scenario)
     evaluation_prompt = session.get("evaluation_prompt", "")
 
     messages = [
@@ -318,7 +370,7 @@ def _evaluate_session(session_id: str) -> Dict[str, object]:
         knowledge_points = [knowledge_points] if knowledge_points else []
     bargaining_win_rate = data.get("bargaining_win_rate") if session.get("expects_bargaining") else None
 
-    return {
+    result = {
         "score": score,
         "scoreLabel": score_label,
         "commentary": data.get("commentary", ""),
@@ -326,6 +378,82 @@ def _evaluate_session(session_id: str) -> Dict[str, object]:
         "knowledgePoints": knowledge_points,
         "bargainingWinRate": bargaining_win_rate,
     }
+
+    database.save_evaluation(session_id, result)
+    return result
+
+
+@app.get("/api/sessions")
+def list_sessions_for_user_endpoint():
+    user, error = _require_user()
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    target_user_id = int(user["id"])
+    if user["role"] == "teacher":
+        query_param = request.args.get("userId")
+        if not query_param:
+            return jsonify({"error": "userId is required for teacher queries"}), 400
+        target_user_id = int(query_param)
+
+    sessions = database.list_sessions_for_user(target_user_id)
+    return jsonify({"sessions": sessions})
+
+
+@app.get("/api/sessions/<session_id>")
+def get_session_detail(session_id: str):
+    user, error = _require_user()
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    session = database.get_session(session_id)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    if user["role"] == "student" and int(session["user_id"]) != int(user["id"]):
+        return jsonify({"error": "Forbidden"}), 403
+
+    history = database.get_messages(session_id)
+    evaluation = database.get_latest_evaluation(session_id)
+
+    payload = {
+        "session": {
+            "id": session["id"],
+            "chapterId": session["chapter_id"],
+            "sectionId": session["section_id"],
+            "scenario": _prepare_scenario_payload(session["scenario"]),
+            "expectsBargaining": session["expects_bargaining"],
+        },
+        "messages": history,
+        "evaluation": evaluation,
+    }
+    return jsonify(payload)
+
+
+@app.get("/api/admin/students")
+def list_students_progress_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    students = database.list_students_progress()
+    return jsonify({"students": students})
+
+
+@app.get("/api/admin/students/<int:student_id>")
+def get_student_detail_endpoint(student_id: int):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    detail = database.get_student_detail(student_id)
+    if not detail:
+        return jsonify({"error": "Student not found"}), 404
+    return jsonify(detail)
 
 
 if __name__ == "__main__":  # pragma: no cover
