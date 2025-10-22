@@ -21,7 +21,7 @@ the AI can serve both as a collaborator and as a critic.
 """
 
 import os
-from typing import List, Dict, Any
+from typing import Dict, Any, Iterator, Optional
 
 try:
     from openai import OpenAI
@@ -31,30 +31,96 @@ except ImportError as e:
     ) from e
 
 
+GLOBAL_SYSTEM_PROMPT = (
+    "《外贸谈判技巧》数字教材·AI教研伙伴（G-Tutor）——全局指令\n"
+    "* 你是“G-Tutor”，角色定位：学习伙伴 + 智能顾问。目标：让学生在做中学（任务驱动、可复现、可交付）。\n"
+    "* 你可以随机或因地制宜决定学生的谈判身份（甲方/买方或乙方/卖方），并明确告知身份与对手方身份。\n"
+    "* 你必须在对话开始生成全真模拟场景（包含：产品/规格、数量、包装、运输方式、目的地、交货期、Incoterms、结算币种、信用证/付款方式要求、合规限制等），并说明“本场景由 AI 模拟生成，仅供教学”。\n"
+    "* 所有输出中英双语，中文在前、英文随后；语言实用、可操作，避免虚浮辞藻。\n"
+    "* 交互遵循“一轮任务一目标”：给出可执行步骤、示例模板、检查清单、下一步建议。\n"
+    "* 以知识图谱节点为导航，标记当前节点与未覆盖节点。\n"
+    "* 对学生产出执行两阶段回路：1）协作生成（草稿/谈判回合）；2）批判性反馈（逐条修正+风险提示）。\n"
+    "* 输出必须遵循统一的 JSON 契约，键包括 role_assignment、scenario、knowledge_graph_focus、task_steps、templates、checklist、rubric、next_actions、stream_tags。\n"
+    "* 如果学生提出的条款可能违法或高风险，先提示风险与依据，再给出可行替代方案。\n"
+    "* 明确声明：你提供的是教学与草拟建议，不构成法律或合规意见。\n"
+)
+
+SCENARIO_SYSTEM_PROMPT = (
+    "You assign roles (student vs AI) and generate a realistic trade scenario. "
+    "Return bilingual text followed by the JSON contract described in the global instructions."
+)
+
+CH6_SYSTEM_PROMPT = (
+    "你是国际贸易条款顾问，围绕付款与交货条款进行风险评估与双赢改写。"
+    " 支持：T/T 预付比例、O/A、D/P、D/A、L/C（at sight、usance、UPAS）、分批交货、部分装运/转运限制、交货期缓冲与延迟违约金等。"
+    " 先评估学生方案对买卖双方的现金流、信用与履约风险，再给出改写与谈判建议（含让步与保护条款）。"
+    " 输出自然语言说明 + 统一 JSON。"
+)
+
+CH7_SYSTEM_PROMPT = (
+    "你是中立争议协调员，模拟对手方并推进检验争议处理。"
+    " 识别并解释检验条款与国际公约要点，引导学生引用合同/信用证条款、检验证书、复验流程，并输出双方可接受的解决路径（含时效节点）。"
+    " 输出自然语言说明 + 统一 JSON。"
+)
+
+CH8_SYSTEM_PROMPT = (
+    "你是保险与争议解决顾问，基于交易细节给出适当险别、保险金额与免赔额建议。"
+    " 设计一条仲裁条款（仲裁地/机构/规则/语言/适用法/裁决终局），并提示选择错误的潜在风险。"
+    " 输出自然语言说明 + 统一 JSON。"
+)
+
+CH9_SYSTEM_PROMPT = (
+    "你是客户成功经理，AI 扮演情绪激动的客户，对学生进行安抚、溯源与闭环训练。"
+    " 引导学生进行 LEARN（Listen, Empathize, Apologize/acknowledge, Resolve plan, Next check-in）闭环，并对共情表达、响应速度、可行方案评分，给出话术升级建议。"
+    " 输出自然语言说明 + 统一 JSON。"
+)
+
+CH10_SYSTEM_PROMPT = (
+    "你是高级法务/商务写作教练，评审索赔函/答复函。"
+    " 检查法律依据、时效、条款引用、因果与证据链、语气与专业性、请求或抗辩的比例性，给出逐段批注与重写示例，最后汇总改进版正式函电。"
+    " 输出自然语言说明 + 统一 JSON。"
+)
+
+
 class ForeignTradeAITrainer:
     """A class encapsulating AI tasks for foreign trade negotiation training."""
 
-    def __init__(self, api_key: str, base_url: str = "https://api.deepseek.com"):
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://api.deepseek.com"):
+        api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise EnvironmentError("Missing DEEPSEEK_API_KEY environment variable.")
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def _chat(self, system_prompt: str, user_prompt: str, stream: bool = False) -> str:
-        """
-        Internal helper to call the DeepSeek chat completion API.
-
-        :param system_prompt: Instructions defining the assistant's role.
-        :param user_prompt: The user's message to the assistant.
-        :param stream: Whether to stream the response.
-        :return: The assistant's reply as a string.
-        """
+    def _chat(self, system_prompt: str, user_prompt: str) -> str:
         response = self.client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            stream=stream,
         )
         return response.choices[0].message.content.strip()
+
+    def _chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        stream = self.client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = getattr(chunk.choices[0].delta, "content", "")
+            if delta:
+                yield delta
+
+    def decide_role_and_scenario(self, seed: str = "", stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + SCENARIO_SYSTEM_PROMPT
+        user = f"Please decide roles and create scenario. Seed: {seed}"
+        if stream:
+            return self._chat_stream(system, user)
+        return self._chat(system, user)
 
     def generate_inquiry(self, product_info: str) -> str:
         """Generate an inquiry email based on product and market information."""
@@ -110,105 +176,158 @@ class ForeignTradeAITrainer:
         )
         return self._chat(system, order_details)
 
-    def payment_delivery_simulation(self, proposal: str) -> str:
-        """Simulate payment and delivery negotiation for Chapter 6."""
-        system = (
-            "You are an international trade advisor assessing payment and delivery terms.  Given the "
-            "student's proposed arrangement (e.g. 30% T/T advance, 70% L/C at sight), evaluate the "
-            "risk and feasibility from both buyer and seller perspectives.  Provide feedback on how "
-            "to improve the terms to achieve a win‑win outcome."
-        )
+    def chapter6_payment_delivery(self, proposal: str, stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + CH6_SYSTEM_PROMPT
+        if stream:
+            return self._chat_stream(system, proposal)
         return self._chat(system, proposal)
 
-    def inspection_dispute_simulation(self, scenario: str) -> str:
-        """Simulate handling an inspection dispute for Chapter 7."""
-        system = (
-            "You are a neutral trade dispute mediator.  Students will describe a dispute over inspection "
-            "results.  Identify applicable international conventions (such as the CISG on examination of "
-            "goods) and advise each party on their rights, obligations and negotiation strategies."
-        )
+    def chapter7_inspection(self, scenario: str, stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + CH7_SYSTEM_PROMPT
+        if stream:
+            return self._chat_stream(system, scenario)
         return self._chat(system, scenario)
 
-    def insurance_arbitration_advisor(self, scenario: str) -> str:
-        """Advise on insurance scheme and arbitration clause for Chapter 8."""
-        system = (
-            "You are an insurance and arbitration consultant.  Based on the provided transaction details, "
-            "recommend appropriate marine cargo insurance coverage (basic and additional clauses) and "
-            "suggest an arbitration clause specifying seat, institution and rules.  Point out potential "
-            "risks if coverage is insufficient or the arbitration venue is poorly chosen."
-        )
-        return self._chat(system, scenario)
+    def chapter8_insurance_arbitration(self, detail: str, stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + CH8_SYSTEM_PROMPT
+        if stream:
+            return self._chat_stream(system, detail)
+        return self._chat(system, detail)
 
-    def complaint_handling_simulation(self, complaint: str) -> str:
-        """Simulate responding to an emotional customer complaint (Chapter 9)."""
-        system = (
-            "You are a customer service manager in a trading company.  A customer is angry about a shipment "
-            "problem.  Respond with empathy, gather essential facts (who, what, when, where, why, how) and "
-            "outline a clear plan to resolve the issue.  After your response, briefly evaluate the tone and "
-            "effectiveness of your message and suggest improvements."
-        )
+    def chapter9_complaint(self, complaint: str, stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + CH9_SYSTEM_PROMPT
+        if stream:
+            return self._chat_stream(system, complaint)
         return self._chat(system, complaint)
 
-    def claim_letter_review(self, letter: str) -> str:
-        """Review a claim or response letter for legal basis, tone and persuasiveness (Chapter 10)."""
-        system = (
-            "You are a legal advisor assessing a trade claim letter or reply.  Evaluate whether the letter cites "
-            "appropriate legal grounds, adheres to claim deadlines (e.g. nine‑month filing period under the Carmack "
-            "Amendment), and uses professional language.  Provide constructive feedback on structure, tone and "
-            "argument strength."
-        )
+    def chapter10_claim(self, letter: str, stream: bool = False):
+        system = GLOBAL_SYSTEM_PROMPT + "\n" + CH10_SYSTEM_PROMPT
+        if stream:
+            return self._chat_stream(system, letter)
         return self._chat(system, letter)
+
+    def payment_delivery_simulation(self, proposal: str) -> str:
+        """Backward compatible wrapper for chapter 6."""
+        return self.chapter6_payment_delivery(proposal)
+
+    def inspection_dispute_simulation(self, scenario: str) -> str:
+        """Backward compatible wrapper for chapter 7."""
+        return self.chapter7_inspection(scenario)
+
+    def insurance_arbitration_advisor(self, scenario: str) -> str:
+        """Backward compatible wrapper for chapter 8."""
+        return self.chapter8_insurance_arbitration(scenario)
+
+    def complaint_handling_simulation(self, complaint: str) -> str:
+        """Backward compatible wrapper for chapter 9."""
+        return self.chapter9_complaint(complaint)
+
+    def claim_letter_review(self, letter: str) -> str:
+        """Backward compatible wrapper for chapter 10."""
+        return self.chapter10_claim(letter)
 
 
 def main():
-    #
-    # API key configuration
-    #
-    # This script first tries to read an API key from the environment
-    # variable DEEPSEEK_API_KEY.  If not found, it falls back to the
-    # hard‑coded API_KEY constant defined below.  Replace the empty string
-    # with your actual key to hard‑code it for testing purposes.
-    API_KEY = ""
-    api_key = os.environ.get("DEEPSEEK_API_KEY") or API_KEY
-    if not api_key:
-        raise EnvironmentError(
-            "No API key provided.  Set the DEEPSEEK_API_KEY environment variable or "
-            "edit the API_KEY constant in the script."
-        )
-
-    trainer = ForeignTradeAITrainer(api_key)
+    trainer = ForeignTradeAITrainer()
 
     menu = {
-        "1": ("Generate inquiry email", trainer.generate_inquiry),
-        "2": ("Simulate offer negotiation", trainer.simulate_offer),
-        "3": ("Simulate counter‑offer", trainer.simulate_counter_offer),
-        "4": ("Review order contract", trainer.review_order_contract),
-        "5": ("Plan shipping and draft documents", trainer.plan_shipping),
-        "6": ("Evaluate payment & delivery terms", trainer.payment_delivery_simulation),
-        "7": ("Handle inspection dispute", trainer.inspection_dispute_simulation),
-        "8": ("Design insurance & arbitration clause", trainer.insurance_arbitration_advisor),
-        "9": ("Handle customer complaint", trainer.complaint_handling_simulation),
-        "10": ("Review claim letter", trainer.claim_letter_review),
+        "0": {
+            "description": "Decide roles and generate scenario",
+            "handler": trainer.decide_role_and_scenario,
+            "prompt": "Enter an optional seed for the scenario (press Enter to skip): ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
+        "1": {
+            "description": "Generate inquiry email",
+            "handler": trainer.generate_inquiry,
+            "prompt": "Enter product and market information: ",
+            "stream_capable": False,
+            "structured_input": False,
+        },
+        "2": {
+            "description": "Simulate offer negotiation",
+            "handler": trainer.simulate_offer,
+            "stream_capable": False,
+            "structured_input": True,
+        },
+        "3": {
+            "description": "Simulate counter-offer",
+            "handler": trainer.simulate_counter_offer,
+            "prompt": "Describe the current negotiation context: ",
+            "stream_capable": False,
+            "structured_input": False,
+        },
+        "4": {
+            "description": "Review order contract",
+            "handler": trainer.review_order_contract,
+            "prompt": "Paste or describe the contract text: ",
+            "stream_capable": False,
+            "structured_input": False,
+        },
+        "5": {
+            "description": "Plan shipping and draft documents",
+            "handler": trainer.plan_shipping,
+            "prompt": "Provide order and logistics details: ",
+            "stream_capable": False,
+            "structured_input": False,
+        },
+        "6": {
+            "description": "Evaluate payment & delivery terms",
+            "handler": trainer.chapter6_payment_delivery,
+            "prompt": "Describe the proposed payment and delivery terms: ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
+        "7": {
+            "description": "Handle inspection dispute",
+            "handler": trainer.chapter7_inspection,
+            "prompt": "Describe the inspection dispute scenario: ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
+        "8": {
+            "description": "Design insurance & arbitration clause",
+            "handler": trainer.chapter8_insurance_arbitration,
+            "prompt": "Provide transaction details for insurance and arbitration planning: ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
+        "9": {
+            "description": "Handle customer complaint",
+            "handler": trainer.chapter9_complaint,
+            "prompt": "Describe the complaint context or message: ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
+        "10": {
+            "description": "Review claim letter",
+            "handler": trainer.chapter10_claim,
+            "prompt": "Paste or describe the claim/response letter: ",
+            "stream_capable": True,
+            "structured_input": False,
+        },
     }
 
     print("Foreign Trade AI Trainer")
     while True:
         print("\nAvailable tasks:")
-        for key, (desc, _) in menu.items():
-            print(f"  {key}. {desc}")
+        for key in sorted(menu.keys(), key=lambda k: (len(k), k)):
+            print(f"  {key}. {menu[key]['description']}")
         print("  q. Quit")
 
         choice = input("Select a task by number (or 'q' to quit): ").strip()
-        if choice.lower() == 'q':
+        if choice.lower() == "q":
             break
         if choice not in menu:
             print("Invalid selection. Please try again.")
             continue
 
-        description, func = menu[choice]
-        print(f"\nYou selected: {description}")
-        if choice == "2":
-            # Offer simulation requires structured input
+        entry = menu[choice]
+        handler = entry["handler"]
+        print(f"\nYou selected: {entry['description']}")
+
+        if entry.get("structured_input"):
             offer = {}
             offer["Product"] = input("Enter product description: ")
             offer["Quantity"] = input("Enter quantity: ")
@@ -216,13 +335,23 @@ def main():
             offer["Incoterm"] = input("Enter Incoterm (e.g., FOB, CIF): ")
             offer["Payment terms"] = input("Enter payment terms: ")
             offer["Delivery"] = input("Enter delivery timeframe: ")
-            print("\nGenerating offer and negotiation...")
-            result = func(offer)
-        else:
-            user_input = input("Enter the details or scenario description: ")
-            result = func(user_input)
+            print("\nGenerating offer and negotiation...\n")
+            print(handler(offer))
+            continue
+
+        user_input = input(entry.get("prompt", "Enter the details or scenario description: "))
+        use_stream = False
+        if entry.get("stream_capable"):
+            stream_choice = input("Stream the response? (y/N): ").strip().lower()
+            use_stream = stream_choice.startswith("y")
+
         print("\nAI Response:\n")
-        print(result)
+        if use_stream:
+            for token in handler(user_input, stream=True):
+                print(token, end="", flush=True)
+            print()
+        else:
+            print(handler(user_input))
 
 
 if __name__ == "__main__":
