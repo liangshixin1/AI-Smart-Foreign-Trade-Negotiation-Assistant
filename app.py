@@ -72,8 +72,8 @@ DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
 }
 
 SCENARIO_DIVERSITY_HINT = (
-    "请在设计谈判情境时兼顾制造业、服务业、数字贸易、农业、文化创意等多元行业，"
-    "覆盖实体商品与解决方案型产品，避免始终聚焦于单一品类，使学生能够接触多元贸易机会。"
+    "请在设计谈判情境时兼顾制造业、服务业、数字贸易、农业、电子产品业、汽车业、文化创意产业等多元行业，"
+    "避免始终聚焦于一个产品、一个案例，使学生能够接触不同的外贸品类。"
 )
 
 ROLE_ENFORCEMENT_HINT = (
@@ -84,6 +84,11 @@ ROLE_ENFORCEMENT_HINT = (
 CONVERSATION_DIVERSITY_HINT = (
     "在与学生的每轮对话中，选择贴合场景的行业背景示例，可结合原材料、工业品、"
     "生活消费品、服务解决方案等不同类型，刻意避免反复引用电子产品为例。"
+)
+
+ENGLISH_ENFORCEMENT_HINT = (
+    "All assistant-facing outputs, including scenario briefings and conversation replies, must be written entirely in English."
+    " Avoid inserting Chinese characters unless the student explicitly provides them or requests bilingual content."
 )
 
 
@@ -266,6 +271,7 @@ def _generate_scenario_for_section(
         {"role": "system", "content": section["environment_prompt_template"]},
         {"role": "system", "content": SCENARIO_DIVERSITY_HINT},
         {"role": "system", "content": ROLE_ENFORCEMENT_HINT},
+        {"role": "system", "content": ENGLISH_ENFORCEMENT_HINT},
         {"role": "user", "content": section["environment_user_message"]},
     ]
 
@@ -474,6 +480,10 @@ def start_level():
             f"{conversation_prompt}\n\n[角色约束]\n请始终以学生为中国买家或中国卖家来组织对话，"
             "在回应中适时引用中国市场或供应链视角。"
         )
+    if ENGLISH_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
+        )
     evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
 
     session_id = uuid.uuid4().hex
@@ -561,7 +571,7 @@ def chat():
 
             ai_reply = "".join(chunks).strip()
             if not ai_reply:
-                ai_reply = "（无有效回复）"
+                ai_reply = "(no valid reply received)"
 
             database.add_message(session_id, "assistant", ai_reply)
 
