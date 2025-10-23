@@ -303,7 +303,13 @@ def _render_prompts_from_section(
 def _normalize_text(value: object) -> str:
     if isinstance(value, str):
         return value.strip()
-    return ""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        return str(value).strip()
+    return str(value).strip() if value is not None else ""
 
 
 def _normalize_text_list(value: object) -> List[str]:
@@ -589,6 +595,9 @@ def _parse_student_records(file_storage) -> List[Dict[str, str]]:
             if not key:
                 continue
             entry[key] = _normalize_text(cell)
+        entry["id"] = _normalize_text(entry["id"])
+        entry["name"] = _normalize_text(entry["name"]) or entry["id"]
+        entry["password"] = _normalize_text(entry["password"]) or entry["id"]
         if entry["id"] and entry["password"]:
             records.append(entry)
     return records
