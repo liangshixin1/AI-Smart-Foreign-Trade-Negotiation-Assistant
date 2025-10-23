@@ -30,6 +30,8 @@ const adminAssignmentSection = document.getElementById("admin-assignment-section
 const adminAssignmentBlueprint = document.getElementById("admin-assignment-blueprint");
 const adminAssignmentScenario = document.getElementById("admin-assignment-scenario");
 const adminAssignmentStudents = document.getElementById("admin-assignment-students");
+const adminAssignmentGenerateBtn = document.getElementById("admin-assignment-generate");
+const adminAssignmentGeneratorStatus = document.getElementById("admin-assignment-generator-status");
 const adminBlueprintList = document.getElementById("admin-blueprint-list");
 const adminBlueprintForm = document.getElementById("admin-blueprint-form");
 const adminBlueprintStatus = document.getElementById("admin-blueprint-status");
@@ -58,6 +60,10 @@ const adminBlueprintKnowledge = document.getElementById("admin-blueprint-knowled
 const adminBlueprintOpening = document.getElementById("admin-blueprint-opening");
 const adminBlueprintDifficulty = document.getElementById("admin-blueprint-difficulty");
 const adminBlueprintReset = document.getElementById("admin-blueprint-reset");
+const adminBlueprintGenerateBtn = document.getElementById("admin-blueprint-generate");
+const adminBlueprintGeneratorStatus = document.getElementById("admin-blueprint-generator-status");
+const adminBlueprintChapter = document.getElementById("admin-blueprint-chapter");
+const adminBlueprintSection = document.getElementById("admin-blueprint-section");
 const adminStudentImportForm = document.getElementById("admin-student-import-form");
 const adminStudentImportFile = document.getElementById("admin-student-import-file");
 const adminStudentImportStatus = document.getElementById("admin-student-import-status");
@@ -190,6 +196,23 @@ function toggleLoading(isLoading) {
     loadingPanel.classList.remove("hidden");
   } else {
     loadingPanel.classList.add("hidden");
+  }
+}
+
+function updateInlineStatus(element, message, variant = "muted") {
+  if (!element) return;
+  element.textContent = message || "";
+  element.classList.remove("text-slate-500", "text-emerald-500", "text-rose-500");
+  if (!message) {
+    element.classList.add("text-slate-500");
+    return;
+  }
+  if (variant === "success") {
+    element.classList.add("text-emerald-500");
+  } else if (variant === "error") {
+    element.classList.add("text-rose-500");
+  } else {
+    element.classList.add("text-slate-500");
   }
 }
 
@@ -1183,6 +1206,7 @@ function resetBlueprintForm(blueprint = null) {
   adminBlueprintKnowledge.value = joinLines(blueprint?.blueprint?.knowledge_points || []);
   adminBlueprintOpening.value = blueprint?.blueprint?.opening_message || "";
   adminBlueprintDifficulty.value = blueprint?.difficulty || "balanced";
+  updateInlineStatus(adminBlueprintGeneratorStatus, "");
 }
 
 function selectAdminBlueprint(blueprintId) {
@@ -1324,6 +1348,202 @@ function populateAssignmentBlueprintOptions() {
   });
 }
 
+function populateBlueprintChapterOptions() {
+  if (!adminBlueprintChapter) return;
+  const selected = adminBlueprintChapter.value;
+  adminBlueprintChapter.innerHTML = '<option value="">选择章节</option>';
+  (state.chapters || []).forEach((chapter) => {
+    const option = document.createElement("option");
+    option.value = chapter.id;
+    option.textContent = chapter.title || chapter.id;
+    if (chapter.id === selected) {
+      option.selected = true;
+    }
+    adminBlueprintChapter.appendChild(option);
+  });
+  updateBlueprintSectionOptions();
+}
+
+function updateBlueprintSectionOptions() {
+  if (!adminBlueprintSection) return;
+  const chapterId = adminBlueprintChapter ? adminBlueprintChapter.value : "";
+  const previous = adminBlueprintSection.value;
+  adminBlueprintSection.innerHTML = '<option value="">选择小节</option>';
+  if (!chapterId) {
+    return;
+  }
+  const chapter = findChapter(chapterId);
+  if (!chapter) return;
+  (chapter.sections || []).forEach((section) => {
+    const option = document.createElement("option");
+    option.value = section.id;
+    option.textContent = section.title || section.id;
+    if (section.id === previous) {
+      option.selected = true;
+    }
+    adminBlueprintSection.appendChild(option);
+  });
+}
+
+async function requestGeneratedScenario({ chapterId, sectionId, difficulty }) {
+  if (!chapterId || !sectionId) {
+    throw new Error("请先选择章节和小节");
+  }
+  const payload = {
+    chapterId,
+    sectionId,
+    difficulty: (difficulty || "balanced").toLowerCase(),
+  };
+  const response = await fetchWithAuth("/api/generator/scenario", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.error || "生成失败，请稍后重试";
+    throw new Error(message);
+  }
+  return data;
+}
+
+function applyScenarioToAssignmentFields(scenario, difficultyKey) {
+  if (!scenario) return;
+  if (adminAssignmentTitle && !adminAssignmentTitle.value) {
+    adminAssignmentTitle.value = scenario.scenario_title || "";
+  }
+  if (adminAssignmentDescription && !adminAssignmentDescription.value) {
+    adminAssignmentDescription.value = scenario.scenario_summary || "";
+  }
+  if (adminAssignmentDifficulty && difficultyKey) {
+    adminAssignmentDifficulty.value = difficultyKey;
+  }
+}
+
+function applyScenarioToBlueprintFormFields(scenario, difficultyKey) {
+  if (!scenario) return;
+  adminBlueprintTitle.value = scenario.scenario_title || "";
+  adminBlueprintSummary.value = scenario.scenario_summary || "";
+  adminBlueprintStudentRole.value = scenario.student_role || "";
+  adminBlueprintAiRole.value = scenario.ai_role || "";
+  const studentCompany = scenario.student_company || {};
+  adminBlueprintStudentCompanyName.value = studentCompany.name || "";
+  adminBlueprintStudentCompanyProfile.value = studentCompany.profile || "";
+  const aiCompany = scenario.ai_company || {};
+  adminBlueprintAiCompanyName.value = aiCompany.name || "";
+  adminBlueprintAiCompanyProfile.value = aiCompany.profile || "";
+  adminBlueprintAiRules.value = joinLines(scenario.ai_rules || []);
+  const product = scenario.product || {};
+  const price = product.price_expectation || {};
+  adminBlueprintProductName.value = product.name || "";
+  adminBlueprintProductSpecs.value = product.specifications || "";
+  adminBlueprintProductQuantity.value =
+    product.quantity_requirement || product.quantityRequirement || "";
+  adminBlueprintStudentPrice.value =
+    price.student_target || price.studentTarget || "";
+  adminBlueprintAiBottom.value = price.ai_bottom_line || price.aiBottomLine || "";
+  adminBlueprintMarket.value = scenario.market_landscape || "";
+  adminBlueprintTimeline.value = scenario.timeline || "";
+  adminBlueprintLogistics.value = scenario.logistics || "";
+  adminBlueprintNegotiationTargets.value = joinLines(
+    scenario.negotiation_targets || [],
+  );
+  adminBlueprintRisks.value = joinLines(scenario.risks || []);
+  adminBlueprintChecklist.value = joinLines(scenario.checklist || []);
+  adminBlueprintKnowledge.value = joinLines(scenario.knowledge_points || []);
+  adminBlueprintOpening.value = scenario.opening_message || "";
+  if (difficultyKey && adminBlueprintDifficulty) {
+    adminBlueprintDifficulty.value = difficultyKey;
+  } else if (scenario.difficulty && adminBlueprintDifficulty) {
+    adminBlueprintDifficulty.value = scenario.difficulty;
+  }
+}
+
+async function handleAssignmentScenarioGeneration() {
+  if (!adminAssignmentGenerateBtn) return;
+  const chapterId = adminAssignmentChapter ? adminAssignmentChapter.value : "";
+  const sectionId = adminAssignmentSection ? adminAssignmentSection.value : "";
+  const difficultyKey = adminAssignmentDifficulty
+    ? adminAssignmentDifficulty.value || "balanced"
+    : "balanced";
+  if (!chapterId || !sectionId) {
+    updateInlineStatus(
+      adminAssignmentGeneratorStatus,
+      "请先选择章节和小节后再生成",
+      "error",
+    );
+    return;
+  }
+  try {
+    adminAssignmentGenerateBtn.disabled = true;
+    updateInlineStatus(adminAssignmentGeneratorStatus, "正在生成场景...", "muted");
+    const data = await requestGeneratedScenario({
+      chapterId,
+      sectionId,
+      difficulty: difficultyKey,
+    });
+    const scenario = data.scenario || {};
+    if (adminAssignmentScenario) {
+      adminAssignmentScenario.value = JSON.stringify(scenario, null, 2);
+    }
+    applyScenarioToAssignmentFields(scenario, data.difficulty || difficultyKey);
+    updateInlineStatus(adminAssignmentGeneratorStatus, "已生成场景，可继续微调。", "success");
+    if (adminAssignmentStatus) {
+      adminAssignmentStatus.textContent = "已根据章节模板生成场景";
+    }
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(
+      adminAssignmentGeneratorStatus,
+      error.message || "生成失败，请稍后再试。",
+      "error",
+    );
+  } finally {
+    adminAssignmentGenerateBtn.disabled = false;
+  }
+}
+
+async function handleBlueprintScenarioGeneration() {
+  if (!adminBlueprintGenerateBtn) return;
+  const chapterId = adminBlueprintChapter ? adminBlueprintChapter.value : "";
+  const sectionId = adminBlueprintSection ? adminBlueprintSection.value : "";
+  const difficultyKey = adminBlueprintDifficulty
+    ? adminBlueprintDifficulty.value || "balanced"
+    : "balanced";
+  if (!chapterId || !sectionId) {
+    updateInlineStatus(
+      adminBlueprintGeneratorStatus,
+      "请先选择章节与小节",
+      "error",
+    );
+    return;
+  }
+  try {
+    adminBlueprintGenerateBtn.disabled = true;
+    updateInlineStatus(adminBlueprintGeneratorStatus, "正在生成蓝图...", "muted");
+    const data = await requestGeneratedScenario({
+      chapterId,
+      sectionId,
+      difficulty: difficultyKey,
+    });
+    const scenario = data.scenario || {};
+    applyScenarioToBlueprintFormFields(scenario, data.difficulty || difficultyKey);
+    updateInlineStatus(adminBlueprintGeneratorStatus, "生成完成，已填充表单。", "success");
+    if (adminBlueprintStatus) {
+      adminBlueprintStatus.textContent = "已根据章节模板生成蓝图，可直接保存或调整";
+    }
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(
+      adminBlueprintGeneratorStatus,
+      error.message || "生成失败，请稍后再试。",
+      "error",
+    );
+  } finally {
+    adminBlueprintGenerateBtn.disabled = false;
+  }
+}
+
 function renderAssignmentStudents(options = {}) {
   if (!adminAssignmentStudents) return;
   const existingChecked = Array.from(
@@ -1394,6 +1614,7 @@ function renderAssignmentList() {
 }
 
 function populateAssignmentForm(assignment) {
+  updateInlineStatus(adminAssignmentGeneratorStatus, "");
   if (!assignment || !adminAssignmentForm) {
     if (adminAssignmentIdInput) adminAssignmentIdInput.value = "";
     if (adminAssignmentTitle) adminAssignmentTitle.value = "";
@@ -1994,6 +2215,7 @@ async function loadLevels() {
     const data = await response.json();
     state.chapters = data.chapters || [];
     populateAssignmentChapterOptions();
+    populateBlueprintChapterOptions();
     const { chapterId, sectionId } = state.selectedLevel || {};
     const currentSection = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
     if (!currentSection) {
@@ -3113,6 +3335,13 @@ if (adminAssignmentChapter) {
     if (adminAssignmentStatus) {
       adminAssignmentStatus.textContent = "";
     }
+    updateInlineStatus(adminAssignmentGeneratorStatus, "");
+  });
+}
+
+if (adminAssignmentSection) {
+  adminAssignmentSection.addEventListener("change", () => {
+    updateInlineStatus(adminAssignmentGeneratorStatus, "");
   });
 }
 
@@ -3155,6 +3384,33 @@ if (adminStudentPasswordForm) {
 
 if (adminBlueprintForm) {
   adminBlueprintForm.addEventListener("submit", submitBlueprint);
+}
+
+if (adminAssignmentGenerateBtn) {
+  adminAssignmentGenerateBtn.addEventListener(
+    "click",
+    handleAssignmentScenarioGeneration,
+  );
+}
+
+if (adminBlueprintGenerateBtn) {
+  adminBlueprintGenerateBtn.addEventListener(
+    "click",
+    handleBlueprintScenarioGeneration,
+  );
+}
+
+if (adminBlueprintChapter) {
+  adminBlueprintChapter.addEventListener("change", () => {
+    updateBlueprintSectionOptions();
+    updateInlineStatus(adminBlueprintGeneratorStatus, "");
+  });
+}
+
+if (adminBlueprintSection) {
+  adminBlueprintSection.addEventListener("change", () => {
+    updateInlineStatus(adminBlueprintGeneratorStatus, "");
+  });
 }
 
 if (adminBlueprintReset) {
