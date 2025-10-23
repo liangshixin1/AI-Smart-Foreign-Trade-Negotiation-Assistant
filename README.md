@@ -114,6 +114,12 @@ python app.py
 - 将 `app.db` 存放于持久化卷或外部数据库，定期备份。
 - 对公网部署时，请通过 HTTPS 代理加密流量并在前端增加访问控制（如学校 OAuth 或 SSO）。
 
+### 常见线上故障排查
+
+- **Nginx 日志出现 `connect() failed (111: Connection refused)`**：说明反向代理尝试转发到 `127.0.0.1:<端口>` 的后端进程但未成功。请确认 Gunicorn/Uvicorn 是否已启动、监听端口与 Nginx `proxy_pass` 配置一致，并检查防火墙或 SELinux 是否阻断了本地环回访问。
+- **持续请求 `.env` 等敏感路径**：公网环境会遭遇扫描器探测。务必禁用将 `.env` 等配置文件通过 Nginx 暴露的路由，确保服务器返回 404 并限制只读权限，避免被下载到密钥。
+- **上传 Excel 导入名册后无响应**：后端依赖 `openpyxl` 解析 `.xlsx`。确认部署环境的虚拟环境中已安装 `openpyxl`，并使用支持的 Excel 格式；如仍失败，请检查 Gunicorn/Flask 日志中的异常堆栈定位原因。
+
 ## 贡献指南
 
 欢迎提交 Issue 与 Pull Request：
