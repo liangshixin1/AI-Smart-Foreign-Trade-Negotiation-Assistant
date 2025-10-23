@@ -10,6 +10,7 @@ const studentDashboard = document.getElementById("student-dashboard");
 const adminPanel = document.getElementById("admin-panel");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sessionHistoryList = document.getElementById("session-history");
+const studentTopControls = document.getElementById("student-top-controls");
 
 const adminStudentList = document.getElementById("admin-student-list");
 const adminStudentMeta = document.getElementById("admin-student-meta");
@@ -399,6 +400,15 @@ function showExperience() {
   }
 }
 
+function showStudentDashboardHome() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  studentDashboard.classList.remove("hidden");
+  expandLevelSelection();
+  hideExperience();
+}
+
 function hideExperience() {
   experienceSection.classList.add("hidden");
   if (chatInputEl) {
@@ -742,8 +752,20 @@ function renderChat() {
   chatBodyEl.scrollTop = chatBodyEl.scrollHeight;
 }
 
-function appendMessage(role, content) {
-  state.messages.push({ role, content });
+function appendMessage(role, content, options = {}) {
+  const message = { role, content };
+  state.messages.push(message);
+  if (!options.silent) {
+    renderChat();
+  }
+  return state.messages.length - 1;
+}
+
+function updateMessageContent(index, content) {
+  if (index < 0 || index >= state.messages.length) {
+    return;
+  }
+  state.messages[index].content = content;
   renderChat();
 }
 
@@ -1505,6 +1527,9 @@ function updateAuthUI() {
       adminPanel.classList.add("hidden");
       goToLevelSelection();
       closeStudentModal();
+      if (studentTopControls) {
+        studentTopControls.classList.remove("hidden");
+      }
     } else {
       studentDashboard.classList.add("hidden");
       hideExperience();
@@ -1512,6 +1537,9 @@ function updateAuthUI() {
       closeStudentModal();
       renderAdminAnalytics(state.admin.analytics);
       activateAdminTab();
+      if (studentTopControls) {
+        studentTopControls.classList.add("hidden");
+      }
     }
   } else {
     authPanel.classList.remove("hidden");
@@ -1520,6 +1548,9 @@ function updateAuthUI() {
     studentDashboard.classList.add("hidden");
     adminPanel.classList.add("hidden");
     hideExperience();
+    if (studentTopControls) {
+      studentTopControls.classList.add("hidden");
+    }
     chatInputEl.value = "";
     chatInputEl.disabled = true;
     sendMessageBtn.disabled = true;
@@ -1789,30 +1820,142 @@ async function sendMessage() {
   chatInputEl.disabled = true;
   sendMessageBtn.disabled = true;
 
-  appendMessage("user", message);
+  const userMessageIndex = appendMessage("user", message);
+  const assistantIndex = appendMessage("assistant", "…", { silent: true });
+  renderChat();
+
+  let fullReply = "";
+  let evaluationResult = null;
+  let shouldTerminate = false;
+  let streamError = null;
+
+  const parseEvent = (raw) => {
+    const lines = raw.split("\n");
+    let eventType = "message";
+    const dataLines = [];
+    lines.forEach((line) => {
+      if (line.startsWith("event:")) {
+        eventType = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    });
+    const dataString = dataLines.join("\n");
+    let payload;
+    if (dataString) {
+      try {
+        payload = JSON.parse(dataString);
+      } catch (err) {
+        console.warn("无法解析流式数据", err, dataString);
+        payload = {};
+      }
+    } else {
+      payload = {};
+    }
+    return { eventType, payload };
+  };
+
+  const handleEvent = (eventType, payload) => {
+    if (eventType === "chunk") {
+      if (payload.content) {
+        fullReply += payload.content;
+        updateMessageContent(assistantIndex, fullReply);
+      }
+    } else if (eventType === "summary") {
+      if (payload.reply) {
+        fullReply = payload.reply;
+        updateMessageContent(assistantIndex, fullReply);
+      }
+    } else if (eventType === "evaluation") {
+      evaluationResult = payload.evaluation || null;
+      renderEvaluation(evaluationResult);
+    } else if (eventType === "error") {
+      streamError = new Error(payload.error || "对话失败");
+      shouldTerminate = true;
+    } else if (eventType === "done") {
+      shouldTerminate = true;
+    }
+  };
 
   try {
-    const response = await fetchWithAuth("/api/chat", {
+    const response = await fetchWithAuth(`/api/chat?stream=1`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify({ sessionId: state.sessionId, message }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "发送消息失败");
+      const errorText = await response.text();
+      let errorMessage = "发送消息失败";
+      if (errorText) {
+        try {
+          const parsed = JSON.parse(errorText);
+          errorMessage = parsed.error || errorMessage;
+        } catch (err) {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    if (data.reply) {
-      appendMessage("assistant", data.reply);
+    if (!response.body) {
+      throw new Error("当前浏览器不支持流式响应");
     }
-    renderEvaluation(data.evaluation);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (!shouldTerminate) {
+      const { value, done } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
+      buffer += decoder.decode(value || new Uint8Array(), { stream: true });
+
+      let separatorIndex = buffer.indexOf("\n\n");
+      while (separatorIndex !== -1) {
+        const rawEvent = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+        separatorIndex = buffer.indexOf("\n\n");
+
+        if (!rawEvent.trim()) {
+          continue;
+        }
+
+        const { eventType, payload } = parseEvent(rawEvent);
+        handleEvent(eventType, payload);
+        if (shouldTerminate) {
+          break;
+        }
+      }
+    }
+
+    if (!shouldTerminate && buffer.trim()) {
+      const { eventType, payload } = parseEvent(buffer.trim());
+      handleEvent(eventType, payload);
+    }
+
+    if (streamError) {
+      throw streamError;
+    }
+
+    if (!fullReply) {
+      const existing = state.messages[assistantIndex]?.content || "";
+      fullReply = existing && existing !== "…" ? existing : "（无有效回复）";
+      updateMessageContent(assistantIndex, fullReply);
+    }
+
     await loadSessions();
     await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
-    state.messages.pop();
+    state.messages.splice(assistantIndex, 1);
+    state.messages.splice(userMessageIndex, 1);
     renderChat();
     appendMessage("assistant", `系统提示：${error.message || "对话失败"}`);
   } finally {
@@ -1856,7 +1999,7 @@ async function handleLogin(event) {
     if (state.auth.user.role === "student") {
       await loadSessions();
       await loadStudentDashboardInsights();
-      showExperience();
+      showStudentDashboardHome();
     } else {
       await loadAdminStudents();
       await loadAdminAnalytics();
