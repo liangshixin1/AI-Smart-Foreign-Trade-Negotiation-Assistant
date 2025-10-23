@@ -40,6 +40,7 @@ def init_database() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
+                display_name TEXT,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -86,6 +87,51 @@ def init_database() -> None:
                 bargaining_win_rate REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS scenario_blueprints (
+                id TEXT PRIMARY KEY,
+                owner_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                difficulty TEXT DEFAULT 'balanced',
+                blueprint_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS assignments (
+                id TEXT PRIMARY KEY,
+                owner_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                chapter_id TEXT,
+                section_id TEXT,
+                difficulty TEXT DEFAULT 'balanced',
+                scenario_json TEXT NOT NULL,
+                conversation_prompt TEXT NOT NULL,
+                evaluation_prompt TEXT NOT NULL,
+                blueprint_id TEXT,
+                due_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(chapter_id) REFERENCES level_chapters(id) ON DELETE SET NULL,
+                FOREIGN KEY(section_id) REFERENCES level_sections(id) ON DELETE SET NULL,
+                FOREIGN KEY(blueprint_id) REFERENCES scenario_blueprints(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS assignment_students (
+                assignment_id TEXT NOT NULL,
+                student_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'pending',
+                session_id TEXT,
+                submitted_at TIMESTAMP,
+                PRIMARY KEY (assignment_id, student_id),
+                FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS level_chapters (
@@ -135,20 +181,30 @@ def ensure_default_users() -> None:
             if row:
                 continue
             conn.execute(
-                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                (username, generate_password_hash(password), role),
+                "INSERT INTO users (username, display_name, password_hash, role) VALUES (?, ?, ?, ?)",
+                (username, username, generate_password_hash(password), role),
             )
         conn.commit()
 
 
 def ensure_schema() -> None:
     with get_connection() as conn:
+        user_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "display_name" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+
         chat_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
         }
         if "difficulty" not in chat_columns:
             conn.execute(
                 "ALTER TABLE chat_sessions ADD COLUMN difficulty TEXT DEFAULT 'balanced'"
+            )
+        if "assignment_id" not in chat_columns:
+            conn.execute(
+                "ALTER TABLE chat_sessions ADD COLUMN assignment_id TEXT"
             )
 
         chapter_columns = {
@@ -179,6 +235,15 @@ def ensure_schema() -> None:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_level_sections_chapter_order ON level_sections(chapter_id, order_index)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assignments_owner ON assignments(owner_id, created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assignment_students_lookup ON assignment_students(assignment_id, student_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assignment_students_session ON assignment_students(session_id)"
         )
         conn.commit()
 
@@ -590,7 +655,7 @@ def delete_section(section_id: str) -> None:
 def authenticate_user(username: str, password: str) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+            "SELECT id, username, display_name, password_hash, role FROM users WHERE username = ?",
             (username,),
         ).fetchone()
         if not row:
@@ -600,6 +665,7 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, object
         return {
             "id": row["id"],
             "username": row["username"],
+            "displayName": row["display_name"] or row["username"],
             "role": row["role"],
         }
 
@@ -621,7 +687,7 @@ def get_user_by_token(token: str) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT u.id, u.username, u.role
+            SELECT u.id, u.username, u.display_name, u.role
             FROM auth_tokens t
             JOIN users u ON u.id = t.user_id
             WHERE t.token = ?
@@ -630,28 +696,36 @@ def get_user_by_token(token: str) -> Optional[Dict[str, object]]:
         ).fetchone()
         if not row:
             return None
-        return {"id": row["id"], "username": row["username"], "role": row["role"]}
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "displayName": row["display_name"] or row["username"],
+            "role": row["role"],
+        }
 
 
 def create_session(
     session_id: str,
     user_id: int,
-    chapter_id: str,
-    section_id: str,
+    chapter_id: Optional[str],
+    section_id: Optional[str],
     system_prompt: str,
     evaluation_prompt: str,
     scenario: Dict[str, object],
     expects_bargaining: bool,
     difficulty: str,
+    *,
+    assignment_id: Optional[str] = None,
 ) -> None:
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO chat_sessions (
                 id, user_id, chapter_id, section_id, system_prompt,
-                evaluation_prompt, scenario_json, expects_bargaining, difficulty
+                evaluation_prompt, scenario_json, expects_bargaining, difficulty,
+                assignment_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id,
@@ -663,6 +737,7 @@ def create_session(
                 json.dumps(scenario, ensure_ascii=False),
                 1 if expects_bargaining else 0,
                 difficulty,
+                assignment_id,
             ),
         )
         conn.commit()
@@ -713,7 +788,8 @@ def get_session(session_id: str) -> Optional[Dict[str, object]]:
         row = conn.execute(
             """
             SELECT id, user_id, chapter_id, section_id, system_prompt,
-                   evaluation_prompt, scenario_json, expects_bargaining, difficulty
+                   evaluation_prompt, scenario_json, expects_bargaining, difficulty,
+                   assignment_id
             FROM chat_sessions WHERE id = ?
             """,
             (session_id,),
@@ -730,6 +806,7 @@ def get_session(session_id: str) -> Optional[Dict[str, object]]:
             "scenario": json.loads(row["scenario_json"]),
             "expects_bargaining": bool(row["expects_bargaining"]),
             "difficulty": row["difficulty"],
+            "assignment_id": row["assignment_id"],
         }
 
 
@@ -750,7 +827,7 @@ def list_sessions_for_user(user_id: int) -> List[Dict[str, object]]:
         rows = conn.execute(
             """
             SELECT s.id, s.chapter_id, s.section_id, s.updated_at, s.created_at,
-                   s.difficulty,
+                   s.difficulty, s.assignment_id,
                    json_extract(s.scenario_json, '$.scenario_title') AS scenario_title,
                    json_extract(s.scenario_json, '$.scenario_summary') AS scenario_summary
             FROM chat_sessions s
@@ -769,6 +846,7 @@ def list_sessions_for_user(user_id: int) -> List[Dict[str, object]]:
                 "updatedAt": row["updated_at"],
                 "createdAt": row["created_at"],
                 "difficulty": row["difficulty"],
+                "assignmentId": row["assignment_id"],
             }
             for row in rows
         ]
@@ -834,7 +912,7 @@ def list_students_progress() -> List[Dict[str, object]]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT u.id, u.username,
+            SELECT u.id, u.username, u.display_name,
                    COUNT(DISTINCT s.id) AS session_count,
                    COUNT(DISTINCT e.id) AS evaluation_count,
                    MAX(s.updated_at) AS last_active
@@ -850,6 +928,7 @@ def list_students_progress() -> List[Dict[str, object]]:
             {
                 "id": row["id"],
                 "username": row["username"],
+                "displayName": row["display_name"] or row["username"],
                 "sessionCount": row["session_count"],
                 "evaluationCount": row["evaluation_count"],
                 "lastActive": row["last_active"],
@@ -861,7 +940,8 @@ def list_students_progress() -> List[Dict[str, object]]:
 def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
         user_row = conn.execute(
-            "SELECT id, username, role, created_at FROM users WHERE id = ?", (student_id,)
+            "SELECT id, username, display_name, role, created_at FROM users WHERE id = ?",
+            (student_id,),
         ).fetchone()
         if not user_row or user_row["role"] != "student":
             return None
@@ -869,7 +949,7 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
         sessions = conn.execute(
             """
             SELECT s.id, s.chapter_id, s.section_id, s.updated_at, s.created_at,
-                   s.difficulty,
+                   s.difficulty, s.assignment_id,
                    json_extract(s.scenario_json, '$.scenario_title') AS title,
                    json_extract(s.scenario_json, '$.scenario_summary') AS summary
             FROM chat_sessions s
@@ -901,6 +981,7 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
                     "updatedAt": session["updated_at"],
                     "createdAt": session["created_at"],
                     "difficulty": session["difficulty"],
+                    "assignmentId": session["assignment_id"],
                     "latestEvaluation": {
                         "score": eval_row["score"] if eval_row else None,
                         "scoreLabel": eval_row["score_label"] if eval_row else None,
@@ -915,6 +996,7 @@ def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
         return {
             "id": user_row["id"],
             "username": user_row["username"],
+            "displayName": user_row["display_name"] or user_row["username"],
             "role": user_row["role"],
             "createdAt": user_row["created_at"],
             "sessions": result_sessions,
@@ -1023,6 +1105,405 @@ def get_student_dashboard(user_id: int) -> Dict[str, object]:
         "knowledgeRadar": knowledge_radar[:10],
         "recentKnowledge": recent_knowledge[:12],
     }
+
+
+def create_blueprint(
+    owner_id: int,
+    title: str,
+    blueprint: Dict[str, object],
+    *,
+    description: str = "",
+    difficulty: str = "balanced",
+    blueprint_id: Optional[str] = None,
+) -> Dict[str, object]:
+    blueprint_id = blueprint_id or f"blueprint-{uuid.uuid4().hex[:8]}"
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO scenario_blueprints (
+                id, owner_id, title, description, difficulty, blueprint_json
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                blueprint_id,
+                owner_id,
+                title,
+                description,
+                difficulty,
+                json.dumps(blueprint, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+    result = get_blueprint(blueprint_id)
+    if not result:
+        raise RuntimeError("Failed to create blueprint")
+    return result
+
+
+def list_blueprints(owner_id: int) -> List[Dict[str, object]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, title, description, difficulty, blueprint_json, created_at, updated_at
+            FROM scenario_blueprints
+            WHERE owner_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+            """,
+            (owner_id,),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "title": row["title"],
+            "description": row["description"] or "",
+            "difficulty": row["difficulty"],
+            "blueprint": json.loads(row["blueprint_json"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_blueprint(blueprint_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, owner_id, title, description, difficulty, blueprint_json, created_at, updated_at
+            FROM scenario_blueprints
+            WHERE id = ?
+            """,
+            (blueprint_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "ownerId": row["owner_id"],
+        "title": row["title"],
+        "description": row["description"] or "",
+        "difficulty": row["difficulty"],
+        "blueprint": json.loads(row["blueprint_json"]),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def update_blueprint(
+    blueprint_id: str,
+    *,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    blueprint: Optional[Dict[str, object]] = None,
+) -> Optional[Dict[str, object]]:
+    updates = []
+    params: List[object] = []
+    if title is not None:
+        updates.append("title = ?")
+        params.append(title)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if difficulty is not None:
+        updates.append("difficulty = ?")
+        params.append(difficulty)
+    if blueprint is not None:
+        updates.append("blueprint_json = ?")
+        params.append(json.dumps(blueprint, ensure_ascii=False))
+
+    if not updates:
+        return get_blueprint(blueprint_id)
+
+    params.append(blueprint_id)
+    with get_connection() as conn:
+        conn.execute(
+            f"UPDATE scenario_blueprints SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            tuple(params),
+        )
+        conn.commit()
+    return get_blueprint(blueprint_id)
+
+
+def delete_blueprint(blueprint_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM scenario_blueprints WHERE id = ?", (blueprint_id,))
+        conn.commit()
+
+
+def _parse_assignment_row(row: sqlite3.Row) -> Dict[str, object]:
+    return {
+        "id": row["id"],
+        "ownerId": row["owner_id"],
+        "title": row["title"],
+        "description": row["description"] or "",
+        "chapterId": row["chapter_id"],
+        "sectionId": row["section_id"],
+        "difficulty": row["difficulty"],
+        "scenario": json.loads(row["scenario_json"]),
+        "conversationPrompt": row["conversation_prompt"],
+        "evaluationPrompt": row["evaluation_prompt"],
+        "blueprintId": row["blueprint_id"],
+        "dueAt": row["due_at"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def create_assignment(
+    assignment_id: str,
+    owner_id: int,
+    title: str,
+    scenario: Dict[str, object],
+    conversation_prompt: str,
+    evaluation_prompt: str,
+    *,
+    description: str = "",
+    chapter_id: Optional[str] = None,
+    section_id: Optional[str] = None,
+    difficulty: str = "balanced",
+    blueprint_id: Optional[str] = None,
+    due_at: Optional[str] = None,
+    student_ids: Optional[List[int]] = None,
+) -> Dict[str, object]:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO assignments (
+                id, owner_id, title, description, chapter_id, section_id,
+                difficulty, scenario_json, conversation_prompt, evaluation_prompt,
+                blueprint_id, due_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                assignment_id,
+                owner_id,
+                title,
+                description,
+                chapter_id,
+                section_id,
+                difficulty,
+                json.dumps(scenario, ensure_ascii=False),
+                conversation_prompt,
+                evaluation_prompt,
+                blueprint_id,
+                due_at,
+            ),
+        )
+        if student_ids:
+            conn.executemany(
+                """
+                INSERT INTO assignment_students (assignment_id, student_id, status)
+                VALUES (?, ?, 'pending')
+                ON CONFLICT(assignment_id, student_id) DO UPDATE SET status='pending', session_id=NULL, submitted_at=NULL
+                """,
+                [(assignment_id, student_id) for student_id in student_ids],
+            )
+        conn.commit()
+    result = get_assignment(assignment_id)
+    if not result:
+        raise RuntimeError("Failed to create assignment")
+    return result
+
+
+def get_assignment(assignment_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, owner_id, title, description, chapter_id, section_id,
+                   difficulty, scenario_json, conversation_prompt, evaluation_prompt,
+                   blueprint_id, due_at, created_at, updated_at
+            FROM assignments
+            WHERE id = ?
+            """,
+            (assignment_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return _parse_assignment_row(row)
+
+
+def list_assignments_by_teacher(owner_id: int) -> List[Dict[str, object]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT a.*,
+                   COUNT(s.student_id) AS assigned_count,
+                   SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+                   SUM(CASE WHEN s.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
+                   GROUP_CONCAT(DISTINCT s.student_id) AS student_ids
+            FROM assignments a
+            LEFT JOIN assignment_students s ON s.assignment_id = a.id
+            WHERE a.owner_id = ?
+            GROUP BY a.id
+            ORDER BY a.created_at DESC
+            """,
+            (owner_id,),
+        ).fetchall()
+
+    results: List[Dict[str, object]] = []
+    for row in rows:
+        payload = _parse_assignment_row(row)
+        payload.update(
+            {
+                "assignedCount": row["assigned_count"],
+                "completedCount": row["completed_count"],
+                "inProgressCount": row["in_progress_count"],
+                "studentIds": [
+                    int(value)
+                    for value in (row["student_ids"] or "").split(",")
+                    if str(value).strip()
+                ],
+            }
+        )
+        results.append(payload)
+    return results
+
+
+def list_assignments_for_student(student_id: int) -> List[Dict[str, object]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT a.*, s.status, s.session_id, s.submitted_at
+            FROM assignments a
+            JOIN assignment_students s ON s.assignment_id = a.id
+            WHERE s.student_id = ?
+            ORDER BY a.created_at DESC
+            """,
+            (student_id,),
+        ).fetchall()
+
+    return [
+        {
+            **_parse_assignment_row(row),
+            "status": row["status"],
+            "sessionId": row["session_id"],
+            "submittedAt": row["submitted_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_assignment_for_student(
+    assignment_id: str, student_id: int
+) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT a.*, s.status, s.session_id, s.submitted_at
+            FROM assignments a
+            JOIN assignment_students s ON s.assignment_id = a.id
+            WHERE a.id = ? AND s.student_id = ?
+            """,
+            (assignment_id, student_id),
+        ).fetchone()
+    if not row:
+        return None
+    payload = _parse_assignment_row(row)
+    payload.update(
+        {
+            "status": row["status"],
+            "sessionId": row["session_id"],
+            "submittedAt": row["submitted_at"],
+        }
+    )
+    return payload
+
+
+def update_assignment_students(
+    assignment_id: str, student_ids: List[int]
+) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM assignment_students WHERE assignment_id = ?",
+            (assignment_id,),
+        )
+        conn.executemany(
+            "INSERT INTO assignment_students (assignment_id, student_id, status) VALUES (?, ?, 'pending')",
+            [(assignment_id, student_id) for student_id in student_ids],
+        )
+        conn.commit()
+
+
+def link_assignment_session(
+    assignment_id: str, student_id: int, session_id: str
+) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE assignment_students
+            SET status = 'in_progress', session_id = ?, submitted_at = CURRENT_TIMESTAMP
+            WHERE assignment_id = ? AND student_id = ?
+            """,
+            (session_id, assignment_id, student_id),
+        )
+        conn.commit()
+
+
+def mark_assignment_completed_by_session(session_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE assignment_students
+            SET status = 'completed', submitted_at = CURRENT_TIMESTAMP
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        )
+        conn.commit()
+
+
+def bulk_import_students(records: List[Dict[str, str]]) -> Dict[str, int]:
+    created = 0
+    updated = 0
+    with get_connection() as conn:
+        for record in records:
+            username = (record.get("id") or "").strip()
+            password = record.get("password") or ""
+            if not username or not password:
+                continue
+            display_name = (record.get("name") or "").strip() or username
+            existing = conn.execute(
+                "SELECT id, role FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+            password_hash = generate_password_hash(password)
+            if existing:
+                if existing["role"] != "student":
+                    continue
+                conn.execute(
+                    "UPDATE users SET password_hash = ?, display_name = ? WHERE id = ?",
+                    (password_hash, display_name, existing["id"]),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    "INSERT INTO users (username, display_name, password_hash, role) VALUES (?, ?, ?, 'student')",
+                    (username, display_name, password_hash),
+                )
+                created += 1
+        conn.commit()
+    return {"created": created, "updated": updated}
+
+
+def update_user_password(user_id: int, new_password: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(new_password), user_id),
+        )
+        conn.commit()
+
+
+def verify_user_password(user_id: int, password: str) -> bool:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return False
+    return check_password_hash(row["password_hash"], password)
 
 
 def get_class_analytics() -> Dict[str, object]:

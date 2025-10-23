@@ -2,7 +2,8 @@ import copy
 import json
 import os
 import uuid
-from typing import Dict, List, Optional, Tuple
+from itertools import chain
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from flask import (
@@ -14,6 +15,7 @@ from flask import (
     stream_with_context,
 )
 from openai import OpenAI
+from openpyxl import load_workbook
 
 import database
 from levels import CHAPTERS, flatten_scenario_for_template
@@ -212,6 +214,7 @@ def _prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "studentCompany": raw.get("student_company", {}) or {},
         "aiRole": raw.get("ai_role", ""),
         "aiCompany": raw.get("ai_company", {}) or {},
+        "aiRules": raw.get("ai_rules", []) or [],
         "product": raw.get("product", {}) or {},
         "marketLandscape": raw.get("market_landscape", ""),
         "timeline": raw.get("timeline", ""),
@@ -257,6 +260,312 @@ def _ensure_chinese_student_role(scenario: Dict[str, object], trade_role: str) -
             normalized = f"中国买家代表（{normalized}）"
 
     scenario["student_role"] = normalized
+
+
+def _render_prompts_from_section(
+    section: Dict[str, object],
+    scenario: Dict[str, object],
+    difficulty_key: str,
+    difficulty_profile: Dict[str, str],
+) -> Tuple[str, str]:
+    conversation_prompt, evaluation_prompt = _render_prompts_from_section(
+        section, scenario, difficulty_key, difficulty_profile
+    )
+    return conversation_prompt, evaluation_prompt
+
+
+def _normalize_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _normalize_text_list(value: object) -> List[str]:
+    if isinstance(value, list):
+        result: List[str] = []
+        for item in value:
+            text = _normalize_text(item)
+            if text:
+                result.append(text)
+        return result
+    if isinstance(value, str):
+        items = [segment.strip() for segment in value.splitlines()]
+        return [item for item in items if item]
+    return []
+
+
+def _normalize_company(data: object) -> Dict[str, str]:
+    if not isinstance(data, dict):
+        return {}
+    return {
+        "name": _normalize_text(
+            data.get("name")
+            or data.get("company")
+            or data.get("companyName")
+            or data.get("display")
+        ),
+        "profile": _normalize_text(
+            data.get("profile")
+            or data.get("description")
+            or data.get("summary")
+        ),
+    }
+
+
+def _normalize_price_expectation(data: object) -> Dict[str, str]:
+    if not isinstance(data, dict):
+        return {}
+    return {
+        "student_target": _normalize_text(
+            data.get("student_target")
+            or data.get("studentTarget")
+            or data.get("target")
+            or data.get("student")
+        ),
+        "ai_bottom_line": _normalize_text(
+            data.get("ai_bottom_line")
+            or data.get("aiBottomLine")
+            or data.get("bottomLine")
+            or data.get("ai")
+        ),
+    }
+
+
+def _normalize_product(data: object) -> Dict[str, object]:
+    if not isinstance(data, dict):
+        return {}
+    result: Dict[str, object] = {
+        "name": _normalize_text(data.get("name")),
+        "specifications": _normalize_text(
+            data.get("specifications")
+            or data.get("specs")
+            or data.get("features")
+        ),
+        "quantity_requirement": _normalize_text(
+            data.get("quantity_requirement")
+            or data.get("quantityRequirement")
+            or data.get("quantity")
+        ),
+    }
+    price_data = data.get("price_expectation") or data.get("priceExpectation")
+    price = _normalize_price_expectation(price_data)
+    if price:
+        result["price_expectation"] = price
+    if data.get("highlights"):
+        result["highlights"] = _normalize_text_list(data.get("highlights"))
+    return result
+
+
+def _first_non_empty(mapping: Dict[str, object], keys: Iterable[str]) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        text = _normalize_text(value)
+        if text:
+            return text
+    return ""
+
+
+def _assemble_scenario_from_blueprint(
+    blueprint: Dict[str, object], difficulty_key: str
+) -> Tuple[Dict[str, object], Dict[str, str]]:
+    scenario = {
+        "scenario_title": _first_non_empty(
+            blueprint, ["scenarioTitle", "title", "name"]
+        ),
+        "scenario_summary": _first_non_empty(
+            blueprint, ["scenarioSummary", "summary", "description"]
+        ),
+        "student_role": _first_non_empty(
+            blueprint, ["studentRole", "student_role", "student"]
+        ),
+        "student_company": _normalize_company(
+            blueprint.get("studentCompany") or blueprint.get("student_company")
+        ),
+        "ai_role": _first_non_empty(
+            blueprint, ["aiRole", "assistantRole", "ai_role"]
+        ),
+        "ai_company": _normalize_company(
+            blueprint.get("aiCompany") or blueprint.get("ai_company")
+        ),
+        "ai_rules": _normalize_text_list(
+            blueprint.get("aiRules") or blueprint.get("ai_rules")
+        ),
+        "product": _normalize_product(
+            blueprint.get("product") or blueprint.get("productInfo")
+        ),
+        "market_landscape": _first_non_empty(
+            blueprint, ["marketLandscape", "market_landscape", "market"]
+        ),
+        "timeline": _first_non_empty(
+            blueprint, ["timeline", "delivery", "schedule"]
+        ),
+        "logistics": _first_non_empty(
+            blueprint, ["logistics", "tradeTerms", "shipping"]
+        ),
+        "risks": _normalize_text_list(blueprint.get("risks")),
+        "negotiation_targets": _normalize_text_list(
+            blueprint.get("negotiationTargets") or blueprint.get("negotiation_targets")
+        ),
+        "communication_tone": _first_non_empty(
+            blueprint, ["communicationTone", "communication_tone", "tone"]
+        ),
+        "checklist": _normalize_text_list(
+            blueprint.get("checklist") or blueprint.get("taskChecklist")
+        ),
+        "knowledge_points": _normalize_text_list(
+            blueprint.get("knowledgePoints") or blueprint.get("knowledge_points")
+        ),
+        "opening_message": _first_non_empty(
+            blueprint, ["openingMessage", "opening_message", "opening"]
+        ),
+    }
+    scenario, profile = _apply_difficulty_profile(scenario, difficulty_key)
+    return scenario, profile
+
+
+def _build_custom_assignment_prompts(
+    scenario: Dict[str, object], difficulty_profile: Dict[str, str]
+) -> Tuple[str, str]:
+    flat = flatten_scenario_for_template(scenario)
+    ai_rules = scenario.get("ai_rules", []) or []
+    rules_block = "\n".join(f"- {rule}" for rule in ai_rules if isinstance(rule, str) and rule.strip())
+    if not rules_block:
+        rules_block = "- Maintain consistency with the scenario details and protect your company's interests."
+    tone = flat.get("communication_tone") or "Professional and courteous business English"
+    conversation_prompt = f"""
+You are {flat.get('ai_role') or 'the supplier representative'} from {flat.get('ai_company_name') or 'the partner company'}.
+The student is {flat.get('student_role') or 'a Chinese trade professional'} representing {flat.get('student_company_name') or 'their company'}.
+
+Scenario briefing:
+- Product focus: {flat.get('product_name') or 'N/A'} ({flat.get('product_specs') or 'specifications TBD'}).
+- Quantity / capacity: {flat.get('product_quantity') or 'Discuss with the student'}.
+- Market situation: {flat.get('market_landscape') or 'Use industry-relevant details'}.
+- Logistics & timeline: {flat.get('logistics') or 'Negotiate feasible terms'}.
+- Negotiation targets: {scenario.get('negotiation_targets') or []}.
+
+Ground rules:
+{rules_block}
+
+Conduct the negotiation entirely in English. Adopt a tone that is {tone}. Guide the student to articulate clear proposals, ask clarifying questions, and explore win-win trade-offs. Reference real-world trade considerations whenever helpful.
+""".strip()
+    suffix = difficulty_profile.get("prompt_suffix")
+    if suffix:
+        conversation_prompt = f"{conversation_prompt}\n\n[Difficulty]\n{suffix}"
+    if ENGLISH_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
+    if ROLE_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = f"{conversation_prompt}\n\n[Role Reminder]\n{ROLE_ENFORCEMENT_HINT}"
+
+    knowledge_hint = "、".join(scenario.get("knowledge_points", []) or []) or "Negotiation strategy, Cross-cultural communication"
+    evaluation_prompt = f"""
+You are an experienced trade negotiation coach. Review the scenario summary and the dialogue transcript to evaluate the student's performance. Respond in JSON with:
+{{
+  "score": integer 0-100,
+  "score_label": "Short label summarizing performance",
+  "commentary": "Detailed Chinese feedback highlighting strengths and improvements",
+  "action_items": ["3 concrete next steps"],
+  "knowledge_points": ["Key knowledge points, prefer: {knowledge_hint}"],
+  "bargaining_win_rate": "0-100 if bargaining outcome is discussed, else null"
+}}
+
+Focus on language quality, clarity of negotiation strategy, data support for proposals, and etiquette.
+""".strip()
+    return conversation_prompt, evaluation_prompt
+
+
+def _serialize_blueprint(record: Dict[str, object]) -> Dict[str, object]:
+    payload = {
+        "id": record["id"],
+        "title": record.get("title", ""),
+        "description": record.get("description", ""),
+        "difficulty": record.get("difficulty", DEFAULT_DIFFICULTY),
+        "blueprint": record.get("blueprint", {}),
+        "createdAt": record.get("createdAt"),
+        "updatedAt": record.get("updatedAt"),
+        "difficultyDescription": record.get("difficultyDescription", ""),
+    }
+    _inject_difficulty_metadata(payload)
+    blueprint_data = payload.get("blueprint", {})
+    if isinstance(blueprint_data, dict):
+        payload["scenarioPreview"] = _prepare_scenario_payload(blueprint_data)
+    else:
+        payload["scenarioPreview"] = {}
+    return payload
+
+
+def _serialize_assignment(record: Dict[str, object]) -> Dict[str, object]:
+    scenario_data = record.get("scenario", {}) or {}
+    payload = {
+        "id": record["id"],
+        "title": record.get("title", ""),
+        "description": record.get("description", ""),
+        "difficulty": record.get("difficulty", DEFAULT_DIFFICULTY),
+        "chapterId": record.get("chapterId"),
+        "sectionId": record.get("sectionId"),
+        "blueprintId": record.get("blueprintId"),
+        "scenario": _prepare_scenario_payload(scenario_data),
+        "createdAt": record.get("createdAt"),
+        "updatedAt": record.get("updatedAt"),
+        "dueAt": record.get("dueAt"),
+    }
+    if "assignedCount" in record:
+        payload["assignedCount"] = record.get("assignedCount", 0)
+    if "completedCount" in record:
+        payload["completedCount"] = record.get("completedCount", 0)
+    if "inProgressCount" in record:
+        payload["inProgressCount"] = record.get("inProgressCount", 0)
+    if "studentIds" in record and isinstance(record.get("studentIds"), list):
+        payload["studentIds"] = record.get("studentIds")
+    if "status" in record:
+        payload["status"] = record.get("status")
+    if "sessionId" in record:
+        payload["sessionId"] = record.get("sessionId")
+    if "submittedAt" in record:
+        payload["submittedAt"] = record.get("submittedAt")
+    _inject_difficulty_metadata(payload)
+    return payload
+
+
+def _normalize_student_header(value: object) -> str:
+    text = _normalize_text(value).lower()
+    if text in {"id", "账号", "學號", "学号", "user", "userid"}:
+        return "id"
+    if text in {"姓名", "name", "display", "nickname"}:
+        return "name"
+    if text in {"password", "密码", "pass", "pwd"}:
+        return "password"
+    return ""
+
+
+def _parse_student_records(file_storage) -> List[Dict[str, str]]:
+    workbook = load_workbook(file_storage, read_only=True, data_only=True)
+    sheet = workbook.active
+    rows = sheet.iter_rows(values_only=True)
+    try:
+        first_row = next(rows)
+    except StopIteration:
+        return []
+
+    headers = [_normalize_student_header(cell) for cell in (first_row or [])]
+    if not any(headers):
+        headers = ["id", "name", "password"]
+        rows = chain([first_row], rows)
+
+    records: List[Dict[str, str]] = []
+    for row in rows:
+        if not row:
+            continue
+        entry: Dict[str, str] = {"id": "", "name": "", "password": ""}
+        for index, cell in enumerate(row):
+            if index >= len(headers):
+                continue
+            key = headers[index]
+            if not key:
+                continue
+            entry[key] = _normalize_text(cell)
+        if entry["id"] and entry["password"]:
+            records.append(entry)
+    return records
 
 
 def _generate_scenario_for_section(
@@ -381,6 +690,109 @@ def login():
 def list_levels():
     chapters = _ensure_level_hierarchy(include_prompts=False)
     return jsonify({"chapters": chapters})
+
+
+@app.get("/api/blueprints")
+def list_blueprints_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    records = database.list_blueprints(int(user["id"]))
+    payload = [_serialize_blueprint(record) for record in records]
+    return jsonify({"blueprints": payload})
+
+
+@app.post("/api/blueprints")
+def create_blueprint_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    blueprint_raw = data.get("blueprint") or {}
+    if not isinstance(blueprint_raw, dict):
+        return jsonify({"error": "blueprint must be an object"}), 400
+
+    difficulty_key = str(
+        data.get("difficulty") or blueprint_raw.get("difficulty") or DEFAULT_DIFFICULTY
+    ).lower()
+    if difficulty_key not in DIFFICULTY_PROFILES:
+        difficulty_key = DEFAULT_DIFFICULTY
+
+    scenario, profile = _assemble_scenario_from_blueprint(blueprint_raw, difficulty_key)
+    title = _normalize_text(data.get("title")) or scenario.get("scenario_title") or "未命名关卡"
+    description = _normalize_text(data.get("description")) or scenario.get("scenario_summary", "")
+
+    record = database.create_blueprint(
+        owner_id=int(user["id"]),
+        title=title,
+        description=description,
+        difficulty=difficulty_key,
+        blueprint=scenario,
+    )
+    record["difficultyDescription"] = profile.get("description")
+    return jsonify({"blueprint": _serialize_blueprint(record)}), 201
+
+
+@app.put("/api/blueprints/<blueprint_id>")
+def update_blueprint_endpoint(blueprint_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    existing = database.get_blueprint(blueprint_id)
+    if not existing or int(existing.get("ownerId")) != int(user["id"]):
+        return jsonify({"error": "Blueprint not found"}), 404
+
+    data = request.get_json(force=True)
+    blueprint_raw = data.get("blueprint")
+    difficulty_key = str(data.get("difficulty") or existing.get("difficulty") or DEFAULT_DIFFICULTY).lower()
+    if difficulty_key not in DIFFICULTY_PROFILES:
+        difficulty_key = DEFAULT_DIFFICULTY
+
+    updates: Dict[str, object] = {
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "difficulty": difficulty_key,
+    }
+    scenario = None
+    profile = _get_difficulty_profile(difficulty_key)
+    if isinstance(blueprint_raw, dict):
+        scenario, profile = _assemble_scenario_from_blueprint(blueprint_raw, difficulty_key)
+        updates["blueprint"] = scenario
+
+    updated = database.update_blueprint(
+        blueprint_id,
+        title=_normalize_text(updates.get("title")) if updates.get("title") is not None else None,
+        description=_normalize_text(updates.get("description"))
+        if updates.get("description") is not None
+        else None,
+        difficulty=difficulty_key,
+        blueprint=scenario if scenario is not None else None,
+    )
+    if not updated:
+        return jsonify({"error": "Blueprint not found"}), 404
+    updated["difficultyDescription"] = profile.get("description")
+    return jsonify({"blueprint": _serialize_blueprint(updated)})
+
+
+@app.delete("/api/blueprints/<blueprint_id>")
+def delete_blueprint_endpoint(blueprint_id: str):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    existing = database.get_blueprint(blueprint_id)
+    if not existing or int(existing.get("ownerId")) != int(user["id"]):
+        return jsonify({"error": "Blueprint not found"}), 404
+
+    database.delete_blueprint(blueprint_id)
+    return jsonify({"status": "deleted"})
 
 
 @app.post("/api/generator/scenario")
@@ -514,6 +926,256 @@ def start_level():
         "difficulty": difficulty_key,
     }
     return jsonify(payload)
+
+
+@app.post("/api/assignments")
+def create_assignment_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    blueprint_id = data.get("blueprintId")
+    raw_scenario = data.get("scenario")
+    blueprint_raw = data.get("blueprint")
+
+    difficulty_key = str(
+        data.get("difficulty")
+        or (raw_scenario or {}).get("difficulty")
+        or (blueprint_raw or {}).get("difficulty")
+        or DEFAULT_DIFFICULTY
+    ).lower()
+    if difficulty_key not in DIFFICULTY_PROFILES:
+        difficulty_key = DEFAULT_DIFFICULTY
+
+    scenario: Optional[Dict[str, object]] = None
+    profile: Dict[str, str] = _get_difficulty_profile(difficulty_key)
+
+    if blueprint_id:
+        blueprint = database.get_blueprint(blueprint_id)
+        if not blueprint or int(blueprint.get("ownerId")) != int(user["id"]):
+            return jsonify({"error": "Blueprint not found"}), 404
+        scenario = copy.deepcopy(blueprint.get("blueprint") or {})
+        scenario, profile = _apply_difficulty_profile(scenario, difficulty_key)
+    elif isinstance(raw_scenario, dict) and "scenario_title" in raw_scenario:
+        scenario = copy.deepcopy(raw_scenario)
+        scenario, profile = _apply_difficulty_profile(scenario, difficulty_key)
+    elif isinstance(blueprint_raw, dict):
+        scenario, profile = _assemble_scenario_from_blueprint(blueprint_raw, difficulty_key)
+    else:
+        return jsonify({"error": "scenario or blueprint data is required"}), 400
+
+    chapter_id = data.get("chapterId")
+    section_id = data.get("sectionId")
+    description = _normalize_text(data.get("description")) or scenario.get("scenario_summary", "")
+    title = _normalize_text(data.get("title")) or scenario.get("scenario_title") or "统一作业"
+
+    conversation_prompt: str
+    evaluation_prompt: str
+    if chapter_id and section_id:
+        try:
+            section = _get_section(chapter_id, section_id)
+        except KeyError:
+            return jsonify({"error": "Invalid chapterId or sectionId"}), 404
+        conversation_prompt, evaluation_prompt = _render_prompts_from_section(
+            section, scenario, difficulty_key, profile
+        )
+    else:
+        conversation_prompt, evaluation_prompt = _build_custom_assignment_prompts(
+            scenario, profile
+        )
+
+    student_ids = []
+    raw_students = data.get("studentIds") or []
+    if isinstance(raw_students, list):
+        for value in raw_students:
+            try:
+                student_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+    assignment_id = f"assignment-{uuid.uuid4().hex[:12]}"
+    record = database.create_assignment(
+        assignment_id=assignment_id,
+        owner_id=int(user["id"]),
+        title=title,
+        description=description,
+        chapter_id=chapter_id,
+        section_id=section_id,
+        scenario=scenario,
+        conversation_prompt=conversation_prompt,
+        evaluation_prompt=evaluation_prompt,
+        difficulty=difficulty_key,
+        blueprint_id=blueprint_id,
+        due_at=data.get("dueAt"),
+        student_ids=student_ids,
+    )
+
+    response_payload = _serialize_assignment(record)
+    response_payload["difficultyDescription"] = profile.get("description")
+    response_payload["studentIds"] = student_ids
+    return jsonify({"assignment": response_payload}), 201
+
+
+@app.get("/api/assignments")
+def list_assignments_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    records = database.list_assignments_by_teacher(int(user["id"]))
+    payload = [_serialize_assignment(record) for record in records]
+    return jsonify({"assignments": payload})
+
+
+@app.get("/api/student/assignments")
+def list_student_assignments():
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    records = database.list_assignments_for_student(int(user["id"]))
+    payload = [_serialize_assignment(record) for record in records]
+    return jsonify({"assignments": payload})
+
+
+@app.post("/api/assignments/<assignment_id>/start")
+def start_assignment(assignment_id: str):
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    record = database.get_assignment_for_student(assignment_id, int(user["id"]))
+    if not record:
+        return jsonify({"error": "Assignment not found"}), 404
+
+    scenario = record.get("scenario") or {}
+    difficulty_key = record.get("difficulty") or DEFAULT_DIFFICULTY
+    if record.get("sessionId"):
+        session = database.get_session(record["sessionId"])
+        if session and int(session["user_id"]) == int(user["id"]):
+            evaluation = database.get_latest_evaluation(session["id"])
+            if evaluation:
+                _inject_difficulty_metadata(evaluation)
+            payload = {
+                "sessionId": session["id"],
+                "scenario": _prepare_scenario_payload(scenario),
+                "assignmentId": assignment_id,
+                "knowledgePoints": scenario.get("knowledge_points", []) or [],
+                "difficulty": difficulty_key,
+            }
+            _inject_difficulty_metadata(payload)
+            payload["evaluation"] = evaluation
+            return jsonify(payload)
+
+    session_id = uuid.uuid4().hex
+    expects_bargaining = False
+    product = scenario.get("product") if isinstance(scenario, dict) else {}
+    if isinstance(product, dict):
+        price_expectation = product.get("price_expectation") or {}
+        expects_bargaining = bool(
+            isinstance(price_expectation, dict)
+            and (
+                _normalize_text(price_expectation.get("student_target"))
+                or _normalize_text(price_expectation.get("ai_bottom_line"))
+            )
+        )
+
+    database.create_session(
+        session_id=session_id,
+        user_id=int(user["id"]),
+        chapter_id=record.get("chapterId"),
+        section_id=record.get("sectionId"),
+        system_prompt=record.get("conversationPrompt"),
+        evaluation_prompt=record.get("evaluationPrompt"),
+        scenario=scenario,
+        expects_bargaining=expects_bargaining,
+        difficulty=difficulty_key,
+        assignment_id=assignment_id,
+    )
+    database.link_assignment_session(assignment_id, int(user["id"]), session_id)
+
+    opening_message = scenario.get("opening_message")
+    if isinstance(opening_message, str) and opening_message.strip():
+        database.add_message(session_id, "assistant", opening_message.strip())
+
+    payload = {
+        "sessionId": session_id,
+        "scenario": _prepare_scenario_payload(scenario),
+        "assignmentId": assignment_id,
+        "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "openingMessage": opening_message or "",
+        "difficulty": difficulty_key,
+    }
+    _inject_difficulty_metadata(payload)
+    return jsonify(payload), 201
+
+
+@app.post("/api/admin/students/import")
+def import_students_endpoint():
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "file is required"}), 400
+    try:
+        records = _parse_student_records(file)
+    except Exception as exc:  # pragma: no cover - file parsing safety
+        return jsonify({"error": f"Failed to parse file: {exc}"}), 400
+
+    if not records:
+        return jsonify({"error": "No valid student rows found"}), 400
+
+    summary = database.bulk_import_students(records)
+    summary["total"] = len(records)
+    return jsonify({"result": summary})
+
+
+@app.post("/api/admin/students/<int:student_id>/password")
+def admin_reset_student_password(student_id: int):
+    user, error = _require_user(required_role="teacher")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    new_password = _normalize_text(data.get("newPassword"))
+    if len(new_password) < 4:
+        return jsonify({"error": "Password must be at least 4 characters"}), 400
+
+    detail = database.get_student_detail(student_id)
+    if not detail:
+        return jsonify({"error": "Student not found"}), 404
+
+    database.update_user_password(student_id, new_password)
+    return jsonify({"status": "updated"})
+
+
+@app.post("/api/account/password")
+def update_own_password():
+    user, error = _require_user()
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    current_password = data.get("currentPassword")
+    new_password = _normalize_text(data.get("newPassword"))
+    if len(new_password) < 4:
+        return jsonify({"error": "Password must be at least 4 characters"}), 400
+
+    if not current_password or not database.verify_user_password(int(user["id"]), current_password):
+        return jsonify({"error": "Current password is incorrect"}), 400
+
+    database.update_user_password(int(user["id"]), new_password)
+    return jsonify({"status": "updated"})
 
 
 @app.post("/api/chat")
@@ -671,6 +1333,8 @@ def _evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, 
     }
 
     database.save_evaluation(session_id, result)
+    if session.get("assignment_id"):
+        database.mark_assignment_completed_by_session(session_id)
     return result
 
 

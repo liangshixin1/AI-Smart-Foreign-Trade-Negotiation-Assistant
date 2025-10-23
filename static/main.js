@@ -18,6 +18,58 @@ const adminSessionList = document.getElementById("admin-session-list");
 const adminSessionScenario = document.getElementById("admin-session-scenario");
 const adminSessionConversation = document.getElementById("admin-session-conversation");
 const adminSessionEvaluation = document.getElementById("admin-session-evaluation");
+const adminAssignmentList = document.getElementById("admin-assignment-list");
+const adminAssignmentForm = document.getElementById("admin-assignment-form");
+const adminAssignmentStatus = document.getElementById("admin-assignment-status");
+const adminAssignmentIdInput = document.getElementById("admin-assignment-id");
+const adminAssignmentTitle = document.getElementById("admin-assignment-title");
+const adminAssignmentDescription = document.getElementById("admin-assignment-description");
+const adminAssignmentDifficulty = document.getElementById("admin-assignment-difficulty");
+const adminAssignmentChapter = document.getElementById("admin-assignment-chapter");
+const adminAssignmentSection = document.getElementById("admin-assignment-section");
+const adminAssignmentBlueprint = document.getElementById("admin-assignment-blueprint");
+const adminAssignmentScenario = document.getElementById("admin-assignment-scenario");
+const adminAssignmentStudents = document.getElementById("admin-assignment-students");
+const adminBlueprintList = document.getElementById("admin-blueprint-list");
+const adminBlueprintForm = document.getElementById("admin-blueprint-form");
+const adminBlueprintStatus = document.getElementById("admin-blueprint-status");
+const adminBlueprintIdInput = document.getElementById("admin-blueprint-id");
+const adminBlueprintTitle = document.getElementById("admin-blueprint-title");
+const adminBlueprintSummary = document.getElementById("admin-blueprint-summary");
+const adminBlueprintStudentRole = document.getElementById("admin-blueprint-student-role");
+const adminBlueprintAiRole = document.getElementById("admin-blueprint-ai-role");
+const adminBlueprintStudentCompanyName = document.getElementById("admin-blueprint-student-company-name");
+const adminBlueprintStudentCompanyProfile = document.getElementById("admin-blueprint-student-company-profile");
+const adminBlueprintAiCompanyName = document.getElementById("admin-blueprint-ai-company-name");
+const adminBlueprintAiCompanyProfile = document.getElementById("admin-blueprint-ai-company-profile");
+const adminBlueprintAiRules = document.getElementById("admin-blueprint-ai-rules");
+const adminBlueprintProductName = document.getElementById("admin-blueprint-product-name");
+const adminBlueprintProductSpecs = document.getElementById("admin-blueprint-product-specs");
+const adminBlueprintProductQuantity = document.getElementById("admin-blueprint-product-quantity");
+const adminBlueprintStudentPrice = document.getElementById("admin-blueprint-student-price");
+const adminBlueprintAiBottom = document.getElementById("admin-blueprint-ai-bottom");
+const adminBlueprintMarket = document.getElementById("admin-blueprint-market");
+const adminBlueprintTimeline = document.getElementById("admin-blueprint-timeline");
+const adminBlueprintLogistics = document.getElementById("admin-blueprint-logistics");
+const adminBlueprintNegotiationTargets = document.getElementById("admin-blueprint-negotiation-targets");
+const adminBlueprintRisks = document.getElementById("admin-blueprint-risks");
+const adminBlueprintChecklist = document.getElementById("admin-blueprint-checklist");
+const adminBlueprintKnowledge = document.getElementById("admin-blueprint-knowledge");
+const adminBlueprintOpening = document.getElementById("admin-blueprint-opening");
+const adminBlueprintDifficulty = document.getElementById("admin-blueprint-difficulty");
+const adminBlueprintReset = document.getElementById("admin-blueprint-reset");
+const adminStudentImportForm = document.getElementById("admin-student-import-form");
+const adminStudentImportFile = document.getElementById("admin-student-import-file");
+const adminStudentImportStatus = document.getElementById("admin-student-import-status");
+const adminStudentPasswordForm = document.getElementById("admin-student-password-form");
+const adminStudentPasswordInput = document.getElementById("admin-student-new-password");
+const adminStudentPasswordStatus = document.getElementById("admin-student-password-status");
+const studentAssignmentListEl = document.getElementById("student-assignment-list");
+const studentAssignmentStatus = document.getElementById("student-assignment-status");
+const studentPasswordForm = document.getElementById("student-password-form");
+const studentPasswordCurrent = document.getElementById("student-password-current");
+const studentPasswordNew = document.getElementById("student-password-new");
+const studentPasswordStatus = document.getElementById("student-password-status");
 
 const levelSelectionPanel = document.getElementById("level-selection-panel");
 const levelMapContainer = document.getElementById("level-map");
@@ -124,8 +176,13 @@ const state = {
     levels: [],
     selectedEditorChapterId: null,
     selectedEditorSectionId: null,
+    blueprints: [],
+    assignments: [],
+    selectedBlueprintId: null,
+    selectedAssignmentId: null,
   },
   studentInsights: null,
+  studentAssignments: [],
 };
 
 function toggleLoading(isLoading) {
@@ -958,7 +1015,7 @@ function renderAdminStudentList() {
     header.className = "flex items-center justify-between";
     const name = document.createElement("span");
     name.className = "font-semibold text-white";
-    name.textContent = `学生 ${student.username}`;
+    name.textContent = `学生 ${student.displayName || student.username}`;
     const openBtn = document.createElement("button");
     openBtn.className = "rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-500 hover:text-white";
     openBtn.textContent = "查看";
@@ -989,7 +1046,7 @@ function renderAdminStudentDetail(detail) {
   state.admin.studentDetail = detail;
 
   adminStudentMeta.innerHTML = `
-    <p class="text-sm text-slate-200">学生 ${detail.username}</p>
+    <p class="text-sm text-slate-200">学生 ${detail.displayName || detail.username}</p>
     <p class="text-xs text-slate-400">注册时间：${detail.createdAt || "-"}</p>
   `;
 
@@ -1085,6 +1142,349 @@ function renderAdminSessionDetail(data) {
   }
 }
 
+function splitLines(value) {
+  return (value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line);
+}
+
+function joinLines(list) {
+  return Array.isArray(list) ? list.join("\n") : "";
+}
+
+function resetBlueprintForm(blueprint = null) {
+  if (!adminBlueprintForm) return;
+  adminBlueprintIdInput.value = blueprint?.id || "";
+  adminBlueprintTitle.value = blueprint?.blueprint?.scenario_title || blueprint?.title || "";
+  adminBlueprintSummary.value = blueprint?.blueprint?.scenario_summary || blueprint?.description || "";
+  adminBlueprintStudentRole.value = blueprint?.blueprint?.student_role || "";
+  adminBlueprintAiRole.value = blueprint?.blueprint?.ai_role || "";
+  const studentCompany = (blueprint?.blueprint?.student_company) || {};
+  adminBlueprintStudentCompanyName.value = studentCompany.name || "";
+  adminBlueprintStudentCompanyProfile.value = studentCompany.profile || "";
+  const aiCompany = (blueprint?.blueprint?.ai_company) || {};
+  adminBlueprintAiCompanyName.value = aiCompany.name || "";
+  adminBlueprintAiCompanyProfile.value = aiCompany.profile || "";
+  adminBlueprintAiRules.value = joinLines(blueprint?.blueprint?.ai_rules || []);
+  const product = blueprint?.blueprint?.product || {};
+  const price = product.price_expectation || {};
+  adminBlueprintProductName.value = product.name || "";
+  adminBlueprintProductSpecs.value = product.specifications || "";
+  adminBlueprintProductQuantity.value = product.quantity_requirement || "";
+  adminBlueprintStudentPrice.value = price.student_target || "";
+  adminBlueprintAiBottom.value = price.ai_bottom_line || "";
+  adminBlueprintMarket.value = blueprint?.blueprint?.market_landscape || "";
+  adminBlueprintTimeline.value = blueprint?.blueprint?.timeline || "";
+  adminBlueprintLogistics.value = blueprint?.blueprint?.logistics || "";
+  adminBlueprintNegotiationTargets.value = joinLines(blueprint?.blueprint?.negotiation_targets || []);
+  adminBlueprintRisks.value = joinLines(blueprint?.blueprint?.risks || []);
+  adminBlueprintChecklist.value = joinLines(blueprint?.blueprint?.checklist || []);
+  adminBlueprintKnowledge.value = joinLines(blueprint?.blueprint?.knowledge_points || []);
+  adminBlueprintOpening.value = blueprint?.blueprint?.opening_message || "";
+  adminBlueprintDifficulty.value = blueprint?.difficulty || "balanced";
+}
+
+function selectAdminBlueprint(blueprintId) {
+  const blueprint = findAdminBlueprint(blueprintId);
+  if (!blueprint) {
+    return;
+  }
+  state.admin.selectedBlueprintId = blueprint.id;
+  resetBlueprintForm(blueprint);
+  renderBlueprintList();
+  if (adminBlueprintStatus) {
+    adminBlueprintStatus.textContent = "已载入蓝图，可编辑后保存";
+  }
+}
+
+function buildBlueprintPayloadFromForm() {
+  return {
+    scenarioTitle: adminBlueprintTitle.value.trim(),
+    scenarioSummary: adminBlueprintSummary.value.trim(),
+    studentRole: adminBlueprintStudentRole.value.trim(),
+    studentCompany: {
+      name: adminBlueprintStudentCompanyName.value.trim(),
+      profile: adminBlueprintStudentCompanyProfile.value.trim(),
+    },
+    aiRole: adminBlueprintAiRole.value.trim(),
+    aiCompany: {
+      name: adminBlueprintAiCompanyName.value.trim(),
+      profile: adminBlueprintAiCompanyProfile.value.trim(),
+    },
+    aiRules: splitLines(adminBlueprintAiRules.value),
+    product: {
+      name: adminBlueprintProductName.value.trim(),
+      specifications: adminBlueprintProductSpecs.value.trim(),
+      quantityRequirement: adminBlueprintProductQuantity.value.trim(),
+      priceExpectation: {
+        studentTarget: adminBlueprintStudentPrice.value.trim(),
+        aiBottomLine: adminBlueprintAiBottom.value.trim(),
+      },
+    },
+    marketLandscape: adminBlueprintMarket.value.trim(),
+    timeline: adminBlueprintTimeline.value.trim(),
+    logistics: adminBlueprintLogistics.value.trim(),
+    negotiationTargets: splitLines(adminBlueprintNegotiationTargets.value),
+    risks: splitLines(adminBlueprintRisks.value),
+    checklist: splitLines(adminBlueprintChecklist.value),
+    knowledgePoints: splitLines(adminBlueprintKnowledge.value),
+    openingMessage: adminBlueprintOpening.value.trim(),
+    difficulty: adminBlueprintDifficulty.value,
+  };
+}
+
+function renderBlueprintList() {
+  if (!adminBlueprintList) return;
+  adminBlueprintList.innerHTML = "";
+  const list = state.admin.blueprints || [];
+  if (list.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
+    empty.textContent = "暂无蓝图，请填写表单创建。";
+    adminBlueprintList.appendChild(empty);
+    return;
+  }
+
+  list.forEach((item) => {
+    const li = document.createElement("li");
+    const isActive = state.admin.selectedBlueprintId === item.id;
+    li.className = `rounded-2xl border p-4 text-sm transition ${
+      isActive
+        ? "border-purple-400/60 bg-purple-500/10"
+        : "border-slate-800 bg-slate-900/70 hover:border-purple-400/40"
+    }`;
+    li.dataset.blueprintId = item.id;
+    li.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="font-semibold text-white">${item.title || item.scenarioPreview?.title || "蓝图"}</p>
+          <p class="text-xs text-slate-400">${item.scenarioPreview?.summary || ""}</p>
+          <p class="text-xs text-slate-500">难度：${item.difficultyLabel || "平衡博弈"}</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-purple-400 hover:text-white" data-action="edit" data-blueprint-id="${item.id}">编辑</button>
+          <button class="rounded-lg border border-rose-500/70 px-3 py-1 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50" data-action="delete" data-blueprint-id="${item.id}">删除</button>
+        </div>
+      </div>
+    `;
+    adminBlueprintList.appendChild(li);
+  });
+}
+
+function populateAssignmentChapterOptions() {
+  if (!adminAssignmentChapter) return;
+  const selected = adminAssignmentChapter.value;
+  adminAssignmentChapter.innerHTML = '<option value="">不关联</option>';
+  (state.chapters || []).forEach((chapter) => {
+    const option = document.createElement("option");
+    option.value = chapter.id;
+    option.textContent = chapter.title || chapter.id;
+    if (chapter.id === selected) {
+      option.selected = true;
+    }
+    adminAssignmentChapter.appendChild(option);
+  });
+  updateAssignmentSectionOptions();
+}
+
+function updateAssignmentSectionOptions() {
+  if (!adminAssignmentSection) return;
+  const chapterId = adminAssignmentChapter ? adminAssignmentChapter.value : "";
+  const previous = adminAssignmentSection.value;
+  adminAssignmentSection.innerHTML = '<option value="">不关联</option>';
+  if (!chapterId) {
+    return;
+  }
+  const chapter = findChapter(chapterId);
+  if (!chapter) return;
+  (chapter.sections || []).forEach((section) => {
+    const option = document.createElement("option");
+    option.value = section.id;
+    option.textContent = section.title || section.id;
+    if (section.id === previous) {
+      option.selected = true;
+    }
+    adminAssignmentSection.appendChild(option);
+  });
+}
+
+function populateAssignmentBlueprintOptions() {
+  if (!adminAssignmentBlueprint) return;
+  const selected = adminAssignmentBlueprint.value;
+  adminAssignmentBlueprint.innerHTML = '<option value="">手动填写</option>';
+  (state.admin.blueprints || []).forEach((blueprint) => {
+    const option = document.createElement("option");
+    option.value = blueprint.id;
+    option.textContent = blueprint.title || blueprint.scenarioPreview?.title || blueprint.id;
+    if (blueprint.id === selected) {
+      option.selected = true;
+    }
+    adminAssignmentBlueprint.appendChild(option);
+  });
+}
+
+function renderAssignmentStudents(options = {}) {
+  if (!adminAssignmentStudents) return;
+  const existingChecked = Array.from(
+    adminAssignmentStudents.querySelectorAll("input[type='checkbox']:checked") || [],
+  ).map((input) => input.value);
+  let selectedIds = Array.isArray(options.selectedIds) ? options.selectedIds : existingChecked;
+  if ((!selectedIds || selectedIds.length === 0) && state.admin.selectedAssignmentId) {
+    const currentAssignment = findAdminAssignment(state.admin.selectedAssignmentId);
+    if (currentAssignment && Array.isArray(currentAssignment.studentIds)) {
+      selectedIds = currentAssignment.studentIds.map((value) => String(value));
+    }
+  }
+  const selectedSet = new Set((selectedIds || []).map((value) => String(value)));
+
+  adminAssignmentStudents.innerHTML = "";
+  const students = state.admin.students || [];
+  if (students.length === 0) {
+    adminAssignmentStudents.innerHTML = "<p>暂无学生名单，请先导入。</p>";
+    return;
+  }
+  students.forEach((student) => {
+    const label = document.createElement("label");
+    label.className = "flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-800/60";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = student.id;
+    checkbox.className = "rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-400";
+    checkbox.checked = selectedSet.has(String(student.id));
+    label.appendChild(checkbox);
+    const info = document.createElement("span");
+    info.textContent = `${student.displayName || student.username}（${student.username}）`;
+    label.appendChild(info);
+    adminAssignmentStudents.appendChild(label);
+  });
+}
+
+function renderAssignmentList() {
+  if (!adminAssignmentList) return;
+  adminAssignmentList.innerHTML = "";
+  const assignments = state.admin.assignments || [];
+  if (assignments.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
+    empty.textContent = "尚未创建统一作业";
+    adminAssignmentList.appendChild(empty);
+    return;
+  }
+  assignments.forEach((assignment) => {
+    const li = document.createElement("li");
+    const isActive = state.admin.selectedAssignmentId === assignment.id;
+    li.className = `rounded-2xl border p-4 text-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-400 ${
+      isActive
+        ? "border-emerald-400/60 bg-emerald-500/10"
+        : "border-slate-800 bg-slate-900/70 hover:border-emerald-400/40"
+    }`;
+    li.dataset.assignmentId = assignment.id;
+    li.tabIndex = 0;
+    li.innerHTML = `
+      <div class="flex flex-col gap-1">
+        <p class="font-semibold text-white">${assignment.title || assignment.scenario.title || "统一作业"}</p>
+        <p class="text-xs text-slate-400">${assignment.description || assignment.scenario.summary || ""}</p>
+        <p class="text-xs text-slate-500">难度：${assignment.difficultyLabel || "平衡博弈"}</p>
+        <p class="text-xs text-slate-500">学生：${assignment.assignedCount || 0} 人 · 进行中 ${assignment.inProgressCount || 0} · 完成 ${assignment.completedCount || 0}</p>
+      </div>
+    `;
+    adminAssignmentList.appendChild(li);
+  });
+}
+
+function populateAssignmentForm(assignment) {
+  if (!assignment || !adminAssignmentForm) {
+    if (adminAssignmentIdInput) adminAssignmentIdInput.value = "";
+    if (adminAssignmentTitle) adminAssignmentTitle.value = "";
+    if (adminAssignmentDescription) adminAssignmentDescription.value = "";
+    if (adminAssignmentDifficulty) adminAssignmentDifficulty.value = "balanced";
+    if (adminAssignmentChapter) adminAssignmentChapter.value = "";
+    updateAssignmentSectionOptions();
+    if (adminAssignmentSection) adminAssignmentSection.value = "";
+    if (adminAssignmentBlueprint) adminAssignmentBlueprint.value = "";
+    if (adminAssignmentScenario) adminAssignmentScenario.value = "";
+    renderAssignmentStudents({ selectedIds: [] });
+    return;
+  }
+
+  if (adminAssignmentIdInput) adminAssignmentIdInput.value = assignment.id || "";
+  if (adminAssignmentTitle) adminAssignmentTitle.value = assignment.title || "";
+  if (adminAssignmentDescription)
+    adminAssignmentDescription.value = assignment.description || "";
+  if (adminAssignmentDifficulty)
+    adminAssignmentDifficulty.value = assignment.difficulty || "balanced";
+  if (adminAssignmentChapter) {
+    adminAssignmentChapter.value = assignment.chapterId || "";
+  }
+  updateAssignmentSectionOptions();
+  if (adminAssignmentSection) {
+    adminAssignmentSection.value = assignment.sectionId || "";
+  }
+  if (adminAssignmentBlueprint) {
+    adminAssignmentBlueprint.value = assignment.blueprintId || "";
+  }
+  if (adminAssignmentScenario) {
+    try {
+      adminAssignmentScenario.value = JSON.stringify(assignment.scenario || {}, null, 2);
+    } catch (error) {
+      console.warn("无法序列化场景 JSON", error);
+      adminAssignmentScenario.value = "";
+    }
+  }
+  renderAssignmentStudents({ selectedIds: assignment.studentIds || [] });
+}
+
+function selectAdminAssignment(assignmentId) {
+  const assignment = findAdminAssignment(assignmentId);
+  if (!assignment) {
+    return;
+  }
+  state.admin.selectedAssignmentId = assignment.id;
+  populateAssignmentForm(assignment);
+  renderAssignmentList();
+  if (adminAssignmentStatus) {
+    adminAssignmentStatus.textContent = "已载入作业，可调整后重新保存";
+  }
+}
+
+function renderStudentAssignments() {
+  if (!studentAssignmentListEl) return;
+  studentAssignmentListEl.innerHTML = "";
+  const assignments = state.studentAssignments || [];
+  if (assignments.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
+    empty.textContent = "暂无待完成的作业";
+    studentAssignmentListEl.appendChild(empty);
+    return;
+  }
+  assignments.forEach((assignment) => {
+    const li = document.createElement("li");
+    li.className = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm";
+    const status = assignment.status || "pending";
+    const statusLabel =
+      status === "completed"
+        ? "已完成"
+        : status === "in_progress"
+        ? "进行中"
+        : "待开始";
+    li.innerHTML = `
+      <div class="flex flex-col gap-1">
+        <p class="font-semibold text-white">${assignment.title || assignment.scenario.title || "统一作业"}</p>
+        <p class="text-xs text-slate-400">${assignment.description || assignment.scenario.summary || ""}</p>
+        <p class="text-xs text-slate-500">难度：${assignment.difficultyLabel || "平衡博弈"}｜状态：${statusLabel}</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600" data-assignment-id="${assignment.id}">
+            ${status === "completed" ? "查看成绩" : assignment.sessionId ? "继续作业" : "开始作业"}
+          </button>
+        </div>
+      </div>
+    `;
+    studentAssignmentListEl.appendChild(li);
+  });
+}
+
 function renderAnalyticsList(container, items, formatItem, emptyText) {
   if (!container) return;
   container.innerHTML = "";
@@ -1147,6 +1547,28 @@ function findAdminChapter(chapterId) {
     const chapter = chapters[index];
     if (chapter.id === chapterId) {
       return chapter;
+    }
+  }
+  return null;
+}
+
+function findAdminAssignment(assignmentId) {
+  const assignments = state.admin.assignments || [];
+  for (let index = 0; index < assignments.length; index += 1) {
+    const assignment = assignments[index];
+    if (assignment.id === assignmentId) {
+      return assignment;
+    }
+  }
+  return null;
+}
+
+function findAdminBlueprint(blueprintId) {
+  const blueprints = state.admin.blueprints || [];
+  for (let index = 0; index < blueprints.length; index += 1) {
+    const blueprint = blueprints[index];
+    if (blueprint.id === blueprintId) {
+      return blueprint;
     }
   }
   return null;
@@ -1571,6 +1993,7 @@ async function loadLevels() {
     }
     const data = await response.json();
     state.chapters = data.chapters || [];
+    populateAssignmentChapterOptions();
     const { chapterId, sectionId } = state.selectedLevel || {};
     const currentSection = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
     if (!currentSection) {
@@ -1608,7 +2031,8 @@ function updateAuthUI() {
   if (state.auth.user) {
     authPanel.classList.add("hidden");
     logoutBtn.classList.remove("hidden");
-    userStatusLabel.textContent = `${state.auth.user.role === "teacher" ? "教师" : "学生"} ${state.auth.user.username}`;
+    const display = state.auth.user.displayName || state.auth.user.username;
+    userStatusLabel.textContent = `${state.auth.user.role === "teacher" ? "教师" : "学生"} ${display}`;
     if (state.auth.user.role === "student") {
       studentDashboard.classList.remove("hidden");
       adminPanel.classList.add("hidden");
@@ -1727,6 +2151,7 @@ async function loadAdminStudents() {
     const data = await response.json();
     state.admin.students = data.students || [];
     renderAdminStudentList();
+    renderAssignmentStudents();
   } catch (error) {
     console.error(error);
     alert(error.message || "加载学生数据失败");
@@ -1783,6 +2208,347 @@ async function loadAdminAnalytics() {
   } catch (error) {
     console.error(error);
     renderAdminAnalytics(null);
+  }
+}
+
+async function loadAdminBlueprints() {
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/blueprints");
+    if (!response.ok) {
+      throw new Error("无法加载蓝图列表");
+    }
+    const data = await response.json();
+    state.admin.blueprints = data.blueprints || [];
+    if (
+      state.admin.selectedBlueprintId &&
+      !state.admin.blueprints.some((item) => item.id === state.admin.selectedBlueprintId)
+    ) {
+      state.admin.selectedBlueprintId = null;
+      resetBlueprintForm();
+    }
+    renderBlueprintList();
+    populateAssignmentBlueprintOptions();
+  } catch (error) {
+    console.error(error);
+    if (adminBlueprintStatus) {
+      adminBlueprintStatus.textContent = error.message || "加载蓝图失败";
+    }
+  }
+}
+
+async function loadAdminAssignments() {
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/assignments");
+    if (!response.ok) {
+      throw new Error("无法加载作业列表");
+    }
+    const data = await response.json();
+    state.admin.assignments = data.assignments || [];
+    if (
+      state.admin.selectedAssignmentId &&
+      !state.admin.assignments.some((item) => item.id === state.admin.selectedAssignmentId)
+    ) {
+      state.admin.selectedAssignmentId = null;
+      if (adminAssignmentIdInput) {
+        adminAssignmentIdInput.value = "";
+      }
+      populateAssignmentForm(null);
+    } else if (state.admin.selectedAssignmentId) {
+      const selected = findAdminAssignment(state.admin.selectedAssignmentId);
+      if (selected) {
+        populateAssignmentForm(selected);
+      }
+    }
+    renderAssignmentList();
+    renderAssignmentStudents();
+  } catch (error) {
+    console.error(error);
+    if (adminAssignmentStatus) {
+      adminAssignmentStatus.textContent = error.message || "加载作业失败";
+    }
+  }
+}
+
+async function submitBlueprint(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const payload = {
+    title: adminBlueprintTitle.value.trim(),
+    description: adminBlueprintSummary.value.trim(),
+    difficulty: adminBlueprintDifficulty.value,
+    blueprint: buildBlueprintPayloadFromForm(),
+  };
+  const blueprintId = adminBlueprintIdInput.value;
+  const url = blueprintId ? `/api/blueprints/${blueprintId}` : "/api/blueprints";
+  const method = blueprintId ? "PUT" : "POST";
+  try {
+    if (adminBlueprintStatus) adminBlueprintStatus.textContent = "保存中...";
+    const response = await fetchWithAuth(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "保存蓝图失败");
+    }
+    const data = await response.json();
+    if (adminBlueprintStatus) adminBlueprintStatus.textContent = "蓝图已保存";
+    state.admin.selectedBlueprintId = data.blueprint?.id || null;
+    resetBlueprintForm(data.blueprint);
+    await loadAdminBlueprints();
+  } catch (error) {
+    console.error(error);
+    if (adminBlueprintStatus) adminBlueprintStatus.textContent = error.message || "保存蓝图失败";
+  }
+}
+
+async function deleteBlueprint(blueprintId) {
+  if (!blueprintId) return;
+  try {
+    const response = await fetchWithAuth(`/api/blueprints/${blueprintId}`, { method: "DELETE" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "删除失败");
+    }
+    if (adminBlueprintStatus) adminBlueprintStatus.textContent = "蓝图已删除";
+    if (adminBlueprintIdInput && adminBlueprintIdInput.value === blueprintId) {
+      state.admin.selectedBlueprintId = null;
+      resetBlueprintForm();
+    }
+    await loadAdminBlueprints();
+  } catch (error) {
+    console.error(error);
+    if (adminBlueprintStatus) adminBlueprintStatus.textContent = error.message || "删除蓝图失败";
+  }
+}
+
+async function submitAssignment(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const students = Array.from(
+    adminAssignmentStudents ? adminAssignmentStudents.querySelectorAll("input[type='checkbox']") : []
+  )
+    .filter((input) => input.checked)
+    .map((input) => Number(input.value));
+  let scenarioPayload = null;
+  if (adminAssignmentScenario && adminAssignmentScenario.value.trim()) {
+    try {
+      scenarioPayload = JSON.parse(adminAssignmentScenario.value.trim());
+    } catch (error) {
+      if (adminAssignmentStatus) {
+        adminAssignmentStatus.textContent = "场景 JSON 解析失败，请检查格式";
+      }
+      return;
+    }
+  }
+  const payload = {
+    title: adminAssignmentTitle.value.trim(),
+    description: adminAssignmentDescription.value.trim(),
+    difficulty: adminAssignmentDifficulty.value,
+    chapterId: adminAssignmentChapter.value || null,
+    sectionId: adminAssignmentSection.value || null,
+    blueprintId: adminAssignmentBlueprint.value || null,
+    studentIds: students,
+  };
+  if (scenarioPayload) {
+    payload.scenario = scenarioPayload;
+  }
+  try {
+    if (adminAssignmentStatus) adminAssignmentStatus.textContent = "发布中...";
+    const response = await fetchWithAuth("/api/assignments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "创建作业失败");
+    }
+    if (adminAssignmentStatus) adminAssignmentStatus.textContent = "作业已创建";
+    adminAssignmentForm.reset();
+    state.admin.selectedAssignmentId = null;
+    populateAssignmentForm(null);
+    populateAssignmentChapterOptions();
+    populateAssignmentBlueprintOptions();
+    renderAssignmentStudents();
+    await loadAdminAssignments();
+  } catch (error) {
+    console.error(error);
+    if (adminAssignmentStatus) adminAssignmentStatus.textContent = error.message || "创建作业失败";
+  }
+}
+
+async function loadStudentAssignments() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/student/assignments");
+    if (!response.ok) {
+      throw new Error("无法获取作业列表");
+    }
+    const data = await response.json();
+    state.studentAssignments = data.assignments || [];
+    renderStudentAssignments();
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = "";
+    }
+  } catch (error) {
+    console.error(error);
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = error.message || "加载作业失败";
+    }
+  }
+}
+
+async function startAssignmentSession(assignmentId) {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  toggleLoading(true);
+  try {
+    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "连接作业中...";
+    const response = await fetchWithAuth(`/api/assignments/${assignmentId}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "无法启动作业");
+    }
+    const data = await response.json();
+    state.sessionId = data.sessionId;
+    state.messages = [];
+    state.activeLevel = {
+      chapterId: data.chapterId || null,
+      sectionId: data.sectionId || null,
+      difficulty: data.difficulty || "balanced",
+    };
+    state.selectedLevel = {
+      chapterId: data.chapterId || null,
+      sectionId: data.sectionId || null,
+    };
+    updateSessionControls();
+    renderScenario(data.scenario || {});
+    resetEvaluation();
+    highlightSelectedLevel();
+    updateSelectedLevelDetail();
+    if (data.openingMessage) {
+      appendMessage("assistant", data.openingMessage);
+    }
+    collapseLevelSelection();
+    showExperience();
+    await loadSessions();
+    await loadStudentAssignments();
+    await loadStudentDashboardInsights();
+    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "";
+  } catch (error) {
+    console.error(error);
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = error.message || "启动作业失败";
+    }
+  } finally {
+    toggleLoading(false);
+  }
+}
+
+async function handleStudentPasswordChange(event) {
+  event.preventDefault();
+  if (!state.auth.user) return;
+  try {
+    const response = await fetchWithAuth("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: studentPasswordCurrent.value,
+        newPassword: studentPasswordNew.value,
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新密码失败");
+    }
+    studentPasswordCurrent.value = "";
+    studentPasswordNew.value = "";
+    studentPasswordStatus.textContent = "密码已更新";
+  } catch (error) {
+    console.error(error);
+    studentPasswordStatus.textContent = error.message || "更新密码失败";
+  }
+}
+
+async function handleAdminStudentPasswordReset(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  if (!state.admin.selectedStudentId) {
+    adminStudentPasswordStatus.textContent = "请先选择学生";
+    return;
+  }
+  const newPassword = adminStudentPasswordInput.value.trim();
+  if (newPassword.length < 4) {
+    adminStudentPasswordStatus.textContent = "密码至少 4 位";
+    return;
+  }
+  try {
+    const response = await fetchWithAuth(`/api/admin/students/${state.admin.selectedStudentId}/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "重置失败");
+    }
+    adminStudentPasswordInput.value = "";
+    adminStudentPasswordStatus.textContent = "已重置";
+  } catch (error) {
+    console.error(error);
+    adminStudentPasswordStatus.textContent = error.message || "重置失败";
+  }
+}
+
+async function handleStudentImport(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  if (!adminStudentImportFile || adminStudentImportFile.files.length === 0) {
+    adminStudentImportStatus.textContent = "请选择 Excel 文件";
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", adminStudentImportFile.files[0]);
+  try {
+    adminStudentImportStatus.textContent = "导入中...";
+    const response = await fetchWithAuth("/api/admin/students/import", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "导入失败");
+    }
+    const data = await response.json();
+    adminStudentImportStatus.textContent = `导入成功：新增 ${data.result.created || 0} 人，更新 ${data.result.updated || 0} 人`;
+    adminStudentImportFile.value = "";
+    await loadAdminStudents();
+  } catch (error) {
+    console.error(error);
+    adminStudentImportStatus.textContent = error.message || "导入失败";
   }
 }
 
@@ -2085,12 +2851,15 @@ async function handleLogin(event) {
 
     if (state.auth.user.role === "student") {
       await loadSessions();
+      await loadStudentAssignments();
       await loadStudentDashboardInsights();
       showStudentDashboardHome();
     } else {
       await loadAdminStudents();
       await loadAdminAnalytics();
       await loadAdminLevels();
+      await loadAdminBlueprints();
+      await loadAdminAssignments();
     }
   } catch (error) {
     console.error(error);
@@ -2114,8 +2883,13 @@ function handleLogout() {
     levels: [],
     selectedEditorChapterId: null,
     selectedEditorSectionId: null,
+    blueprints: [],
+    assignments: [],
+    selectedBlueprintId: null,
+    selectedAssignmentId: null,
   };
   state.studentInsights = null;
+  state.studentAssignments = [];
   sessionHistoryList.innerHTML = "";
   adminStudentList.innerHTML = "";
   adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -2123,6 +2897,49 @@ function handleLogout() {
   adminSessionScenario.innerHTML = "";
   adminSessionConversation.innerHTML = "";
   adminSessionEvaluation.innerHTML = "";
+  if (studentAssignmentListEl) {
+    studentAssignmentListEl.innerHTML = "";
+  }
+  if (studentAssignmentStatus) {
+    studentAssignmentStatus.textContent = "";
+  }
+  if (adminAssignmentStatus) {
+    adminAssignmentStatus.textContent = "";
+  }
+  if (adminBlueprintStatus) {
+    adminBlueprintStatus.textContent = "";
+  }
+  if (adminStudentImportStatus) {
+    adminStudentImportStatus.textContent = "";
+  }
+  if (adminStudentPasswordStatus) {
+    adminStudentPasswordStatus.textContent = "";
+  }
+  if (studentPasswordStatus) {
+    studentPasswordStatus.textContent = "";
+  }
+  if (adminAssignmentForm) {
+    adminAssignmentForm.reset();
+  }
+  populateAssignmentForm(null);
+  populateAssignmentChapterOptions();
+  populateAssignmentBlueprintOptions();
+  renderAssignmentList();
+  renderAssignmentStudents();
+  if (adminBlueprintForm) {
+    adminBlueprintForm.reset();
+  }
+  resetBlueprintForm();
+  renderBlueprintList();
+  if (adminStudentImportForm) {
+    adminStudentImportForm.reset();
+  }
+  if (adminStudentPasswordForm) {
+    adminStudentPasswordForm.reset();
+  }
+  if (studentPasswordForm) {
+    studentPasswordForm.reset();
+  }
   renderStudentInsights(null);
   renderAdminAnalytics(null);
   renderAdminLevelList();
@@ -2264,6 +3081,13 @@ if (adminTabButtons) {
         loadAdminStudents();
         loadAdminAnalytics();
       }
+      if (target === "assignments") {
+        loadAdminStudents();
+        loadAdminAssignments();
+      }
+      if (target === "blueprints") {
+        loadAdminBlueprints();
+      }
     });
   });
 }
@@ -2274,6 +3098,95 @@ if (adminStudentList) {
     if (!button) return;
     const studentId = button.dataset.studentId;
     loadAdminStudentDetail(studentId);
+  });
+}
+
+if (adminAssignmentForm) {
+  adminAssignmentForm.addEventListener("submit", submitAssignment);
+}
+
+if (adminAssignmentChapter) {
+  adminAssignmentChapter.addEventListener("change", () => {
+    updateAssignmentSectionOptions();
+    state.admin.selectedAssignmentId = null;
+    renderAssignmentList();
+    if (adminAssignmentStatus) {
+      adminAssignmentStatus.textContent = "";
+    }
+  });
+}
+
+if (adminAssignmentList) {
+  adminAssignmentList.addEventListener("click", (event) => {
+    const item = event.target.closest("li[data-assignment-id]");
+    if (!item) return;
+    selectAdminAssignment(item.dataset.assignmentId);
+  });
+  adminAssignmentList.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    const item = event.target.closest("li[data-assignment-id]");
+    if (!item) return;
+    event.preventDefault();
+    selectAdminAssignment(item.dataset.assignmentId);
+  });
+}
+
+if (studentAssignmentListEl) {
+  studentAssignmentListEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-assignment-id]");
+    if (!button) return;
+    startAssignmentSession(button.dataset.assignmentId);
+  });
+}
+
+if (studentPasswordForm) {
+  studentPasswordForm.addEventListener("submit", handleStudentPasswordChange);
+}
+
+if (adminStudentImportForm) {
+  adminStudentImportForm.addEventListener("submit", handleStudentImport);
+}
+
+if (adminStudentPasswordForm) {
+  adminStudentPasswordForm.addEventListener("submit", handleAdminStudentPasswordReset);
+}
+
+if (adminBlueprintForm) {
+  adminBlueprintForm.addEventListener("submit", submitBlueprint);
+}
+
+if (adminBlueprintReset) {
+  adminBlueprintReset.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.admin.selectedBlueprintId = null;
+    resetBlueprintForm();
+    renderBlueprintList();
+    if (adminBlueprintStatus) {
+      adminBlueprintStatus.textContent = "已切换至空白蓝图";
+    }
+  });
+}
+
+if (adminBlueprintList) {
+  adminBlueprintList.addEventListener("click", async (event) => {
+    const editButton = event.target.closest("button[data-action='edit']");
+    if (editButton) {
+      event.preventDefault();
+      selectAdminBlueprint(editButton.dataset.blueprintId);
+      return;
+    }
+    const deleteButton = event.target.closest("button[data-action='delete']");
+    if (deleteButton) {
+      event.preventDefault();
+      const blueprintId = deleteButton.dataset.blueprintId;
+      if (!blueprintId) return;
+      if (!confirm("确认删除该蓝图？")) {
+        return;
+      }
+      await deleteBlueprint(blueprintId);
+    }
   });
 }
 
