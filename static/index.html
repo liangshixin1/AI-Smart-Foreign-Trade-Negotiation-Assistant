@@ -303,17 +303,6 @@
 
       <section id="student-dashboard" class="hidden space-y-6">
         <section
-          class="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-blue-500/5 sm:p-6"
-        >
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div class="space-y-1">
-              <p class="text-xs uppercase tracking-[0.35em] text-slate-500">学习导航</p>
-              <h2 class="text-lg font-semibold text-white sm:text-xl">个人学习数据面板</h2>
-            </div>
-          </div>
-        </section>
-
-        <section
           id="level-selection-panel"
           class="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-blue-500/5 sm:p-6"
         >
@@ -381,135 +370,192 @@
         </section>
       </section>
 
-      <section id="experience" class="hidden">
-        <div
-          class="grid gap-6 lg:h-[calc(100vh-260px)] lg:grid-cols-[300px_minmax(0,1fr)_300px] lg:overflow-y-auto"
-        >
-          <aside
-            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6 lg:h-full lg:overflow-y-auto lg:pr-2"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-widest text-slate-500">
-                Scenario Briefing
-              </p>
-              <h2 id="scenario-title" class="mt-2 text-xl font-semibold text-white"></h2>
-              <p id="scenario-summary" class="mt-3 text-sm text-slate-300"></p>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">角色与公司</h3>
-              <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
-                <p class="font-semibold text-blue-200">学生</p>
-                <p id="student-role" class="mt-1 text-slate-300"></p>
-                <p id="student-company" class="mt-1 text-xs text-slate-400"></p>
-                <div class="mt-3 h-px bg-slate-800"></div>
-                <p class="mt-3 font-semibold text-emerald-200">AI</p>
-                <p id="ai-role" class="mt-1 text-slate-300"></p>
-                <p id="ai-company" class="mt-1 text-xs text-slate-400"></p>
-              </div>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">交易要点</h3>
-              <ul id="product-details" class="space-y-1 text-sm text-slate-300"></ul>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">谈判焦点</h3>
-              <ul id="negotiation-focus" class="list-disc space-y-1 pl-5 text-sm text-slate-300"></ul>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">风险提示</h3>
-              <ul id="risk-list" class="list-disc space-y-1 pl-5 text-sm text-slate-400"></ul>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">任务清单</h3>
-              <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-300"></ol>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">难度设定</h3>
-              <p id="scenario-difficulty" class="text-sm text-slate-300"></p>
-            </div>
-          </aside>
-
+      <section id="experience" class="hidden pb-24 lg:pb-0">
+        <div class="space-y-6">
           <section
-            class="flex min-h-[620px] flex-col rounded-3xl border border-slate-800 bg-slate-100 lg:h-full"
+            id="scenario-panel"
+            data-experience-module="scenario"
+            class="rounded-3xl border border-slate-800 bg-slate-950/70 shadow-xl shadow-blue-500/5"
           >
-            <div
-              id="chat-header"
-              class="flex items-center justify-between bg-blue-600 px-6 py-4 text-sm text-blue-50"
-            >
+            <div class="flex items-start justify-between gap-4 px-6 py-5">
               <div>
-                <p class="text-xs uppercase tracking-wider text-blue-200">对话对象</p>
-                <p id="chat-company" class="text-base font-semibold"></p>
+                <p class="text-xs uppercase tracking-widest text-slate-500">
+                  Scenario Briefing
+                </p>
+                <h2 id="scenario-title" class="mt-2 text-xl font-semibold text-white"></h2>
+                <p id="scenario-summary" class="mt-3 text-sm text-slate-300"></p>
               </div>
-              <div class="flex items-center gap-2">
-                <span id="chat-tone" class="rounded-full bg-blue-500/30 px-3 py-1 text-xs text-blue-100"></span>
-                <button
-                  id="reset-session"
-                  class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-200 hover:text-white"
-                >
-                  重置对话
-                </button>
-                <button
-                  id="reopen-level-map"
-                  class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-200 hover:text-white"
-                >
-                  关卡地图
-                </button>
-              </div>
+              <button
+                id="scenario-collapse-btn"
+                type="button"
+                class="shrink-0 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
+                aria-expanded="true"
+                aria-controls="scenario-panel-body"
+              >
+                收起 ▲
+              </button>
             </div>
             <div
-              id="chat-body"
-              class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6 lg:max-h-full"
-            ></div>
-            <div class="border-t border-slate-200 bg-white px-6 py-4">
-              <div class="flex gap-3">
-                <textarea
-                  id="chat-input"
-                  rows="2"
-                  class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
-                  placeholder="请输入你的回复，按 Enter 发送"
-                ></textarea>
-                <button
-                  id="send-message"
-                  class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
-                >
-                  发送
-                </button>
+              id="scenario-panel-body"
+              class="space-y-6 border-t border-slate-800/60 px-6 py-6"
+            >
+              <div class="grid gap-6 lg:grid-cols-3">
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">角色与公司</h3>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
+                      <p class="font-semibold text-blue-200">学生</p>
+                      <p id="student-role" class="mt-1 text-slate-300"></p>
+                      <p id="student-company" class="mt-1 text-xs text-slate-400"></p>
+                      <div class="mt-3 h-px bg-slate-800"></div>
+                      <p class="mt-3 font-semibold text-emerald-200">AI</p>
+                      <p id="ai-role" class="mt-1 text-slate-300"></p>
+                      <p id="ai-company" class="mt-1 text-xs text-slate-400"></p>
+                    </div>
+                  </div>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">交易要点</h3>
+                    <ul id="product-details" class="space-y-1 text-sm text-slate-300"></ul>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">谈判焦点</h3>
+                    <ul id="negotiation-focus" class="list-disc space-y-1 pl-5 text-sm text-slate-300"></ul>
+                  </div>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">风险提示</h3>
+                    <ul id="risk-list" class="list-disc space-y-1 pl-5 text-sm text-slate-400"></ul>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">任务清单</h3>
+                    <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-300"></ol>
+                  </div>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">难度设定</h3>
+                    <p id="scenario-difficulty" class="text-sm text-slate-300"></p>
+                  </div>
+                </div>
               </div>
-              <p class="mt-2 text-xs text-slate-400">
-                提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
-              </p>
             </div>
           </section>
 
-          <aside
-            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6 lg:h-full lg:overflow-y-auto lg:pr-2"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-widest text-slate-500">
-                Evaluation
-              </p>
-              <h2 class="mt-2 text-xl font-semibold text-white">即时反馈</h2>
-            </div>
-            <div class="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
-              <p class="text-xs uppercase tracking-widest text-emerald-200">
-                当前得分 / 胜率
-              </p>
-              <p id="evaluation-score" class="mt-3 text-4xl font-bold text-emerald-300">--</p>
-              <p id="evaluation-score-label" class="text-sm text-emerald-200"></p>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">评语</h3>
-              <p id="evaluation-commentary" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"></p>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">改进建议</h3>
-              <ul id="evaluation-actions" class="list-disc space-y-2 pl-5 text-sm text-slate-300"></ul>
-            </div>
-            <div class="space-y-3">
-              <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
-              <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
-            </div>
-          </aside>
+          <div class="space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)] lg:items-start lg:gap-6 lg:space-y-0">
+            <section
+              data-experience-module="chat"
+              class="flex min-h-[520px] flex-col rounded-3xl border border-slate-800 bg-slate-100"
+            >
+              <div
+                id="chat-header"
+                class="flex items-center justify-between bg-blue-600 px-6 py-4 text-sm text-blue-50"
+              >
+                <div>
+                  <p class="text-xs uppercase tracking-wider text-blue-200">对话对象</p>
+                  <p id="chat-company" class="text-base font-semibold"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span id="chat-tone" class="rounded-full bg-blue-500/30 px-3 py-1 text-xs text-blue-100"></span>
+                  <button
+                    id="reset-session"
+                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-200 hover:text-white"
+                  >
+                    重置对话
+                  </button>
+                  <button
+                    id="reopen-level-map"
+                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-200 hover:text-white"
+                  >
+                    关卡地图
+                  </button>
+                </div>
+              </div>
+              <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6"></div>
+              <div class="border-t border-slate-200 bg-white px-6 py-4">
+                <div class="flex gap-3">
+                  <textarea
+                    id="chat-input"
+                    rows="2"
+                    class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
+                    placeholder="请输入你的回复，按 Enter 发送"
+                  ></textarea>
+                  <button
+                    id="send-message"
+                    class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
+                  >
+                    发送
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">
+                  提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
+                </p>
+              </div>
+            </section>
+
+            <aside
+              data-experience-module="evaluation"
+              class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+            >
+              <div>
+                <p class="text-xs uppercase tracking-widest text-slate-500">
+                  Evaluation
+                </p>
+                <h2 class="mt-2 text-xl font-semibold text-white">即时反馈</h2>
+              </div>
+              <div class="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+                <p class="text-xs uppercase tracking-widest text-emerald-200">
+                  当前得分 / 胜率
+                </p>
+                <p id="evaluation-score" class="mt-3 text-4xl font-bold text-emerald-300">--</p>
+                <p id="evaluation-score-label" class="text-sm text-emerald-200"></p>
+              </div>
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-200">评语</h3>
+                <p id="evaluation-commentary" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"></p>
+              </div>
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-200">改进建议</h3>
+                <ul id="evaluation-actions" class="list-disc space-y-2 pl-5 text-sm text-slate-300"></ul>
+              </div>
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
+                <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <div
+          id="mobile-experience-tabs"
+          class="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden"
+        >
+          <nav class="flex items-stretch justify-around">
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="scenario"
+              aria-controls="scenario-panel"
+            >
+              <span>场景简报</span>
+            </button>
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="chat"
+              aria-controls="chat-body"
+            >
+              <span>模拟实训</span>
+            </button>
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="evaluation"
+              aria-controls="evaluation-score"
+            >
+              <span>即时反馈</span>
+            </button>
+          </nav>
         </div>
       </section>
 
