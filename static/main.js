@@ -87,6 +87,11 @@ const abilityRadarEmpty = document.getElementById("ability-radar-empty");
 const abilityHistoryList = document.getElementById("ability-history");
 const abilityKnowledgeEl = document.getElementById("ability-knowledge");
 const scenarioDifficultyEl = document.getElementById("scenario-difficulty");
+const scenarioPanel = document.getElementById("scenario-panel");
+const scenarioCollapseBtn = document.getElementById("scenario-collapse-btn");
+const scenarioPanelBody = document.getElementById("scenario-panel-body");
+const experienceModules = document.querySelectorAll("[data-experience-module]");
+const experienceTabButtons = document.querySelectorAll(".experience-tab");
 
 const adminTrendList = document.getElementById("admin-trend-list");
 const adminActionHotspots = document.getElementById("admin-action-hotspots");
@@ -94,6 +99,8 @@ const adminKnowledgeWeakness = document.getElementById("admin-knowledge-weakness
 
 let abilityRadarChart = null;
 let currentStudentModalTab = null;
+let activeExperienceModule = "chat";
+let isScenarioCollapsed = false;
 
 const state = {
   auth: {
@@ -391,6 +398,7 @@ function showExperience() {
   }
   studentDashboard.classList.remove("hidden");
   experienceSection.classList.remove("hidden");
+  setActiveExperienceModule("chat");
   if (chatInputEl) {
     chatInputEl.disabled = false;
     chatInputEl.focus();
@@ -474,6 +482,9 @@ function renderList(container, items, ordered = false) {
 }
 
 function renderKnowledge(container, items) {
+  if (!container) {
+    return;
+  }
   const values = Array.isArray(items)
     ? items
     : items
@@ -481,13 +492,89 @@ function renderKnowledge(container, items) {
     : [];
 
   container.innerHTML = "";
+  if (values.length === 0) {
+    const pill = document.createElement("span");
+    pill.className = "knowledge-pill";
+    pill.textContent = "暂无知识点";
+    container.appendChild(pill);
+    return;
+  }
+
   values.forEach((item) => {
     const pill = document.createElement("span");
     pill.className = "knowledge-pill";
-    pill.dataset.tooltip = "待开发";
-    pill.textContent = item;
+    if (item && typeof item === "object") {
+      pill.textContent = item.label || item.name || item.title || "知识点";
+      if (item.description || item.detail) {
+        pill.dataset.tooltip = item.description || item.detail;
+      }
+    } else {
+      pill.textContent = item;
+    }
     container.appendChild(pill);
   });
+}
+
+function setActiveExperienceModule(moduleId) {
+  if (!moduleId) {
+    return;
+  }
+  const modules = Array.from(experienceModules || []);
+  if (modules.length === 0) {
+    return;
+  }
+  const exists = modules.some((module) => module.dataset.experienceModule === moduleId);
+  if (!exists) {
+    return;
+  }
+  activeExperienceModule = moduleId;
+  updateExperienceLayout();
+}
+
+function updateExperienceLayout() {
+  const modules = Array.from(experienceModules || []);
+  if (modules.length === 0) {
+    return;
+  }
+  const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+  modules.forEach((module) => {
+    if (!module.dataset.experienceModule) {
+      return;
+    }
+    if (isDesktop) {
+      module.classList.remove("hidden");
+    } else if (module.dataset.experienceModule === activeExperienceModule) {
+      module.classList.remove("hidden");
+    } else {
+      module.classList.add("hidden");
+    }
+  });
+
+  const tabs = Array.from(experienceTabButtons || []);
+  tabs.forEach((button) => {
+    const isActive = button.dataset.experienceTab === activeExperienceModule;
+    button.classList.remove("text-slate-100", "text-slate-200", "text-slate-300", "text-slate-400");
+    button.classList.toggle("font-semibold", isActive);
+    button.classList.toggle("font-medium", !isActive);
+    button.classList.add(isActive ? "text-slate-100" : "text-slate-400");
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function toggleScenarioPanel() {
+  if (!scenarioPanelBody || !scenarioCollapseBtn) {
+    return;
+  }
+  isScenarioCollapsed = !isScenarioCollapsed;
+  if (isScenarioCollapsed) {
+    scenarioPanelBody.classList.add("hidden");
+    scenarioCollapseBtn.setAttribute("aria-expanded", "false");
+    scenarioCollapseBtn.textContent = "展开 ▼";
+  } else {
+    scenarioPanelBody.classList.remove("hidden");
+    scenarioCollapseBtn.setAttribute("aria-expanded", "true");
+    scenarioCollapseBtn.textContent = "收起 ▲";
+  }
 }
 
 function renderAbilityKnowledge(container, items) {
@@ -2153,6 +2240,18 @@ if (resetSessionBtn) {
   resetSessionBtn.addEventListener("click", resetCurrentSession);
 }
 
+if (experienceTabButtons && experienceTabButtons.length > 0) {
+  experienceTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveExperienceModule(button.dataset.experienceTab);
+    });
+  });
+}
+
+if (scenarioCollapseBtn) {
+  scenarioCollapseBtn.addEventListener("click", toggleScenarioPanel);
+}
+
 if (adminTabButtons) {
   adminTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -2226,6 +2325,9 @@ if (levelSaveSectionBtn) {
 if (levelDeleteSectionBtn) {
   levelDeleteSectionBtn.addEventListener("click", deleteAdminSection);
 }
+
+window.addEventListener("resize", updateExperienceLayout);
+updateExperienceLayout();
 
 renderStudentInsights(null);
 renderAdminAnalytics(null);
