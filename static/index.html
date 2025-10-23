@@ -177,13 +177,23 @@
       .tab-panel-active {
         display: block;
       }
-      .student-option {
+      .student-top-btn {
+        border-radius: 9999px;
+        border: 1px solid rgba(100, 116, 139, 0.6);
+        padding: 0.35rem 0.9rem;
+        color: rgba(226, 232, 240, 0.85);
         backdrop-filter: blur(12px);
+        transition: all 0.2s ease;
+      }
+      .student-top-btn:hover {
+        border-color: rgba(96, 165, 250, 0.8);
+        color: #f8fafc;
       }
       .student-option-active {
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.32), rgba(59, 130, 246, 0.28));
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.38), rgba(59, 130, 246, 0.28));
         color: #dbeafe;
-        box-shadow: 0 18px 35px rgba(37, 99, 235, 0.2);
+        box-shadow: 0 18px 35px rgba(37, 99, 235, 0.28);
+        border-color: rgba(96, 165, 250, 0.8);
       }
       @media (max-width: 768px) {
         header .flex {
@@ -203,7 +213,7 @@
             章节式关卡体验 · 协作生成 × 批判评价 · 场景自定义编辑器
           </p>
         </div>
-        <div class="flex flex-col items-end gap-2 text-xs text-slate-400">
+        <div class="flex flex-col items-end gap-3 text-xs text-slate-400">
           <div id="user-status" class="flex items-center gap-3 text-sm">
             <span id="user-status-label" class="text-slate-400">未登录</span>
             <button
@@ -213,8 +223,30 @@
               退出登录
             </button>
           </div>
+          <div
+            id="student-top-controls"
+            class="hidden flex flex-wrap justify-end gap-2 text-sm"
+          >
+            <button
+              type="button"
+              class="student-top-btn"
+              data-student-option="history"
+              aria-pressed="false"
+            >
+              历史对话与进度
+            </button>
+            <button
+              type="button"
+              class="student-top-btn"
+              data-student-option="growth"
+              aria-pressed="false"
+            >
+              学生个人成长看板
+            </button>
+          </div>
           <div class="leading-5 text-right">
             <p>服务器需配置：</p>
+            <p><code>DEEPSEEK_GENERATOR_KEY</code>（生成背景）</p>
             <p><code>DEEPSEEK_COLLAB_KEY</code>（协作生成）</p>
             <p><code>DEEPSEEK_CRITIC_KEY</code>（评价反馈）</p>
           </div>
@@ -278,32 +310,7 @@
               <p class="text-xs uppercase tracking-[0.35em] text-slate-500">学习导航</p>
               <h2 class="text-lg font-semibold text-white sm:text-xl">个人学习数据面板</h2>
               <p class="text-xs text-slate-400 sm:text-sm">
-                通过顶部选项卡唤起悬浮窗，随时查看历史对话与成长看板。
-              </p>
-            </div>
-            <div class="w-full sm:w-auto">
-              <div
-                class="flex overflow-x-auto rounded-2xl border border-slate-800/70 bg-slate-900/60 p-1 text-sm shadow-inner"
-              >
-                <button
-                  type="button"
-                  class="student-option flex-1 min-w-[160px] rounded-2xl px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                  data-student-option="history"
-                  aria-pressed="false"
-                >
-                  历史对话与进度
-                </button>
-                <button
-                  type="button"
-                  class="student-option flex-1 min-w-[160px] rounded-2xl px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                  data-student-option="growth"
-                  aria-pressed="false"
-                >
-                  学生个人成长看板
-                </button>
-              </div>
-              <p class="mt-2 text-xs text-slate-500 sm:text-right">
-                点选选项卡打开悬浮窗，掌握学习节奏
+                顶部快捷入口可随时打开历史对话与成长看板悬浮窗。
               </p>
             </div>
           </div>
@@ -379,10 +386,10 @@
 
       <section id="experience" class="hidden">
         <div
-          class="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)_300px]"
+          class="grid gap-6 lg:h-[calc(100vh-260px)] lg:grid-cols-[300px_minmax(0,1fr)_300px] lg:overflow-hidden"
         >
           <aside
-            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6 lg:h-full lg:overflow-y-auto lg:pr-2"
           >
             <div>
               <p class="text-xs uppercase tracking-widest text-slate-500">
@@ -426,7 +433,7 @@
           </aside>
 
           <section
-            class="flex min-h-[620px] flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-100"
+            class="flex min-h-[620px] flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-100 lg:h-full"
           >
             <div
               id="chat-header"
@@ -452,7 +459,10 @@
                 </button>
               </div>
             </div>
-            <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6"></div>
+            <div
+              id="chat-body"
+              class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6 lg:max-h-full"
+            ></div>
             <div class="border-t border-slate-200 bg-white px-6 py-4">
               <div class="flex gap-3">
                 <textarea
@@ -475,7 +485,7 @@
           </section>
 
           <aside
-            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+            class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6 lg:h-full lg:overflow-y-auto lg:pr-2"
           >
             <div>
               <p class="text-xs uppercase tracking-widest text-slate-500">

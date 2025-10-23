@@ -5,7 +5,14 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    request,
+    send_from_directory,
+    stream_with_context,
+)
 from openai import OpenAI
 
 import database
@@ -66,7 +73,12 @@ DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
 
 SCENARIO_DIVERSITY_HINT = (
     "请在设计谈判情境时兼顾制造业、服务业、数字贸易、农业、文化创意等多元行业，"
-    "避免始终聚焦于电子产品或消费电子案例，使学生能够接触不同的外贸品类。"
+    "覆盖实体商品与解决方案型产品，避免始终聚焦于单一品类，使学生能够接触多元贸易机会。"
+)
+
+ROLE_ENFORCEMENT_HINT = (
+    "学生在本场景中必须明确扮演来自中国的买家或卖家，可根据任务设置选择进口商或出口商。"
+    "请确保 student_role 字段中包含‘中国’字样，并给出行业、职位描述。"
 )
 
 CONVERSATION_DIVERSITY_HINT = (
@@ -160,6 +172,21 @@ def _complete_chat(api_key: str, messages: List[Dict[str, str]], temperature: fl
     return response.choices[0].message.content or ""
 
 
+def _stream_chat(api_key: str, messages: List[Dict[str, str]], temperature: float = 0.7):
+    client = _create_client(api_key)
+    stream = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        temperature=temperature,
+        stream=True,
+    )
+    for chunk in stream:
+        for choice in chunk.choices or []:
+            delta = getattr(choice, "delta", None)
+            if delta and getattr(delta, "content", None):
+                yield delta.content
+
+
 def _extract_json_block(text: str) -> Dict[str, object]:
     cleaned = text.strip().strip("`")
     start = cleaned.find("{")
@@ -194,6 +221,60 @@ def _prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "difficultyDescription": raw.get("difficulty_description")
         or profile["description"],
     }
+
+
+def _infer_student_trade_role(section: Dict[str, object]) -> str:
+    text_segments: List[str] = []
+    for key in ("description", "environment_user_message", "title"):
+        value = section.get(key)
+        if isinstance(value, str):
+            text_segments.append(value)
+    text_blob = " ".join(text_segments)
+    lowered = text_blob.lower()
+    if any(keyword in text_blob for keyword in ("卖家", "出口", "供货", "供應")):
+        return "seller"
+    if any(keyword in lowered for keyword in ("sell", "export")):
+        return "seller"
+    return "buyer"
+
+
+def _ensure_chinese_student_role(scenario: Dict[str, object], trade_role: str) -> None:
+    student_role = scenario.get("student_role")
+    normalized = student_role.strip() if isinstance(student_role, str) else ""
+    if "中国" not in normalized:
+        normalized = f"中国{normalized}" if normalized else "中国外贸业务代表"
+
+    if trade_role == "seller":
+        if not any(keyword in normalized for keyword in ("卖", "出口", "供货", "供应")):
+            normalized = f"中国卖家代表（{normalized}）"
+    else:
+        if not any(keyword in normalized for keyword in ("买", "采购", "进口")):
+            normalized = f"中国买家代表（{normalized}）"
+
+    scenario["student_role"] = normalized
+
+
+def _generate_scenario_for_section(
+    section: Dict[str, object], difficulty_key: str
+) -> Tuple[Dict[str, object], Dict[str, str]]:
+    try:
+        generator_key = _require_key("DEEPSEEK_GENERATOR_KEY")
+    except MissingKeyError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    messages = [
+        {"role": "system", "content": section["environment_prompt_template"]},
+        {"role": "system", "content": SCENARIO_DIVERSITY_HINT},
+        {"role": "system", "content": ROLE_ENFORCEMENT_HINT},
+        {"role": "user", "content": section["environment_user_message"]},
+    ]
+
+    raw_response = _complete_chat(generator_key, messages, temperature=0.85)
+    scenario = _extract_json_block(raw_response)
+    trade_role = _infer_student_trade_role(section)
+    _ensure_chinese_student_role(scenario, trade_role)
+    scenario, profile = _apply_difficulty_profile(scenario, difficulty_key)
+    return scenario, profile
 
 
 def _build_transcript(history: List[Dict[str, str]], scenario: Dict[str, object]) -> str:
@@ -296,17 +377,12 @@ def list_levels():
     return jsonify({"chapters": chapters})
 
 
-@app.post("/api/start_level")
-def start_level():
-    user, error = _require_user(required_role="student")
+@app.post("/api/generator/scenario")
+def generator_scenario():
+    user, error = _require_user()
     if error:
         body, status = error
         return jsonify(body), status
-
-    try:
-        collab_key = _require_key("DEEPSEEK_COLLAB_KEY")
-    except MissingKeyError as exc:  # pragma: no cover - runtime environment guard
-        return jsonify({"error": str(exc)}), 500
 
     data = request.get_json(force=True)
     chapter_id = data.get("chapterId")
@@ -323,15 +399,50 @@ def start_level():
     except KeyError as exc:
         return jsonify({"error": str(exc)}), 404
 
-    messages = [
-        {"role": "system", "content": section["environment_prompt_template"]},
-        {"role": "system", "content": SCENARIO_DIVERSITY_HINT},
-        {"role": "user", "content": section["environment_user_message"]},
-    ]
+    try:
+        scenario, profile = _generate_scenario_for_section(section, difficulty_key)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except Exception as exc:  # pragma: no cover - tolerate upstream variance
+        return jsonify({"error": f"Failed to generate scenario: {exc}"}), 500
+
+    payload = {
+        "scenario": scenario,
+        "difficulty": difficulty_key,
+        "difficultyLabel": profile.get("label"),
+        "difficultyDescription": profile.get("description"),
+        "chapterId": chapter_id,
+        "sectionId": section_id,
+    }
+    return jsonify(payload)
+
+
+@app.post("/api/start_level")
+def start_level():
+    user, error = _require_user(required_role="student")
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    chapter_id = data.get("chapterId")
+    section_id = data.get("sectionId")
+    difficulty_key = str(data.get("difficulty") or DEFAULT_DIFFICULTY).lower()
+    if difficulty_key not in DIFFICULTY_PROFILES:
+        difficulty_key = DEFAULT_DIFFICULTY
+
+    if not chapter_id or not section_id:
+        return jsonify({"error": "chapterId and sectionId are required"}), 400
 
     try:
-        raw_response = _complete_chat(collab_key, messages, temperature=0.8)
-        scenario = _extract_json_block(raw_response)
+        section = _get_section(chapter_id, section_id)
+    except KeyError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    try:
+        scenario, difficulty_profile = _generate_scenario_for_section(
+            section, difficulty_key
+        )
     except Exception as exc:  # pragma: no cover - protects against LLM format variance
         return (
             jsonify(
@@ -342,8 +453,6 @@ def start_level():
             ),
             500,
         )
-
-    scenario, difficulty_profile = _apply_difficulty_profile(scenario, difficulty_key)
 
     flat_context = flatten_scenario_for_template(scenario)
     if not flat_context.get("knowledge_points_hint"):
@@ -359,6 +468,11 @@ def start_level():
     if CONVERSATION_DIVERSITY_HINT not in conversation_prompt:
         conversation_prompt = (
             f"{conversation_prompt}\n\n[案例多样性提醒]\n{CONVERSATION_DIVERSITY_HINT}"
+        )
+    if ROLE_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[角色约束]\n请始终以学生为中国买家或中国卖家来组织对话，"
+            "在回应中适时引用中国市场或供应链视角。"
         )
     evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
 
@@ -421,10 +535,52 @@ def chat():
     database.add_message(session_id, "user", user_message)
 
     history_rows = database.get_messages(session_id)
-    history: List[Dict[str, str]] = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+    history: List[Dict[str, str]] = [
+        {"role": row["role"], "content": row["content"]} for row in history_rows
+    ]
 
     messages = [{"role": "system", "content": session["system_prompt"]}]
     messages.extend(history)
+
+    stream_requested = _as_bool(request.args.get("stream"))
+
+    if stream_requested:
+
+        def event_stream():
+            chunks: List[str] = []
+            try:
+                for delta in _stream_chat(collab_key, messages, temperature=0.7):
+                    chunks.append(delta)
+                    payload = json.dumps({"content": delta})
+                    yield f"event: chunk\ndata: {payload}\n\n"
+            except Exception as exc:  # pragma: no cover - tolerate upstream errors
+                database.remove_last_message(session_id)
+                error_payload = json.dumps({"error": str(exc)})
+                yield f"event: error\ndata: {error_payload}\n\n"
+                return
+
+            ai_reply = "".join(chunks).strip()
+            if not ai_reply:
+                ai_reply = "（无有效回复）"
+
+            database.add_message(session_id, "assistant", ai_reply)
+
+            evaluation = _evaluate_session(session_id, session)
+            latest_evaluation = database.get_latest_evaluation(session_id)
+            if latest_evaluation:
+                evaluation = latest_evaluation
+
+            reply_payload = json.dumps({"reply": ai_reply})
+            yield f"event: summary\ndata: {reply_payload}\n\n"
+
+            evaluation_payload = json.dumps({"evaluation": evaluation})
+            yield f"event: evaluation\ndata: {evaluation_payload}\n\n"
+
+            yield "event: done\ndata: {}\n\n"
+
+        response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     try:
         ai_reply = _complete_chat(collab_key, messages, temperature=0.7).strip()
@@ -440,12 +596,7 @@ def chat():
     if latest_evaluation:
         evaluation = latest_evaluation
 
-    return jsonify(
-        {
-            "reply": ai_reply,
-            "evaluation": evaluation,
-        }
-    )
+    return jsonify({"reply": ai_reply, "evaluation": evaluation})
 
 
 def _evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
