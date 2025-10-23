@@ -268,9 +268,35 @@ def _render_prompts_from_section(
     difficulty_key: str,
     difficulty_profile: Dict[str, str],
 ) -> Tuple[str, str]:
-    conversation_prompt, evaluation_prompt = _render_prompts_from_section(
-        section, scenario, difficulty_key, difficulty_profile
+    flat_context = flatten_scenario_for_template(scenario)
+    if not flat_context.get("knowledge_points_hint"):
+        flat_context["knowledge_points_hint"] = (
+            "報盤結構, 議價策略, 跨文化溝通"
+            if section.get("expects_bargaining")
+            else "英文商務函電寫作, 信息提取, 跨文化表達"
+        )
+
+    conversation_prompt = section["conversation_prompt_template"].format_map(
+        flat_context
     )
+    prompt_suffix = difficulty_profile.get("prompt_suffix")
+    if prompt_suffix:
+        conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
+    if CONVERSATION_DIVERSITY_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[案例多样性提醒]\n{CONVERSATION_DIVERSITY_HINT}"
+        )
+    if ROLE_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[角色约束]\n请始终以学生为中国买家或中国卖家来组织对话，"
+            "在回应中适时引用中国市场或供应链视角。"
+        )
+    if ENGLISH_ENFORCEMENT_HINT not in conversation_prompt:
+        conversation_prompt = (
+            f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
+        )
+
+    evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
     return conversation_prompt, evaluation_prompt
 
 

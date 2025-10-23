@@ -5,6 +5,7 @@ const passwordInput = document.getElementById("password-input");
 const loginErrorEl = document.getElementById("login-error");
 const userStatusLabel = document.getElementById("user-status-label");
 const logoutBtn = document.getElementById("logout-btn");
+const changePasswordBtn = document.getElementById("change-password-btn");
 
 const studentDashboard = document.getElementById("student-dashboard");
 const adminPanel = document.getElementById("admin-panel");
@@ -92,6 +93,8 @@ const studentModal = document.getElementById("student-modal");
 const studentModalCloseBtn = document.getElementById("student-modal-close");
 const studentModalTabButtons = document.querySelectorAll("#student-modal [data-modal-tab]");
 const studentModalPanels = document.querySelectorAll("#student-modal [data-modal-panel]");
+const studentPasswordModal = document.getElementById("student-password-modal");
+const studentPasswordModalClose = document.getElementById("student-password-modal-close");
 const adminTabButtons = document.querySelectorAll("#admin-panel [data-admin-tab]");
 const adminTabPanels = document.querySelectorAll("#admin-panel [data-admin-panel]");
 const reopenLevelMapBtn = document.getElementById("reopen-level-map");
@@ -446,6 +449,35 @@ function closeStudentModal() {
   updateStudentOptionState(null);
   if (studentModal) {
     studentModal.removeAttribute("data-active-tab");
+  }
+}
+
+function openStudentPasswordModal() {
+  if (!studentPasswordModal) {
+    return;
+  }
+  studentPasswordModal.classList.remove("hidden");
+  if (document.body) {
+    document.body.classList.add("overflow-hidden");
+  }
+  if (studentPasswordForm) {
+    studentPasswordForm.reset();
+  }
+  if (studentPasswordStatus) {
+    studentPasswordStatus.textContent = "";
+  }
+  if (studentPasswordCurrent) {
+    studentPasswordCurrent.focus();
+  }
+}
+
+function closeStudentPasswordModal() {
+  if (!studentPasswordModal) {
+    return;
+  }
+  studentPasswordModal.classList.add("hidden");
+  if (document.body) {
+    document.body.classList.remove("overflow-hidden");
   }
 }
 
@@ -2263,6 +2295,9 @@ function updateAuthUI() {
       if (studentTopControls) {
         studentTopControls.classList.remove("hidden");
       }
+      if (changePasswordBtn) {
+        changePasswordBtn.classList.remove("hidden");
+      }
     } else {
       studentDashboard.classList.add("hidden");
       hideExperience();
@@ -2273,6 +2308,10 @@ function updateAuthUI() {
       if (studentTopControls) {
         studentTopControls.classList.add("hidden");
       }
+      if (changePasswordBtn) {
+        changePasswordBtn.classList.add("hidden");
+      }
+      closeStudentPasswordModal();
     }
   } else {
     authPanel.classList.remove("hidden");
@@ -2284,6 +2323,9 @@ function updateAuthUI() {
     if (studentTopControls) {
       studentTopControls.classList.add("hidden");
     }
+    if (changePasswordBtn) {
+      changePasswordBtn.classList.add("hidden");
+    }
     chatInputEl.value = "";
     chatInputEl.disabled = true;
     sendMessageBtn.disabled = true;
@@ -2291,6 +2333,7 @@ function updateAuthUI() {
     state.messages = [];
     renderChat();
     closeStudentModal();
+    closeStudentPasswordModal();
   }
 }
 
@@ -3169,6 +3212,7 @@ function handleLogout() {
   updateSectionForm();
   goToLevelSelection({ clearSelection: true });
   closeStudentModal();
+  closeStudentPasswordModal();
   activateAdminTab();
   updateAuthUI();
 }
@@ -3196,6 +3240,28 @@ if (loginForm) {
 
 if (logoutBtn) {
   logoutBtn.addEventListener("click", handleLogout);
+}
+
+if (changePasswordBtn) {
+  changePasswordBtn.addEventListener("click", () => {
+    if (state.auth.user && state.auth.user.role === "student") {
+      openStudentPasswordModal();
+    }
+  });
+}
+
+if (studentPasswordModal) {
+  studentPasswordModal.addEventListener("click", (event) => {
+    if (event.target === studentPasswordModal) {
+      closeStudentPasswordModal();
+    }
+  });
+}
+
+if (studentPasswordModalClose) {
+  studentPasswordModalClose.addEventListener("click", () => {
+    closeStudentPasswordModal();
+  });
 }
 
 if (refreshSessionsBtn) {
