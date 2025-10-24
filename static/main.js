@@ -177,6 +177,37 @@ let currentStudentModalTab = null;
 let activeExperienceModule = "chat";
 let isScenarioCollapsed = false;
 
+const hasMarked = typeof window !== "undefined" && typeof window.marked !== "undefined";
+if (hasMarked) {
+  window.marked.setOptions({
+    breaks: true,
+    gfm: true,
+  });
+}
+
+function escapeHtml(text) {
+  if (typeof text !== "string") {
+    return "";
+  }
+  const map = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  };
+  return text.replace(/[&<>"']/g, (m) => map[m]);
+}
+
+function renderMarkdown(text) {
+  const safeText = typeof text === "string" ? text : "";
+  if (hasMarked && typeof window.DOMPurify !== "undefined") {
+    const rendered = window.marked.parse(safeText);
+    return window.DOMPurify.sanitize(rendered, { USE_PROFILES: { html: true } });
+  }
+  return escapeHtml(safeText).replace(/\n/g, "<br />");
+}
+
 const state = {
   auth: {
     token: null,
@@ -1648,8 +1679,8 @@ function renderChat() {
     const avatar = document.createElement("div");
     avatar.className = "mt-1 h-10 w-10 flex-shrink-0 rounded-full";
     const bubble = document.createElement("div");
-    bubble.className = "chat-bubble whitespace-pre-wrap text-sm leading-6";
-    bubble.textContent = message.content;
+    bubble.className = "chat-bubble chat-markdown text-sm leading-6";
+    bubble.innerHTML = renderMarkdown(message.content);
 
     if (message.role === "assistant") {
       row.classList.add("items-start");
