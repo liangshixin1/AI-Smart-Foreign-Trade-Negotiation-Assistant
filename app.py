@@ -1,9 +1,12 @@
 import copy
 import json
 import os
+import re
 import uuid
 from itertools import chain
 from typing import Dict, Iterable, List, Optional, Tuple
+
+from datetime import date
 
 from dotenv import load_dotenv
 from flask import (
@@ -30,6 +33,7 @@ MODEL = "deepseek-chat"
 app = Flask(__name__, static_folder="static")
 
 DEFAULT_DIFFICULTY = "balanced"
+PROFORMA_INVOICE_SECTIONS = {"chapter-4-section-2"}
 DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
     "friendly": {
         "label": "友好型 · 引导与鼓励",
@@ -386,6 +390,136 @@ def _normalize_product(data: object) -> Dict[str, object]:
     if data.get("highlights"):
         result["highlights"] = _normalize_text_list(data.get("highlights"))
     return result
+
+
+def _extract_numeric_value(text: object) -> Optional[float]:
+    if not isinstance(text, str):
+        text = _normalize_text(text)
+    normalized = (text or "").replace(",", "")
+    match = re.search(r"(-?\d+(?:\.\d+)?)", normalized)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_currency(value: Optional[float]) -> str:
+    if value is None:
+        return "TBD"
+    return f"USD {value:,.2f}"
+
+
+def _resolve_company_name(data: object, fallback: str) -> str:
+    if isinstance(data, dict):
+        name = _normalize_text(
+            data.get("name")
+            or data.get("company")
+            or data.get("companyName")
+            or data.get("display")
+        )
+        if name:
+            return name
+    if isinstance(data, str):
+        normalized = _normalize_text(data)
+        if normalized:
+            return normalized
+    return fallback
+
+
+def _compose_proforma_invoice_opening(scenario: Dict[str, object]) -> str:
+    ai_company = scenario.get("ai_company") or {}
+    student_company = scenario.get("student_company") or {}
+    seller_name = _resolve_company_name(ai_company, "Seller")
+    buyer_name = _resolve_company_name(student_company, "Buyer")
+    buyer_contact = _normalize_text(scenario.get("student_role")) or "Procurement Team"
+
+    product = scenario.get("product") or {}
+    product_name = _normalize_text(product.get("name")) or "Product"
+    product_specs = _normalize_text(product.get("specifications"))
+    quantity_text = _normalize_text(product.get("quantity_requirement")) or ""
+    quantity_value = _extract_numeric_value(quantity_text)
+    adjusted_quantity = None
+    if quantity_value is not None:
+        adjusted_quantity = max(1, int(round(quantity_value * 1.08)))
+        quantity_display = f"{adjusted_quantity:,} units"
+    elif quantity_text:
+        quantity_display = f"{quantity_text} (minimum uplift applied)"
+    else:
+        quantity_display = "To be confirmed"
+
+    price_expectation = product.get("price_expectation") or {}
+    target_price_value = _extract_numeric_value(price_expectation.get("student_target"))
+    bottom_line_value = _extract_numeric_value(price_expectation.get("ai_bottom_line"))
+    base_price_value = bottom_line_value or target_price_value
+    adjusted_price = None
+    if base_price_value is not None:
+        adjusted_price = round(base_price_value * 1.06, 2)
+    unit_price_display = _format_currency(adjusted_price) if adjusted_price is not None else "USD 0.00"
+
+    total_display = "TBD"
+    if adjusted_price is not None and adjusted_quantity is not None:
+        total_display = _format_currency(adjusted_price * adjusted_quantity)
+
+    today = date.today().isoformat()
+    invoice_no = f"PI-{uuid.uuid4().hex[:6].upper()}"
+
+    specs_fragment = f" ({product_specs})" if product_specs else ""
+
+    logistics = _normalize_text(scenario.get("logistics"))
+    timeline = _normalize_text(scenario.get("timeline"))
+
+    lines = [
+        "Proforma Invoice (PI)",
+        f"Invoice No.: {invoice_no}",
+        f"Issue Date: {today}",
+        "",
+        f"Seller: {seller_name}",
+        f"Buyer: {buyer_name}",
+        f"Attention: {buyer_contact}",
+        "",
+        "Item Summary:",
+        "| Item | Description | Quantity | Unit Price | Amount |",
+        "| --- | --- | --- | --- | --- |",
+        f"| 1 | {product_name}{specs_fragment} | {quantity_display} | {unit_price_display} | {total_display} |",
+        "",
+        "Commercial Terms:",
+        "- Delivery Term: CIF Hamburg (insurance premium billed separately upon shipment).",
+        "- Payment: 50% T/T in advance and 50% prior to loading; deposit is strictly non-refundable.",
+    ]
+
+    if timeline:
+        lines.append(f"- Shipment: within 15 days after deposit (differs from prior note: {timeline}).")
+    else:
+        lines.append("- Shipment: within 15 days after deposit.")
+
+    if logistics:
+        lines.append(
+            f"- Logistics Reference: Previous discussion mentioned {logistics}, subject to our final routing."
+        )
+
+    lines.extend(
+        [
+            "- Additional Charges: USD 450 documentation & compliance fee plus any port surcharges at destination.",
+            "- Validity: Offer holds for 3 calendar days only; afterward pricing may adjust without notice.",
+            "- Bank Details: To be advised after deposit acknowledgement (funds transferred to offshore account).",
+            "",
+            "Please review the above PI carefully and confirm acceptance, including the adjusted quantity,",
+            "pricing, and extra charges so we can reserve production capacity.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def _generate_opening_message(section_id: Optional[str], scenario: Dict[str, object]) -> str:
+    if section_id in PROFORMA_INVOICE_SECTIONS:
+        return _compose_proforma_invoice_opening(scenario)
+    opening = scenario.get("opening_message")
+    if isinstance(opening, str):
+        return opening.strip()
+    return ""
 
 
 def _first_non_empty(mapping: Dict[str, object], keys: Iterable[str]) -> str:
@@ -947,9 +1081,9 @@ def start_level():
         difficulty=difficulty_key,
     )
 
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(section_id, scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
@@ -1134,9 +1268,9 @@ def start_assignment(assignment_id: str):
     )
     database.link_assignment_session(assignment_id, int(user["id"]), session_id)
 
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(record.get("sectionId"), scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
@@ -1469,9 +1603,9 @@ def reset_session_endpoint(session_id: str):
 
     database.reset_session(session_id)
     scenario = session["scenario"]
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(session.get("section_id"), scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
