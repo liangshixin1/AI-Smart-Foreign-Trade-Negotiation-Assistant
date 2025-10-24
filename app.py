@@ -8,6 +8,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from datetime import date
 
+from datetime import date
+
 from dotenv import load_dotenv
 from flask import (
     Flask,
@@ -33,6 +35,7 @@ MODEL = "deepseek-chat"
 app = Flask(__name__, static_folder="static")
 
 DEFAULT_DIFFICULTY = "balanced"
+PROFORMA_INVOICE_SECTIONS = {"chapter-4-section-2"}
 DIFFICULTY_PROFILES: Dict[str, Dict[str, str]] = {
     "friendly": {
         "label": "友好型 · 引导与鼓励",
