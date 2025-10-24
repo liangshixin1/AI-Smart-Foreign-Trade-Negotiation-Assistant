@@ -221,6 +221,7 @@ const state = {
   selectedLevel: { chapterId: null, sectionId: null },
   activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced" },
   isLevelSelectionCollapsed: false,
+  expandedChapters: new Set(),
   admin: {
     students: [],
     selectedStudentId: null,
@@ -887,6 +888,22 @@ function highlightSelectedLevel() {
       node.classList.remove("level-node-active");
     }
   });
+  const shouldKeepExpanded =
+    chapterId &&
+    state.expandedChapters instanceof Set &&
+    state.expandedChapters.has(chapterId);
+  if (shouldKeepExpanded) {
+    const activeCard = levelMapContainer.querySelector(
+      `details[data-chapter-id="${chapterId}"]`,
+    );
+    if (activeCard && !activeCard.open) {
+      activeCard.open = true;
+      if (!(state.expandedChapters instanceof Set)) {
+        state.expandedChapters = new Set();
+      }
+      state.expandedChapters.add(chapterId);
+    }
+  }
 }
 
 function updateSelectedLevelDetail() {
@@ -919,6 +936,12 @@ function updateSelectedLevelDetail() {
 }
 
 function setSelectedLevel(chapterId, sectionId) {
+  if (!(state.expandedChapters instanceof Set)) {
+    state.expandedChapters = new Set();
+  }
+  if (chapterId) {
+    state.expandedChapters.add(chapterId);
+  }
   state.selectedLevel = { chapterId, sectionId };
   updateSelectedLevelDetail();
 }
@@ -938,24 +961,57 @@ function renderLevelMap() {
     return;
   }
 
-  chapters.forEach((chapter, index) => {
-    const column = document.createElement("div");
-    column.className = "level-column";
-    column.dataset.chapterId = chapter.id;
+  if (!(state.expandedChapters instanceof Set)) {
+    state.expandedChapters = new Set();
+  }
+  const expandedChapters = new Set(state.expandedChapters);
+  let hasExpanded = expandedChapters.size > 0;
+  const selectedChapterId = state.selectedLevel?.chapterId || null;
 
-    const header = document.createElement("button");
-    header.type = "button";
-    header.className = "level-column-header text-left";
-    header.dataset.chapterId = chapter.id;
-    header.innerHTML = `
-      <span>${chapter.title || "章节"}</span>
-      <span class="text-xs text-slate-500">${chapter.description || `Chapter ${index + 1}`}</span>
+  chapters.forEach((chapter, index) => {
+    const sections = chapter.sections || [];
+    const totalSections = sections.length;
+    const completedCount = sections.reduce((count, section) => {
+      if (!(state.levelVictories instanceof Set)) {
+        return count;
+      }
+      const victoryKey = getLevelVictoryKey(chapter.id, section.id);
+      return state.levelVictories.has(victoryKey) ? count + 1 : count;
+    }, 0);
+
+    const card = document.createElement("details");
+    card.className = "chapter-card";
+    card.dataset.chapterId = chapter.id;
+
+    const summary = document.createElement("summary");
+    summary.className = "chapter-card-summary";
+    summary.dataset.chapterId = chapter.id;
+    const countClass = totalSections === 0 ? "chapter-card-count chapter-card-count-empty" : "chapter-card-count";
+    summary.innerHTML = `
+      <div class="chapter-card-summary-content">
+        <p class="chapter-card-title">${chapter.title || "章节"}</p>
+        <p class="chapter-card-description">${chapter.description || `Chapter ${index + 1}`}</p>
+      </div>
+      <div class="chapter-card-meta">
+        <span class="${countClass}">${
+          totalSections === 0 ? "暂无任务" : `${completedCount}/${totalSections} 完成`
+        }</span>
+        <span class="chapter-card-chevron" aria-hidden="true">
+          <svg class="chapter-card-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 5l8 7-8 7" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </span>
+      </div>
     `;
-    column.appendChild(header);
+    card.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "chapter-card-body";
 
     const list = document.createElement("div");
     list.className = "level-node-list";
-    (chapter.sections || []).forEach((section) => {
+
+    sections.forEach((section) => {
       const node = document.createElement("button");
       node.type = "button";
       node.className = "level-node";
@@ -979,16 +1035,47 @@ function renderLevelMap() {
       list.appendChild(node);
     });
 
-    if ((chapter.sections || []).length === 0) {
+    if (sections.length === 0) {
       const emptySection = document.createElement("p");
-      emptySection.className = "rounded-xl border border-dashed border-slate-300/60 bg-transparent p-3 text-xs text-slate-500 text-center";
+      emptySection.className = "level-node-empty rounded-xl border border-dashed border-slate-300/60 bg-transparent p-3 text-xs text-slate-500 text-center";
       emptySection.textContent = "暂无小节";
       list.appendChild(emptySection);
     }
 
-    column.appendChild(list);
-    levelMapContainer.appendChild(column);
+    body.appendChild(list);
+    card.appendChild(body);
+
+    const shouldExpand =
+      expandedChapters.has(chapter.id) ||
+      (selectedChapterId && chapter.id === selectedChapterId) ||
+      (!hasExpanded && index === 0);
+
+    if (shouldExpand) {
+      card.setAttribute("open", "");
+      expandedChapters.add(chapter.id);
+      hasExpanded = true;
+    }
+
+    card.addEventListener("toggle", () => {
+      if (!(state.expandedChapters instanceof Set)) {
+        state.expandedChapters = new Set();
+      }
+      if (card.open) {
+        state.expandedChapters.add(chapter.id);
+        const hasSelection = state.selectedLevel?.chapterId === chapter.id;
+        const firstSection = (chapter.sections || [])[0];
+        if (!hasSelection && firstSection) {
+          setSelectedLevel(chapter.id, firstSection.id);
+        }
+      } else {
+        state.expandedChapters.delete(chapter.id);
+      }
+    });
+
+    levelMapContainer.appendChild(card);
   });
+
+  state.expandedChapters = expandedChapters;
 
   highlightSelectedLevel();
 }
@@ -3122,6 +3209,16 @@ async function loadLevels() {
     }
     const data = await response.json();
     state.chapters = data.chapters || [];
+    if (!(state.expandedChapters instanceof Set)) {
+      state.expandedChapters = new Set();
+    }
+    const preservedExpanded = new Set();
+    state.chapters.forEach((chapter) => {
+      if (state.expandedChapters.has(chapter.id)) {
+        preservedExpanded.add(chapter.id);
+      }
+    });
+    state.expandedChapters = preservedExpanded;
     populateAssignmentChapterOptions();
     populateBlueprintChapterOptions();
     const { chapterId, sectionId } = state.selectedLevel || {};
@@ -4120,6 +4217,7 @@ function handleLogout() {
   state.studentInsights = null;
   state.studentAssignments = [];
   state.levelVictories = new Set();
+  state.expandedChapters = new Set();
   sessionHistoryList.innerHTML = "";
   adminStudentList.innerHTML = "";
   adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -4319,15 +4417,6 @@ if (levelMapContainer) {
     if (sectionNode) {
       setSelectedLevel(sectionNode.dataset.chapterId, sectionNode.dataset.sectionId);
       return;
-    }
-    const chapterHeader = event.target.closest(".level-column-header");
-    if (chapterHeader) {
-      const chapterId = chapterHeader.dataset.chapterId;
-      const chapter = findChapter(chapterId);
-      const firstSection = chapter && (chapter.sections || [])[0];
-      if (chapterId && firstSection) {
-        setSelectedLevel(chapterId, firstSection.id);
-      }
     }
   });
 }
