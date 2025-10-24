@@ -30,6 +30,9 @@ const adminAssignmentChapter = document.getElementById("admin-assignment-chapter
 const adminAssignmentSection = document.getElementById("admin-assignment-section");
 const adminAssignmentBlueprint = document.getElementById("admin-assignment-blueprint");
 const adminAssignmentScenario = document.getElementById("admin-assignment-scenario");
+const adminAssignmentScenarioHost = document.getElementById(
+  "admin-assignment-scenario-editor",
+);
 const adminAssignmentStudents = document.getElementById("admin-assignment-students");
 const adminAssignmentGenerateBtn = document.getElementById("admin-assignment-generate");
 const adminAssignmentGeneratorStatus = document.getElementById("admin-assignment-generator-status");
@@ -772,6 +775,15 @@ function initTokenEditors() {
       definitions,
       groups,
       placeholder: "定义评估维度与输出格式，变量将用于生成针对性的反馈。",
+    });
+  }
+  if (adminAssignmentScenario && adminAssignmentScenarioHost) {
+    tokenEditors.assignmentScenario = new TokenEditor({
+      container: adminAssignmentScenarioHost,
+      textarea: adminAssignmentScenario,
+      definitions,
+      groups,
+      placeholder: "使用 JSON 描述统一作业场景，可插入变量占位符。",
     });
   }
 }
@@ -2241,8 +2253,11 @@ async function handleAssignmentScenarioGeneration() {
       difficulty: difficultyKey,
     });
     const scenario = data.scenario || {};
-    if (adminAssignmentScenario) {
-      adminAssignmentScenario.value = JSON.stringify(scenario, null, 2);
+    const scenarioJson = JSON.stringify(scenario, null, 2);
+    if (tokenEditors.assignmentScenario) {
+      tokenEditors.assignmentScenario.setValue(scenarioJson);
+    } else if (adminAssignmentScenario) {
+      adminAssignmentScenario.value = scenarioJson;
     }
     applyScenarioToAssignmentFields(scenario, data.difficulty || difficultyKey);
     updateInlineStatus(adminAssignmentGeneratorStatus, "已生成场景，可继续微调。", "success");
@@ -2382,7 +2397,11 @@ function populateAssignmentForm(assignment) {
     updateAssignmentSectionOptions();
     if (adminAssignmentSection) adminAssignmentSection.value = "";
     if (adminAssignmentBlueprint) adminAssignmentBlueprint.value = "";
-    if (adminAssignmentScenario) adminAssignmentScenario.value = "";
+    if (tokenEditors.assignmentScenario) {
+      tokenEditors.assignmentScenario.setValue("", { silent: true });
+    } else if (adminAssignmentScenario) {
+      adminAssignmentScenario.value = "";
+    }
     renderAssignmentStudents({ selectedIds: [] });
     return;
   }
@@ -2403,13 +2422,18 @@ function populateAssignmentForm(assignment) {
   if (adminAssignmentBlueprint) {
     adminAssignmentBlueprint.value = assignment.blueprintId || "";
   }
-  if (adminAssignmentScenario) {
+  const scenarioValue = (() => {
     try {
-      adminAssignmentScenario.value = JSON.stringify(assignment.scenario || {}, null, 2);
+      return JSON.stringify(assignment.scenario || {}, null, 2);
     } catch (error) {
       console.warn("无法序列化场景 JSON", error);
-      adminAssignmentScenario.value = "";
+      return "";
     }
+  })();
+  if (tokenEditors.assignmentScenario) {
+    tokenEditors.assignmentScenario.setValue(scenarioValue || "", { silent: true });
+  } else if (adminAssignmentScenario) {
+    adminAssignmentScenario.value = scenarioValue;
   }
   renderAssignmentStudents({ selectedIds: assignment.studentIds || [] });
 }
@@ -3437,9 +3461,15 @@ async function submitAssignment(event) {
     .filter((input) => input.checked)
     .map((input) => Number(input.value));
   let scenarioPayload = null;
-  if (adminAssignmentScenario && adminAssignmentScenario.value.trim()) {
+  let scenarioSource = "";
+  if (tokenEditors.assignmentScenario) {
+    scenarioSource = tokenEditors.assignmentScenario.getValue();
+  } else if (adminAssignmentScenario) {
+    scenarioSource = adminAssignmentScenario.value;
+  }
+  if (scenarioSource && scenarioSource.trim()) {
     try {
-      scenarioPayload = JSON.parse(adminAssignmentScenario.value.trim());
+      scenarioPayload = JSON.parse(scenarioSource.trim());
     } catch (error) {
       if (adminAssignmentStatus) {
         adminAssignmentStatus.textContent = "场景 JSON 解析失败，请检查格式";
