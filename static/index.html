@@ -30,18 +30,18 @@
             rgba(238, 242, 255, 0.62) 55%,
             #f8fafc 100%
           );
-        --level-column-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 243, 243, 0.7));
-        --level-column-border: rgba(255, 64, 64, 0.18);
-        --level-node-bg: rgba(255, 255, 255, 0.95);
-        --level-node-border: rgba(255, 64, 64, 0.25);
-        --level-node-line: linear-gradient(180deg, rgba(96, 165, 250, 0.2), rgba(16, 185, 129, 0.2));
+        --level-column-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
+        --level-column-border: rgba(148, 163, 184, 0.35);
+        --level-node-bg: rgba(255, 255, 255, 0.98);
+        --level-node-border: rgba(148, 163, 184, 0.45);
+        --level-node-line: linear-gradient(180deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.08));
         --level-node-dot-bg: #ffffff;
-        --level-node-dot-shadow: rgba(255, 64, 64, 0.35);
-        --level-node-hover-border: rgba(255, 64, 64, 0.55);
-        --level-node-shadow: 0 12px 26px -20px rgba(255, 64, 64, 0.28);
-        --level-node-hover-shadow: 0 18px 35px -20px rgba(255, 64, 64, 0.32);
-        --level-node-active-border: rgba(255, 64, 64, 0.85);
-        --level-node-active-bg: linear-gradient(135deg, rgba(255, 64, 64, 0.16), rgba(255, 166, 158, 0.25));
+        --level-node-dot-shadow: rgba(59, 130, 246, 0.4);
+        --level-node-hover-border: rgba(59, 130, 246, 0.55);
+        --level-node-shadow: 0 18px 32px -24px rgba(15, 23, 42, 0.25);
+        --level-node-hover-shadow: 0 24px 44px -24px rgba(59, 130, 246, 0.25);
+        --level-node-active-border: rgba(59, 130, 246, 0.75);
+        --level-node-active-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(99, 102, 241, 0.12));
         --victory-border: rgba(16, 185, 129, 0.6);
         --victory-badge-bg: rgba(16, 185, 129, 0.16);
         --victory-badge-text: #047857;
@@ -51,6 +51,27 @@
         --selected-level-border: rgba(59, 130, 246, 0.35);
         --file-button-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.28));
         --file-button-text: #1d4ed8;
+        --token-toolbar-bg: rgba(255, 255, 255, 0.98);
+        --token-toolbar-border: rgba(148, 163, 184, 0.35);
+        --token-toolbar-text: #1f2937;
+        --token-button-bg: rgba(59, 130, 246, 0.12);
+        --token-button-border: rgba(59, 130, 246, 0.25);
+        --token-button-hover-bg: rgba(59, 130, 246, 0.18);
+        --token-button-hover-border: rgba(37, 99, 235, 0.45);
+        --token-button-text: #1d4ed8;
+        --token-surface-bg: rgba(255, 255, 255, 0.98);
+        --token-surface-border: rgba(148, 163, 184, 0.4);
+        --token-surface-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        --token-surface-placeholder: rgba(148, 163, 184, 0.7);
+        --token-text: #1f2937;
+        --token-chip-bg: rgba(14, 165, 233, 0.14);
+        --token-chip-border: rgba(14, 165, 233, 0.4);
+        --token-chip-text: #0f172a;
+        --token-chip-code-bg: rgba(14, 165, 233, 0.16);
+        --token-chip-code-text: #0369a1;
+        --token-chip-remove-bg: rgba(14, 165, 233, 0.16);
+        --token-chip-remove-hover-bg: rgba(14, 165, 233, 0.24);
+        --token-chip-remove-text: #0369a1;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -71,18 +92,18 @@
               rgba(30, 41, 59, 0.92) 60%,
               rgba(15, 23, 42, 0.98) 100%
             );
-          --level-column-bg: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.85));
-          --level-column-border: rgba(251, 113, 133, 0.32);
-          --level-node-bg: rgba(30, 41, 59, 0.9);
-          --level-node-border: rgba(251, 113, 133, 0.4);
-          --level-node-line: linear-gradient(180deg, rgba(96, 165, 250, 0.35), rgba(16, 185, 129, 0.35));
-          --level-node-dot-bg: rgba(30, 41, 59, 0.95);
-          --level-node-dot-shadow: rgba(251, 113, 133, 0.45);
-          --level-node-hover-border: rgba(251, 113, 133, 0.65);
-          --level-node-shadow: 0 12px 26px -20px rgba(251, 113, 133, 0.35);
-          --level-node-hover-shadow: 0 20px 40px -18px rgba(251, 113, 133, 0.45);
-          --level-node-active-border: rgba(251, 113, 133, 0.85);
-          --level-node-active-bg: linear-gradient(135deg, rgba(251, 113, 133, 0.28), rgba(248, 189, 144, 0.22));
+          --level-column-bg: linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.88));
+          --level-column-border: rgba(148, 163, 184, 0.35);
+          --level-node-bg: rgba(30, 41, 59, 0.92);
+          --level-node-border: rgba(148, 163, 184, 0.45);
+          --level-node-line: linear-gradient(180deg, rgba(59, 130, 246, 0.4), rgba(37, 99, 235, 0.22));
+          --level-node-dot-bg: rgba(15, 23, 42, 0.95);
+          --level-node-dot-shadow: rgba(59, 130, 246, 0.45);
+          --level-node-hover-border: rgba(96, 165, 250, 0.65);
+          --level-node-shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.6);
+          --level-node-hover-shadow: 0 26px 48px -22px rgba(59, 130, 246, 0.35);
+          --level-node-active-border: rgba(96, 165, 250, 0.85);
+          --level-node-active-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(248, 189, 144, 0.18));
           --victory-border: rgba(34, 197, 94, 0.65);
           --victory-badge-bg: rgba(34, 197, 94, 0.28);
           --victory-badge-text: #bbf7d0;
@@ -92,6 +113,27 @@
           --selected-level-border: rgba(147, 197, 253, 0.35);
           --file-button-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(147, 197, 253, 0.28));
           --file-button-text: #bfdbfe;
+          --token-toolbar-bg: rgba(30, 41, 59, 0.96);
+          --token-toolbar-border: rgba(148, 163, 184, 0.35);
+          --token-toolbar-text: #e2e8f0;
+          --token-button-bg: rgba(59, 130, 246, 0.18);
+          --token-button-border: rgba(147, 197, 253, 0.4);
+          --token-button-hover-bg: rgba(59, 130, 246, 0.26);
+          --token-button-hover-border: rgba(147, 197, 253, 0.6);
+          --token-button-text: #dbeafe;
+          --token-surface-bg: rgba(15, 23, 42, 0.92);
+          --token-surface-border: rgba(148, 163, 184, 0.45);
+          --token-surface-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.25);
+          --token-surface-placeholder: rgba(148, 163, 184, 0.7);
+          --token-text: #e2e8f0;
+          --token-chip-bg: rgba(59, 130, 246, 0.32);
+          --token-chip-border: rgba(147, 197, 253, 0.55);
+          --token-chip-text: #f8fafc;
+          --token-chip-code-bg: rgba(37, 99, 235, 0.4);
+          --token-chip-code-text: #e0f2fe;
+          --token-chip-remove-bg: rgba(37, 99, 235, 0.38);
+          --token-chip-remove-hover-bg: rgba(37, 99, 235, 0.5);
+          --token-chip-remove-text: #f8fafc;
         }
       }
 
@@ -202,10 +244,12 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        padding: 0.75rem;
+        padding: 0.85rem;
         border-radius: 0.9rem;
-        background: rgba(15, 23, 42, 0.35);
-        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: var(--token-toolbar-bg);
+        border: 1px solid var(--token-toolbar-border);
+        box-shadow: var(--token-surface-shadow);
+        color: var(--token-toolbar-text);
       }
 
       .token-editor-group {
@@ -219,7 +263,7 @@
         font-size: 0.7rem;
         font-weight: 600;
         letter-spacing: 0.04em;
-        color: rgba(148, 163, 184, 0.85);
+        color: var(--text-muted);
         text-transform: uppercase;
       }
 
@@ -228,48 +272,50 @@
         align-items: center;
         gap: 0.4rem;
         border-radius: 9999px;
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        background: rgba(59, 130, 246, 0.1);
-        color: #cbd5f5;
+        border: 1px solid var(--token-button-border);
+        background: var(--token-button-bg);
+        color: var(--token-button-text);
         padding: 0.25rem 0.75rem;
         font-size: 0.75rem;
-        transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+        transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease,
+          color 0.2s ease;
       }
 
       .token-editor-toolbar button:hover {
-        border-color: rgba(59, 130, 246, 0.65);
-        background: rgba(59, 130, 246, 0.18);
+        border-color: var(--token-button-hover-border);
+        background: var(--token-button-hover-bg);
         transform: translateY(-1px);
       }
 
       .token-editor-toolbar button:focus-visible {
-        outline: 2px solid rgba(59, 130, 246, 0.8);
+        outline: 2px solid var(--token-button-hover-border);
         outline-offset: 2px;
       }
 
       .token-editor-surface {
         min-height: 7.5rem;
         border-radius: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(15, 23, 42, 0.55);
-        padding: 0.75rem 0.85rem;
+        border: 1px solid var(--token-surface-border);
+        background: var(--token-surface-bg);
+        padding: 0.9rem 1rem;
         font-size: 0.9rem;
         line-height: 1.6;
-        color: #e2e8f0;
+        color: var(--token-text);
         white-space: pre-wrap;
         overflow-y: auto;
+        box-shadow: var(--token-surface-shadow);
         transition: border-color 0.2s ease, box-shadow 0.2s ease;
       }
 
       .token-editor-surface:focus {
         outline: none;
-        border-color: rgba(99, 102, 241, 0.75);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        border-color: var(--token-button-hover-border);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
       }
 
       .token-editor-surface[data-placeholder][data-empty="true"]::before {
         content: attr(data-placeholder);
-        color: rgba(148, 163, 184, 0.65);
+        color: var(--token-surface-placeholder);
         pointer-events: none;
       }
 
@@ -280,9 +326,9 @@
         padding: 0.25rem 0.6rem;
         margin: 0 0.1rem;
         border-radius: 9999px;
-        border: 1px dashed rgba(16, 185, 129, 0.6);
-        background: rgba(16, 185, 129, 0.16);
-        color: #a7f3d0;
+        border: 1px dashed var(--token-chip-border);
+        background: var(--token-chip-bg);
+        color: var(--token-chip-text);
         font-size: 0.78rem;
         cursor: default;
       }
@@ -294,8 +340,8 @@
       .token-chip-code {
         font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", monospace;
         font-size: 0.7rem;
-        color: rgba(167, 243, 208, 0.75);
-        background: rgba(15, 118, 110, 0.35);
+        color: var(--token-chip-code-text);
+        background: var(--token-chip-code-bg);
         padding: 0.15rem 0.35rem;
         border-radius: 9999px;
       }
@@ -308,26 +354,27 @@
         height: 1.35rem;
         border-radius: 9999px;
         border: 1px solid transparent;
-        background: rgba(15, 118, 110, 0.45);
-        color: rgba(167, 243, 208, 0.85);
+        background: var(--token-chip-remove-bg);
+        color: var(--token-chip-remove-text);
         font-size: 0.9rem;
         line-height: 1;
         cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
       }
 
       .token-chip-remove:hover {
-        background: rgba(15, 118, 110, 0.7);
-        color: #ecfeff;
+        background: var(--token-chip-remove-hover-bg);
+        color: var(--token-chip-remove-text);
       }
 
       .token-chip-remove:focus-visible {
-        outline: 2px solid rgba(16, 185, 129, 0.8);
+        outline: 2px solid var(--token-button-hover-border);
         outline-offset: 1px;
       }
 
       .token-editor-helper {
         font-size: 0.7rem;
-        color: rgba(148, 163, 184, 0.75);
+        color: var(--text-muted);
       }
 
       .surface-card {
@@ -365,6 +412,46 @@
       #admin-panel .text-slate-200,
       #admin-panel .text-slate-300 {
         color: var(--text-strong) !important;
+      }
+
+      .admin-panel-card {
+        background: var(--surface-color) !important;
+        border-color: var(--surface-border) !important;
+        box-shadow: var(--surface-shadow);
+      }
+
+      .admin-panel-card h3,
+      .admin-panel-card label span,
+      .admin-panel-card .text-white,
+      .admin-panel-card .text-slate-200,
+      .admin-panel-card .text-slate-300 {
+        color: var(--text-strong) !important;
+      }
+
+      .admin-panel-card p,
+      .admin-panel-card .text-slate-400,
+      .admin-panel-card .text-slate-500 {
+        color: var(--text-muted) !important;
+      }
+
+      .admin-panel-card input,
+      .admin-panel-card textarea,
+      .admin-panel-card select {
+        background: var(--surface-muted) !important;
+        border-color: var(--surface-border) !important;
+        color: var(--text-strong) !important;
+      }
+
+      .admin-panel-card input:focus,
+      .admin-panel-card textarea:focus,
+      .admin-panel-card select:focus {
+        border-color: rgba(59, 130, 246, 0.55) !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+      }
+
+      .admin-panel-card input::placeholder,
+      .admin-panel-card textarea::placeholder {
+        color: var(--text-muted) !important;
       }
 
       .bg-slate-950\/70,
@@ -915,29 +1002,16 @@
           class="surface-card p-5 sm:p-6"
         >
           <div class="flex flex-col gap-6">
-            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1.2fr]">
-              <div class="assignment-card">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div class="space-y-1">
-                    <p class="text-sm text-slate-400">STEP 0</p>
-                    <h2 class="text-lg font-semibold text-white">统一作业任务</h2>
-                    <p class="text-xs text-slate-400 sm:text-sm">
-                      教师分配的案例挑战会集中展示在此处，完成后可刷新关卡成绩。
-                    </p>
-                  </div>
-                  <p id="student-assignment-status" class="text-xs text-emerald-400"></p>
-                </div>
-                <ul id="student-assignment-list" class="mt-4 space-y-3 text-sm"></ul>
+            <div class="flex flex-col gap-4">
+              <div class="space-y-3">
+                <p class="text-sm text-slate-400">STEP 1</p>
+                <h2 class="text-xl font-semibold text-white">选择关卡地图</h2>
+                <p class="text-sm text-slate-400">
+                  通过关卡地图选择目标训练情境，体验沉浸式的谈判任务。
+                </p>
+                <p id="student-assignment-status" class="text-xs text-slate-500"></p>
               </div>
-              <div class="flex flex-col gap-4">
-                <div class="space-y-2">
-                  <p class="text-sm text-slate-400">STEP 1</p>
-                  <h2 class="text-xl font-semibold text-white">选择关卡地图</h2>
-                  <p class="text-sm text-slate-400">
-                    通过关卡地图选择目标训练情境，体验沉浸式的谈判任务。
-                  </p>
-                </div>
-                <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <label class="space-y-2 text-sm sm:w-60">
                     <span class="font-semibold text-slate-200">对手难度</span>
                     <select
@@ -976,7 +1050,6 @@
                   <p id="selected-level-title" class="selected-level-title"></p>
                   <p id="selected-level-description" class="selected-level-description"></p>
                 </div>
-              </div>
             </div>
             <div class="overflow-x-auto pb-2">
               <div id="level-map" class="level-map min-w-full"></div>
@@ -1343,7 +1416,7 @@
                 </div>
                 <ul id="admin-assignment-list" class="space-y-3 text-sm"></ul>
               </div>
-              <div class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+              <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                 <h3 class="text-lg font-semibold text-white">创建 / 更新作业</h3>
                 <p id="admin-assignment-status" class="text-xs text-emerald-300"></p>
                 <form id="admin-assignment-form" class="space-y-4">
@@ -1405,14 +1478,21 @@
                       <option value="">手动填写</option>
                     </select>
                   </label>
-                  <label class="block space-y-1 text-sm">
-                    <span class="text-slate-300">自定义场景 JSON（可选）</span>
+                  <label class="block space-y-2 text-sm">
+                    <span class="flex items-center justify-between text-slate-300">
+                      <span>自定义场景 JSON（可选）</span>
+                      <span class="text-xs text-slate-500">支持插入变量占位符</span>
+                    </span>
+                    <div id="admin-assignment-scenario-editor" class="token-editor"></div>
                     <textarea
                       id="admin-assignment-scenario"
                       rows="4"
-                      placeholder="粘贴符合 schema 的 JSON，可覆盖蓝图内容"
-                      class="w-full rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-2 text-xs text-slate-300 focus:border-emerald-400 focus:outline-none"
+                      placeholder="使用 JSON 描述自定义场景，可包含 {ai_role} 等变量"
+                      class="hidden"
                     ></textarea>
+                    <p class="token-editor-helper">
+                      使用结构化 JSON 描述统一作业场景，可通过上方按钮插入变量标签。
+                    </p>
                   </label>
                   <div class="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white/70 p-3">
                     <div class="flex flex-col text-sm text-slate-500">
@@ -1458,7 +1538,7 @@
                 </div>
                 <ul id="admin-blueprint-list" class="space-y-3 text-sm"></ul>
               </div>
-              <div class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+              <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                 <h3 class="text-lg font-semibold text-white">蓝图表单</h3>
                 <p id="admin-blueprint-status" class="text-xs text-emerald-300"></p>
                 <form id="admin-blueprint-form" class="grid gap-3">
@@ -1743,7 +1823,7 @@
                   </div>
                   <div id="level-chapter-list" class="space-y-3 text-sm"></div>
                 </div>
-                <div class="flex-1 space-y-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+                <div class="admin-panel-card flex-1 space-y-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
                   <div class="space-y-2">
                     <h3 class="text-lg font-semibold text-white">章节信息</h3>
                     <p id="level-chapter-status" class="text-xs text-slate-400">
