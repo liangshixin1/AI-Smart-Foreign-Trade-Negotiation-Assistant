@@ -888,7 +888,11 @@ function highlightSelectedLevel() {
       node.classList.remove("level-node-active");
     }
   });
-  if (chapterId) {
+  const shouldKeepExpanded =
+    chapterId &&
+    state.expandedChapters instanceof Set &&
+    state.expandedChapters.has(chapterId);
+  if (shouldKeepExpanded) {
     const activeCard = levelMapContainer.querySelector(
       `details[data-chapter-id="${chapterId}"]`,
     );
@@ -932,6 +936,12 @@ function updateSelectedLevelDetail() {
 }
 
 function setSelectedLevel(chapterId, sectionId) {
+  if (!(state.expandedChapters instanceof Set)) {
+    state.expandedChapters = new Set();
+  }
+  if (chapterId) {
+    state.expandedChapters.add(chapterId);
+  }
   state.selectedLevel = { chapterId, sectionId };
   updateSelectedLevelDetail();
 }
@@ -1052,6 +1062,11 @@ function renderLevelMap() {
       }
       if (card.open) {
         state.expandedChapters.add(chapter.id);
+        const hasSelection = state.selectedLevel?.chapterId === chapter.id;
+        const firstSection = (chapter.sections || [])[0];
+        if (!hasSelection && firstSection) {
+          setSelectedLevel(chapter.id, firstSection.id);
+        }
       } else {
         state.expandedChapters.delete(chapter.id);
       }
@@ -4402,15 +4417,6 @@ if (levelMapContainer) {
     if (sectionNode) {
       setSelectedLevel(sectionNode.dataset.chapterId, sectionNode.dataset.sectionId);
       return;
-    }
-    const chapterSummary = event.target.closest("summary.chapter-card-summary");
-    if (chapterSummary) {
-      const chapterId = chapterSummary.dataset.chapterId;
-      const chapter = findChapter(chapterId);
-      const firstSection = chapter && (chapter.sections || [])[0];
-      if (chapterId && firstSection) {
-        setSelectedLevel(chapterId, firstSection.id);
-      }
     }
   });
 }
