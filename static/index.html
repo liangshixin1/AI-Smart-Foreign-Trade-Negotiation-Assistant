@@ -149,20 +149,135 @@
         transition: background 0.3s ease, color 0.3s ease;
       }
 
-      header {
-        background: var(--surface-muted);
-        border-bottom: 1px solid var(--surface-border);
-        color: var(--text-strong);
-        backdrop-filter: blur(16px);
-        box-shadow: 0 8px 20px -18px rgba(15, 23, 42, 0.25);
+      .app-hero {
+        position: relative;
+        background: linear-gradient(120deg, #ff4d57, #ff6b6b);
+        border-bottom: none;
+        color: #fff;
+        box-shadow: 0 25px 45px -28px rgba(255, 64, 64, 0.45);
       }
 
-      header h1 {
-        color: var(--text-strong);
+      .app-hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.22), transparent 55%),
+          radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.18), transparent 60%);
+        pointer-events: none;
+        opacity: 0.8;
       }
 
-      header p {
-        color: var(--text-muted);
+      .app-hero__inner {
+        position: relative;
+        z-index: 1;
+        margin: 0 auto;
+        max-width: 72rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 2.75rem 1.5rem 2.5rem;
+      }
+
+      @media (min-width: 1024px) {
+        .app-hero__inner {
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
+          gap: 2.5rem;
+          padding: 3rem 2rem;
+        }
+      }
+
+      .app-hero__title h1 {
+        font-size: clamp(1.75rem, 2.4vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      .app-hero__title p {
+        margin-top: 0.35rem;
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .app-hero__meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+        font-size: 0.85rem;
+      }
+
+      @media (min-width: 640px) {
+        .app-hero__meta {
+          align-items: flex-end;
+        }
+      }
+
+      .app-hero__user {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .app-hero__badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.8rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .app-hero__name {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.8rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .app-hero__ghost-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        background: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.45rem 0.95rem;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(6px);
+      }
+
+      .app-hero__ghost-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.85);
+        color: #fff;
+        box-shadow: 0 16px 32px -24px rgba(15, 23, 42, 0.6);
+      }
+
+      .app-hero__actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 0.6rem;
+      }
+
+      @media (min-width: 640px) {
+        .app-hero__actions {
+          justify-content: flex-end;
+        }
       }
 
       footer {
@@ -620,26 +735,26 @@
 
       .student-top-btn {
         border-radius: 9999px;
-        border: 1px solid var(--primary-muted);
-        padding: 0.45rem 1rem;
-        color: var(--primary-color);
-        background: var(--primary-muted);
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        padding: 0.45rem 1.1rem;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.12);
         backdrop-filter: blur(12px);
         transition: all 0.2s ease;
       }
 
       .student-top-btn:hover {
-        border-color: var(--primary-color);
+        border-color: rgba(255, 255, 255, 0.9);
         color: #fff;
-        background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
-        box-shadow: 0 14px 30px -18px var(--selection-glow);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.12));
+        box-shadow: 0 18px 32px -22px rgba(15, 23, 42, 0.55);
       }
 
       .student-option-active {
-        background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.18));
         color: #fff;
-        box-shadow: 0 20px 38px -20px var(--selection-glow);
-        border-color: var(--primary-color);
+        box-shadow: 0 22px 36px -22px rgba(15, 23, 42, 0.55);
+        border-color: rgba(255, 255, 255, 0.9);
       }
 
       .primary-button {
@@ -1126,36 +1241,27 @@
     </style>
   </head>
   <body class="bg-transparent min-h-screen antialiased">
-    <header class="border-b border-neutral-200 bg-white/90 backdrop-blur shadow-sm">
-      <div
-        class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 lg:flex-row lg:items-center lg:justify-between"
-      >
-        <div>
-          <h1 class="text-2xl font-semibold">外贸英语谈判实战互动</h1>
-          <p class="text-sm text-slate-600">
-            AI Smart Foreign Trade Negotiation Assistant
-          </p>
+    <header class="app-hero">
+      <div class="app-hero__inner">
+        <div class="app-hero__title">
+          <h1>外贸英语谈判实战互动</h1>
+          <p>AI Smart Foreign Trade Negotiation Assistant</p>
         </div>
-        <div class="flex flex-col items-end gap-3 text-xs text-slate-500">
-          <div id="user-status" class="flex items-center gap-3 text-sm">
-            <span id="user-status-label" class="text-slate-400">未登录</span>
+        <div class="app-hero__meta">
+          <div id="user-status" class="app-hero__user">
+            <span id="user-role-label" class="app-hero__badge">访客</span>
+            <span id="user-status-label" class="app-hero__name">未登录</span>
             <button
               id="change-password-btn"
-              class="hidden rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-slate-500 hover:text-white"
+              class="app-hero__ghost-btn hidden"
             >
               修改密码
             </button>
-            <button
-              id="logout-btn"
-              class="hidden rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-slate-500 hover:text-white"
-            >
+            <button id="logout-btn" class="app-hero__ghost-btn hidden">
               退出登录
             </button>
           </div>
-          <div
-            id="student-top-controls"
-            class="hidden flex flex-wrap justify-end gap-2 text-sm"
-          >
+          <div id="student-top-controls" class="app-hero__actions hidden">
             <button
               type="button"
               class="student-top-btn"

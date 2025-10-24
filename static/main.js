@@ -6,6 +6,7 @@ const loginErrorEl = document.getElementById("login-error");
 const userStatusLabel = document.getElementById("user-status-label");
 const logoutBtn = document.getElementById("logout-btn");
 const changePasswordBtn = document.getElementById("change-password-btn");
+const userRoleLabel = document.getElementById("user-role-label");
 
 const studentDashboard = document.getElementById("student-dashboard");
 const adminPanel = document.getElementById("admin-panel");
@@ -3300,7 +3301,13 @@ function updateAuthUI() {
     authPanel.classList.add("hidden");
     logoutBtn.classList.remove("hidden");
     const display = state.auth.user.displayName || state.auth.user.username;
-    userStatusLabel.textContent = `${state.auth.user.role === "teacher" ? "教师" : "学生"} ${display}`;
+    const roleText = state.auth.user.role === "teacher" ? "教师" : "学生";
+    if (userRoleLabel) {
+      userRoleLabel.textContent = roleText;
+    }
+    if (userStatusLabel) {
+      userStatusLabel.textContent = display;
+    }
     if (adminProfileNameInput) {
       adminProfileNameInput.value =
         state.auth.user.role === "teacher"
@@ -3338,7 +3345,12 @@ function updateAuthUI() {
   } else {
     authPanel.classList.remove("hidden");
     logoutBtn.classList.add("hidden");
-    userStatusLabel.textContent = "未登录";
+    if (userRoleLabel) {
+      userRoleLabel.textContent = "访客";
+    }
+    if (userStatusLabel) {
+      userStatusLabel.textContent = "未登录";
+    }
     studentDashboard.classList.add("hidden");
     adminPanel.classList.add("hidden");
     hideExperience();
