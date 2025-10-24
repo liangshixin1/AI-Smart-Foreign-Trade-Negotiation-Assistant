@@ -1213,6 +1213,23 @@ def update_own_password():
     return jsonify({"status": "updated"})
 
 
+@app.post("/api/account/profile")
+def update_own_profile():
+    user, error = _require_user()
+    if error:
+        body, status = error
+        return jsonify(body), status
+
+    data = request.get_json(force=True)
+    display_name = _normalize_text(data.get("displayName"))
+    if not display_name:
+        return jsonify({"error": "Display name is required"}), 400
+
+    database.update_user_profile(int(user["id"]), display_name)
+    updated = database.get_user(int(user["id"]))
+    return jsonify({"status": "updated", "user": updated})
+
+
 @app.post("/api/chat")
 def chat():
     user, error = _require_user(required_role="student")

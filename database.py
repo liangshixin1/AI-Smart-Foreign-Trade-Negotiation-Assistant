@@ -704,6 +704,22 @@ def get_user_by_token(token: str) -> Optional[Dict[str, object]]:
         }
 
 
+def get_user(user_id: int) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, username, display_name, role FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "displayName": row["display_name"] or row["username"],
+            "role": row["role"],
+        }
+
+
 def create_session(
     session_id: str,
     user_id: int,
@@ -829,27 +845,72 @@ def list_sessions_for_user(user_id: int) -> List[Dict[str, object]]:
             SELECT s.id, s.chapter_id, s.section_id, s.updated_at, s.created_at,
                    s.difficulty, s.assignment_id,
                    json_extract(s.scenario_json, '$.scenario_title') AS scenario_title,
-                   json_extract(s.scenario_json, '$.scenario_summary') AS scenario_summary
+                   json_extract(s.scenario_json, '$.scenario_summary') AS scenario_summary,
+                   (
+                       SELECT e.score
+                       FROM evaluations e
+                       WHERE e.session_id = s.id
+                       ORDER BY e.created_at DESC, e.id DESC
+                       LIMIT 1
+                   ) AS latest_score,
+                   (
+                       SELECT e.score_label
+                       FROM evaluations e
+                       WHERE e.session_id = s.id
+                       ORDER BY e.created_at DESC, e.id DESC
+                       LIMIT 1
+                   ) AS latest_score_label,
+                   (
+                       SELECT e.bargaining_win_rate
+                       FROM evaluations e
+                       WHERE e.session_id = s.id
+                       ORDER BY e.created_at DESC, e.id DESC
+                       LIMIT 1
+                   ) AS latest_bargaining_win_rate,
+                   (
+                       SELECT e.created_at
+                       FROM evaluations e
+                       WHERE e.session_id = s.id
+                       ORDER BY e.created_at DESC, e.id DESC
+                       LIMIT 1
+                   ) AS latest_evaluation_at
             FROM chat_sessions s
             WHERE s.user_id = ?
             ORDER BY s.updated_at DESC
             """,
             (user_id,),
         ).fetchall()
-        return [
-            {
-                "id": row["id"],
-                "chapterId": row["chapter_id"],
-                "sectionId": row["section_id"],
-                "title": row["scenario_title"],
-                "summary": row["scenario_summary"],
-                "updatedAt": row["updated_at"],
-                "createdAt": row["created_at"],
-                "difficulty": row["difficulty"],
-                "assignmentId": row["assignment_id"],
-            }
-            for row in rows
-        ]
+        sessions: List[Dict[str, object]] = []
+        for row in rows:
+            latest_evaluation = None
+            if (
+                row["latest_score"] is not None
+                or row["latest_bargaining_win_rate"] is not None
+                or row["latest_score_label"] is not None
+            ):
+                latest_evaluation = {
+                    "score": row["latest_score"],
+                    "scoreLabel": row["latest_score_label"],
+                    "bargainingWinRate": row["latest_bargaining_win_rate"],
+                    "createdAt": row["latest_evaluation_at"],
+                }
+
+            sessions.append(
+                {
+                    "id": row["id"],
+                    "chapterId": row["chapter_id"],
+                    "sectionId": row["section_id"],
+                    "title": row["scenario_title"],
+                    "summary": row["scenario_summary"],
+                    "updatedAt": row["updated_at"],
+                    "createdAt": row["created_at"],
+                    "difficulty": row["difficulty"],
+                    "assignmentId": row["assignment_id"],
+                    "latestEvaluation": latest_evaluation,
+                }
+            )
+
+        return sessions
 
 
 def save_evaluation(session_id: str, evaluation: Dict[str, object]) -> None:
@@ -1487,10 +1548,20 @@ def bulk_import_students(records: List[Dict[str, str]]) -> Dict[str, int]:
 
 
 def update_user_password(user_id: int, new_password: str) -> None:
+    password_hash = generate_password_hash(new_password)
     with get_connection() as conn:
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(new_password), user_id),
+            (password_hash, user_id),
+        )
+        conn.commit()
+
+
+def update_user_profile(user_id: int, display_name: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET display_name = ? WHERE id = ?",
+            (display_name, user_id),
         )
         conn.commit()
 
