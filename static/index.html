@@ -6,6 +6,8 @@
     <title>外贸英语谈判实战互动</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -190,6 +192,153 @@
         color: #fff;
         margin-left: auto;
         border-bottom-right-radius: 0.25rem;
+      }
+
+      .chat-markdown {
+        line-height: 1.6;
+      }
+
+      .chat-markdown > *:first-child {
+        margin-top: 0;
+      }
+
+      .chat-markdown > *:last-child {
+        margin-bottom: 0;
+      }
+
+      .chat-markdown p,
+      .chat-markdown ul,
+      .chat-markdown ol,
+      .chat-markdown blockquote,
+      .chat-markdown table,
+      .chat-markdown pre {
+        margin: 0.25rem 0 0.75rem;
+      }
+
+      .chat-markdown ul,
+      .chat-markdown ol {
+        padding-left: 1.25rem;
+      }
+
+      .chat-markdown li + li {
+        margin-top: 0.25rem;
+      }
+
+      .chat-markdown strong {
+        font-weight: 700;
+      }
+
+      .chat-markdown code {
+        display: inline-block;
+        padding: 0.1rem 0.35rem;
+        background: rgba(15, 23, 42, 0.15);
+        border-radius: 0.35rem;
+        font-family: "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 0.9em;
+      }
+
+      .chat-markdown pre {
+        background: rgba(15, 23, 42, 0.18);
+        border-radius: 0.75rem;
+        padding: 0.75rem 1rem;
+        overflow-x: auto;
+      }
+
+      .chat-markdown pre code {
+        display: block;
+        padding: 0;
+        background: transparent;
+        border-radius: 0;
+        white-space: pre;
+      }
+
+      .chat-markdown table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 0.75rem;
+      }
+
+      .chat-markdown th,
+      .chat-markdown td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(15, 23, 42, 0.92);
+      }
+
+      .bubble-user .chat-markdown code,
+      .bubble-user .chat-markdown pre,
+      .bubble-user .chat-markdown th,
+      .bubble-user .chat-markdown td {
+        background: rgba(255, 255, 255, 0.18);
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+
+      .chat-markdown a {
+        color: #fff;
+        text-decoration: underline;
+      }
+
+      @media (prefers-color-scheme: light) {
+        .chat-markdown code {
+          background: rgba(15, 23, 42, 0.08);
+        }
+
+        .chat-markdown pre {
+          background: rgba(15, 23, 42, 0.1);
+        }
+
+        .chat-markdown th,
+        .chat-markdown td {
+          background: rgba(255, 255, 255, 0.85);
+          border-color: rgba(148, 163, 184, 0.4);
+          color: #1f2937;
+        }
+
+        .bubble-assistant .chat-markdown th,
+        .bubble-assistant .chat-markdown td {
+          background: rgba(255, 255, 255, 0.96);
+          border-color: rgba(255, 255, 255, 0.6);
+          color: #0f172a;
+        }
+
+        .bubble-user .chat-markdown code,
+        .bubble-user .chat-markdown pre,
+        .bubble-user .chat-markdown th,
+        .bubble-user .chat-markdown td {
+          background: rgba(255, 255, 255, 0.92);
+          color: #0f172a;
+          border-color: rgba(148, 163, 184, 0.5);
+        }
+
+        .chat-markdown a {
+          color: #1d4ed8;
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .chat-markdown th,
+        .chat-markdown td {
+          background: rgba(30, 41, 59, 0.65);
+          border-color: rgba(148, 163, 184, 0.45);
+          color: #e2e8f0;
+        }
+
+        .bubble-assistant .chat-markdown th,
+        .bubble-assistant .chat-markdown td {
+          background: rgba(251, 113, 133, 0.32);
+          border-color: rgba(251, 113, 133, 0.55);
+          color: #fff7f7;
+        }
+
+        .bubble-user .chat-markdown th,
+        .bubble-user .chat-markdown td {
+          background: rgba(59, 130, 246, 0.32);
+          border-color: rgba(147, 197, 253, 0.6);
+          color: #f8fafc;
+        }
       }
 
       .knowledge-pill {
