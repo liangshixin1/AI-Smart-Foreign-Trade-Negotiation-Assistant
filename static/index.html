@@ -192,6 +192,144 @@
         transform: translate(-50%, 0);
       }
 
+      .token-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .token-editor-toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-radius: 0.9rem;
+        background: rgba(15, 23, 42, 0.35);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+      }
+
+      .token-editor-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem 0.5rem;
+      }
+
+      .token-editor-group-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: rgba(148, 163, 184, 0.85);
+        text-transform: uppercase;
+      }
+
+      .token-editor-toolbar button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        background: rgba(59, 130, 246, 0.1);
+        color: #cbd5f5;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+      }
+
+      .token-editor-toolbar button:hover {
+        border-color: rgba(59, 130, 246, 0.65);
+        background: rgba(59, 130, 246, 0.18);
+        transform: translateY(-1px);
+      }
+
+      .token-editor-toolbar button:focus-visible {
+        outline: 2px solid rgba(59, 130, 246, 0.8);
+        outline-offset: 2px;
+      }
+
+      .token-editor-surface {
+        min-height: 7.5rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.55);
+        padding: 0.75rem 0.85rem;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: #e2e8f0;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .token-editor-surface:focus {
+        outline: none;
+        border-color: rgba(99, 102, 241, 0.75);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+      }
+
+      .token-editor-surface[data-placeholder][data-empty="true"]::before {
+        content: attr(data-placeholder);
+        color: rgba(148, 163, 184, 0.65);
+        pointer-events: none;
+      }
+
+      .token-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.25rem 0.6rem;
+        margin: 0 0.1rem;
+        border-radius: 9999px;
+        border: 1px dashed rgba(16, 185, 129, 0.6);
+        background: rgba(16, 185, 129, 0.16);
+        color: #a7f3d0;
+        font-size: 0.78rem;
+        cursor: default;
+      }
+
+      .token-chip-name {
+        font-weight: 600;
+      }
+
+      .token-chip-code {
+        font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", monospace;
+        font-size: 0.7rem;
+        color: rgba(167, 243, 208, 0.75);
+        background: rgba(15, 118, 110, 0.35);
+        padding: 0.15rem 0.35rem;
+        border-radius: 9999px;
+      }
+
+      .token-chip-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.35rem;
+        height: 1.35rem;
+        border-radius: 9999px;
+        border: 1px solid transparent;
+        background: rgba(15, 118, 110, 0.45);
+        color: rgba(167, 243, 208, 0.85);
+        font-size: 0.9rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .token-chip-remove:hover {
+        background: rgba(15, 118, 110, 0.7);
+        color: #ecfeff;
+      }
+
+      .token-chip-remove:focus-visible {
+        outline: 2px solid rgba(16, 185, 129, 0.8);
+        outline-offset: 1px;
+      }
+
+      .token-editor-helper {
+        font-size: 0.7rem;
+        color: rgba(148, 163, 184, 0.75);
+      }
+
       .surface-card {
         background: var(--surface-color);
         border: 1px solid var(--surface-border);
@@ -1676,13 +1814,16 @@
                           class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
                         ></textarea>
                       </label>
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">环境提示模板</span>
-                        <textarea
-                          id="section-editor-environment"
-                          rows="4"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        ></textarea>
+                      <label class="block space-y-2 text-sm">
+                        <span class="flex items-center justify-between text-slate-300">
+                          <span>环境提示模板</span>
+                          <span class="text-xs text-slate-500">变量以标签展示</span>
+                        </span>
+                        <div id="section-editor-environment-editor" class="token-editor"></div>
+                        <textarea id="section-editor-environment" class="hidden"></textarea>
+                        <p class="token-editor-helper">
+                          通过上方的按钮插入变量，彩色标签代表不可编辑的占位符，点击标签右侧的 × 可安全移除。
+                        </p>
                       </label>
                       <label class="block space-y-1 text-sm">
                         <span class="text-slate-300">环境用户消息</span>
@@ -1692,21 +1833,27 @@
                           class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
                         ></textarea>
                       </label>
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">对话提示模板</span>
-                        <textarea
-                          id="section-editor-conversation"
-                          rows="4"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        ></textarea>
+                      <label class="block space-y-2 text-sm">
+                        <span class="flex items-center justify-between text-slate-300">
+                          <span>对话提示模板</span>
+                          <span class="text-xs text-slate-500">描述 AI 语气、策略与变量</span>
+                        </span>
+                        <div id="section-editor-conversation-editor" class="token-editor"></div>
+                        <textarea id="section-editor-conversation" class="hidden"></textarea>
+                        <p class="token-editor-helper">
+                          可自由编辑自然语言，使用按钮插入 {ai_role}、{ai_bottom_line} 等变量，保证后端可以准确替换真实数据。
+                        </p>
                       </label>
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">评价提示模板</span>
-                        <textarea
-                          id="section-editor-evaluation"
-                          rows="4"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        ></textarea>
+                      <label class="block space-y-2 text-sm">
+                        <span class="flex items-center justify-between text-slate-300">
+                          <span>评价提示模板</span>
+                          <span class="text-xs text-slate-500">支撑自动评分的变量提示</span>
+                        </span>
+                        <div id="section-editor-evaluation-editor" class="token-editor"></div>
+                        <textarea id="section-editor-evaluation" class="hidden"></textarea>
+                        <p class="token-editor-helper">
+                          评价模板常用 {knowledge_points_hint} 等变量，点击标签右侧的 × 删除时不会破坏格式。
+                        </p>
                       </label>
                       <div class="flex flex-wrap items-center gap-4 text-sm text-slate-300">
                         <label class="flex items-center gap-2">
