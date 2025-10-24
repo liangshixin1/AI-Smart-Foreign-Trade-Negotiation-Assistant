@@ -1708,4 +1708,4 @@ def delete_admin_section(section_id: str):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    app.run(debug=True)
+    app.run(host="0.0.0.0", debug=True)

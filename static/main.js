@@ -126,6 +126,9 @@ const sectionEditorEnvironment = document.getElementById("section-editor-environ
 const sectionEditorEnvironmentUser = document.getElementById("section-editor-environment-user");
 const sectionEditorConversation = document.getElementById("section-editor-conversation");
 const sectionEditorEvaluation = document.getElementById("section-editor-evaluation");
+const sectionEditorEnvironmentHost = document.getElementById("section-editor-environment-editor");
+const sectionEditorConversationHost = document.getElementById("section-editor-conversation-editor");
+const sectionEditorEvaluationHost = document.getElementById("section-editor-evaluation-editor");
 const sectionEditorBargaining = document.getElementById("section-editor-bargaining");
 const sectionEditorOrder = document.getElementById("section-editor-order");
 const levelSaveSectionBtn = document.getElementById("level-save-section");
@@ -202,6 +205,576 @@ const state = {
   studentAssignments: [],
   levelVictories: new Set(),
 };
+
+const PROMPT_TOKEN_DEFINITIONS = {
+  scenario_title: {
+    label: "场景标题",
+    description: "AI 生成的场景题目，可用于提醒训练主题。",
+  },
+  scenario_summary: {
+    label: "场景摘要",
+    description: "概括市场背景与合作目标的摘要段落。",
+  },
+  student_role: {
+    label: "学生身份",
+    description: "学生在本场景中扮演的角色与职位。",
+  },
+  student_company_name: {
+    label: "学生公司名称",
+    description: "学生所在公司的名称。",
+  },
+  student_company_profile: {
+    label: "学生公司简介",
+    description: "学生公司的背景、优势或主营业务。",
+  },
+  ai_role: {
+    label: "AI 身份",
+    description: "AI 扮演的谈判角色。",
+  },
+  ai_company_name: {
+    label: "AI 公司名称",
+    description: "AI 方所属公司的名称。",
+  },
+  ai_company_profile: {
+    label: "AI 公司简介",
+    description: "AI 方公司的业务背景或优势。",
+  },
+  product_name: {
+    label: "产品名称",
+    description: "交易产品的名称或品类。",
+  },
+  product_specs: {
+    label: "产品规格",
+    description: "关键规格、品质标准或技术参数。",
+  },
+  product_quantity: {
+    label: "数量需求",
+    description: "需求或可供的数量信息。",
+  },
+  student_target_price: {
+    label: "学生目标价",
+    description: "学生期望的价格或目标条件。",
+  },
+  ai_bottom_line: {
+    label: "AI 底线",
+    description: "AI 方可接受的底线或最低条件。",
+  },
+  market_landscape: {
+    label: "市场环境",
+    description: "目标市场与行业的现况提示。",
+  },
+  timeline: {
+    label: "时间节点",
+    description: "交期或关键时间安排。",
+  },
+  logistics: {
+    label: "物流条款",
+    description: "物流、交货或贸易条款要点。",
+  },
+  communication_tone: {
+    label: "沟通语气",
+    description: "谈判过程建议采用的语气与礼仪。",
+  },
+  risks_summary: {
+    label: "风险提示",
+    description: "场景中的风险提醒合并内容。",
+  },
+  knowledge_points_hint: {
+    label: "知识点提示",
+    description: "需要覆盖或检查的核心知识点。",
+  },
+  negotiation_focus_hint: {
+    label: "谈判焦点",
+    description: "需要重点讨论的议题列表。",
+  },
+};
+
+const PROMPT_TOKEN_GROUPS = [
+  {
+    label: "角色设定",
+    tokens: [
+      "student_role",
+      "student_company_name",
+      "student_company_profile",
+      "ai_role",
+      "ai_company_name",
+      "ai_company_profile",
+    ],
+  },
+  {
+    label: "产品与条款",
+    tokens: [
+      "product_name",
+      "product_specs",
+      "product_quantity",
+      "student_target_price",
+      "ai_bottom_line",
+      "logistics",
+    ],
+  },
+  {
+    label: "场景背景",
+    tokens: [
+      "scenario_title",
+      "scenario_summary",
+      "market_landscape",
+      "timeline",
+      "communication_tone",
+      "risks_summary",
+      "negotiation_focus_hint",
+    ],
+  },
+  {
+    label: "学习反馈",
+    tokens: ["knowledge_points_hint"],
+  },
+];
+
+class TokenEditor {
+  constructor({ container, textarea, definitions, groups, placeholder }) {
+    this.container = container;
+    this.textarea = textarea;
+    this.definitions = definitions || {};
+    this.groups = groups || [];
+    this.placeholder = placeholder || "";
+
+    this._handleToolbarClick = this._handleToolbarClick.bind(this);
+    this._handleKeyDown = this._handleKeyDown.bind(this);
+    this._handlePaste = this._handlePaste.bind(this);
+    this._emitChange = this._emitChange.bind(this);
+
+    if (!this.container) {
+      return;
+    }
+
+    this.container.innerHTML = "";
+    this.container.classList.add("token-editor");
+
+    this.toolbar = document.createElement("div");
+    this.toolbar.className = "token-editor-toolbar";
+
+    this.surface = document.createElement("div");
+    this.surface.className = "token-editor-surface";
+    this.surface.setAttribute("contenteditable", "true");
+    this.surface.setAttribute("role", "textbox");
+    this.surface.setAttribute("aria-multiline", "true");
+    this.surface.dataset.empty = "true";
+    if (this.placeholder) {
+      this.surface.dataset.placeholder = this.placeholder;
+    }
+
+    this.container.appendChild(this.toolbar);
+    this.container.appendChild(this.surface);
+
+    this._renderToolbar();
+    this._bindEvents();
+    const initialValue = this.textarea ? this.textarea.value : "";
+    this.setValue(initialValue, { silent: true });
+  }
+
+  setValue(value = "", options = {}) {
+    if (!this.surface) {
+      if (this.textarea) {
+        this.textarea.value = value;
+      }
+      return;
+    }
+    this._clearSurface();
+    const segments = this._parseTemplate(value);
+    segments.forEach((segment) => {
+      if (!segment) {
+        return;
+      }
+      if (segment.type === "token" && segment.name) {
+        const tokenEl = this._createTokenElement(segment.name);
+        this.surface.appendChild(tokenEl);
+        return;
+      }
+      if (segment.type === "text" && segment.value) {
+        const textNode = document.createTextNode(segment.value);
+        this.surface.appendChild(textNode);
+      }
+    });
+    this._updateEmptyState();
+    this._syncTextarea({ silent: !!options.silent });
+  }
+
+  getValue() {
+    if (!this.surface) {
+      return this.textarea ? this.textarea.value : "";
+    }
+    return this._serializeSurface();
+  }
+
+  focus() {
+    if (this.surface) {
+      this.surface.focus();
+    }
+  }
+
+  _renderToolbar() {
+    if (!this.toolbar) {
+      return;
+    }
+    this.toolbar.innerHTML = "";
+    const groups = this.groups && this.groups.length > 0 ? this.groups : [
+      { label: "可用变量", tokens: Object.keys(this.definitions || {}) },
+    ];
+    groups.forEach((group) => {
+      if (!group || !Array.isArray(group.tokens) || group.tokens.length === 0) {
+        return;
+      }
+      const groupEl = document.createElement("div");
+      groupEl.className = "token-editor-group";
+      if (group.label) {
+        const labelEl = document.createElement("span");
+        labelEl.className = "token-editor-group-label";
+        labelEl.textContent = group.label;
+        groupEl.appendChild(labelEl);
+      }
+      group.tokens.forEach((tokenName) => {
+        const def = this.definitions[tokenName] || { label: tokenName };
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.tokenName = tokenName;
+        button.textContent = def.label || tokenName;
+        const tokenLabel = `{${tokenName}}`;
+        button.title = def.description ? `${tokenLabel}｜${def.description}` : tokenLabel;
+        groupEl.appendChild(button);
+      });
+      this.toolbar.appendChild(groupEl);
+    });
+  }
+
+  _bindEvents() {
+    if (!this.surface) {
+      return;
+    }
+    if (this.toolbar) {
+      this.toolbar.addEventListener("click", this._handleToolbarClick);
+    }
+    this.surface.addEventListener("keydown", this._handleKeyDown);
+    this.surface.addEventListener("paste", this._handlePaste);
+    this.surface.addEventListener("input", this._emitChange);
+    this.surface.addEventListener("blur", this._emitChange);
+    this.surface.addEventListener("keyup", () => this._updateEmptyState());
+    this.surface.addEventListener("mouseup", () => this._updateEmptyState());
+    this.surface.addEventListener("drop", (event) => {
+      event.preventDefault();
+    });
+  }
+
+  _handleToolbarClick(event) {
+    const button = event.target.closest("button[data-token-name]");
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    const tokenName = button.dataset.tokenName;
+    if (tokenName) {
+      this._insertToken(tokenName);
+    }
+  }
+
+  _createTokenElement(name) {
+    const def = this.definitions[name] || { label: name };
+    const chip = document.createElement("span");
+    chip.className = "token-chip";
+    chip.dataset.tokenName = name;
+    chip.setAttribute("contenteditable", "false");
+    const nameEl = document.createElement("span");
+    nameEl.className = "token-chip-name";
+    nameEl.textContent = def.label || name;
+    chip.appendChild(nameEl);
+    const codeEl = document.createElement("span");
+    codeEl.className = "token-chip-code";
+    codeEl.textContent = `{${name}}`;
+    chip.appendChild(codeEl);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "token-chip-remove";
+    removeBtn.setAttribute("aria-label", `移除 {${name}}`);
+    removeBtn.innerHTML = "&times;";
+    removeBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      chip.remove();
+      this._emitChange();
+    });
+    chip.appendChild(removeBtn);
+    chip.title = def.description ? `${def.label || name}｜${def.description}` : `{${name}}`;
+    return chip;
+  }
+
+  _insertToken(name) {
+    if (!this.surface) {
+      if (this.textarea) {
+        this.textarea.value = `${this.textarea.value || ""}{${name}}`;
+      }
+      return;
+    }
+    this.surface.focus();
+    const tokenEl = this._createTokenElement(name);
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !this.surface.contains(selection.anchorNode)) {
+      this.surface.appendChild(tokenEl);
+    } else {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(tokenEl);
+      range.setStartAfter(tokenEl);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    this._emitChange();
+  }
+
+  _insertText(text) {
+    if (!this.surface || !text) {
+      return;
+    }
+    const normalized = text.replace(/\r\n/g, "\n");
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !this.surface.contains(selection.anchorNode)) {
+      this.surface.appendChild(document.createTextNode(normalized));
+    } else {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(normalized);
+      range.insertNode(node);
+      range.setStart(node, node.length);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    this._emitChange();
+  }
+
+  _handleKeyDown(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      this._insertText("\n");
+      return;
+    }
+    if (event.key === "Backspace") {
+      if (this._selectionTouchesToken("backward")) {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (event.key === "Delete") {
+      if (this._selectionTouchesToken("forward")) {
+        event.preventDefault();
+      }
+    }
+  }
+
+  _handlePaste(event) {
+    event.preventDefault();
+    const text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
+    if (text) {
+      this._insertText(text);
+    }
+  }
+
+  _selectionTouchesToken(direction) {
+    if (!this.surface) {
+      return false;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+    const range = selection.getRangeAt(0);
+    if (!this.surface.contains(range.commonAncestorContainer)) {
+      return false;
+    }
+    if (!range.collapsed) {
+      const tokens = Array.from(this.surface.querySelectorAll("[data-token-name]"));
+      return tokens.some((token) => range.intersectsNode(token));
+    }
+    if (direction === "backward") {
+      return !!this._findAdjacentToken(range.startContainer, range.startOffset, -1);
+    }
+    if (direction === "forward") {
+      return !!this._findAdjacentToken(range.startContainer, range.startOffset, 1);
+    }
+    return false;
+  }
+
+  _findAdjacentToken(container, offset, direction) {
+    if (!container) {
+      return null;
+    }
+    if (container.nodeType === Node.TEXT_NODE) {
+      const length = container.nodeValue ? container.nodeValue.length : 0;
+      if (direction < 0 && offset > 0) {
+        return null;
+      }
+      if (direction > 0 && offset < length) {
+        return null;
+      }
+      let current = direction < 0 ? container.previousSibling : container.nextSibling;
+      let parent = container.parentNode;
+      while (!current && parent && parent !== this.surface) {
+        current = direction < 0 ? parent.previousSibling : parent.nextSibling;
+        parent = parent.parentNode;
+      }
+      container = current || parent;
+    }
+    let node = container;
+    if (node && node.nodeType === Node.ELEMENT_NODE) {
+      if (direction < 0 && node.childNodes && node.childNodes.length > 0) {
+        const child = node.childNodes[offset - 1];
+        if (child) {
+          node = child;
+          while (node && node.lastChild) {
+            node = node.lastChild;
+          }
+        } else {
+          node = node.previousSibling;
+        }
+      } else if (direction > 0 && node.childNodes && node.childNodes.length > offset) {
+        node = node.childNodes[offset];
+        while (node && node.firstChild) {
+          node = node.firstChild;
+        }
+      }
+    }
+    while (node && node !== this.surface) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.dataset && node.dataset.tokenName) {
+        return node;
+      }
+      node = direction < 0 ? node.previousSibling : node.nextSibling;
+    }
+    return null;
+  }
+
+  _serializeSurface() {
+    if (!this.surface) {
+      return "";
+    }
+    const nodes = Array.from(this.surface.childNodes);
+    return nodes.map((node) => this._serializeNode(node)).join("");
+  }
+
+  _serializeNode(node) {
+    if (!node) {
+      return "";
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      return this._escapeLiteral(node.nodeValue || "");
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.dataset && node.dataset.tokenName) {
+        return `{${node.dataset.tokenName}}`;
+      }
+      if (node.tagName === "BR") {
+        return "\n";
+      }
+      const children = Array.from(node.childNodes).map((child) => this._serializeNode(child)).join("");
+      return children;
+    }
+    return "";
+  }
+
+  _escapeLiteral(value) {
+    return (value || "").replace(/\{/g, "{{").replace(/\}/g, "}}");
+  }
+
+  _parseTemplate(value) {
+    const source = typeof value === "string" ? value.replace(/\r\n/g, "\n") : "";
+    const result = [];
+    const tokenRegex = /{{|}}|{[a-zA-Z0-9_]+}/g;
+    let lastIndex = 0;
+    source.replace(tokenRegex, (match, index) => {
+      if (index > lastIndex) {
+        result.push({ type: "text", value: source.slice(lastIndex, index) });
+      }
+      if (match === "{{") {
+        result.push({ type: "text", value: "{" });
+      } else if (match === "}}") {
+        result.push({ type: "text", value: "}" });
+      } else {
+        result.push({ type: "token", name: match.slice(1, -1) });
+      }
+      lastIndex = index + match.length;
+      return match;
+    });
+    if (lastIndex < source.length) {
+      result.push({ type: "text", value: source.slice(lastIndex) });
+    }
+    return result;
+  }
+
+  _clearSurface() {
+    if (this.surface) {
+      this.surface.innerHTML = "";
+    }
+  }
+
+  _syncTextarea(options = {}) {
+    if (!this.textarea) {
+      return;
+    }
+    const value = this._serializeSurface();
+    this.textarea.value = value;
+    if (!options.silent) {
+      const event = new Event("input", { bubbles: true });
+      this.textarea.dispatchEvent(event);
+    }
+  }
+
+  _updateEmptyState() {
+    if (!this.surface) {
+      return;
+    }
+    const hasToken = this.surface.querySelector("[data-token-name]") !== null;
+    const textContent = (this.surface.textContent || "").replace(/\u200b/g, "");
+    const hasText = textContent.trim().length > 0;
+    this.surface.dataset.empty = hasToken || hasText ? "false" : "true";
+  }
+
+  _emitChange() {
+    this._updateEmptyState();
+    this._syncTextarea();
+  }
+}
+
+const tokenEditors = {};
+
+function initTokenEditors() {
+  const definitions = PROMPT_TOKEN_DEFINITIONS;
+  const groups = PROMPT_TOKEN_GROUPS;
+  if (sectionEditorEnvironment && sectionEditorEnvironmentHost) {
+    tokenEditors.environment = new TokenEditor({
+      container: sectionEditorEnvironmentHost,
+      textarea: sectionEditorEnvironment,
+      definitions,
+      groups,
+      placeholder: "描述用于生成场景的系统提示，变量会被后台自动替换。",
+    });
+  }
+  if (sectionEditorConversation && sectionEditorConversationHost) {
+    tokenEditors.conversation = new TokenEditor({
+      container: sectionEditorConversationHost,
+      textarea: sectionEditorConversation,
+      definitions,
+      groups,
+      placeholder: "规划 AI 的回应策略、语气与规则，可随时插入变量。",
+    });
+  }
+  if (sectionEditorEvaluation && sectionEditorEvaluationHost) {
+    tokenEditors.evaluation = new TokenEditor({
+      container: sectionEditorEvaluationHost,
+      textarea: sectionEditorEvaluation,
+      definitions,
+      groups,
+      placeholder: "定义评估维度与输出格式，变量将用于生成针对性的反馈。",
+    });
+  }
+}
 
 function toggleLoading(isLoading) {
   if (isLoading) {
@@ -2173,10 +2746,22 @@ function updateSectionForm() {
     if (levelDeleteSectionBtn) levelDeleteSectionBtn.disabled = true;
     if (sectionEditorTitle) sectionEditorTitle.value = "";
     if (sectionEditorDescription) sectionEditorDescription.value = "";
-    if (sectionEditorEnvironment) sectionEditorEnvironment.value = "";
+    if (tokenEditors.environment) {
+      tokenEditors.environment.setValue("", { silent: true });
+    } else if (sectionEditorEnvironment) {
+      sectionEditorEnvironment.value = "";
+    }
     if (sectionEditorEnvironmentUser) sectionEditorEnvironmentUser.value = "";
-    if (sectionEditorConversation) sectionEditorConversation.value = "";
-    if (sectionEditorEvaluation) sectionEditorEvaluation.value = "";
+    if (tokenEditors.conversation) {
+      tokenEditors.conversation.setValue("", { silent: true });
+    } else if (sectionEditorConversation) {
+      sectionEditorConversation.value = "";
+    }
+    if (tokenEditors.evaluation) {
+      tokenEditors.evaluation.setValue("", { silent: true });
+    } else if (sectionEditorEvaluation) {
+      sectionEditorEvaluation.value = "";
+    }
     if (sectionEditorBargaining) sectionEditorBargaining.checked = false;
     if (sectionEditorOrder) sectionEditorOrder.value = "";
     return;
@@ -2186,14 +2771,23 @@ function updateSectionForm() {
   levelSectionStatus.textContent = "编辑 " + (section.title || "小节");
   if (sectionEditorTitle) sectionEditorTitle.value = section.title || "";
   if (sectionEditorDescription) sectionEditorDescription.value = section.description || "";
-  if (sectionEditorEnvironment)
+  if (tokenEditors.environment) {
+    tokenEditors.environment.setValue(section.environmentPromptTemplate || "");
+  } else if (sectionEditorEnvironment) {
     sectionEditorEnvironment.value = section.environmentPromptTemplate || "";
+  }
   if (sectionEditorEnvironmentUser)
     sectionEditorEnvironmentUser.value = section.environmentUserMessage || "";
-  if (sectionEditorConversation)
+  if (tokenEditors.conversation) {
+    tokenEditors.conversation.setValue(section.conversationPromptTemplate || "");
+  } else if (sectionEditorConversation) {
     sectionEditorConversation.value = section.conversationPromptTemplate || "";
-  if (sectionEditorEvaluation)
+  }
+  if (tokenEditors.evaluation) {
+    tokenEditors.evaluation.setValue(section.evaluationPromptTemplate || "");
+  } else if (sectionEditorEvaluation) {
     sectionEditorEvaluation.value = section.evaluationPromptTemplate || "";
+  }
   if (sectionEditorBargaining) sectionEditorBargaining.checked = !!section.expectsBargaining;
   if (sectionEditorOrder) {
     sectionEditorOrder.value =
@@ -2401,14 +2995,23 @@ async function saveAdminSection() {
   const payload = {};
   if (sectionEditorTitle) payload.title = sectionEditorTitle.value.trim();
   if (sectionEditorDescription) payload.description = sectionEditorDescription.value.trim();
-  if (sectionEditorEnvironment)
+  if (tokenEditors.environment) {
+    payload.environment_prompt_template = tokenEditors.environment.getValue();
+  } else if (sectionEditorEnvironment) {
     payload.environment_prompt_template = sectionEditorEnvironment.value;
+  }
   if (sectionEditorEnvironmentUser)
     payload.environment_user_message = sectionEditorEnvironmentUser.value;
-  if (sectionEditorConversation)
+  if (tokenEditors.conversation) {
+    payload.conversation_prompt_template = tokenEditors.conversation.getValue();
+  } else if (sectionEditorConversation) {
     payload.conversation_prompt_template = sectionEditorConversation.value;
-  if (sectionEditorEvaluation)
+  }
+  if (tokenEditors.evaluation) {
+    payload.evaluation_prompt_template = tokenEditors.evaluation.getValue();
+  } else if (sectionEditorEvaluation) {
     payload.evaluation_prompt_template = sectionEditorEvaluation.value;
+  }
   if (sectionEditorBargaining !== null)
     payload.expects_bargaining = !!sectionEditorBargaining.checked;
   if (sectionEditorOrder && sectionEditorOrder.value.trim() !== "") {
@@ -3899,6 +4502,7 @@ if (levelDeleteSectionBtn) {
 window.addEventListener("resize", updateExperienceLayout);
 updateExperienceLayout();
 
+initTokenEditors();
 renderStudentInsights(null);
 renderAdminAnalytics(null);
 activateStudentTab();
