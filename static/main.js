@@ -966,7 +966,9 @@ function renderLevelMap() {
   }
   const expandedChapters = new Set(state.expandedChapters);
   let hasExpanded = expandedChapters.size > 0;
-  const selectedChapterId = state.selectedLevel?.chapterId || null;
+  const selectedChapterId = state.selectedLevel
+    ? state.selectedLevel.chapterId || null
+    : null;
 
   chapters.forEach((chapter, index) => {
     const sections = chapter.sections || [];
@@ -1062,7 +1064,9 @@ function renderLevelMap() {
       }
       if (card.open) {
         state.expandedChapters.add(chapter.id);
-        const hasSelection = state.selectedLevel?.chapterId === chapter.id;
+        const hasSelection = state.selectedLevel
+          ? state.selectedLevel.chapterId === chapter.id
+          : false;
         const firstSection = (chapter.sections || [])[0];
         if (!hasSelection && firstSection) {
           setSelectedLevel(chapter.id, firstSection.id);
@@ -2066,34 +2070,59 @@ function joinLines(list) {
 
 function resetBlueprintForm(blueprint = null) {
   if (!adminBlueprintForm) return;
-  adminBlueprintIdInput.value = blueprint?.id || "";
-  adminBlueprintTitle.value = blueprint?.blueprint?.scenario_title || blueprint?.title || "";
-  adminBlueprintSummary.value = blueprint?.blueprint?.scenario_summary || blueprint?.description || "";
-  adminBlueprintStudentRole.value = blueprint?.blueprint?.student_role || "";
-  adminBlueprintAiRole.value = blueprint?.blueprint?.ai_role || "";
-  const studentCompany = (blueprint?.blueprint?.student_company) || {};
+  const blueprintData = blueprint || {};
+  const blueprintScenario =
+    blueprintData.blueprint && typeof blueprintData.blueprint === "object"
+      ? blueprintData.blueprint
+      : {};
+  const studentCompany =
+    blueprintScenario.student_company &&
+    typeof blueprintScenario.student_company === "object"
+      ? blueprintScenario.student_company
+      : {};
+  const aiCompany =
+    blueprintScenario.ai_company && typeof blueprintScenario.ai_company === "object"
+      ? blueprintScenario.ai_company
+      : {};
+  const product =
+    blueprintScenario.product && typeof blueprintScenario.product === "object"
+      ? blueprintScenario.product
+      : {};
+  const price =
+    product.price_expectation && typeof product.price_expectation === "object"
+      ? product.price_expectation
+      : {};
+
+  adminBlueprintIdInput.value = blueprintData.id || "";
+  adminBlueprintTitle.value =
+    blueprintScenario.scenario_title || blueprintData.title || "";
+  adminBlueprintSummary.value =
+    blueprintScenario.scenario_summary || blueprintData.description || "";
+  adminBlueprintStudentRole.value = blueprintScenario.student_role || "";
+  adminBlueprintAiRole.value = blueprintScenario.ai_role || "";
   adminBlueprintStudentCompanyName.value = studentCompany.name || "";
   adminBlueprintStudentCompanyProfile.value = studentCompany.profile || "";
-  const aiCompany = (blueprint?.blueprint?.ai_company) || {};
   adminBlueprintAiCompanyName.value = aiCompany.name || "";
   adminBlueprintAiCompanyProfile.value = aiCompany.profile || "";
-  adminBlueprintAiRules.value = joinLines(blueprint?.blueprint?.ai_rules || []);
-  const product = blueprint?.blueprint?.product || {};
-  const price = product.price_expectation || {};
+  adminBlueprintAiRules.value = joinLines(blueprintScenario.ai_rules || []);
   adminBlueprintProductName.value = product.name || "";
   adminBlueprintProductSpecs.value = product.specifications || "";
   adminBlueprintProductQuantity.value = product.quantity_requirement || "";
   adminBlueprintStudentPrice.value = price.student_target || "";
   adminBlueprintAiBottom.value = price.ai_bottom_line || "";
-  adminBlueprintMarket.value = blueprint?.blueprint?.market_landscape || "";
-  adminBlueprintTimeline.value = blueprint?.blueprint?.timeline || "";
-  adminBlueprintLogistics.value = blueprint?.blueprint?.logistics || "";
-  adminBlueprintNegotiationTargets.value = joinLines(blueprint?.blueprint?.negotiation_targets || []);
-  adminBlueprintRisks.value = joinLines(blueprint?.blueprint?.risks || []);
-  adminBlueprintChecklist.value = joinLines(blueprint?.blueprint?.checklist || []);
-  adminBlueprintKnowledge.value = joinLines(blueprint?.blueprint?.knowledge_points || []);
-  adminBlueprintOpening.value = blueprint?.blueprint?.opening_message || "";
-  adminBlueprintDifficulty.value = blueprint?.difficulty || "balanced";
+  adminBlueprintMarket.value = blueprintScenario.market_landscape || "";
+  adminBlueprintTimeline.value = blueprintScenario.timeline || "";
+  adminBlueprintLogistics.value = blueprintScenario.logistics || "";
+  adminBlueprintNegotiationTargets.value = joinLines(
+    blueprintScenario.negotiation_targets || [],
+  );
+  adminBlueprintRisks.value = joinLines(blueprintScenario.risks || []);
+  adminBlueprintChecklist.value = joinLines(blueprintScenario.checklist || []);
+  adminBlueprintKnowledge.value = joinLines(
+    blueprintScenario.knowledge_points || [],
+  );
+  adminBlueprintOpening.value = blueprintScenario.opening_message || "";
+  adminBlueprintDifficulty.value = blueprintData.difficulty || "balanced";
   updateInlineStatus(adminBlueprintGeneratorStatus, "");
 }
 
@@ -2161,6 +2190,12 @@ function renderBlueprintList() {
   list.forEach((item) => {
     const li = document.createElement("li");
     const isActive = state.admin.selectedBlueprintId === item.id;
+    const scenarioPreview =
+      item && item.scenarioPreview && typeof item.scenarioPreview === "object"
+        ? item.scenarioPreview
+        : {};
+    const displayTitle = item.title || scenarioPreview.title || "蓝图";
+    const displaySummary = scenarioPreview.summary || "";
     li.className = `rounded-2xl border p-4 text-sm transition ${
       isActive
         ? "border-purple-400/60 bg-purple-500/10"
@@ -2170,8 +2205,8 @@ function renderBlueprintList() {
     li.innerHTML = `
       <div class="flex items-center justify-between">
         <div>
-          <p class="font-semibold text-white">${item.title || item.scenarioPreview?.title || "蓝图"}</p>
-          <p class="text-xs text-slate-400">${item.scenarioPreview?.summary || ""}</p>
+          <p class="font-semibold text-white">${displayTitle}</p>
+          <p class="text-xs text-slate-400">${displaySummary}</p>
           <p class="text-xs text-slate-500">难度：${item.difficultyLabel || "平衡博弈"}</p>
         </div>
         <div class="flex gap-2">
@@ -2228,7 +2263,13 @@ function populateAssignmentBlueprintOptions() {
   (state.admin.blueprints || []).forEach((blueprint) => {
     const option = document.createElement("option");
     option.value = blueprint.id;
-    option.textContent = blueprint.title || blueprint.scenarioPreview?.title || blueprint.id;
+    const scenarioPreview =
+      blueprint && blueprint.scenarioPreview &&
+      typeof blueprint.scenarioPreview === "object"
+        ? blueprint.scenarioPreview
+        : {};
+    option.textContent =
+      blueprint.title || scenarioPreview.title || blueprint.id;
     if (blueprint.id === selected) {
       option.selected = true;
     }
@@ -3548,9 +3589,13 @@ async function submitBlueprint(event) {
       throw new Error(errorData.error || "保存蓝图失败");
     }
     const data = await response.json();
+    const savedBlueprint =
+      data && data.blueprint && typeof data.blueprint === "object"
+        ? data.blueprint
+        : {};
     if (adminBlueprintStatus) adminBlueprintStatus.textContent = "蓝图已保存";
-    state.admin.selectedBlueprintId = data.blueprint?.id || null;
-    resetBlueprintForm(data.blueprint);
+    state.admin.selectedBlueprintId = savedBlueprint.id || null;
+    resetBlueprintForm(savedBlueprint);
     await loadAdminBlueprints();
   } catch (error) {
     console.error(error);
@@ -4122,8 +4167,14 @@ async function sendMessage() {
     }
 
     if (!fullReply) {
-      const existing = state.messages[assistantIndex]?.content || "";
-      fullReply = existing && existing !== "…" ? existing : "（无有效回复）";
+      const existingMessage =
+        state.messages[assistantIndex] &&
+        typeof state.messages[assistantIndex] === "object"
+          ? state.messages[assistantIndex].content || ""
+          : "";
+      fullReply = existingMessage && existingMessage !== "…"
+        ? existingMessage
+        : "（无有效回复）";
       updateMessageContent(assistantIndex, fullReply);
     }
 
