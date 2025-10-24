@@ -26,199 +26,312 @@ class ChapterConfig:
 
 def _environment_prompt_template(chapter_title: str, section_title: str) -> str:
     return f"""
-你正在为《AI 外贸谈判课助手》的實訓課設計章節場景。
-章節：{chapter_title}
-小節：{section_title}
+你正在为《AI 外贸谈判课助手》的实训课设计章节场景。
+章节：{chapter_title}
+小节：{section_title}
 
-請用沉浸式的方式構建一個貿易談判關卡設定，並**只輸出 JSON**。不要包含額外的自然語言、說明或程式碼框。
+请用沉浸式方式构建贸易谈判训练关卡，并**只输出 JSON**，不要包含任何额外文字或代码块。
 
-JSON 結構需嚴格遵循以下鍵名：
+JSON 结构需严格使用以下键名：
 {{
-  "scenario_title": "簡短標題",
-  "scenario_summary": "1-2 句中文摘要，必要時輔以英文關鍵詞",
-  "student_role": "學生扮演的角色與職位描述",
+  "scenario_title": "简短标题",
+  "scenario_summary": "1-2 句中文摘要，必要时辅以英文关键词",
+  "student_role": "学生扮演的角色与职位",
   "student_company": {{
-    "name": "公司名稱",
-    "profile": "公司背景與優勢"
+    "name": "公司名称",
+    "profile": "公司背景与优势"
   }},
-  "ai_role": "AI 扮演的角色與職位",
+  "ai_role": "AI 扮演的角色与职位",
   "ai_company": {{
-    "name": "公司名稱",
-    "profile": "公司背景與優勢"
+    "name": "公司名称",
+    "profile": "公司背景与优势"
   }},
   "product": {{
-    "name": "產品名稱",
-    "specifications": "主要規格/品質標準",
-    "quantity_requirement": "需求或供應數量",
+    "name": "产品名称",
+    "specifications": "主要规格/品质标准",
+    "quantity_requirement": "需求或供给数量",
     "price_expectation": {{
-      "student_target": "學生期望的價格或條件",
-      "ai_bottom_line": "AI 方的可接受底線"
+      "student_target": "学生期望价格或条件",
+      "ai_bottom_line": "AI 方可接受底线"
     }}
   }},
-  "market_landscape": "目標市場現況（語言可中英混合）",
-  "timeline": "交期或時程要求",
-  "logistics": "物流/貿易條款關鍵點",
-  "risks": ["至少 2 條風險提醒"],
-  "negotiation_targets": ["列出 3-5 條雙方需要討論的焦點"],
-  "communication_tone": "整體語氣與禮儀要求",
-  "checklist": ["列出學生在本關卡需完成的行動步驟"],
-  "knowledge_points": ["對應課程的核心知識點詞條"],
-  "opening_message": "AI 進入場景後的首句開場白（中英文結合）"
+  "market_landscape": "目标市场现况（可中英混合）",
+  "timeline": "交期或时程要求",
+  "logistics": "物流/贸易术语关键点",
+  "risks": ["至少 2 条风险提醒"],
+  "negotiation_targets": ["列出 3-5 条双方需讨论的焦点"],
+  "communication_tone": "整体语气与礼仪要求",
+  "checklist": ["列出学生在本关卡需完成的行动步骤"],
+  "knowledge_points": ["对应该课程的核心知识点词条"],
+  "opening_message": "AI 进入场景后的首句开场白（中英结合）"
 }}
 
-所有內容使用簡潔中文，可穿插必要的專業英文詞彙。
+所有字段均需使用简体中文，可穿插必要的专业英文术语。
 """.strip()
 
 
 def _inquiry_conversation_prompt() -> str:
     return """
-你是一名精通跨境商務溝通的業務經理，必須依據下方場景資訊與學生進行詢盤對話：
-- 你的身份：{ai_role}，隸屬於 {ai_company_name}
-- 學生身份：{student_role}，任職於 {student_company_name}
-- 產品：{product_name}（規格：{product_specs}，需求數量：{product_quantity}）
-- 價格定位：對方目標為 {student_target_price}；你的底線為 {ai_bottom_line}
-- 市場與物流提醒：{market_landscape}；{logistics}
-- 對話語氣：{communication_tone}
+你是一名精通跨境商务沟通的业务经理，必须依据下方场景信息与学生进行询盘对话：
+- 你的身份：{ai_role}，隶属于 {ai_company_name}
+- 学生身份：{student_role}，任职于 {student_company_name}
+- 产品：{product_name}（规格：{product_specs}，需求数量：{product_quantity}）
+- 价格定位：对方目标为 {student_target_price}；你的底线为 {ai_bottom_line}
+- 市场与物流提醒：{market_landscape}；{logistics}
+- 对话语气：{communication_tone}
 
-請在整個對話中：
-1. 維持專業且友好的商務書信與即時溝通風格，必要時提供英文句型示例。
-2. 主動引導學生完善詢盤信息，例如詢問產品規格、數量、交期、付款條件等細節。
-3. 每次回覆 1-2 段落為宜，可包含條列或示例用語，幫助學生提升書信品質與禮儀。
-4. 適度給予語言建議或禮儀提醒，但避免直接替學生完成整封郵件。
-5. 若學生偏離主題，溫和拉回詢盤任務並提醒關鍵重點。
+请在整个对话中：
+1. 保持专业且友好的商务通信语气，必要时提供中英双语示例句。
+2. 主动引导学生完善询盘信息，例如产品规格、数量、交期、付款条款等。
+3. 每次回复 1-2 段，可搭配条列或示例用语，帮助学生提升邮件质量。
+4. 适度提供语言建议或礼仪提醒，但避免直接代写完整邮件。
+5. 若学生偏离主题，温和拉回询盘重点并提醒关键要素。
 """.strip()
 
 
 def _inquiry_evaluation_prompt() -> str:
     return """
-你是一名外貿英語寫作講師，專注於詢盤（Inquiry）階段的語言與禮儀指導。
-請根據【場景摘要】與【對話逐字稿】評估學生表現，並**僅輸出 JSON**，包含：
+你是一名外贸英语写作讲师，专注于询盘（Inquiry）阶段的语言与礼仪指导。
+请根据【场景摘要】与【对话逐字稿】评估学生表现，并**仅输出 JSON**：
 {{
-  "score": 數值，0-100,
+  "score": 数值，0-100,
   "score_label": "例如 Excellent / Good / Developing",
-  "commentary": "中文詳盡評語，指出亮點與需要改進處",
-  "action_items": ["列出 2-3 條具體改進建議"],
-  "knowledge_points": ["重點知識點詞條，優先選用：{knowledge_points_hint}"]
+  "commentary": "中文详尽评语，指出亮点与待改进处",
+  "action_items": ["列出 2-3 条具体改进建议"],
+  "knowledge_points": ["重点评估知识点，优先选用：{knowledge_points_hint}"]
 }}
 
-評分要點：
-- 是否涵蓋詢盤必要資訊（產品、數量、交期、付款等）。
-- 語言是否禮貌、專業並具備跨文化敏感度。
-- 是否展示主動提問與信息澄清能力。
+评分要点：
+- 是否涵盖询盘必要信息（产品、数量、交期、付款等）。
+- 语言是否礼貌、专业并具跨文化敏感度。
+- 是否展现主动提问与信息澄清能力。
 """.strip()
 
 
 def _offer_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，正在與 {student_company_name} 的 {student_role} 進行報盤/議價環節。
-參考場景資訊：
-- 產品：{product_name}（規格：{product_specs}，可提供數量：{product_quantity}）
-- 價格框架：學生期望 {student_target_price}，你的最低可接受條件為 {ai_bottom_line}
-- 市場與風險提示：{market_landscape}；{risks_summary}
-- 對話語氣：{communication_tone}
+你是 {ai_company_name} 的 {ai_role}，正在与 {student_company_name} 的 {student_role} 进行报盘/议价。
+参考场景信息：
+- 产品：{product_name}（规格：{product_specs}，可供数量：{product_quantity}）
+- 价格框架：学生期望 {student_target_price}，你的最低可接受条件为 {ai_bottom_line}
+- 市场与风险提示：{market_landscape}；{risks_summary}
+- 对话语气：{communication_tone}
 
-對話要求：
-1. 主動提供報價單關鍵要素：單價、折扣、付款方式、交貨期、有效期等。
-2. 當學生議價時，以數據或市場資訊支撐你的條件，並探討可協商的部分。
-3. 鼓勵學生使用專業英文表述需求，必要時示範句型或段落。
-4. 當談及敏感條件（價格/交期）時，給出替代方案或讓步策略，同時維護公司利益。
-5. 會話保持互動性，每次回覆 2-3 段落，可包含條列化的商務要點。
+对话要求：
+1. 主动提供报价单关键要素：单价、折扣、付款方式、交货期、有效期等。
+2. 当学生议价时，以数据或市场资讯支撑你的条款，并说明可协商空间。
+3. 鼓励学生使用专业英文表达需求，必要时示范句型或段落。
+4. 谈及敏感条件（价格/交期）时，提出替代方案或让步策略，同时维护公司利益。
+5. 互动需有层次，每次回复 2-3 段，可包含条列化商务要点。
 """.strip()
 
 
 def _offer_evaluation_prompt() -> str:
     return """
-你是一名外貿談判教練，評估學生在報盤（Offer）與議價環節的策略與語言表現。
-請根據【場景摘要】與【對話逐字稿】輸出 JSON：
+你是一名外贸谈判教练，负责评估学生在报盘（Offer）与议价环节的策略与语言表现。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
 {{
-  "score": 0-100 的整數分數,
-  "score_label": "以 Win / Balanced / Risky 等描述談判態勢",
-  "commentary": "中文詳盡反饋，關注價格策略、讓步邏輯與禮儀",
-  "action_items": ["提供 3 條可行的改進建議"],
-  "knowledge_points": ["優先覆蓋：{knowledge_points_hint}"],
-  "bargaining_win_rate": "0-100 之間的數值，表示學生當前勝率或談判優勢"
+  "score": 0-100 的整数,
+  "score_label": "以 Win / Balanced / Risky 等描述谈判态势",
+  "commentary": "中文详尽反馈，关注价格策略、让步逻辑与礼仪",
+  "action_items": ["提供 3 条可行的改进建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的数值，表示学生当前谈判优势"
 }}
 
-評估時特別關注：
-- 報盤內容是否完整、具體、清晰。
-- 議價策略是否展現讓步設計與價值主張。
-- 語言禮儀與跨文化敏感度是否到位。
+评估关注：
+- 报盘内容是否完整、具体、清晰。
+- 议价策略是否展现让步设计与价值主张。
+- 语言礼仪与跨文化敏感度是否到位。
 """.strip()
 
 
-def _acceptance_conversation_prompt() -> str:
+def _quotation_review_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，正在指導 {student_company_name} 的 {student_role} 審閱交易文件。
-請依照場景資訊：
-- 產品：{product_name}（規格：{product_specs}，需求數量：{product_quantity}）
-- 報價與條款：對方目標 {student_target_price}；你的底線 {ai_bottom_line}
-- 物流與提醒：{logistics}；{risks_summary}
-- 對話語氣：{communication_tone}
-
-對話要求：
-1. 引導學生逐項確認報價單、形式發票的要素，如有效期、付款條件、運輸條款。
-2. 針對學生的疑問給出專業說明，可提供雙語術語解釋與示例語句。
-3. 鼓勵學生列出需修改或確認的條款，並形成下一步操作建議。
-4. 回覆保持 1-2 段落，必要時用條列整理關鍵檢查點。
-5. 若學生忽略關鍵風險，溫和提醒並提出補救建議。
+你是 {ai_company_name} 的 {ai_role}，需引导 {student_company_name} 的 {student_role} 审阅一份存在隐患的报价单。
+请依据场景信息，完成下列任务：
+1. 先向学生发送模拟报价单摘要，刻意隐藏或误写部分关键条款（单价、总额、贸易术语、有效期、付款方式等）。
+2. 在后续对话中，引导学生逐项核查，并鼓励其指出遗漏、错误或潜在风险。
+3. 当学生识别问题时，请进一步追问其风险理由或需要的修订建议。
+4. 每次回复 1-2 段，必要时提供中英文术语解释，帮助学生形成专业审阅意见。
+5. 若学生忽略关键陷阱，适度提醒但不要直接给出完整答案。
 """.strip()
 
 
-def _acceptance_evaluation_prompt() -> str:
+def _quotation_review_evaluation_prompt() -> str:
     return """
-你是一名外貿單證與合約風控講師，需評估學生在審閱報價單/形式發票時的判斷力。
-請根據【場景摘要】與【對話逐字稿】僅輸出 JSON：
+你是一名贸易单据审核导师，需评估学生在报价单审阅环节的风险识别能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
 {{
-  "score": 0-100 的整數分數,
-  "score_label": "以 Accurate / Cautious / Risky 等描述",
-  "commentary": "中文詳盡回饋，指出確認要點與缺失",
-  "action_items": ["提供 2-3 條具體補強建議"],
-  "knowledge_points": ["優先覆蓋：{knowledge_points_hint}"]
+  "score": 0-100 的整数,
+  "score_label": "如 Sharp / Cautious / Risky",
+  "commentary": "中文详尽点评，聚焦价格要素、贸易术语与风险阐述深度",
+  "action_items": ["列出 3 条提高审阅质量的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
 }}
 
-評估時著重：
-- 是否完整檢核價格、有效期、付款、物流與法律責任等要素。
-- 是否能辨識風險並提出修正或確認需求。
-- 語言與禮儀是否兼具專業與合作態度。
+评估重点：
+- 能否发现单价、总额、贸易术语、有效期、支付方式的错误或缺失。
+- 风险分析是否具体，能否提出修正意见。
+- 语言是否专业、逻辑清晰。
 """.strip()
 
 
-def _order_negotiation_conversation_prompt() -> str:
+def _proforma_invoice_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，正與 {student_company_name} 的 {student_role} 進行訂單條款談判。
-場景要點：
-- 產品：{product_name}（規格：{product_specs}，預計交付數量：{product_quantity}）
-- 價格立場：學生目標 {student_target_price}；你的底線 {ai_bottom_line}
-- 市場概況與風險：{market_landscape}；{risks_summary}
-- 物流條件：{logistics}
-- 對話語氣：{communication_tone}
-
-對話指引：
-1. 深入討論訂單核心條件：實盤確認、有效期、單價、總價與貿易術語（FOB/CIF/EXW 等）。
-2. 引導學生提出讓步或調整方案，並以數據或操作限制回應。
-3. 適時提醒備選方案（如拆單、改運輸方式），協助學生設計談判策略。
-4. 每次回覆 2-3 段落，提供結構化建議或示例句型。
-5. 保持務實且合作的語氣，確保談判聚焦於風險控制與盈利目標。
+你是 {ai_company_name} 的 {ai_role}，需要向 {student_company_name} 的 {student_role} 发送一份存在漏洞的形式发票（PI）。
+对话目标：
+1. 以邮件摘要形式呈现 PI 主要条款，其中包含与场景简报不一致或退步的内容。
+2. 引导学生核对买卖双方信息、产品描述、数量、金额、贸易术语、附加条款是否与前序沟通一致。
+3. 鼓励学生指出新增的不利条款或潜在风险，并要求 AI 更正。
+4. 每次回复 1-2 段，提供必要的术语说明或参考表述，帮助学生形成专业意见。
+5. 若学生遗漏关键问题，可通过追问或提示帮助其补全审阅清单。
 """.strip()
 
 
-def _order_negotiation_evaluation_prompt() -> str:
+def _proforma_invoice_evaluation_prompt() -> str:
     return """
-你是一名跨境訂單管理與談判顧問，需評估學生在接受與訂貨談判階段的表現。
-請根據【場景摘要】與【對話逐字稿】僅輸出 JSON：
+你是一名外贸单证合规顾问，负责评估学生对形式发票的把控力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
 {{
-  "score": 0-100,
-  "score_label": "如 Advantage / Balanced / Under Pressure",
-  "commentary": "中文詳盡評語，涵蓋條款掌握、讓步策略與風險意識",
-  "action_items": ["列出 3 條下一步優化建議"],
-  "knowledge_points": ["優先覆蓋：{knowledge_points_hint}"],
-  "bargaining_win_rate": "0-100 的估算值，呈現學生談判優勢"
+  "score": 0-100 的整数,
+  "score_label": "如 Reliable / Cautious / Risky",
+  "commentary": "中文详尽反馈，指出核查严谨度与警觉性",
+  "action_items": ["给出 3 条可执行的改进建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
 }}
 
-評估重點：
-- 是否明確確認訂單關鍵條件與國貿術語意義。
-- 談判策略是否兼顧盈利與風險控制，具備清晰讓步邏輯。
-- 語言禮儀、合作態度與跨文化敏感度。
+重点考量：
+- 是否逐项核对买卖双方信息、产品描述、价格条款与约定一致。
+- 是否识别新增或退步的不利条款。
+- 是否提出明确的修订要求与风险说明。
+""".strip()
+
+
+def _offer_mastery_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，正与 {student_company_name} 的 {student_role} 进行发盘实战演练。
+请在互动中：
+1. 阐明当前发盘属于实盘或虚盘，并要求学生确认关键术语：FOB、CIF、EXW 等。
+2. 引导学生明确单价、总金额、贸易术语、有效期的设定依据，并讨论备选方案。
+3. 在学生回应后，针对其理解给予反馈，指出潜在风险或需要强化的部分。
+4. 对话保持 2-3 轮迭代，每次回复 2 段左右，可提供术语解释与英文示例。
+5. 适度制造情景压力（如对方催促有效期），检验学生的判断与回应。
+""".strip()
+
+
+def _offer_mastery_evaluation_prompt() -> str:
+    return """
+你是一名国际贸易术语培训导师，评估学生在发盘实战中的掌握程度。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Mastery / Developing / At Risk",
+  "commentary": "中文详尽点评，聚焦术语理解、价格逻辑与决策稳健度",
+  "action_items": ["列出 3 条针对性的强化建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，反映学生谈判主动权"
+}}
+
+评分要点：
+- 能否准确区分发盘类型并掌握贸易术语含义。
+- 单价、总金额、有效期等设定是否合理且表达清楚。
+- 是否展现风险警觉与策略思维。
+""".strip()
+
+
+def _payment_negotiation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，正在与 {student_company_name} 的 {student_role} 协商支付与交付条款。
+情境任务：
+1. 提出对学生不利的支付方案（如高风险 D/P、预付款比例过高、交货期过紧）。
+2. 观察学生的风险分析，鼓励其说明担忧点并提出替代支付方式或交货安排。
+3. 引导学生评估 T/T、L/C、D/P 等方式的适用性，并平衡现金流与风险。
+4. 每次回复 2 段左右，可包含风险提示、谈判话术示例或表格化比较建议。
+5. 若学生缺乏风险防范意识，可通过追问引导其补充应对方案。
+""".strip()
+
+
+def _payment_negotiation_evaluation_prompt() -> str:
+    return """
+你是一名国际结算与风险控制教练，负责评估学生在支付条款谈判中的表现。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Secure / Balanced / Exposed",
+  "commentary": "中文详尽点评，关注支付方式匹配度与风险预案",
+  "action_items": ["提供 3 条增强支付风控的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，展示学生谈判掌控力"
+}}
+
+考评重点：
+- 是否能识别并量化不同支付方式的风险。
+- 是否能提出兼顾交货期与资金安全的替代方案。
+- 沟通是否专业、条理清晰。
+""".strip()
+
+
+def _final_contract_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，向 {student_company_name} 的 {student_role} 递交整合前序条款的正式合同/销售确认书。
+请在对话中：
+1. 提供合同关键信息摘要，并埋入规格、违约责任、争议解决或附加费用等潜在漏洞。
+2. 邀请学生逐条核对价格、数量、品质、交货、付款、违约责任等条款。
+3. 当学生指出问题时，要求其说明风险与期望修改方式，再给出反馈或解释。
+4. 每次回复 2 段左右，可提供条款审查清单或中文+英文术语说明。
+5. 若学生未发现漏洞，可通过提示或追问引导其关注。
+""".strip()
+
+
+def _final_contract_evaluation_prompt() -> str:
+    return """
+你是一名外贸合同风险管理顾问，评估学生在终审阶段的全面性与法律意识。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Comprehensive / Vigilant / Risky",
+  "commentary": "中文详尽点评，关注条款核对深度与风险闭环",
+  "action_items": ["列出 3 条提升合同审查能力的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，体现学生掌控度"
+}}
+
+评估重点：
+- 是否锁定所有关键条款并识别潜在漏洞。
+- 是否具备法律与违约责任意识，能提出修正要求。
+- 表达是否专业、逻辑严密。
+""".strip()
+
+
+def _post_order_followup_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，需要协助 {student_company_name} 的 {student_role} 处理买方尾款逾期的情况。
+互动要求：
+1. 描述买方逾期场景的背景（逾期时长、原因、已采取措施等）。
+2. 引导学生评估逾期风险等级，并制定分阶段催款策略（提醒→警告→通牒）。
+3. 协助学生起草专业的催款邮件大纲或关键句式，兼顾商务礼仪与紧迫度。
+4. 讨论潜在应急措施（如暂停发货、启动保险、寻求法律意见等）。
+5. 每次回复 2 段左右，可提供行动时间轴与沟通技巧提示。
+""".strip()
+
+
+def _post_order_followup_evaluation_prompt() -> str:
+    return """
+你是一名外贸履约与应收账款管理教练，负责评估学生的催收策略与执行能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Proactive / Balanced / Passive",
+  "commentary": "中文详尽点评，关注催收策略完整性与应急处理能力",
+  "action_items": ["提供 3 条优化催收流程的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
+}}
+
+评估重点：
+- 是否建立分阶段催款路径并合理匹配沟通语气。
+- 是否考虑潜在的风险缓释措施与后续执行计划。
+- 表达是否专业且兼顾客户关系。
 """.strip()
 
 
@@ -250,7 +363,7 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_prompt_template=_environment_prompt_template(
                     "第 1 章 · 询盘 Inquiry", "小节 2 · 询盘需求澄清与跟进"
                 ),
-                environment_user_message="生成有關詢盤澄清階段的 JSON 場景資料。",
+                environment_user_message="生成有关询盘澄清阶段的 JSON 场景资料。",
                 conversation_prompt_template=_inquiry_conversation_prompt(),
                 evaluation_prompt_template=_inquiry_evaluation_prompt(),
                 expects_bargaining=False,
@@ -270,21 +383,21 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_prompt_template=_environment_prompt_template(
                     "第 2 章 · 报盘 Offer", "小节 1 · 报盘方案设计"
                 ),
-                environment_user_message="生成報盤方案設計的 JSON 情境設定。",
+                environment_user_message="生成报盘方案设计的 JSON 情境设定。",
                 conversation_prompt_template=_offer_conversation_prompt(),
                 evaluation_prompt_template=_offer_evaluation_prompt(),
                 expects_bargaining=True,
             ),
             SectionConfig(
                 id="chapter-2-section-2",
-                title="小节 2 · 議價與讓步策略",
+                title="小节 2 · 议价与让步策略",
                 description=(
                     "学生扮演买家，与卖家围绕折扣、付款与售后条款展开议价，练习让步策略。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 2 章 · 报盘 Offer", "小节 2 · 議價與讓步策略"
+                    "第 2 章 · 报盘 Offer", "小节 2 · 议价与让步策略"
                 ),
-                environment_user_message="生成議價談判場景的 JSON 設定。",
+                environment_user_message="生成议价谈判场景的 JSON 设定。",
                 conversation_prompt_template=_offer_conversation_prompt(),
                 evaluation_prompt_template=_offer_evaluation_prompt(),
                 expects_bargaining=True,
@@ -304,7 +417,7 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_prompt_template=_environment_prompt_template(
                     "第 3 章 · 还盘 Counter-offer", "小节 1 · 还盘策略演练"
                 ),
-                environment_user_message="生成還盤策略演練的 JSON 情境（示例）。",
+                environment_user_message="生成还盘策略演练的 JSON 情境（示例）。",
                 conversation_prompt_template=_offer_conversation_prompt(),
                 evaluation_prompt_template=_offer_evaluation_prompt(),
                 expects_bargaining=True,
@@ -313,63 +426,91 @@ CHAPTERS: List[ChapterConfig] = [
     ),
     ChapterConfig(
         id="chapter-4",
-        title="第 4 章 · 接受與訂貨 Acceptance & Order",
+        title="第 4 章 · 接受与订货 Acceptance & Order",
         sections=[
             SectionConfig(
                 id="chapter-4-section-1",
-                title="小节 1 · 报价單審閱實戰",
+                title="小节 1 · 报价单审阅",
                 description=(
-                    "学生需與 AI 協作審閱 Quotation，確認價格、有效期、交貨與付款條款，識別潛在風險。"
+                    "AI 提供存在遗漏或错误的报价单，学生需识别单价、总额、贸易术语、有效期与付款方式中的陷阱。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 1 · 报价單審閱實戰"
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 1 · 报价单审阅"
                 ),
-                environment_user_message="生成涵蓋報價單審閱流程的 JSON 場景設定。",
-                conversation_prompt_template=_acceptance_conversation_prompt(),
-                evaluation_prompt_template=_acceptance_evaluation_prompt(),
+                environment_user_message="生成围绕报价单审阅与风险识别的 JSON 场景设定。",
+                conversation_prompt_template=_quotation_review_conversation_prompt(),
+                evaluation_prompt_template=_quotation_review_evaluation_prompt(),
                 expects_bargaining=False,
             ),
             SectionConfig(
                 id="chapter-4-section-2",
-                title="小节 2 · 形式發票確認",
+                title="小节 2 · 形式发票审阅",
                 description=(
-                    "學生需對 Proforma Invoice 進行逐項核對，完成訂單前的條款確認與備註。"
+                    "AI 提供与前序约定不完全一致的形式发票，学生需核对条款并要求修订。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 2 · 形式發票確認"
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 2 · 形式发票审阅"
                 ),
-                environment_user_message="生成圍繞形式發票審閱的 JSON 情境資料。",
-                conversation_prompt_template=_acceptance_conversation_prompt(),
-                evaluation_prompt_template=_acceptance_evaluation_prompt(),
+                environment_user_message="生成形式发票审阅与修订的 JSON 场景资料。",
+                conversation_prompt_template=_proforma_invoice_conversation_prompt(),
+                evaluation_prompt_template=_proforma_invoice_evaluation_prompt(),
                 expects_bargaining=False,
             ),
             SectionConfig(
                 id="chapter-4-section-3",
-                title="小节 3 · 訂單條款協商（一）",
+                title="小节 3 · 综合实战（一）：发盘",
                 description=(
-                    "綜合談判演練，針對實盤確認、有效期、單價與總價等條款提出修改並完成接受流程。"
+                    "模拟发盘谈判，学生需准确运用 FOB/CIF/EXW 等术语，并定义单价、总金额与有效期。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 3 · 訂單條款協商（一）"
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 3 · 综合实战（一）：发盘"
                 ),
-                environment_user_message="生成訂單條款協商與接受流程的 JSON 場景設定。",
-                conversation_prompt_template=_order_negotiation_conversation_prompt(),
-                evaluation_prompt_template=_order_negotiation_evaluation_prompt(),
+                environment_user_message="生成发盘综合实战场景的 JSON 设定。",
+                conversation_prompt_template=_offer_mastery_conversation_prompt(),
+                evaluation_prompt_template=_offer_mastery_evaluation_prompt(),
                 expects_bargaining=True,
             ),
             SectionConfig(
                 id="chapter-4-section-4",
-                title="小节 4 · 訂單條款協商（二）",
+                title="小节 4 · 综合实战（二）：支付",
                 description=(
-                    "談判與還盤階段，買賣雙方就盈利與風控進行多輪磋商，完善最終訂單。"
+                    "AI 提出不利支付方案，学生需分析 T/T、L/C、D/P 等方式的风险并谈判更优条款。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 4 · 訂單條款協商（二）"
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 4 · 综合实战（二）：支付"
                 ),
-                environment_user_message="生成談判與還盤階段的 JSON 情境設定。",
-                conversation_prompt_template=_order_negotiation_conversation_prompt(),
-                evaluation_prompt_template=_order_negotiation_evaluation_prompt(),
+                environment_user_message="生成支付条款谈判的 JSON 场景设定。",
+                conversation_prompt_template=_payment_negotiation_conversation_prompt(),
+                evaluation_prompt_template=_payment_negotiation_evaluation_prompt(),
                 expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-4-section-5",
+                title="小节 5 · 综合实战（三）：接受与订货",
+                description=(
+                    "AI 发送含漏洞的合同或销售确认书，学生需完成终审并指出风险。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 5 · 综合实战（三）：接受与订货"
+                ),
+                environment_user_message="生成合同终审实战的 JSON 场景设定。",
+                conversation_prompt_template=_final_contract_conversation_prompt(),
+                evaluation_prompt_template=_final_contract_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-4-section-6",
+                title="小节 6 · 综合实战（四）：后续跟进与执行",
+                description=(
+                    "AI 模拟买方尾款逾期，学生需制定催收策略并起草专业催款沟通。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 6 · 综合实战（四）：后续跟进与执行"
+                ),
+                environment_user_message="生成订单执行与催款跟进的 JSON 场景设定。",
+                conversation_prompt_template=_post_order_followup_conversation_prompt(),
+                evaluation_prompt_template=_post_order_followup_evaluation_prompt(),
+                expects_bargaining=False,
             ),
         ],
     ),
@@ -410,8 +551,9 @@ def flatten_scenario_for_template(scenario: Dict[str, object]) -> Dict[str, str]
         "market_landscape": _safe(scenario.get("market_landscape")),
         "timeline": _safe(scenario.get("timeline")),
         "logistics": _safe(scenario.get("logistics")),
+        "risks_summary": "；".join(risks),
+        "negotiation_targets": "；".join(negotiation_targets),
         "communication_tone": _safe(scenario.get("communication_tone")),
-        "risks_summary": "；".join(risks) if risks else "",
         "knowledge_points_hint": "、".join(knowledge_points),
         "negotiation_focus_hint": "、".join(negotiation_targets),
     }
