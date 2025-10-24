@@ -146,6 +146,82 @@ def _offer_evaluation_prompt() -> str:
 """.strip()
 
 
+def _acceptance_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，正在指導 {student_company_name} 的 {student_role} 審閱交易文件。
+請依照場景資訊：
+- 產品：{product_name}（規格：{product_specs}，需求數量：{product_quantity}）
+- 報價與條款：對方目標 {student_target_price}；你的底線 {ai_bottom_line}
+- 物流與提醒：{logistics}；{risks_summary}
+- 對話語氣：{communication_tone}
+
+對話要求：
+1. 引導學生逐項確認報價單、形式發票的要素，如有效期、付款條件、運輸條款。
+2. 針對學生的疑問給出專業說明，可提供雙語術語解釋與示例語句。
+3. 鼓勵學生列出需修改或確認的條款，並形成下一步操作建議。
+4. 回覆保持 1-2 段落，必要時用條列整理關鍵檢查點。
+5. 若學生忽略關鍵風險，溫和提醒並提出補救建議。
+""".strip()
+
+
+def _acceptance_evaluation_prompt() -> str:
+    return """
+你是一名外貿單證與合約風控講師，需評估學生在審閱報價單/形式發票時的判斷力。
+請根據【場景摘要】與【對話逐字稿】僅輸出 JSON：
+{{
+  "score": 0-100 的整數分數,
+  "score_label": "以 Accurate / Cautious / Risky 等描述",
+  "commentary": "中文詳盡回饋，指出確認要點與缺失",
+  "action_items": ["提供 2-3 條具體補強建議"],
+  "knowledge_points": ["優先覆蓋：{knowledge_points_hint}"]
+}}
+
+評估時著重：
+- 是否完整檢核價格、有效期、付款、物流與法律責任等要素。
+- 是否能辨識風險並提出修正或確認需求。
+- 語言與禮儀是否兼具專業與合作態度。
+""".strip()
+
+
+def _order_negotiation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，正與 {student_company_name} 的 {student_role} 進行訂單條款談判。
+場景要點：
+- 產品：{product_name}（規格：{product_specs}，預計交付數量：{product_quantity}）
+- 價格立場：學生目標 {student_target_price}；你的底線 {ai_bottom_line}
+- 市場概況與風險：{market_landscape}；{risks_summary}
+- 物流條件：{logistics}
+- 對話語氣：{communication_tone}
+
+對話指引：
+1. 深入討論訂單核心條件：實盤確認、有效期、單價、總價與貿易術語（FOB/CIF/EXW 等）。
+2. 引導學生提出讓步或調整方案，並以數據或操作限制回應。
+3. 適時提醒備選方案（如拆單、改運輸方式），協助學生設計談判策略。
+4. 每次回覆 2-3 段落，提供結構化建議或示例句型。
+5. 保持務實且合作的語氣，確保談判聚焦於風險控制與盈利目標。
+""".strip()
+
+
+def _order_negotiation_evaluation_prompt() -> str:
+    return """
+你是一名跨境訂單管理與談判顧問，需評估學生在接受與訂貨談判階段的表現。
+請根據【場景摘要】與【對話逐字稿】僅輸出 JSON：
+{{
+  "score": 0-100,
+  "score_label": "如 Advantage / Balanced / Under Pressure",
+  "commentary": "中文詳盡評語，涵蓋條款掌握、讓步策略與風險意識",
+  "action_items": ["列出 3 條下一步優化建議"],
+  "knowledge_points": ["優先覆蓋：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估算值，呈現學生談判優勢"
+}}
+
+評估重點：
+- 是否明確確認訂單關鍵條件與國貿術語意義。
+- 談判策略是否兼顧盈利與風險控制，具備清晰讓步邏輯。
+- 語言禮儀、合作態度與跨文化敏感度。
+""".strip()
+
+
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-1",
@@ -231,6 +307,68 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_user_message="生成還盤策略演練的 JSON 情境（示例）。",
                 conversation_prompt_template=_offer_conversation_prompt(),
                 evaluation_prompt_template=_offer_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-4",
+        title="第 4 章 · 接受與訂貨 Acceptance & Order",
+        sections=[
+            SectionConfig(
+                id="chapter-4-section-1",
+                title="小节 1 · 报价單審閱實戰",
+                description=(
+                    "学生需與 AI 協作審閱 Quotation，確認價格、有效期、交貨與付款條款，識別潛在風險。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 1 · 报价單審閱實戰"
+                ),
+                environment_user_message="生成涵蓋報價單審閱流程的 JSON 場景設定。",
+                conversation_prompt_template=_acceptance_conversation_prompt(),
+                evaluation_prompt_template=_acceptance_evaluation_prompt(),
+                expects_bargaining=False,
+            ),
+            SectionConfig(
+                id="chapter-4-section-2",
+                title="小节 2 · 形式發票確認",
+                description=(
+                    "學生需對 Proforma Invoice 進行逐項核對，完成訂單前的條款確認與備註。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 2 · 形式發票確認"
+                ),
+                environment_user_message="生成圍繞形式發票審閱的 JSON 情境資料。",
+                conversation_prompt_template=_acceptance_conversation_prompt(),
+                evaluation_prompt_template=_acceptance_evaluation_prompt(),
+                expects_bargaining=False,
+            ),
+            SectionConfig(
+                id="chapter-4-section-3",
+                title="小节 3 · 訂單條款協商（一）",
+                description=(
+                    "綜合談判演練，針對實盤確認、有效期、單價與總價等條款提出修改並完成接受流程。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 3 · 訂單條款協商（一）"
+                ),
+                environment_user_message="生成訂單條款協商與接受流程的 JSON 場景設定。",
+                conversation_prompt_template=_order_negotiation_conversation_prompt(),
+                evaluation_prompt_template=_order_negotiation_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-4-section-4",
+                title="小节 4 · 訂單條款協商（二）",
+                description=(
+                    "談判與還盤階段，買賣雙方就盈利與風控進行多輪磋商，完善最終訂單。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 4 章 · 接受與訂貨 Acceptance & Order", "小节 4 · 訂單條款協商（二）"
+                ),
+                environment_user_message="生成談判與還盤階段的 JSON 情境設定。",
+                conversation_prompt_template=_order_negotiation_conversation_prompt(),
+                evaluation_prompt_template=_order_negotiation_evaluation_prompt(),
                 expects_bargaining=True,
             ),
         ],
