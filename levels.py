@@ -178,7 +178,7 @@ def _quotation_review_evaluation_prompt() -> str:
 
 def _proforma_invoice_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，你不需要做任何问候，你必须首先先需要向 {student_company_name} 的 {student_role} 发送一份存在漏洞的形式发票（PI）。
+你是 {ai_company_name} 的 {ai_role}，你不需要做任何问候，你必须首先、直接向 {student_company_name} 的 {student_role} 展示一份存在漏洞的形式发票（PI），不作解释，不作问候。
 对话目标：
 1. 发送一份简要的形式发票，其中包含与场景简报不一致或有隐患、遗漏的内容。
 2. 不要引导学生核对买卖双方信息、产品描述、数量、金额、贸易术语、附加条款是否与前序沟通一致。
