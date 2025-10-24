@@ -12,49 +12,144 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
-    <style>
+        <style>
       :root {
         --primary-color: #ff4040;
         --primary-soft: #ff6b6b;
         --primary-muted: rgba(255, 64, 64, 0.12);
-        --surface-color: #ffffff;
+        --surface-color: rgba(255, 255, 255, 0.96);
         --surface-muted: rgba(255, 255, 255, 0.85);
-        --text-strong: #1f2937;
+        --surface-border: rgba(148, 163, 184, 0.25);
+        --surface-shadow: 0 25px 45px -25px rgba(15, 23, 42, 0.25);
+        --surface-shadow-hover: 0 30px 55px -28px rgba(255, 64, 64, 0.28);
+        --text-strong: #0f172a;
         --text-muted: #6b7280;
-      }
-
-      body {
-        font-family: "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-        background: radial-gradient(
+        --background-gradient: radial-gradient(
             120% 120% at 50% 0%,
             rgba(255, 216, 216, 0.32),
             rgba(238, 242, 255, 0.62) 55%,
             #f8fafc 100%
-          )
-          fixed;
+          );
+        --level-column-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 243, 243, 0.7));
+        --level-column-border: rgba(255, 64, 64, 0.18);
+        --level-node-bg: rgba(255, 255, 255, 0.95);
+        --level-node-border: rgba(255, 64, 64, 0.25);
+        --level-node-line: linear-gradient(180deg, rgba(96, 165, 250, 0.2), rgba(16, 185, 129, 0.2));
+        --level-node-dot-bg: #ffffff;
+        --level-node-dot-shadow: rgba(255, 64, 64, 0.35);
+        --level-node-hover-border: rgba(255, 64, 64, 0.55);
+        --level-node-shadow: 0 12px 26px -20px rgba(255, 64, 64, 0.28);
+        --level-node-hover-shadow: 0 18px 35px -20px rgba(255, 64, 64, 0.32);
+        --level-node-active-border: rgba(255, 64, 64, 0.85);
+        --level-node-active-bg: linear-gradient(135deg, rgba(255, 64, 64, 0.16), rgba(255, 166, 158, 0.25));
+        --victory-border: rgba(16, 185, 129, 0.6);
+        --victory-badge-bg: rgba(16, 185, 129, 0.16);
+        --victory-badge-text: #047857;
+        --selection-glow: rgba(255, 64, 64, 0.32);
+        --muted-panel-bg: rgba(248, 250, 252, 0.75);
+        --selected-level-bg: rgba(59, 130, 246, 0.1);
+        --selected-level-border: rgba(59, 130, 246, 0.35);
+        --file-button-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.28));
+        --file-button-text: #1d4ed8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --primary-color: #fb7185;
+          --primary-soft: #f97373;
+          --primary-muted: rgba(251, 113, 133, 0.22);
+          --surface-color: rgba(15, 23, 42, 0.92);
+          --surface-muted: rgba(15, 23, 42, 0.85);
+          --surface-border: rgba(148, 163, 184, 0.35);
+          --surface-shadow: 0 25px 45px -25px rgba(15, 23, 42, 0.65);
+          --surface-shadow-hover: 0 30px 55px -28px rgba(251, 113, 133, 0.4);
+          --text-strong: #e2e8f0;
+          --text-muted: #94a3b8;
+          --background-gradient: radial-gradient(
+              120% 140% at 50% 0%,
+              rgba(15, 23, 42, 0.92),
+              rgba(30, 41, 59, 0.92) 60%,
+              rgba(15, 23, 42, 0.98) 100%
+            );
+          --level-column-bg: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.85));
+          --level-column-border: rgba(251, 113, 133, 0.32);
+          --level-node-bg: rgba(30, 41, 59, 0.9);
+          --level-node-border: rgba(251, 113, 133, 0.4);
+          --level-node-line: linear-gradient(180deg, rgba(96, 165, 250, 0.35), rgba(16, 185, 129, 0.35));
+          --level-node-dot-bg: rgba(30, 41, 59, 0.95);
+          --level-node-dot-shadow: rgba(251, 113, 133, 0.45);
+          --level-node-hover-border: rgba(251, 113, 133, 0.65);
+          --level-node-shadow: 0 12px 26px -20px rgba(251, 113, 133, 0.35);
+          --level-node-hover-shadow: 0 20px 40px -18px rgba(251, 113, 133, 0.45);
+          --level-node-active-border: rgba(251, 113, 133, 0.85);
+          --level-node-active-bg: linear-gradient(135deg, rgba(251, 113, 133, 0.28), rgba(248, 189, 144, 0.22));
+          --victory-border: rgba(34, 197, 94, 0.65);
+          --victory-badge-bg: rgba(34, 197, 94, 0.28);
+          --victory-badge-text: #bbf7d0;
+          --selection-glow: rgba(251, 113, 133, 0.45);
+          --muted-panel-bg: rgba(30, 41, 59, 0.7);
+          --selected-level-bg: rgba(59, 130, 246, 0.18);
+          --selected-level-border: rgba(147, 197, 253, 0.35);
+          --file-button-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(147, 197, 253, 0.28));
+          --file-button-text: #bfdbfe;
+        }
+      }
+
+      body {
+        font-family: "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--background-gradient) fixed;
+        color: var(--text-strong);
+        color-scheme: light dark;
+        transition: background 0.3s ease, color 0.3s ease;
+      }
+
+      header {
+        background: var(--surface-muted);
+        border-bottom: 1px solid var(--surface-border);
+        color: var(--text-strong);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 8px 20px -18px rgba(15, 23, 42, 0.25);
+      }
+
+      header h1 {
         color: var(--text-strong);
       }
-      textarea {
+
+      header p {
+        color: var(--text-muted);
+      }
+
+      footer {
+        background: var(--surface-muted);
+        border-top: 1px solid var(--surface-border);
+        color: var(--text-muted);
+      }
+
+      textarea,
+      input {
         font-family: "Noto Sans SC", "Segoe UI", sans-serif;
       }
+
       .chat-bubble {
         max-width: 80%;
         padding: 0.75rem 1rem;
         border-radius: 1rem;
         box-shadow: 0 14px 30px rgba(255, 64, 64, 0.12);
       }
+
       .bubble-assistant {
         background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
         color: #fff;
         border-bottom-left-radius: 0.25rem;
       }
+
       .bubble-user {
         background: linear-gradient(135deg, #2563eb, #60a5fa);
         color: #fff;
         margin-left: auto;
         border-bottom-right-radius: 0.25rem;
       }
+
       .knowledge-pill {
         position: relative;
         display: inline-flex;
@@ -62,16 +157,19 @@
         justify-content: center;
         padding: 0.35rem 0.75rem;
         border-radius: 9999px;
-        background: rgba(255, 64, 64, 0.12);
+        background: var(--primary-muted);
         color: var(--primary-color);
         font-size: 0.75rem;
         font-weight: 600;
         cursor: help;
-        transition: transform 0.2s ease;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
+
       .knowledge-pill:hover {
         transform: translateY(-2px);
+        box-shadow: 0 14px 25px -18px var(--selection-glow);
       }
+
       .knowledge-pill::after {
         content: attr(data-tooltip);
         position: absolute;
@@ -80,7 +178,7 @@
         transform: translate(-50%, 10px);
         padding: 0.35rem 0.6rem;
         border-radius: 0.5rem;
-        background: rgba(17, 24, 39, 0.9);
+        background: rgba(15, 23, 42, 0.92);
         color: #f8fafc;
         font-size: 0.7rem;
         opacity: 0;
@@ -88,31 +186,37 @@
         white-space: nowrap;
         transition: opacity 0.2s ease, transform 0.2s ease;
       }
+
       .knowledge-pill:hover::after {
         opacity: 1;
         transform: translate(-50%, 0);
       }
+
       .surface-card {
         background: var(--surface-color);
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        border: 1px solid var(--surface-border);
         border-radius: 1.75rem;
-        box-shadow: 0 25px 45px -25px rgba(15, 23, 42, 0.25);
+        box-shadow: var(--surface-shadow);
         backdrop-filter: blur(18px);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
+
       .surface-card:hover {
         transform: translateY(-3px);
-        box-shadow: 0 30px 55px -28px rgba(255, 64, 64, 0.28);
+        box-shadow: var(--surface-shadow-hover);
       }
+
       .surface-card .text-white,
       .surface-card .text-slate-200,
       .surface-card .text-slate-300 {
         color: var(--text-strong) !important;
       }
+
       .surface-card .text-slate-400,
       .surface-card .text-slate-500 {
         color: var(--text-muted) !important;
       }
+
       #student-dashboard .text-white,
       #student-dashboard .text-slate-200,
       #student-dashboard .text-slate-300,
@@ -124,143 +228,44 @@
       #admin-panel .text-slate-300 {
         color: var(--text-strong) !important;
       }
+
       .bg-slate-950\/70,
       .bg-slate-950\/60,
       .bg-slate-950\/40,
       .bg-slate-900\/70,
       .bg-slate-900\/60 {
-        background-color: rgba(255, 255, 255, 0.92) !important;
+        background-color: var(--surface-muted) !important;
       }
+
       .border-slate-800,
       .border-slate-700 {
-        border-color: rgba(209, 213, 219, 0.7) !important;
+        border-color: var(--surface-border) !important;
       }
-      .level-map {
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-      }
-      @media (min-width: 1024px) {
-        .level-map {
-          flex-direction: row;
-        }
-      }
-      .level-column {
-        position: relative;
-        flex: 1 1 0;
-        border-radius: 1.5rem;
-        border: 1px solid rgba(255, 64, 64, 0.18);
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 243, 243, 0.7));
-        padding: 1.25rem;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-      }
-      .level-column-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-        font-weight: 600;
-        color: var(--text-strong);
-      }
-      .level-node-list {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-      .level-node-list::before {
-        content: "";
-        position: absolute;
-        left: 12px;
-        top: 8px;
-        bottom: 8px;
-        width: 2px;
-        background: linear-gradient(180deg, rgba(96, 165, 250, 0.2), rgba(16, 185, 129, 0.2));
-      }
-      .level-node {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        gap: 0.35rem;
-        padding: 0.95rem 1.2rem 0.95rem 2.6rem;
-        border-radius: 1.25rem;
-        border: 1px solid rgba(255, 64, 64, 0.25);
-        background: rgba(255, 255, 255, 0.92);
-        color: var(--text-strong);
-        text-align: left;
-        transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-        position: relative;
-        overflow: hidden;
-      }
-      .level-node::before {
-        content: "";
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 12px;
-        height: 12px;
-        border-radius: 9999px;
-        border: 2px solid rgba(255, 64, 64, 0.7);
-        background: #fff;
-        box-shadow: 0 0 12px rgba(255, 64, 64, 0.25);
-      }
-      .level-node:hover {
-        transform: translateX(6px);
-        border-color: rgba(255, 64, 64, 0.55);
-        box-shadow: 0 16px 35px -20px rgba(255, 64, 64, 0.32);
-      }
-      .level-node-active {
-        border-color: rgba(255, 64, 64, 0.85);
-        background: linear-gradient(135deg, rgba(255, 64, 64, 0.16), rgba(255, 166, 158, 0.25));
-        box-shadow: 0 24px 40px -18px rgba(255, 64, 64, 0.35);
-      }
-      .level-node-active::before {
-        border-color: rgba(255, 64, 64, 0.9);
-        background: rgba(255, 64, 64, 0.35);
-      }
-      .tab-trigger {
-        position: relative;
-        flex: 1 1 0;
-        padding: 0.75rem 1rem;
-        border-bottom: 2px solid transparent;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: rgba(107, 114, 128, 0.9);
-        transition: color 0.2s ease, border-color 0.2s ease;
-      }
-      .tab-trigger-active {
-        color: var(--primary-color);
-        border-color: rgba(255, 64, 64, 0.6);
-      }
-      .tab-panel {
-        display: none;
-      }
-      .tab-panel-active {
-        display: block;
-      }
+
       .student-top-btn {
         border-radius: 9999px;
-        border: 1px solid rgba(255, 64, 64, 0.24);
+        border: 1px solid var(--primary-muted);
         padding: 0.45rem 1rem;
         color: var(--primary-color);
-        background: rgba(255, 64, 64, 0.08);
+        background: var(--primary-muted);
         backdrop-filter: blur(12px);
         transition: all 0.2s ease;
       }
+
       .student-top-btn:hover {
-        border-color: rgba(255, 64, 64, 0.8);
+        border-color: var(--primary-color);
         color: #fff;
         background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
-        box-shadow: 0 14px 30px -18px rgba(255, 64, 64, 0.38);
+        box-shadow: 0 14px 30px -18px var(--selection-glow);
       }
+
       .student-option-active {
-        background: linear-gradient(135deg, rgba(255, 64, 64, 0.28), rgba(255, 140, 140, 0.24));
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
         color: #fff;
-        box-shadow: 0 20px 38px -20px rgba(255, 64, 64, 0.35);
-        border-color: rgba(255, 64, 64, 0.8);
+        box-shadow: 0 20px 38px -20px var(--selection-glow);
+        border-color: var(--primary-color);
       }
+
       .primary-button {
         display: inline-flex;
         align-items: center;
@@ -271,26 +276,392 @@
         font-weight: 600;
         color: #fff;
         background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
-        box-shadow: 0 18px 35px -20px rgba(255, 64, 64, 0.55);
+        box-shadow: 0 18px 35px -20px var(--selection-glow);
         transition: transform 0.25s ease, box-shadow 0.25s ease;
       }
+
       .primary-button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 24px 45px -20px rgba(255, 64, 64, 0.6);
+        box-shadow: 0 24px 45px -20px var(--selection-glow);
       }
+
+      .primary-button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+
+      .tonal-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        border-radius: 9999px;
+        padding: 0.7rem 1.4rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        background: var(--primary-muted);
+        transition: transform 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+      }
+
+      .tonal-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        color: #fff;
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
+        box-shadow: 0 20px 38px -20px var(--selection-glow);
+      }
+
+      .tonal-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .ghost-button {
         border-radius: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        border: 1px solid var(--surface-border);
         padding: 0.5rem 1.25rem;
         color: var(--text-muted);
-        background: rgba(255, 255, 255, 0.8);
+        background: var(--surface-muted);
         transition: all 0.2s ease;
       }
+
       .ghost-button:hover {
-        border-color: rgba(255, 64, 64, 0.55);
+        border-color: var(--primary-color);
         color: var(--primary-color);
-        box-shadow: 0 10px 25px -15px rgba(255, 64, 64, 0.35);
+        box-shadow: 0 10px 25px -15px var(--selection-glow);
       }
+
+      .assignment-card {
+        background: var(--muted-panel-bg);
+        border: 1px solid var(--surface-border);
+        border-radius: 1.5rem;
+        padding: 1.5rem;
+      }
+
+      .assignment-card h2 {
+        color: var(--text-strong);
+      }
+
+      .assignment-card p {
+        color: var(--text-muted);
+      }
+
+      .assignment-card .assignment-item {
+        border-radius: 1.25rem;
+        border: 1px solid var(--surface-border);
+        background: var(--surface-color);
+        padding: 1rem;
+        transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .assignment-card .assignment-item:hover {
+        border-color: var(--primary-color);
+        transform: translateY(-2px);
+        box-shadow: 0 18px 30px -24px var(--selection-glow);
+      }
+
+      .assignment-card .assignment-item h3 {
+        color: var(--text-strong);
+        font-weight: 600;
+      }
+
+      .assignment-card .assignment-item p {
+        color: var(--text-muted);
+      }
+
+      .assignment-card .assignment-item button {
+        border-radius: 0.75rem;
+        background: linear-gradient(135deg, #10b981, #34d399);
+        color: #fff;
+        padding: 0.45rem 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .assignment-card .assignment-item button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 18px 32px -20px rgba(16, 185, 129, 0.45);
+      }
+
+      .assignment-card .assignment-item.assignment-empty {
+        border-style: dashed;
+        background: transparent;
+        text-align: center;
+        color: var(--text-muted);
+      }
+
+      .assignment-card .assignment-item .assignment-meta {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+      }
+
+      .file-upload-input {
+        width: 100%;
+        padding: 0.4rem;
+        border-radius: 0.9rem;
+        border: 1px dashed var(--surface-border);
+        background: var(--muted-panel-bg);
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        transition: border-color 0.2s ease, background 0.2s ease;
+      }
+
+      .file-upload-input::file-selector-button {
+        margin-right: 0.75rem;
+        border: 0;
+        border-radius: 0.75rem;
+        padding: 0.45rem 1rem;
+        background: var(--file-button-bg);
+        color: var(--file-button-text);
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .file-upload-input:hover {
+        border-color: var(--primary-color);
+      }
+
+      .file-upload-input:hover::file-selector-button {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px -18px rgba(59, 130, 246, 0.45);
+      }
+
+      .admin-account-card {
+        background: var(--muted-panel-bg);
+        border: 1px solid var(--surface-border);
+        border-radius: 1.5rem;
+        padding: 1.5rem;
+        display: grid;
+        gap: 1.25rem;
+      }
+
+      @media (min-width: 640px) {
+        .admin-account-card {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      .admin-account-card h3 {
+        color: var(--text-strong);
+        font-weight: 600;
+      }
+
+      .admin-account-card p {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+
+      .admin-account-card input {
+        width: 100%;
+        border-radius: 0.75rem;
+        border: 1px solid var(--surface-border);
+        background: var(--surface-color);
+        padding: 0.65rem 0.85rem;
+        font-size: 0.9rem;
+        color: var(--text-strong);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .admin-account-card input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(255, 64, 64, 0.15);
+      }
+
+      .admin-account-card button {
+        border-radius: 0.75rem;
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
+        color: #fff;
+        padding: 0.6rem 1.4rem;
+        font-weight: 600;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .admin-account-card button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 28px -20px var(--selection-glow);
+      }
+
+      .admin-account-card .status-text {
+        font-size: 0.75rem;
+        color: var(--primary-color);
+      }
+
+      .level-map {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+
+      @media (min-width: 1024px) {
+        .level-map {
+          flex-direction: row;
+        }
+      }
+
+      .level-column {
+        position: relative;
+        flex: 1 1 0;
+        border-radius: 1.5rem;
+        border: 1px solid var(--level-column-border);
+        background: var(--level-column-bg);
+        padding: 1.25rem;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      }
+
+      .level-column-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+        color: var(--text-strong);
+      }
+
+      .level-node-list {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .level-node-list::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        background: var(--level-node-line);
+      }
+
+      .level-node {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.95rem 1.2rem 0.95rem 2.6rem;
+        border-radius: 1.25rem;
+        border: 1px solid var(--level-node-border);
+        background: var(--level-node-bg);
+        color: var(--text-strong);
+        text-align: left;
+        transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        overflow: hidden;
+        box-shadow: var(--level-node-shadow);
+      }
+
+      .level-node::before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 12px;
+        height: 12px;
+        border-radius: 9999px;
+        border: 2px solid var(--primary-color);
+        background: var(--level-node-dot-bg);
+        box-shadow: 0 0 12px var(--level-node-dot-shadow);
+      }
+
+      .level-node:hover {
+        transform: translateX(6px);
+        border-color: var(--level-node-hover-border);
+        box-shadow: var(--level-node-hover-shadow);
+      }
+
+      .level-node-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+
+      .level-node-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-strong);
+      }
+
+      .level-node-description {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+
+      .level-node-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 9999px;
+        background: var(--victory-badge-bg);
+        color: var(--victory-badge-text);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .level-node-victory {
+        border-color: var(--victory-border);
+        box-shadow: 0 22px 40px -22px rgba(16, 185, 129, 0.45);
+      }
+
+      .level-node-victory::before {
+        border-color: var(--victory-border);
+        box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+      }
+
+      .level-node-active {
+        border-color: var(--level-node-active-border);
+        background: var(--level-node-active-bg);
+        box-shadow: 0 24px 40px -18px var(--selection-glow);
+        animation: floaty 4s ease-in-out infinite;
+      }
+
+      .level-node-active::before {
+        border-color: var(--level-node-active-border);
+      }
+
+      .selected-level-card {
+        border: 1px solid var(--selected-level-border);
+        background: var(--selected-level-bg);
+        border-radius: 1.25rem;
+        padding: 1rem 1.25rem;
+      }
+
+      .selected-level-card .selected-level-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(59, 130, 246, 0.8);
+      }
+
+      .selected-level-card .selected-level-title {
+        margin-top: 0.35rem;
+        font-weight: 600;
+        color: var(--text-strong);
+      }
+
+      .selected-level-card .selected-level-description {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel-active {
+        display: block;
+      }
+
       @keyframes floaty {
         0% {
           transform: translateY(0px);
@@ -302,17 +673,16 @@
           transform: translateY(0px);
         }
       }
-      .level-node-active {
-        animation: floaty 4s ease-in-out infinite;
-      }
+
       @media (max-width: 768px) {
         header .flex {
           align-items: flex-start;
         }
       }
+
     </style>
   </head>
-  <body class="bg-transparent text-slate-800 min-h-screen antialiased">
+  <body class="bg-transparent min-h-screen antialiased">
     <header class="border-b border-neutral-200 bg-white/90 backdrop-blur shadow-sm">
       <div
         class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 lg:flex-row lg:items-center lg:justify-between"
@@ -402,65 +772,76 @@
       </section>
 
       <section id="student-dashboard" class="hidden space-y-6">
-        <section id="student-assignment-board" class="surface-card p-5">
-          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div class="space-y-2">
-              <p class="text-sm text-slate-400">STEP 0</p>
-              <h2 class="text-xl font-semibold text-white">统一作业任务</h2>
-              <p class="text-sm text-slate-400">
-                教师分配的统一作业会出现在此处。所有同学面对一致的谈判背景，可直接点击开始或继续。
-              </p>
-            </div>
-            <p id="student-assignment-status" class="text-xs text-emerald-300"></p>
-          </div>
-          <ul id="student-assignment-list" class="mt-4 space-y-3 text-sm"></ul>
-        </section>
-
         <section
           id="level-selection-panel"
-          class="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-blue-500/5 sm:p-6"
+          class="surface-card p-5 sm:p-6"
         >
           <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div class="space-y-2">
-                <p class="text-sm text-slate-400">STEP 1</p>
-                <h2 class="text-xl font-semibold text-white">选择关卡地图</h2>
-                <p class="text-sm text-slate-400">
-                  通过关卡地图选择目标训练情境，体验沉浸式的谈判任务。
-                </p>
+            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1.2fr]">
+              <div class="assignment-card">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div class="space-y-1">
+                    <p class="text-sm text-slate-400">STEP 0</p>
+                    <h2 class="text-lg font-semibold text-white">统一作业任务</h2>
+                    <p class="text-xs text-slate-400 sm:text-sm">
+                      教师分配的案例挑战会集中展示在此处，完成后可刷新关卡成绩。
+                    </p>
+                  </div>
+                  <p id="student-assignment-status" class="text-xs text-emerald-400"></p>
+                </div>
+                <ul id="student-assignment-list" class="mt-4 space-y-3 text-sm"></ul>
               </div>
-              <div class="flex flex-col items-end gap-3">
-                <label class="space-y-2 text-right">
-                  <span class="text-sm font-semibold text-slate-200">对手难度</span>
-                  <select
-                    id="difficulty-select"
-                    class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none sm:w-48"
-                  >
-                    <option value="friendly">友好型 · 引导与鼓励</option>
-                    <option value="balanced" selected>默认 · 平衡博弈</option>
-                    <option value="tough">强硬型 · 严守底线</option>
-                    <option value="shrewd">精明型 · 灵活试探</option>
-                  </select>
-                </label>
-                <button
-                  id="start-level"
-                  class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled
+              <div class="flex flex-col gap-4">
+                <div class="space-y-2">
+                  <p class="text-sm text-slate-400">STEP 1</p>
+                  <h2 class="text-xl font-semibold text-white">选择关卡地图</h2>
+                  <p class="text-sm text-slate-400">
+                    通过关卡地图选择目标训练情境，体验沉浸式的谈判任务。
+                  </p>
+                </div>
+                <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <label class="space-y-2 text-sm sm:w-60">
+                    <span class="font-semibold text-slate-200">对手难度</span>
+                    <select
+                      id="difficulty-select"
+                      class="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="friendly">友好型 · 引导与鼓励</option>
+                      <option value="balanced" selected>默认 · 平衡博弈</option>
+                      <option value="tough">强硬型 · 严守底线</option>
+                      <option value="shrewd">精明型 · 灵活试探</option>
+                    </select>
+                  </label>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      id="start-assignment"
+                      type="button"
+                      class="tonal-button px-6 py-3 text-sm font-semibold"
+                      disabled
+                    >
+                      🎯 案例挑战
+                    </button>
+                    <button
+                      id="start-level"
+                      class="primary-button px-6 py-3 text-sm"
+                      disabled
+                    >
+                      🧠 我要刷题
+                    </button>
+                  </div>
+                </div>
+                <div
+                  id="selected-level-detail"
+                  class="hidden selected-level-card text-sm"
                 >
-                  🚀 进入关卡
-                </button>
+                  <p class="selected-level-label">当前选择</p>
+                  <p id="selected-level-title" class="selected-level-title"></p>
+                  <p id="selected-level-description" class="selected-level-description"></p>
+                </div>
               </div>
             </div>
             <div class="overflow-x-auto pb-2">
               <div id="level-map" class="level-map min-w-full"></div>
-            </div>
-            <div
-              id="selected-level-detail"
-              class="hidden rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-800"
-            >
-              <p class="text-xs uppercase tracking-widest text-blue-700">当前选择</p>
-              <p id="selected-level-title" class="mt-1 text-base font-semibold text-blue-900"></p>
-              <p id="selected-level-description" class="mt-2 text-blue-700"></p>
             </div>
           </div>
         </section>
@@ -685,6 +1066,44 @@
             <button class="tab-trigger" data-admin-tab="levels">关卡编辑器</button>
           </div>
 
+          <section class="admin-account-card">
+            <div class="space-y-3">
+              <div>
+                <h3>教师信息</h3>
+                <p>更新管理员在系统中的显示名称。</p>
+              </div>
+              <form id="admin-profile-form" class="space-y-3 sm:flex sm:items-end sm:gap-3">
+                <label class="flex-1 text-sm text-slate-500">
+                  <span class="mb-1 block font-semibold text-slate-300">显示名称</span>
+                  <input id="admin-profile-name" type="text" />
+                </label>
+                <button type="submit">保存名称</button>
+              </form>
+              <p id="admin-profile-status" class="status-text"></p>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <h3>安全设置</h3>
+                <p>修改教师账号密码，保障管理后台安全。</p>
+              </div>
+              <form id="admin-password-form" class="space-y-3 sm:grid sm:grid-cols-3 sm:gap-3">
+                <label class="text-sm text-slate-500">
+                  <span class="mb-1 block font-semibold text-slate-300">当前密码</span>
+                  <input id="admin-password-current" type="password" />
+                </label>
+                <label class="text-sm text-slate-500">
+                  <span class="mb-1 block font-semibold text-slate-300">新密码</span>
+                  <input id="admin-password-new" type="password" />
+                </label>
+                <div class="flex flex-col gap-2 sm:items-end sm:justify-end">
+                  <button type="submit">更新密码</button>
+                  <p id="admin-password-status" class="status-text"></p>
+                </div>
+              </form>
+            </div>
+          </section>
+
+
           <div class="tab-panel tab-panel-active" data-admin-panel="students">
             <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
               <div class="space-y-4">
@@ -702,7 +1121,7 @@
                       id="admin-student-import-file"
                       type="file"
                       accept=".xlsx,.xls"
-                      class="text-xs text-slate-300"
+                      class="file-upload-input"
                     />
                     <button
                       type="submit"

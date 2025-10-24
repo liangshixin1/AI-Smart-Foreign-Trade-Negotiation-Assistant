@@ -71,6 +71,13 @@ const adminStudentImportStatus = document.getElementById("admin-student-import-s
 const adminStudentPasswordForm = document.getElementById("admin-student-password-form");
 const adminStudentPasswordInput = document.getElementById("admin-student-new-password");
 const adminStudentPasswordStatus = document.getElementById("admin-student-password-status");
+const adminProfileForm = document.getElementById("admin-profile-form");
+const adminProfileNameInput = document.getElementById("admin-profile-name");
+const adminProfileStatus = document.getElementById("admin-profile-status");
+const adminPasswordForm = document.getElementById("admin-password-form");
+const adminPasswordCurrent = document.getElementById("admin-password-current");
+const adminPasswordNew = document.getElementById("admin-password-new");
+const adminPasswordStatus = document.getElementById("admin-password-status");
 const studentAssignmentListEl = document.getElementById("student-assignment-list");
 const studentAssignmentStatus = document.getElementById("student-assignment-status");
 const studentPasswordForm = document.getElementById("student-password-form");
@@ -84,6 +91,7 @@ const selectedLevelDetail = document.getElementById("selected-level-detail");
 const selectedLevelTitle = document.getElementById("selected-level-title");
 const selectedLevelDescription = document.getElementById("selected-level-description");
 const startLevelBtn = document.getElementById("start-level");
+const startAssignmentBtn = document.getElementById("start-assignment");
 const difficultySelect = document.getElementById("difficulty-select");
 const loadingPanel = document.getElementById("loading-panel");
 const experienceSection = document.getElementById("experience");
@@ -192,6 +200,7 @@ const state = {
   },
   studentInsights: null,
   studentAssignments: [],
+  levelVictories: new Set(),
 };
 
 function toggleLoading(isLoading) {
@@ -274,6 +283,7 @@ function updateSelectedLevelDetail() {
     selectedLevelTitle.textContent = "";
     selectedLevelDescription.textContent = "";
     startLevelBtn.disabled = true;
+    updateAssignmentShortcut();
     return;
   }
   const chapter = findChapter(chapterId);
@@ -281,6 +291,7 @@ function updateSelectedLevelDetail() {
   if (!chapter || !section) {
     selectedLevelDetail.classList.add("hidden");
     startLevelBtn.disabled = true;
+    updateAssignmentShortcut();
     return;
   }
   selectedLevelTitle.textContent = `${chapter.title || "章节"}｜${section.title || "小节"}`;
@@ -288,6 +299,7 @@ function updateSelectedLevelDetail() {
   selectedLevelDetail.classList.remove("hidden");
   startLevelBtn.disabled = false;
   highlightSelectedLevel();
+  updateAssignmentShortcut();
 }
 
 function setSelectedLevel(chapterId, sectionId) {
@@ -333,16 +345,27 @@ function renderLevelMap() {
       node.className = "level-node";
       node.dataset.chapterId = chapter.id;
       node.dataset.sectionId = section.id;
+      const victoryKey = getLevelVictoryKey(chapter.id, section.id);
+      const isVictory =
+        state.levelVictories instanceof Set && state.levelVictories.has(victoryKey);
+      if (isVictory) {
+        node.classList.add("level-node-victory");
+      }
+      const title = section.title || "小节";
+      const description = section.description || "";
       node.innerHTML = `
-        <span class="text-sm font-semibold text-white">${section.title || "小节"}</span>
-        <span class="text-xs text-slate-400">${section.description || ""}</span>
+        <div class="level-node-header">
+          <span class="level-node-title">${title}</span>
+          ${isVictory ? '<span class="level-node-badge" aria-label="通关成功">🏆 胜利</span>' : ""}
+        </div>
+        <span class="level-node-description">${description}</span>
       `;
       list.appendChild(node);
     });
 
     if ((chapter.sections || []).length === 0) {
       const emptySection = document.createElement("p");
-      emptySection.className = "rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-500";
+      emptySection.className = "rounded-xl border border-dashed border-slate-300/60 bg-transparent p-3 text-xs text-slate-500 text-center";
       emptySection.textContent = "暂无小节";
       list.appendChild(emptySection);
     }
@@ -625,6 +648,135 @@ function renderKnowledge(container, items) {
     }
     container.appendChild(pill);
   });
+}
+
+function getLevelVictoryKey(chapterId, sectionId) {
+  return `${chapterId || ""}::${sectionId || ""}`;
+}
+
+function hasVictoryScore(evaluation) {
+  if (!evaluation || evaluation.score === null || evaluation.score === undefined) {
+    return false;
+  }
+  const numeric = Number(evaluation.score);
+  if (Number.isNaN(numeric)) {
+    return false;
+  }
+  return numeric > 80;
+}
+
+function markLevelVictory(chapterId, sectionId) {
+  if (!chapterId || !sectionId) {
+    return;
+  }
+  if (!state.levelVictories || !(state.levelVictories instanceof Set)) {
+    state.levelVictories = new Set();
+  }
+  const key = getLevelVictoryKey(chapterId, sectionId);
+  if (state.levelVictories.has(key)) {
+    return;
+  }
+  state.levelVictories.add(key);
+  renderLevelMap();
+}
+
+function rebuildLevelVictories() {
+  if (!state.levelVictories || !(state.levelVictories instanceof Set)) {
+    state.levelVictories = new Set();
+  }
+  const next = new Set();
+  (state.sessions || []).forEach((session) => {
+    if (!session || !session.chapterId || !session.sectionId) {
+      return;
+    }
+    if (hasVictoryScore(session.latestEvaluation)) {
+      next.add(getLevelVictoryKey(session.chapterId, session.sectionId));
+    }
+  });
+
+  let changed = next.size !== state.levelVictories.size;
+  if (!changed) {
+    for (const key of next) {
+      if (!state.levelVictories.has(key)) {
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  state.levelVictories = next;
+  if (changed) {
+    renderLevelMap();
+  } else {
+    highlightSelectedLevel();
+  }
+}
+
+function findAssignmentForLevel(chapterId, sectionId) {
+  if (!chapterId || !sectionId) {
+    return null;
+  }
+  const assignments = Array.isArray(state.studentAssignments) ? state.studentAssignments : [];
+  const byChapterSection = assignments.filter(
+    (assignment) => assignment.chapterId === chapterId && assignment.sectionId === sectionId,
+  );
+  const prioritized =
+    byChapterSection.find((assignment) => assignment.status !== "completed") || byChapterSection[0];
+  if (prioritized) {
+    return prioritized;
+  }
+
+  const bySection = assignments.filter(
+    (assignment) => assignment.sectionId && assignment.sectionId === sectionId,
+  );
+  const sectionMatch =
+    bySection.find((assignment) => assignment.status !== "completed") || bySection[0];
+  if (sectionMatch) {
+    return sectionMatch;
+  }
+
+  const byChapter = assignments.filter(
+    (assignment) => assignment.chapterId && assignment.chapterId === chapterId,
+  );
+  return (
+    byChapter.find((assignment) => assignment.status !== "completed") || byChapter[0] || null
+  );
+}
+
+function updateAssignmentShortcut() {
+  if (!startAssignmentBtn) {
+    return;
+  }
+  const { chapterId, sectionId } = state.selectedLevel || {};
+  const assignment = chapterId && sectionId ? findAssignmentForLevel(chapterId, sectionId) : null;
+  if (!assignment) {
+    startAssignmentBtn.dataset.assignmentId = "";
+    startAssignmentBtn.disabled = true;
+    startAssignmentBtn.removeAttribute("title");
+    startAssignmentBtn.removeAttribute("aria-label");
+    return;
+  }
+  startAssignmentBtn.dataset.assignmentId = assignment.id || "";
+  startAssignmentBtn.disabled = false;
+  const status = assignment.status || "pending";
+  const actionLabel =
+    status === "completed"
+      ? "查看案例成绩"
+      : assignment.sessionId
+      ? "继续案例挑战"
+      : "开始案例挑战";
+  startAssignmentBtn.setAttribute("title", actionLabel);
+  startAssignmentBtn.setAttribute("aria-label", actionLabel);
+}
+
+function maybeRecordVictory(evaluation) {
+  if (!evaluation || !hasVictoryScore(evaluation)) {
+    return;
+  }
+  const { chapterId, sectionId } = state.activeLevel || {};
+  if (chapterId && sectionId) {
+    markLevelVictory(chapterId, sectionId);
+  }
 }
 
 function setActiveExperienceModule(moduleId) {
@@ -996,6 +1148,7 @@ function renderEvaluation(evaluation) {
   });
 
   renderKnowledge(evaluationKnowledgeEl, evaluation.knowledgePoints || []);
+  maybeRecordVictory(evaluation);
 }
 
 function renderSessionHistory() {
@@ -1704,36 +1857,101 @@ function selectAdminAssignment(assignmentId) {
 function renderStudentAssignments() {
   if (!studentAssignmentListEl) return;
   studentAssignmentListEl.innerHTML = "";
-  const assignments = state.studentAssignments || [];
+  const assignments = Array.isArray(state.studentAssignments)
+    ? state.studentAssignments
+    : [];
   if (assignments.length === 0) {
     const empty = document.createElement("li");
-    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
+    empty.className = "assignment-item assignment-empty";
     empty.textContent = "暂无待完成的作业";
     studentAssignmentListEl.appendChild(empty);
     return;
   }
+
   assignments.forEach((assignment) => {
     const li = document.createElement("li");
-    li.className = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm";
-    const status = assignment.status || "pending";
+    li.className = "assignment-item";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "flex flex-col gap-2";
+
+    const header = document.createElement("div");
+    header.className = "flex flex-wrap items-center justify-between gap-2";
+
+    const title = document.createElement("h3");
+    const assignmentTitle =
+      assignment.title ||
+      (assignment.scenario && (assignment.scenario.title || assignment.scenario.name)) ||
+      "统一作业";
+    title.textContent = assignmentTitle;
+    header.appendChild(title);
+
+    const statusValue = assignment.status || "pending";
     const statusLabel =
-      status === "completed"
-        ? "已完成"
-        : status === "in_progress"
-        ? "进行中"
-        : "待开始";
-    li.innerHTML = `
-      <div class="flex flex-col gap-1">
-        <p class="font-semibold text-white">${assignment.title || assignment.scenario.title || "统一作业"}</p>
-        <p class="text-xs text-slate-400">${assignment.description || assignment.scenario.summary || ""}</p>
-        <p class="text-xs text-slate-500">难度：${assignment.difficultyLabel || "平衡博弈"}｜状态：${statusLabel}</p>
-        <div class="mt-2 flex flex-wrap gap-2">
-          <button class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600" data-assignment-id="${assignment.id}">
-            ${status === "completed" ? "查看成绩" : assignment.sessionId ? "继续作业" : "开始作业"}
-          </button>
-        </div>
-      </div>
-    `;
+      statusValue === "completed"
+        ? "状态：已完成"
+        : statusValue === "in_progress"
+        ? "状态：进行中"
+        : "状态：待开始";
+    const statusMeta = document.createElement("span");
+    statusMeta.className = "assignment-meta";
+    statusMeta.textContent = statusLabel;
+    header.appendChild(statusMeta);
+
+    wrapper.appendChild(header);
+
+    const description = assignment.description ||
+      (assignment.scenario && assignment.scenario.summary) ||
+      "";
+    if (description) {
+      const descEl = document.createElement("p");
+      descEl.textContent = description;
+      wrapper.appendChild(descEl);
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "flex flex-wrap items-center justify-between gap-2";
+
+    const metaParts = [];
+    if (assignment.chapterTitle || assignment.sectionTitle) {
+      metaParts.push(
+        [assignment.chapterTitle, assignment.sectionTitle]
+          .filter(Boolean)
+          .join(" ｜ ")
+      );
+    } else if (assignment.chapterId || assignment.sectionId) {
+      metaParts.push(
+        [assignment.chapterId && `章节 ${assignment.chapterId}`, assignment.sectionId && `小节 ${assignment.sectionId}`]
+          .filter(Boolean)
+          .join(" ｜ ")
+      );
+    }
+    if (assignment.difficultyLabel) {
+      metaParts.push(`难度：${assignment.difficultyLabel}`);
+    }
+    if (assignment.updatedAt) {
+      metaParts.push(`更新：${assignment.updatedAt}`);
+    }
+
+    const metaEl = document.createElement("p");
+    metaEl.className = "assignment-meta";
+    metaEl.textContent = metaParts.filter(Boolean).join(" ｜ ") || "教师统一指派";
+    footer.appendChild(metaEl);
+
+    const actionBtn = document.createElement("button");
+    actionBtn.type = "button";
+    actionBtn.dataset.assignmentId = assignment.id || "";
+    const actionLabel =
+      statusValue === "completed"
+        ? "查看成绩"
+        : assignment.sessionId
+        ? "继续作业"
+        : "开始作业";
+    actionBtn.textContent = actionLabel;
+    footer.appendChild(actionBtn);
+
+    wrapper.appendChild(footer);
+    li.appendChild(wrapper);
     studentAssignmentListEl.appendChild(li);
   });
 }
@@ -2287,6 +2505,14 @@ function updateAuthUI() {
     logoutBtn.classList.remove("hidden");
     const display = state.auth.user.displayName || state.auth.user.username;
     userStatusLabel.textContent = `${state.auth.user.role === "teacher" ? "教师" : "学生"} ${display}`;
+    if (adminProfileNameInput) {
+      adminProfileNameInput.value =
+        state.auth.user.role === "teacher"
+          ? state.auth.user.displayName || state.auth.user.username || ""
+          : "";
+    }
+    updateInlineStatus(adminProfileStatus, "");
+    updateInlineStatus(adminPasswordStatus, "");
     if (state.auth.user.role === "student") {
       studentDashboard.classList.remove("hidden");
       adminPanel.classList.add("hidden");
@@ -2348,6 +2574,7 @@ async function loadSessions() {
     }
     const data = await response.json();
     state.sessions = data.sessions || [];
+    rebuildLevelVictories();
     renderSessionHistory();
   } catch (error) {
     console.error(error);
@@ -2666,6 +2893,7 @@ async function loadStudentAssignments() {
     const data = await response.json();
     state.studentAssignments = data.assignments || [];
     renderStudentAssignments();
+    updateAssignmentShortcut();
     if (studentAssignmentStatus) {
       studentAssignmentStatus.textContent = "";
     }
@@ -2718,6 +2946,7 @@ async function startAssignmentSession(assignmentId) {
     await loadSessions();
     await loadStudentAssignments();
     await loadStudentDashboardInsights();
+    updateAssignmentShortcut();
     if (studentAssignmentStatus) studentAssignmentStatus.textContent = "";
   } catch (error) {
     console.error(error);
@@ -2751,6 +2980,73 @@ async function handleStudentPasswordChange(event) {
   } catch (error) {
     console.error(error);
     studentPasswordStatus.textContent = error.message || "更新密码失败";
+  }
+}
+
+async function handleAdminProfileUpdate(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const displayName = adminProfileNameInput ? adminProfileNameInput.value.trim() : "";
+  if (!displayName) {
+    updateInlineStatus(adminProfileStatus, "请填写显示名称", "error");
+    return;
+  }
+  updateInlineStatus(adminProfileStatus, "保存中...", "muted");
+  try {
+    const response = await fetchWithAuth("/api/account/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新失败");
+    }
+    const data = await response.json();
+    if (data.user) {
+      state.auth.user = { ...state.auth.user, ...data.user };
+      if (adminProfileNameInput) {
+        adminProfileNameInput.value = data.user.displayName || data.user.username || displayName;
+      }
+      updateAuthUI();
+    }
+    updateInlineStatus(adminProfileStatus, "显示名称已更新", "success");
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminProfileStatus, error.message || "更新失败", "error");
+  }
+}
+
+async function handleAdminPasswordUpdate(event) {
+  event.preventDefault();
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const currentPassword = adminPasswordCurrent ? adminPasswordCurrent.value : "";
+  const newPassword = adminPasswordNew ? adminPasswordNew.value : "";
+  if (!currentPassword || !newPassword) {
+    updateInlineStatus(adminPasswordStatus, "请填写完整的密码信息", "error");
+    return;
+  }
+  updateInlineStatus(adminPasswordStatus, "更新中...", "muted");
+  try {
+    const response = await fetchWithAuth("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新密码失败");
+    }
+    if (adminPasswordCurrent) adminPasswordCurrent.value = "";
+    if (adminPasswordNew) adminPasswordNew.value = "";
+    updateInlineStatus(adminPasswordStatus, "密码已更新", "success");
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminPasswordStatus, error.message || "更新密码失败", "error");
   }
 }
 
@@ -2865,6 +3161,7 @@ async function startLevel() {
     updateSelectedLevelDetail();
     showExperience();
     await loadSessions();
+    await loadStudentAssignments();
     await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
@@ -2909,6 +3206,7 @@ async function resetCurrentSession() {
     goToLevelSelection({ clearSelection: true });
     closeStudentModal();
     await loadSessions();
+    await loadStudentAssignments();
     await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
@@ -3069,6 +3367,7 @@ async function sendMessage() {
     }
 
     await loadSessions();
+    await loadStudentAssignments();
     await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
@@ -3134,6 +3433,7 @@ async function handleLogin(event) {
 
 function handleLogout() {
   state.auth = { token: null, user: null };
+  state.chapters = [];
   state.sessions = [];
   state.sessionId = null;
   state.messages = [];
@@ -3155,6 +3455,7 @@ function handleLogout() {
   };
   state.studentInsights = null;
   state.studentAssignments = [];
+  state.levelVictories = new Set();
   sessionHistoryList.innerHTML = "";
   adminStudentList.innerHTML = "";
   adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -3182,6 +3483,11 @@ function handleLogout() {
   }
   if (studentPasswordStatus) {
     studentPasswordStatus.textContent = "";
+  }
+  updateInlineStatus(adminProfileStatus, "");
+  updateInlineStatus(adminPasswordStatus, "");
+  if (adminProfileNameInput) {
+    adminProfileNameInput.value = "";
   }
   if (adminAssignmentForm) {
     adminAssignmentForm.reset();
@@ -3211,6 +3517,13 @@ function handleLogout() {
   updateChapterForm();
   updateSectionForm();
   goToLevelSelection({ clearSelection: true });
+  renderLevelMap();
+  if (startAssignmentBtn) {
+    startAssignmentBtn.dataset.assignmentId = "";
+    startAssignmentBtn.disabled = true;
+    startAssignmentBtn.removeAttribute("title");
+    startAssignmentBtn.removeAttribute("aria-label");
+  }
   closeStudentModal();
   closeStudentPasswordModal();
   activateAdminTab();
@@ -3219,6 +3532,19 @@ function handleLogout() {
 
 if (startLevelBtn) {
   startLevelBtn.addEventListener("click", startLevel);
+}
+
+if (startAssignmentBtn) {
+  startAssignmentBtn.addEventListener("click", () => {
+    const assignmentId = startAssignmentBtn.dataset.assignmentId;
+    if (!assignmentId) {
+      if (studentAssignmentStatus) {
+        studentAssignmentStatus.textContent = "请先选择关卡或等待教师分配案例挑战";
+      }
+      return;
+    }
+    startAssignmentSession(assignmentId);
+  });
 }
 
 if (sendMessageBtn) {
@@ -3267,6 +3593,7 @@ if (studentPasswordModalClose) {
 if (refreshSessionsBtn) {
   refreshSessionsBtn.addEventListener("click", () => {
     loadSessions();
+    loadStudentAssignments();
   });
 }
 
@@ -3438,6 +3765,14 @@ if (studentAssignmentListEl) {
 
 if (studentPasswordForm) {
   studentPasswordForm.addEventListener("submit", handleStudentPasswordChange);
+}
+
+if (adminProfileForm) {
+  adminProfileForm.addEventListener("submit", handleAdminProfileUpdate);
+}
+
+if (adminPasswordForm) {
+  adminPasswordForm.addEventListener("submit", handleAdminPasswordUpdate);
 }
 
 if (adminStudentImportForm) {
