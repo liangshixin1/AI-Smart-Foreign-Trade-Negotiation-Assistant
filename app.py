@@ -627,35 +627,6 @@ def _generate_scenario_for_section(
     return scenario, profile
 
 
-def _prepare_opening_message(
-    conversation_prompt: str, scenario: Dict[str, object]
-) -> str:
-    """Derive the assistant's opening message based on the system prompt."""
-
-    opening_message = ""
-    try:
-        collab_key = _require_key("DEEPSEEK_COLLAB_KEY")
-    except MissingKeyError:
-        collab_key = ""
-
-    if collab_key and conversation_prompt.strip():
-        try:
-            opening_message = _complete_chat(
-                collab_key,
-                [{"role": "system", "content": conversation_prompt}],
-                temperature=0.7,
-            ).strip()
-        except Exception:  # pragma: no cover - tolerate upstream variance
-            opening_message = ""
-
-    if not opening_message and isinstance(scenario, dict):
-        raw_opening = scenario.get("opening_message")
-        if isinstance(raw_opening, str):
-            opening_message = raw_opening.strip()
-
-    return opening_message
-
-
 def _build_transcript(history: List[Dict[str, str]], scenario: Dict[str, object]) -> str:
     lines: List[str] = []
     lines.append(f"場景標題: {scenario.get('scenario_title', '')}")
@@ -976,14 +947,14 @@ def start_level():
         difficulty=difficulty_key,
     )
 
-    opening_message = _prepare_opening_message(conversation_prompt, scenario)
-    if opening_message:
-        database.add_message(session_id, "assistant", opening_message)
+    opening_message = scenario.get("opening_message")
+    if isinstance(opening_message, str) and opening_message.strip():
+        database.add_message(session_id, "assistant", opening_message.strip())
 
     payload = {
         "sessionId": session_id,
         "scenario": _prepare_scenario_payload(scenario),
-        "openingMessage": opening_message,
+        "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
         "chapterId": chapter_id,
         "sectionId": section_id,
@@ -1163,17 +1134,16 @@ def start_assignment(assignment_id: str):
     )
     database.link_assignment_session(assignment_id, int(user["id"]), session_id)
 
-    conversation_prompt = _normalize_text(record.get("conversationPrompt"))
-    opening_message = _prepare_opening_message(conversation_prompt, scenario)
-    if opening_message:
-        database.add_message(session_id, "assistant", opening_message)
+    opening_message = scenario.get("opening_message")
+    if isinstance(opening_message, str) and opening_message.strip():
+        database.add_message(session_id, "assistant", opening_message.strip())
 
     payload = {
         "sessionId": session_id,
         "scenario": _prepare_scenario_payload(scenario),
         "assignmentId": assignment_id,
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
-        "openingMessage": opening_message,
+        "openingMessage": opening_message or "",
         "difficulty": difficulty_key,
     }
     _inject_difficulty_metadata(payload)
@@ -1499,15 +1469,14 @@ def reset_session_endpoint(session_id: str):
 
     database.reset_session(session_id)
     scenario = session["scenario"]
-    conversation_prompt = _normalize_text(session.get("system_prompt"))
-    opening_message = _prepare_opening_message(conversation_prompt, scenario)
-    if opening_message:
-        database.add_message(session_id, "assistant", opening_message)
+    opening_message = scenario.get("opening_message")
+    if isinstance(opening_message, str) and opening_message.strip():
+        database.add_message(session_id, "assistant", opening_message.strip())
 
     payload = {
         "sessionId": session_id,
         "scenario": _prepare_scenario_payload(scenario),
-        "openingMessage": opening_message,
+        "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
         "chapterId": session["chapter_id"],
         "sectionId": session["section_id"],
