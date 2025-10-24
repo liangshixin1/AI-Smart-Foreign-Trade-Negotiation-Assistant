@@ -1,9 +1,12 @@
 import copy
 import json
 import os
+import re
 import uuid
 from itertools import chain
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
+
+from datetime import date
 
 from dotenv import load_dotenv
 from flask import (
@@ -386,6 +389,318 @@ def _normalize_product(data: object) -> Dict[str, object]:
     if data.get("highlights"):
         result["highlights"] = _normalize_text_list(data.get("highlights"))
     return result
+
+
+def _extract_numeric_value(text: object) -> Optional[float]:
+    if not isinstance(text, str):
+        text = _normalize_text(text)
+    normalized = (text or "").replace(",", "")
+    match = re.search(r"(-?\d+(?:\.\d+)?)", normalized)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_currency(value: Optional[float]) -> str:
+    if value is None:
+        return "TBD"
+    return f"USD {value:,.2f}"
+
+
+def _resolve_party_details(scenario: Dict[str, object]) -> Tuple[str, str, str]:
+    ai_company = scenario.get("ai_company") or {}
+    student_company = scenario.get("student_company") or {}
+    seller_name = _resolve_company_name(ai_company, "Seller")
+    buyer_name = _resolve_company_name(student_company, "Buyer")
+    buyer_contact = _normalize_text(scenario.get("student_role")) or "Procurement Team"
+    return seller_name, buyer_name, buyer_contact
+
+
+def _resolve_product_context(
+    scenario: Dict[str, object]
+) -> Tuple[Dict[str, object], str, str, str, Optional[float]]:
+    product = scenario.get("product") or {}
+    product_name = _normalize_text(product.get("name")) or "Product"
+    product_specs = _normalize_text(product.get("specifications"))
+    quantity_text = _normalize_text(product.get("quantity_requirement")) or ""
+    quantity_value = _extract_numeric_value(quantity_text)
+    return product, product_name, product_specs, quantity_text, quantity_value
+
+
+def _resolve_company_name(data: object, fallback: str) -> str:
+    if isinstance(data, dict):
+        name = _normalize_text(
+            data.get("name")
+            or data.get("company")
+            or data.get("companyName")
+            or data.get("display")
+        )
+        if name:
+            return name
+    if isinstance(data, str):
+        normalized = _normalize_text(data)
+        if normalized:
+            return normalized
+    return fallback
+
+
+def _compose_proforma_invoice_opening(scenario: Dict[str, object]) -> str:
+    seller_name, buyer_name, buyer_contact = _resolve_party_details(scenario)
+    product, product_name, product_specs, quantity_text, quantity_value = _resolve_product_context(
+        scenario
+    )
+    adjusted_quantity = None
+    if quantity_value is not None:
+        adjusted_quantity = max(1, int(round(quantity_value * 1.08)))
+        quantity_display = f"{adjusted_quantity:,} units"
+    elif quantity_text:
+        quantity_display = f"{quantity_text} (minimum uplift applied)"
+    else:
+        quantity_display = "To be confirmed"
+
+    price_expectation = product.get("price_expectation") or {}
+    target_price_value = _extract_numeric_value(price_expectation.get("student_target"))
+    bottom_line_value = _extract_numeric_value(price_expectation.get("ai_bottom_line"))
+    base_price_value = bottom_line_value or target_price_value
+    adjusted_price = None
+    if base_price_value is not None:
+        adjusted_price = round(base_price_value * 1.06, 2)
+    unit_price_display = _format_currency(adjusted_price) if adjusted_price is not None else "USD 0.00"
+
+    total_display = "TBD"
+    if adjusted_price is not None and adjusted_quantity is not None:
+        total_display = _format_currency(adjusted_price * adjusted_quantity)
+
+    today = date.today().isoformat()
+    invoice_no = f"PI-{uuid.uuid4().hex[:6].upper()}"
+
+    specs_fragment = f" ({product_specs})" if product_specs else ""
+
+    logistics = _normalize_text(scenario.get("logistics"))
+    timeline = _normalize_text(scenario.get("timeline"))
+
+    lines = [
+        "Proforma Invoice (PI)",
+        f"Invoice No.: {invoice_no}",
+        f"Issue Date: {today}",
+        "",
+        f"Seller: {seller_name}",
+        f"Buyer: {buyer_name}",
+        f"Attention: {buyer_contact}",
+        "",
+        "Item Summary:",
+        "| Item | Description | Quantity | Unit Price | Amount |",
+        "| --- | --- | --- | --- | --- |",
+        f"| 1 | {product_name}{specs_fragment} | {quantity_display} | {unit_price_display} | {total_display} |",
+        "",
+        "Commercial Terms:",
+        "- Delivery Term: CIF Hamburg (insurance premium billed separately upon shipment).",
+        "- Payment: 50% T/T in advance and 50% prior to loading; deposit is strictly non-refundable.",
+    ]
+
+    if timeline:
+        lines.append(f"- Shipment: within 15 days after deposit (differs from prior note: {timeline}).")
+    else:
+        lines.append("- Shipment: within 15 days after deposit.")
+
+    if logistics:
+        lines.append(
+            f"- Logistics Reference: Previous discussion mentioned {logistics}, subject to our final routing."
+        )
+
+    lines.extend(
+        [
+            "- Additional Charges: USD 450 documentation & compliance fee plus any port surcharges at destination.",
+            "- Validity: Offer holds for 3 calendar days only; afterward pricing may adjust without notice.",
+            "- Bank Details: To be advised after deposit acknowledgement (funds transferred to offshore account).",
+            "",
+            "Please review the above PI carefully and confirm acceptance, including the adjusted quantity,",
+            "pricing, and extra charges so we can reserve production capacity.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def _compose_quotation_review_opening(scenario: Dict[str, object]) -> str:
+    seller_name, buyer_name, buyer_contact = _resolve_party_details(scenario)
+    product, product_name, product_specs, quantity_text, quantity_value = _resolve_product_context(
+        scenario
+    )
+
+    quoted_quantity: Optional[int] = None
+    if quantity_value is not None:
+        quoted_quantity = max(1, int(round(quantity_value * 1.12)))
+        quantity_display = f"{quoted_quantity:,} units"
+    elif quantity_text:
+        quantity_display = f"{quantity_text} (system-adjusted buffer applied)"
+    else:
+        quantity_display = "To be confirmed"
+
+    price_expectation = product.get("price_expectation") or {}
+    base_price_value = _extract_numeric_value(
+        price_expectation.get("ai_bottom_line")
+    ) or _extract_numeric_value(price_expectation.get("student_target"))
+    adjusted_price = None
+    if base_price_value is not None:
+        adjusted_price = round(base_price_value * 1.15, 2)
+
+    unit_price_display = _format_currency(adjusted_price)
+
+    line_total = "TBD"
+    if adjusted_price is not None and quoted_quantity is not None:
+        line_total = _format_currency(adjusted_price * quoted_quantity)
+
+    timeline = _normalize_text(scenario.get("timeline"))
+    logistics = _normalize_text(scenario.get("logistics"))
+    specs_fragment = f" ({product_specs})" if product_specs else ""
+
+    lines = [
+        "Quotation Sheet (Draft)",
+        f"Quotation No.: QT-{uuid.uuid4().hex[:5].upper()}",
+        f"Prepared By: {seller_name}",
+        f"Issued To: {buyer_name}",
+        f"Attention: {buyer_contact}",
+        "",
+        "Line Items:",
+        "| Item | Description | Quantity | Unit Price | Line Total |",
+        "| --- | --- | --- | --- | --- |",
+        f"| 1 | {product_name}{specs_fragment} | {quantity_display} | {unit_price_display} | {line_total} |",
+        "",
+        "Commercial Highlights:",
+        "- Trade Term: DDP destination warehouse (replaces prior reference).",
+        "- Payment: 70% T/T deposit upfront; remaining 30% released after our internal inspection report.",
+    ]
+
+    if logistics:
+        lines.append(
+            f"- Logistics Note: Earlier discussion mentioned {logistics}; routing cost variations may apply."
+        )
+
+    if timeline:
+        lines.append(
+            f"- Lead Time: 35 days after deposit confirmation (not aligned with earlier {timeline})."
+        )
+    else:
+        lines.append("- Lead Time: 35 days after deposit confirmation.")
+
+    lines.extend(
+        [
+            "- Surcharge: USD 520 compliance & certification fee billed separately and non-refundable.",
+            "- Validity: Quote stands for 24 hours due to supply volatility.",
+            "- Warranty: Limited 30-day coverage on manufacturing defects only; logistics damages excluded.",
+            "",
+            "Please review the above quotation carefully and advise if any discrepancies require correction.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def _compose_final_contract_opening(scenario: Dict[str, object]) -> str:
+    seller_name, buyer_name, buyer_contact = _resolve_party_details(scenario)
+    product, product_name, product_specs, quantity_text, quantity_value = _resolve_product_context(
+        scenario
+    )
+
+    contracted_quantity: Optional[int] = None
+    if quantity_value is not None:
+        contracted_quantity = max(1, int(round(quantity_value * 1.05)))
+        quantity_display = f"{contracted_quantity:,} units"
+    elif quantity_text:
+        quantity_display = f"{quantity_text} (subject to automatic uplift clause)"
+    else:
+        quantity_display = "To be agreed"
+
+    price_expectation = product.get("price_expectation") or {}
+    base_price_value = _extract_numeric_value(
+        price_expectation.get("ai_bottom_line")
+    ) or _extract_numeric_value(price_expectation.get("student_target"))
+    adjusted_price = None
+    if base_price_value is not None:
+        adjusted_price = round(base_price_value * 1.09, 2)
+
+    unit_price_display = _format_currency(adjusted_price)
+
+    line_total = "TBD"
+    if adjusted_price is not None and contracted_quantity is not None:
+        line_total = _format_currency(adjusted_price * contracted_quantity)
+
+    specs_fragment = f" ({product_specs})" if product_specs else ""
+    timeline = _normalize_text(scenario.get("timeline"))
+    logistics = _normalize_text(scenario.get("logistics"))
+
+    lines = [
+        "Sales Contract Draft",
+        f"Contract ID: SC-{uuid.uuid4().hex[:6].upper()}",
+        f"Seller: {seller_name}",
+        f"Buyer: {buyer_name}",
+        f"Attention: {buyer_contact}",
+        "",
+        "1. Goods & Specifications:",
+        f"   - Product: {product_name}{specs_fragment}",
+        f"   - Quantity: {quantity_display}",
+        f"   - Unit Price: {unit_price_display}",
+        f"   - Contract Amount: {line_total}",
+        "",
+        "2. Delivery & Logistics:",
+    ]
+
+    if logistics:
+        lines.append(
+            f"   - Term: DAP destination warehouse (supersedes earlier note: {logistics})."
+        )
+    else:
+        lines.append("   - Term: DAP destination warehouse, routing confirmed by seller.")
+
+    if timeline:
+        lines.append(
+            f"   - Shipment Window: 45 days after deposit receipt, regardless of prior {timeline}."
+        )
+    else:
+        lines.append("   - Shipment Window: 45 days after deposit receipt.")
+
+    lines.extend(
+        [
+            "   - Insurance: Basic coverage arranged by seller; buyer bears war-risk surcharges.",
+            "",
+            "3. Payment & Financial Terms:",
+            "   - 60% non-refundable deposit by T/T within 3 days of signing.",
+            "   - 40% balance released after seller-issued inspection memo (no third-party report).",
+            "   - Late payment incurs 0.8% daily penalty compounded.",
+            "",
+            "4. Additional Clauses:",
+            "   - Quality claims must be lodged within 5 days of arrival with video evidence only.",
+            "   - Unilateral order cancellation forfeits all deposits and future allocation priority.",
+            "   - Governing law: Seller's local jurisdiction; disputes settled via seller-appointed arbitrator.",
+            "",
+            "Please review the contract draft carefully and confirm acceptance or specify revisions required.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+DOCUMENT_OPENING_BUILDERS: Dict[str, Callable[[Dict[str, object]], str]] = {
+    "chapter-4-section-1": _compose_quotation_review_opening,
+    "chapter-4-section-2": _compose_proforma_invoice_opening,
+    "chapter-4-section-5": _compose_final_contract_opening,
+}
+
+
+def _generate_opening_message(section_id: Optional[str], scenario: Dict[str, object]) -> str:
+    builder: Optional[Callable[[Dict[str, object]], str]] = DOCUMENT_OPENING_BUILDERS.get(
+        section_id or ""
+    )
+    if builder:
+        return builder(scenario)
+    opening = scenario.get("opening_message")
+    if isinstance(opening, str):
+        return opening.strip()
+    return ""
 
 
 def _first_non_empty(mapping: Dict[str, object], keys: Iterable[str]) -> str:
@@ -947,9 +1262,9 @@ def start_level():
         difficulty=difficulty_key,
     )
 
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(section_id, scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
@@ -1134,9 +1449,9 @@ def start_assignment(assignment_id: str):
     )
     database.link_assignment_session(assignment_id, int(user["id"]), session_id)
 
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(record.get("sectionId"), scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
@@ -1469,9 +1784,9 @@ def reset_session_endpoint(session_id: str):
 
     database.reset_session(session_id)
     scenario = session["scenario"]
-    opening_message = scenario.get("opening_message")
-    if isinstance(opening_message, str) and opening_message.strip():
-        database.add_message(session_id, "assistant", opening_message.strip())
+    opening_message = _generate_opening_message(session.get("section_id"), scenario)
+    if opening_message:
+        database.add_message(session_id, "assistant", opening_message)
 
     payload = {
         "sessionId": session_id,
