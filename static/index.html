@@ -558,6 +558,72 @@
         outline-offset: 2px;
       }
 
+      .token-editor-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+        border-top: 1px dashed rgba(148, 163, 184, 0.35);
+      }
+
+      .token-editor-actions-hint {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      .token-editor-add-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .token-editor-add-form input[type="text"] {
+        flex: 1 1 10rem;
+        min-width: 9rem;
+        border-radius: 0.75rem;
+        border: 1px solid var(--token-button-border);
+        background: var(--token-surface-bg);
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        color: var(--token-text);
+      }
+
+      .token-editor-add-form button {
+        border-radius: 9999px;
+        padding: 0.4rem 0.9rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: rgba(14, 165, 233, 0.16);
+        border: 1px solid rgba(14, 165, 233, 0.38);
+        color: #0ea5e9;
+        transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      }
+
+      .token-editor-add-form button:hover {
+        background: rgba(14, 165, 233, 0.22);
+        border-color: rgba(14, 165, 233, 0.5);
+        color: #0284c7;
+      }
+
+      .token-editor-actions-feedback {
+        font-size: 0.72rem;
+      }
+
+      .token-editor-fallback-wrapper {
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.9rem;
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .token-editor-fallback-message {
+        margin: 0;
+        font-size: 0.75rem;
+        color: rgba(14, 165, 233, 0.85);
+      }
+
       .token-editor-surface {
         min-height: 7.5rem;
         border-radius: 1rem;
@@ -1597,7 +1663,6 @@
               学生学习总览
             </button>
             <button class="tab-trigger" data-admin-tab="assignments">统一作业</button>
-            <button class="tab-trigger" data-admin-tab="blueprints">积木式编辑器</button>
             <button class="tab-trigger" data-admin-tab="levels">关卡编辑器</button>
           </div>
 
@@ -1850,273 +1915,6 @@
             </div>
           </div>
 
-          <div class="tab-panel" data-admin-panel="blueprints">
-            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-              <div class="space-y-4">
-                <div>
-                  <p class="text-sm text-slate-400">模块化编辑</p>
-                  <h2 class="text-xl font-semibold text-white">积木式关卡蓝图</h2>
-                  <p class="text-xs text-slate-400">
-                    通过填写结构化表单组合 AI 角色、规则、产品与市场要素，系统自动组装成完整的谈判场景。
-                  </p>
-                </div>
-                <ul id="admin-blueprint-list" class="space-y-3 text-sm"></ul>
-              </div>
-              <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                <h3 class="text-lg font-semibold text-white">蓝图表单</h3>
-                <p id="admin-blueprint-status" class="text-xs text-emerald-300"></p>
-                <form id="admin-blueprint-form" class="grid gap-3">
-                  <input type="hidden" id="admin-blueprint-id" />
-                  <label class="block text-xs text-slate-400">
-                    标题
-                    <input
-                      id="admin-blueprint-title"
-                      type="text"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    />
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    场景摘要
-                    <textarea
-                      id="admin-blueprint-summary"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <div class="rounded-xl border border-dashed border-slate-200 bg-white/70 p-3">
-                    <p class="text-xs font-semibold text-slate-600">AI 生成蓝图</p>
-                    <p class="mt-1 text-xs text-slate-500">
-                      选择章节与小节，结合右侧难度选项，一键生成完整积木蓝图内容。
-                    </p>
-                    <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                      <select
-                        id="admin-blueprint-chapter"
-                        class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-purple-400 focus:outline-none"
-                      >
-                        <option value="">选择章节</option>
-                      </select>
-                      <select
-                        id="admin-blueprint-section"
-                        class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-purple-400 focus:outline-none"
-                      >
-                        <option value="">选择小节</option>
-                      </select>
-                    </div>
-                    <div class="mt-3 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        id="admin-blueprint-generate"
-                        class="primary-button px-6 py-2 text-sm"
-                      >
-                        ✨ 一键生成蓝图
-                      </button>
-                      <p id="admin-blueprint-generator-status" class="text-xs text-slate-500"></p>
-                    </div>
-                  </div>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      学生角色
-                      <input
-                        id="admin-blueprint-student-role"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      AI 角色
-                      <input
-                        id="admin-blueprint-ai-role"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      学生公司名称
-                      <input
-                        id="admin-blueprint-student-company-name"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      AI 公司名称
-                      <input
-                        id="admin-blueprint-ai-company-name"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      学生公司背景
-                      <textarea
-                        id="admin-blueprint-student-company-profile"
-                        rows="2"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      AI 公司背景
-                      <textarea
-                        id="admin-blueprint-ai-company-profile"
-                        rows="2"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-                  </div>
-                  <label class="block text-xs text-slate-400">
-                    AI 行为规则（每行一条）
-                    <textarea
-                      id="admin-blueprint-ai-rules"
-                      rows="3"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      产品名称
-                      <input
-                        id="admin-blueprint-product-name"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      产品规格
-                      <input
-                        id="admin-blueprint-product-specs"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      需求 / 供货数量
-                      <input
-                        id="admin-blueprint-product-quantity"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      学生目标价格
-                      <input
-                        id="admin-blueprint-student-price"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  <label class="block text-xs text-slate-400">
-                    AI 底线价格
-                    <input
-                      id="admin-blueprint-ai-bottom"
-                      type="text"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    />
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    市场情境
-                    <textarea
-                      id="admin-blueprint-market"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="block text-xs text-slate-400">
-                      交期 / 时间线
-                      <input
-                        id="admin-blueprint-timeline"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block text-xs text-slate-400">
-                      物流与条款
-                      <input
-                        id="admin-blueprint-logistics"
-                        type="text"
-                        class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                      />
-                    </label>
-                  </div>
-                  <label class="block text-xs text-slate-400">
-                    谈判焦点（每行一条）
-                    <textarea
-                      id="admin-blueprint-negotiation-targets"
-                      rows="3"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    风险提醒（每行一条）
-                    <textarea
-                      id="admin-blueprint-risks"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    行动清单（每行一条）
-                    <textarea
-                      id="admin-blueprint-checklist"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    知识点标签
-                    <textarea
-                      id="admin-blueprint-knowledge"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    开场话术
-                    <textarea
-                      id="admin-blueprint-opening"
-                      rows="2"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    ></textarea>
-                  </label>
-                  <label class="block text-xs text-slate-400">
-                    难度设定
-                    <select
-                      id="admin-blueprint-difficulty"
-                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
-                    >
-                      <option value="friendly">友好型</option>
-                      <option value="balanced" selected>默认 · 平衡博弈</option>
-                      <option value="tough">强硬型</option>
-                      <option value="shrewd">精明型</option>
-                    </select>
-                  </label>
-                  <div class="flex flex-wrap gap-2 pt-2">
-                    <button
-                      type="submit"
-                      class="rounded-xl bg-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-600"
-                    >
-                      保存蓝图
-                    </button>
-                    <button
-                      type="button"
-                      id="admin-blueprint-reset"
-                      class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-slate-400 hover:text-white"
-                    >
-                      新建空白
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-
           <div class="tab-panel" data-admin-panel="levels">
             <div class="space-y-6">
               <div class="flex flex-col gap-4 lg:flex-row">
@@ -2141,7 +1939,7 @@
                         </button>
                       </div>
                     </div>
-                    <p class="text-xs text-slate-500">
+                    <p class="text-xs text-slate-200">
                       选择章节或小节即可在右侧编辑标题、提示词与难度设置。
                     </p>
                   </div>
@@ -2150,7 +1948,7 @@
                 <div class="admin-panel-card flex-1 space-y-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
                   <div class="space-y-2">
                     <h3 class="text-lg font-semibold text-white">章节信息</h3>
-                    <p id="level-chapter-status" class="text-xs text-slate-400">
+                    <p id="level-chapter-status" class="text-xs text-slate-200">
                       请选择章节进行编辑。
                     </p>
                     <form id="chapter-editor-form" class="space-y-4 hidden">
@@ -2198,7 +1996,7 @@
                   </div>
                   <div class="space-y-2">
                     <h3 class="text-lg font-semibold text-white">小节设定</h3>
-                    <p id="level-section-status" class="text-xs text-slate-400">
+                    <p id="level-section-status" class="text-xs text-slate-200">
                       请选择小节查看或编辑详细提示词。
                     </p>
                     <form id="section-editor-form" class="space-y-4 hidden">
@@ -2226,7 +2024,7 @@
                         <div id="section-editor-environment-editor" class="token-editor"></div>
                         <textarea id="section-editor-environment" class="hidden"></textarea>
                         <p class="token-editor-helper">
-                          通过上方的按钮插入变量，彩色标签代表不可编辑的占位符，点击标签右侧的 × 可安全移除。
+                          通过上方的按钮或“添加变量”功能插入占位符，彩色标签代表不可直接修改的变量，点击标签右侧的 × 可安全移除。
                         </p>
                       </label>
                       <label class="block space-y-1 text-sm">
@@ -2245,7 +2043,7 @@
                         <div id="section-editor-conversation-editor" class="token-editor"></div>
                         <textarea id="section-editor-conversation" class="hidden"></textarea>
                         <p class="token-editor-helper">
-                          可自由编辑自然语言，使用按钮插入 {ai_role}、{ai_bottom_line} 等变量，保证后端可以准确替换真实数据。
+                          可直接输入自然语言，或借助上方按钮 / 自定义变量插入 {ai_role}、{ai_bottom_line} 等占位符，系统会自动替换真实数据。
                         </p>
                       </label>
                       <label class="block space-y-2 text-sm">
@@ -2256,7 +2054,7 @@
                         <div id="section-editor-evaluation-editor" class="token-editor"></div>
                         <textarea id="section-editor-evaluation" class="hidden"></textarea>
                         <p class="token-editor-helper">
-                          评价模板常用 {knowledge_points_hint} 等变量，点击标签右侧的 × 删除时不会破坏格式。
+                          常见变量如 {knowledge_points_hint} 可直接点击插入，若需新增指标也可通过“添加变量”自定义后使用。
                         </p>
                       </label>
                       <div class="flex flex-wrap items-center gap-4 text-sm text-slate-300">
