@@ -166,7 +166,6 @@ const scenarioDifficultyEl = document.getElementById("scenario-difficulty");
 const scenarioPanel = document.getElementById("scenario-panel");
 const scenarioCollapseBtn = document.getElementById("scenario-collapse-btn");
 const scenarioPanelBody = document.getElementById("scenario-panel-body");
-const scenarioCustomFieldsEl = document.getElementById("scenario-custom-fields");
 const experienceModules = document.querySelectorAll("[data-experience-module]");
 const experienceTabButtons = document.querySelectorAll(".experience-tab");
 
@@ -1583,59 +1582,6 @@ function renderKnowledge(container, items) {
   });
 }
 
-function renderCustomFields(fields) {
-  if (!scenarioCustomFieldsEl) {
-    return;
-  }
-
-  scenarioCustomFieldsEl.innerHTML = "";
-
-  const entries = Array.isArray(fields) ? fields : [];
-  if (entries.length === 0) {
-    scenarioCustomFieldsEl.classList.add("hidden");
-    return;
-  }
-
-  scenarioCustomFieldsEl.classList.remove("hidden");
-
-  entries.forEach((field) => {
-    const card = document.createElement("div");
-    card.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4";
-
-    const title = document.createElement("h3");
-    title.className = "text-sm font-semibold text-slate-200";
-    title.textContent = field.label || field.key || "Additional Detail";
-    card.appendChild(title);
-
-    const body = document.createElement("div");
-    body.className = "mt-3 space-y-2 text-sm text-slate-300";
-
-    const items = Array.isArray(field.items) ? field.items : [];
-    if (items.length > 0) {
-      const list = document.createElement("ul");
-      list.className = "list-disc space-y-1 pl-4";
-      items.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = item;
-        list.appendChild(li);
-      });
-      body.appendChild(list);
-    } else if (field.value) {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = field.value;
-      body.appendChild(paragraph);
-    } else {
-      const placeholder = document.createElement("p");
-      placeholder.className = "text-xs text-slate-500";
-      placeholder.textContent = "暂无补充信息";
-      body.appendChild(placeholder);
-    }
-
-    card.appendChild(body);
-    scenarioCustomFieldsEl.appendChild(card);
-  });
-}
-
 function getLevelVictoryKey(chapterId, sectionId) {
   return `${chapterId || ""}::${sectionId || ""}`;
 }
@@ -2038,7 +1984,6 @@ function renderScenario(scenario) {
   chatToneEl.textContent = difficultyLabel
     ? `${difficultyLabel}${toneText ? ` · ${toneText}` : ""}`
     : toneText;
-  renderCustomFields(scenario.customFields || []);
   renderKnowledge(evaluationKnowledgeEl, scenario.knowledgePoints || []);
 }
 

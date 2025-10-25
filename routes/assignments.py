@@ -31,11 +31,6 @@ from utils.validators import MissingKeyError, as_bool, require_key
 
 bp = Blueprint("assignments", __name__)
 
-ENGLISH_ONLY_SYSTEM_MESSAGE = (
-    "You are a collaborative trade negotiation coach. Respond exclusively in English with professional business tone, "
-    "even if the student uses another language unless they explicitly request a bilingual answer."
-)
-
 
 def _serialize_assignment(record: Dict[str, object]) -> Dict[str, object]:
     scenario_data = record.get("scenario", {}) or {}
@@ -333,7 +328,6 @@ def chat():
     ]
 
     messages = [{"role": "system", "content": session["system_prompt"]}]
-    messages.append({"role": "system", "content": ENGLISH_ONLY_SYSTEM_MESSAGE})
     messages.extend(history)
 
     stream_requested = as_bool(request.args.get("stream"))
