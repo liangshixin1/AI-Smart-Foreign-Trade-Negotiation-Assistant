@@ -14,24 +14,27 @@
 ## 系统架构概览
 
 ```
-Flask API (app.py)
-├── 账户登录、鉴权与 Token 管理
-├── 关卡/蓝图/作业 CRUD
-├── DeepSeek 场景生成、对话流、评估接口
-├── 教师与学生仪表板 API
-└── 静态资源分发 (static/index.html)
+app.py                —— 应用工厂与蓝图注册
+routes/
+├── auth.py           —— 登录、个人信息维护接口
+├── scenarios.py      —— 关卡层级、场景蓝图、AI 场景生成
+├── assignments.py    —— 作业布置、会话流程、聊天与评估
+└── admin.py          —— 学生名册导入、班级分析、关卡配置
 
-database.py (SQLite 数据库)
-├── 初始化表结构与默认账户
-├── 关卡层级、蓝图、作业、会话、评估数据存取
-└── 统计分析与教学指标查询
+services/
+├── auth_service.py           —— 鉴权装饰器与当前用户上下文
+├── scenario_generator.py     —— 难度画像、Prompt 渲染、AI 生成
+├── document_composer.py      —— 开场邮件/合同片段生成
+├── evaluation_service.py     —— 会话表现评估与结果入库
+└── llm_service.py            —— DeepSeek OpenAI 接口封装
 
-levels.py
-└── 预置的章节/小节结构与 Prompt 模板
+utils/
+├── normalizers.py    —— 文本、公司、产品等清洗工具
+└── validators.py     —— 布尔转换、JSON 抽取、环境变量校验
 
-static/
-├── index.html  —— 单页富界面，Tailwind CSS + Chart.js
-└── main.js     —— 与 API 交互的前端逻辑
+database.py           —— SQLite 持久层封装
+levels.py             —— 预置章节小节模板
+static/               —— 前端单页应用与静态资源
 ```
 
 ## 快速开始
@@ -91,14 +94,18 @@ python app.py
 | --- | --- | --- |
 | `/api/login` | POST | 用户登录获取 Token |
 | `/api/levels` | GET | 获取章节/小节层级及关卡元数据 |
+| `/api/generator/scenario` | POST | 教师/学生按章节生成候选情境 |
+| `/api/blueprints` | GET/POST/PUT/DELETE | 教师管理积木式场景蓝图 |
 | `/api/start_level` | POST | 学生选择关卡后生成场景并创建会话 |
+| `/api/assignments` | GET/POST | 教师布置作业并查看汇总 |
+| `/api/student/assignments` | GET | 学生查看个人作业与状态 |
+| `/api/assignments/<id>/start` | POST | 学生领取作业并进入对话 |
 | `/api/chat` | POST | 学生与 AI 对手对话，可选流式输出 |
-| `/api/admin/blueprints` | CRUD | 教师管理积木式场景蓝图 |
-| `/api/admin/assignments` | CRUD | 教师布置统一作业并分配学生 |
 | `/api/admin/analytics` | GET | 教师端班级洞察与能力分析 |
 | `/api/sessions` | GET | 获取个人历史会话与评估结果 |
+| `/api/admin/students/import` | POST | Excel 导入学生账号 |
 
-更多端点可参考 `app.py` 中的路由定义。
+更多端点可参考 `routes/` 目录下各模块的蓝图定义。
 
 ## 前端体验亮点
 
