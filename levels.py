@@ -101,6 +101,18 @@ _SCENARIO_FIELD_DEFINITIONS = {
     "compliance_consequences": '  "compliance_consequences": "说明未达标的后果（如无法清关、罚款）",',
     "evidence_package": '  "evidence_package": {\n    "buyer_documents": ["买方提供的证据"],\n    "seller_documents": ["卖方可提供的资料"]\n  },',
     "dispute_resolution_targets": '  "dispute_resolution_targets": ["列出可能的争议解决路径"],',
+    "insurance_briefing": '  "insurance_briefing": "货物保险需求与运输线路提示",',
+    "insurance_value_reference": '  "insurance_value_reference": "货值、投保金额计算依据或特殊利润要求",',
+    "insurance_additional_risks": '  "insurance_additional_risks": ["列出可能需要加保的附加险风险源"],',
+    "arbitration_context": '  "arbitration_context": "合同背景与潜在争议点摘要",',
+    "arbitration_institution_options": '  "arbitration_institution_options": ["列出备选仲裁机构及其特点"],',
+    "arbitration_clause_focus": '  "arbitration_clause_focus": ["列出条款中需明确的要素（仲裁地、规则、语言等）"],',
+    "claim_loss_details": '  "claim_loss_details": "到港损失情况与初步估损",',
+    "claim_document_requirements": '  "claim_document_requirements": ["列出需准备的理赔单证"],',
+    "claim_process_constraints": '  "claim_process_constraints": ["列出理赔时限、沟通难点或保单条款限制"],',
+    "arbitration_notice_summary": '  "arbitration_notice_summary": "仲裁通知核心内容（索赔、时间线）",',
+    "arbitration_response_requirements": '  "arbitration_response_requirements": ["列出需在首次答辩中完成的事项"],',
+    "arbitration_strategy_options": '  "arbitration_strategy_options": ["列出 AI 可能抛出的程序策略选项或压力点"],',
 }
 
 
@@ -202,6 +214,31 @@ _INSPECTION_DISPUTE_FIELDS = [
     "inspection_agency_options",
     "inspection_fee_guidance",
     "dispute_resolution_targets",
+]
+
+_INSURANCE_PLANNING_FIELDS = [
+    "insurance_briefing",
+    "insurance_value_reference",
+    "insurance_additional_risks",
+]
+
+_ARBITRATION_CLAUSE_FIELDS = [
+    "arbitration_context",
+    "arbitration_institution_options",
+    "arbitration_clause_focus",
+]
+
+_INSURANCE_CLAIM_FIELDS = [
+    "claim_loss_details",
+    "claim_document_requirements",
+    "claim_process_constraints",
+]
+
+_ARBITRATION_RESPONSE_FIELDS = [
+    "arbitration_notice_summary",
+    "arbitration_response_requirements",
+    "arbitration_strategy_options",
+    "arbitration_context",
 ]
 
 _LC_REVIEW_FIELDS = [
@@ -975,6 +1012,134 @@ def _inspection_dispute_evaluation_prompt() -> str:
 """.strip()
 
 
+def _insurance_design_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，负责为 {student_company_name} 的 {student_role} 就 {product_name} 的海运保险设计方案。
+互动规范：
+1. 首轮概述 {insurance_briefing}，要求学生确认运输节点、包装与 Incoterm，并核对货值与预计发票金额。
+2. 引导学生在平安险（F.P.A.）、水渍险（W.P.A.）与一切险（All Risks）之间比较保障范围，引用 {risks_summary} 与 {insurance_additional_risks} 逐一追问盲区。
+3. 学生提出保险金额时，需追问计算依据（如 {insurance_value_reference}），并提示溢价、免赔额或理算时效的影响。
+4. 若学生忽略战争险、罢工险、淡水雨淋险等附加险，必须立即质疑并建议补强；当方案充分时，总结关键条款并确认投保指示。
+5. 全程使用英文，每次回复 2-3 段，可穿插要点列表，语气专业而务实。
+""".strip()
+
+
+def _insurance_design_evaluation_prompt() -> str:
+    return """
+你是一名海运保险培训讲师，评估学生设计货物保险方案的完整度与风险意识。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Comprehensive / Adequate / Insufficient",
+  "commentary": "中文详尽点评，关注险别选择、保险金额与附加险规划",
+  "action_items": ["列出 3 条优化保险配置的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "coverage_risk": "一句话指出当前方案的残余风险"
+}}
+
+评估重点：
+- 是否根据货物特性与运输风险合理选择险别。
+- 保险金额是否覆盖货值、预期利润与杂费，计算依据是否清晰。
+- 是否主动识别并加保适当的附加险以覆盖特殊风险。
+""".strip()
+
+
+def _arbitration_clause_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，精通国际仲裁条款，正在与 {student_company_name} 的 {student_role} 谈判合同争议解决方案。
+对话指引：
+1. 先引用 {arbitration_context}，强调潜在争议与执行风险，要求学生一次性列出 {arbitration_clause_focus}。
+2. 对学生提出的仲裁地、机构与规则逐项追问，并结合 {arbitration_institution_options} 比较成本、效率与专业度。
+3. 若学生选择的仲裁地非《纽约公约》缔约国或语言安排不利己方，立即提出反对并要求调整。
+4. 鼓励学生说明仲裁员人数与遴选方式的理由，如理由不足则提出替代方案并记录分歧。
+5. 全程使用英文，每次回复 2 段以内，语气严谨、务实，可使用项目符号凸显关键条款。
+""".strip()
+
+
+def _arbitration_clause_evaluation_prompt() -> str:
+    return """
+你是一名国际仲裁顾问，评估学生拟定仲裁条款的专业度与可执行性。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Enforceable / Needs Revision / Deficient",
+  "commentary": "中文详尽点评，关注仲裁地、机构、规则、语言与仲裁员构成",
+  "action_items": ["列出 3 条优化仲裁条款的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "enforceability_risk": "一句话提示潜在执行障碍"
+}}
+
+评估重点：
+- 是否选择具备《纽约公约》执行力的仲裁地与机构。
+- 仲裁条款是否完整覆盖仲裁地、机构、规则、语言与仲裁员人数/遴选机制。
+- 是否能用专业理由回应对方对机构费用、效率或保密性的质疑。
+""".strip()
+
+
+def _insurance_claim_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，担任理赔专员，正在审核 {student_company_name} 的 {student_role} 就 {product_name} 提出的水渍险索赔。
+互动要求：
+1. 先根据 {claim_loss_details} 核实损失发现时间、港口与保单承保范围，提醒理赔时限 {claim_process_constraints}。
+2. 要求学生逐项提交 {claim_document_requirements}，如缺失文件需说明获取计划，并提示可能导致拒赔的条款。
+3. 如学生主张损失属于水渍险责任范围，需追问包装、仓储与减损措施，必要时做出初步拒赔并观察学生抗辩。
+4. 当证据充分时，概述理算逻辑与预计赔偿额范围，并确认后续处理节点（复勘、放弃追偿等）。
+5. 全程使用英文，每次回复 2-3 段，语气专业、审慎，可引用条款编号或简要列点。
+""".strip()
+
+
+def _insurance_claim_evaluation_prompt() -> str:
+    return """
+你是一名海运保险理赔培训讲师，评估学生发起并推进水渍险索赔的能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Well-prepared / Partially-prepared / At Risk",
+  "commentary": "中文详尽点评，关注报案流程、单证完整性与条款理解",
+  "action_items": ["列出 3 条提升理赔成功率的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "claim_outcome_risk": "一句提示当前索赔成功率的隐患"
+}}
+
+评估重点：
+- 是否按时完成报案并准备齐全的核心单证。
+- 能否用保单条款说明损失属于水渍险承保范围。
+- 与保险公司的沟通是否结构化、数据充分，能否针对拒赔理由提出反驳。
+""".strip()
+
+
+def _arbitration_response_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}（对方代理律师或仲裁秘书），向 {student_company_name} 的 {student_role} 发送仲裁通知并推进程序。
+对话规范：
+1. 首轮通报 {arbitration_notice_summary}，要求学生在规定期限内完成 {arbitration_response_requirements}。
+2. 针对仲裁员提名、程序规则与语言安排，提供 {arbitration_strategy_options} 中的选项，观察学生的策略取舍。
+3. 若学生回应模糊或迟疑，提醒可能的缺席判决或程序不利后果，并强调遵守《纽约公约》执行路径的重要性。
+4. 当学生给出清晰策略时，确认其是否接受 IBA Rules on the Taking of Evidence 等程序安排，并约定下一步时间线。
+5. 全程使用英文，每次回复 2 段以内，语气正式、程序性，可加入编号列表以记录决议。
+""".strip()
+
+
+def _arbitration_response_evaluation_prompt() -> str:
+    return """
+你是一名国际仲裁程序教练，评估学生面对仲裁启动时的应对质量。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Proactive / Reactive / Non-compliant",
+  "commentary": "中文详尽点评，关注答辩时效、仲裁员提名与程序策略",
+  "action_items": ["列出 3 条强化仲裁应对的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "procedural_risk": "一句话提示若未改进可能发生的程序性风险"
+}}
+
+评估重点：
+- 是否及时确认仲裁通知并在期限内计划答辩或反请求。
+- 仲裁员提名、程序规则与语言选择是否具备策略性，并兼顾执行力。
+- 面对对方压力或程序陷阱能否提出合理抗辩与替代方案。
+""".strip()
+
+
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-1",
@@ -1414,6 +1579,76 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_user_message="生成涉及到港不合格争议与复检处理的 JSON 场景设定。",
                 conversation_prompt_template=_inspection_dispute_conversation_prompt(),
                 evaluation_prompt_template=_inspection_dispute_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-8",
+        title="第 8 章 · 保险与仲裁 Insurance & Arbitration",
+        sections=[
+            SectionConfig(
+                id="chapter-8-section-1",
+                title="小节 1 · 保险方案设计与论证",
+                description=(
+                    "学生需针对特定货物与运输路线设计海运保险方案，阐明险别、保险金额与附加险的选择理由。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 8 章 · 保险与仲裁 Insurance & Arbitration",
+                    "小节 1 · 保险方案设计与论证",
+                    extra_fields=_INSURANCE_PLANNING_FIELDS,
+                ),
+                environment_user_message="生成围绕海运保险方案设计的 JSON 场景设定，突出险别比较、保险金额依据与附加险提示。",
+                conversation_prompt_template=_insurance_design_conversation_prompt(),
+                evaluation_prompt_template=_insurance_design_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-8-section-2",
+                title="小节 2 · 仲裁条款起草与谈判",
+                description=(
+                    "学生需与法律敏感的交易对手就仲裁地、机构、规则、语言及仲裁员构成达成一致，确保条款可执行。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 8 章 · 保险与仲裁 Insurance & Arbitration",
+                    "小节 2 · 仲裁条款起草与谈判",
+                    extra_fields=_ARBITRATION_CLAUSE_FIELDS,
+                ),
+                environment_user_message="生成涉及仲裁地、机构与规则博弈的 JSON 场景设定，强调《纽约公约》执行力考量。",
+                conversation_prompt_template=_arbitration_clause_conversation_prompt(),
+                evaluation_prompt_template=_arbitration_clause_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-8-section-3",
+                title="小节 3 · 综合实战：水渍险索赔模拟",
+                description=(
+                    "学生作为货主，就到港水湿损失向保险公司发起索赔，需提交单证、引用条款并应对初步拒赔。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 8 章 · 保险与仲裁 Insurance & Arbitration",
+                    "小节 3 · 综合实战：水渍险索赔模拟",
+                    extra_fields=_INSURANCE_CLAIM_FIELDS,
+                ),
+                environment_user_message="生成聚焦水渍险索赔流程的 JSON 场景设定，强调损失细节、单证与理赔时限。",
+                conversation_prompt_template=_insurance_claim_conversation_prompt(),
+                evaluation_prompt_template=_insurance_claim_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-8-section-4",
+                title="小节 4 · 综合实战：仲裁启动与应对",
+                description=(
+                    "因质量争议进入仲裁程序，学生需在压力下确认仲裁通知、提名仲裁员并决定程序策略。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 8 章 · 保险与仲裁 Insurance & Arbitration",
+                    "小节 4 · 综合实战：仲裁启动与应对",
+                    extra_fields=_ARBITRATION_RESPONSE_FIELDS,
+                ),
+                environment_user_message="生成仲裁启动初期的 JSON 场景设定，突出仲裁通知、程序决策与策略压力。",
+                conversation_prompt_template=_arbitration_response_conversation_prompt(),
+                evaluation_prompt_template=_arbitration_response_evaluation_prompt(),
                 expects_bargaining=True,
             ),
         ],
