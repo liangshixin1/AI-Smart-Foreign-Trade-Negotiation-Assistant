@@ -113,6 +113,26 @@ _SCENARIO_FIELD_DEFINITIONS = {
     "arbitration_notice_summary": '  "arbitration_notice_summary": "仲裁通知核心内容（索赔、时间线）",',
     "arbitration_response_requirements": '  "arbitration_response_requirements": ["列出需在首次答辩中完成的事项"],',
     "arbitration_strategy_options": '  "arbitration_strategy_options": ["列出 AI 可能抛出的程序策略选项或压力点"],',
+    "customer_profile": '  "customer_profile": "投诉客户的身份背景、文化风格与业务重要性",',
+    "complaint_context": '  "complaint_context": "投诉事件详情（问题类型、影响、既往沟通）",',
+    "emotional_triggers": '  "emotional_triggers": ["列出激化客户情绪的触发点"],',
+    "service_policies": '  "service_policies": ["列出可引用的售后政策或承诺"],',
+    "resolution_options": '  "resolution_options": ["列出可提供的解决方案及限制条件"],',
+    "dispute_summary": '  "dispute_summary": "争议升级的风险评估与关键诉求",',
+    "inspection_plan": '  "inspection_plan": "第三方检验或调查的建议安排",',
+    "contract_clause_reference": '  "contract_clause_reference": ["列出可援引的合同条款及要点"],',
+    "compensation_benchmarks": '  "compensation_benchmarks": ["列出可谈判的赔偿或补偿方案基准"],',
+    "escalation_pathways": '  "escalation_pathways": ["列出进一步争议解决路径（调解/仲裁等）"],',
+    "breach_summary": '  "breach_summary": "违约事实、责任方与对业务的影响",',
+    "loss_calculation_basis": '  "loss_calculation_basis": "损失计算方法与依据数据",',
+    "evidence_list": '  "evidence_list": ["列出拟提交的核心证据"],',
+    "claim_amount_expectation": '  "claim_amount_expectation": "索赔金额或非金钱诉求及其计算依据",',
+    "legal_basis": '  "legal_basis": ["列出引用的法律、惯例或条款"],',
+    "claim_request_overview": '  "claim_request_overview": "对方索赔诉求与金额摘要",',
+    "evidence_review_notes": '  "evidence_review_notes": ["列出证据链的疑点或验证重点"],',
+    "internal_investigation_channels": '  "internal_investigation_channels": ["列出需调取信息的内部或第三方部门"],',
+    "liability_analysis": '  "liability_analysis": "初步责任划分判断与理由",',
+    "settlement_policies": '  "settlement_policies": ["列出公司在理赔或和解上的政策边界"],',
 }
 
 
@@ -239,6 +259,44 @@ _ARBITRATION_RESPONSE_FIELDS = [
     "arbitration_response_requirements",
     "arbitration_strategy_options",
     "arbitration_context",
+]
+
+_COMPLAINT_HANDLING_FIELDS = [
+    "customer_profile",
+    "complaint_context",
+    "emotional_triggers",
+    "service_policies",
+    "resolution_options",
+    "regulatory_references",
+]
+
+_COMPLAINT_ESCALATION_FIELDS = [
+    "customer_profile",
+    "complaint_context",
+    "dispute_summary",
+    "inspection_plan",
+    "contract_clause_reference",
+    "compensation_benchmarks",
+    "escalation_pathways",
+    "regulatory_references",
+]
+
+_CLAIM_PREPARATION_FIELDS = [
+    "breach_summary",
+    "loss_calculation_basis",
+    "evidence_list",
+    "claim_amount_expectation",
+    "legal_basis",
+    "negotiation_conflict_points",
+]
+
+_CLAIM_REVIEW_FIELDS = [
+    "claim_request_overview",
+    "evidence_review_notes",
+    "internal_investigation_channels",
+    "liability_analysis",
+    "settlement_policies",
+    "regulatory_references",
 ]
 
 _LC_REVIEW_FIELDS = [
@@ -1140,6 +1198,135 @@ def _arbitration_response_evaluation_prompt() -> str:
 """.strip()
 
 
+def _complaint_handling_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，也是 {customer_profile}，因为 {complaint_context} 感到极度不满。
+请使用英文与学生沟通，并遵循以下要求：
+1. 首轮讯息必须直接、情绪激动地表达投诉，引用 {emotional_triggers} 说明影响，体现其文化沟通风格。
+2. 在学生回应过程中，持续强调问题严重性与潜在损失，提醒自己熟悉 {service_policies} 与 {regulatory_references}，对含糊的承诺保持怀疑。
+3. 若学生展现倾听、共情并提供具体补救方案，可逐步降低情绪；否则继续施压，要求即时可执行的 {resolution_options}。
+4. 拒绝学生转移话题或推卸责任，必要时威胁升级投诉至监管或社交媒体。
+5. 每次回复 2-3 段，兼顾情绪化语句与理性数据，保持跨文化真实感。
+""".strip()
+
+
+def _complaint_handling_evaluation_prompt() -> str:
+    return """
+你是一名客户体验总监，评估学生处理高压客户投诉的专业度。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Recovered / Stabilized / Escalated",
+  "commentary": "中文详尽点评，聚焦倾听、共情、道歉与方案设计",
+  "action_items": ["列出 3 条改善投诉处理的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "empathy_feedback": "一句话评价共情与道歉是否到位",
+  "resolution_readiness": "一句话评估所提方案的可执行性"
+}}
+
+评估重点：
+- 是否快速回应并准确复述客户问题。
+- 是否体现跨文化共情、承担责任并引用 {service_policies} 或法规。
+- 所提补救措施是否具体、可操作且兼顾客户与公司利益。
+""".strip()
+
+
+def _complaint_escalation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，亦是关键客户代表 {customer_profile}，就 {complaint_context} 向学生施压，可能升级为争议。
+对话要求（请全程使用英文）：
+1. 重申 {dispute_summary}，强调若无法在限定时间获得可信处理，将取消订单并寻求法律救济。
+2. 接受学生提出的第三方检验或调查方案时，要求其具体说明 {inspection_plan} 的执行细节与时间线。
+3. 在谈判赔偿时，逐条引用 {contract_clause_reference} 与 {compensation_benchmarks}，挑战学生给出的让步是否符合合同及行业惯例。
+4. 若学生策略不明或拖延，提醒将依照 {escalation_pathways} 升级至仲裁或诉讼，并要求正式确认。
+5. 保持强硬但理性，每次回复 2 段以内，可使用编号或项目符号突显条件与最后期限。
+""".strip()
+
+
+def _complaint_escalation_evaluation_prompt() -> str:
+    return """
+你是一名国际客户成功教练，评估学生将严重投诉转化为争议解决方案的能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Stabilized / Pending / Escalated",
+  "commentary": "中文详尽点评，关注危机安抚、检验安排与赔偿谈判",
+  "action_items": ["列出 3 条降低争议风险的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "dispute_risk": "一句话评估是否仍有升级为仲裁/诉讼的风险"
+}}
+
+评估重点：
+- 是否及时安排 {inspection_plan} 并明确责任划分流程。
+- 谈判赔偿时是否善用 {contract_clause_reference} 与国际惯例。
+- 是否在保持客户关系的同时，为潜在仲裁或和解保留证据与书面确认。
+""".strip()
+
+
+def _claim_preparation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表违约方处理索赔争议。
+请依据场景信息，与学生（受损方代表）以英文对话：
+1. 先承认收到索赔意向，但质疑 {breach_summary} 是否完全由贵方造成，要求学生提交 {evidence_list}。
+2. 针对学生提出的损失计算，逐条挑战其 {loss_calculation_basis} 与 {claim_amount_expectation}，要求引用 {legal_basis} 或合同条款。
+3. 可以提出替代性补偿方案或折价，并观察学生谈判立场；如学生证据不足，提出驳回理由。
+4. 若学生坚持仲裁或进一步行动，要求其确认下一步时间线，并记录谈判僵局点 {negotiation_conflict_points}。
+5. 语气专业但坚决，每次回复 2-3 段，可穿插条列说明。
+""".strip()
+
+
+def _claim_preparation_evaluation_prompt() -> str:
+    return """
+你是一名国际贸易索赔辅导专家，评估学生准备索赔与谈判的周全度。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Well-substantiated / Partially-substantiated / Weak",
+  "commentary": "中文详尽点评，关注事实梳理、证据链与法律引用",
+  "action_items": ["列出 3 条强化索赔筹备的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "claim_strength": "一句话评估当前索赔立场的说服力"
+}}
+
+评估重点：
+- 是否清晰陈述违约事实与损失影响。
+- 提供的证据与金额计算是否完整、可验证，并引用 {legal_basis}。
+- 谈判策略是否灵活，包括让步方案或升级路径。
+""".strip()
+
+
+def _claim_review_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表受损方正式向学生提交索赔。
+请使用英文进行互动，并遵循以下指引：
+1. 首轮提供结构化索赔函概要，概述 {claim_request_overview}、支持证据与损失金额。
+2. 当学生审核证据时，逐项回应其 {evidence_review_notes} 的质疑，必要时提供补充材料或解释。
+3. 若学生启动内部调查，请追问 {internal_investigation_channels} 的时间表，并强调遵守合同/保险通知义务。
+4. 在责任划分或赔偿金额上，引用 {liability_analysis} 与 {settlement_policies} 施压，要求明确的接受、反驳或对案方案。
+5. 语气坚持权利但保持商务礼貌，每次回复 2 段以内，可使用条列强调关键节点与期限。
+""".strip()
+
+
+def _claim_review_evaluation_prompt() -> str:
+    return """
+你是一名企业理赔决策教练，评估学生审核对方索赔并制定回应策略的能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Fair Settlement / Under-negotiated / Over-exposed",
+  "commentary": "中文详尽点评，聚焦证据审核、责任判断与理赔决策",
+  "action_items": ["列出 3 条提升理赔判断的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "liability_position": "一句话总结学生给出的责任与赔偿立场"
+}}
+
+评估重点：
+- 是否系统核查证据、发现疑点并要求补充说明。
+- 内外部调查安排是否到位，能否结合 {settlement_policies} 做出决策。
+- 对赔偿/拒赔的沟通是否兼顾商业关系与法律风险。
+""".strip()
+
+
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-1",
@@ -1649,6 +1836,82 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_user_message="生成仲裁启动初期的 JSON 场景设定，突出仲裁通知、程序决策与策略压力。",
                 conversation_prompt_template=_arbitration_response_conversation_prompt(),
                 evaluation_prompt_template=_arbitration_response_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-9",
+        title="第 9 章 · 投诉处理 Complaint Management",
+        sections=[
+            SectionConfig(
+                id="chapter-9-section-1",
+                title="小节 1 · 投诉处理五步法演练",
+                description=(
+                    "AI 扮演情绪激动的国际客户，学生需运用倾听、共情、道歉与补救方案，依据公司政策化解投诉危机。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 9 章 · 投诉处理 Complaint Management",
+                    "小节 1 · 投诉处理五步法演练",
+                    extra_fields=_COMPLAINT_HANDLING_FIELDS,
+                ),
+                environment_user_message="生成围绕国际客户投诉处理的 JSON 场景设定，突出客户背景、触发点与政策边界。",
+                conversation_prompt_template=_complaint_handling_conversation_prompt(),
+                evaluation_prompt_template=_complaint_handling_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-9-section-2",
+                title="小节 2 · 综合实战：从投诉到争议解决",
+                description=(
+                    "面对重大客户的严厉投诉，学生需安排第三方检验、谈判赔偿并引用合同争议条款，防止升级为仲裁。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 9 章 · 投诉处理 Complaint Management",
+                    "小节 2 · 综合实战：从投诉到争议解决",
+                    extra_fields=_COMPLAINT_ESCALATION_FIELDS,
+                ),
+                environment_user_message="生成涉及第三方检验与争议解决路径的 JSON 场景设定，强调合同与赔偿焦点。",
+                conversation_prompt_template=_complaint_escalation_conversation_prompt(),
+                evaluation_prompt_template=_complaint_escalation_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-10",
+        title="第 10 章 · 索赔与理赔 Claims & Settlements",
+        sections=[
+            SectionConfig(
+                id="chapter-10-section-1",
+                title="小节 1 · 索赔实战：提出与交涉",
+                description=(
+                    "学生作为受损方需准备索赔函、证据与损失计算，与违约方法务多轮交涉争取最大补偿。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 10 章 · 索赔与理赔 Claims & Settlements",
+                    "小节 1 · 索赔实战：提出与交涉",
+                    extra_fields=_CLAIM_PREPARATION_FIELDS,
+                ),
+                environment_user_message="生成围绕违约索赔的 JSON 场景设定，列明证据清单、损失计算与法律依据。",
+                conversation_prompt_template=_claim_preparation_conversation_prompt(),
+                evaluation_prompt_template=_claim_preparation_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-10-section-2",
+                title="小节 2 · 理赔实战：审核与决断",
+                description=(
+                    "学生作为被索赔方代表，需审查对方提交的证据与金额，组织调查并做出接受、拒赔或协商理赔的决策。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 10 章 · 索赔与理赔 Claims & Settlements",
+                    "小节 2 · 理赔实战：审核与决断",
+                    extra_fields=_CLAIM_REVIEW_FIELDS,
+                ),
+                environment_user_message="生成涉及理赔审核决策的 JSON 场景设定，突出证据审查与政策边界。",
+                conversation_prompt_template=_claim_review_conversation_prompt(),
+                evaluation_prompt_template=_claim_review_evaluation_prompt(),
                 expects_bargaining=True,
             ),
         ],
