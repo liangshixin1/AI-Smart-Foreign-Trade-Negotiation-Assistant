@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import json
 from typing import Dict, List, Optional, Tuple
 
 from levels import CHAPTERS, flatten_scenario_for_template
@@ -76,159 +75,6 @@ ENGLISH_ENFORCEMENT_HINT = (
     "All assistant-facing outputs, including scenario briefings and conversation replies, must be written entirely in English."
     " Avoid inserting Chinese characters unless the student explicitly provides them or requests bilingual content."
 )
-
-
-SCENARIO_BASE_KEYS = {
-    "scenario_title",
-    "scenario_summary",
-    "student_role",
-    "student_company",
-    "ai_role",
-    "ai_company",
-    "ai_rules",
-    "product",
-    "market_landscape",
-    "timeline",
-    "logistics",
-    "risks",
-    "negotiation_targets",
-    "communication_tone",
-    "checklist",
-    "knowledge_points",
-    "opening_message",
-    "difficulty",
-    "difficulty_key",
-    "difficulty_label",
-    "difficulty_description",
-}
-
-SCENARIO_FIELD_LABELS: Dict[str, str] = {
-    "contact_background": "联系背景",
-    "inquiry_focus": "询盘焦点",
-    "inquiry_information_gaps": "信息缺口",
-    "pricing_positioning": "定价定位",
-    "concession_levers": "可协商让步",
-    "value_add_options": "增值方案",
-    "counter_offer_background": "上一轮报价背景",
-    "negotiation_pressures": "谈判压力",
-    "document_snapshot": "单据快照",
-    "document_type": "文件类别",
-    "issues_to_verify": "待核查问题",
-    "compliance_red_flags": "合规风险",
-    "contract_risk_scope": "合同风险范围",
-    "payment_terms_matrix": "付款条款矩阵",
-    "proposed": "当前提案",
-    "alternatives": "备选方案",
-    "cash_flow_constraints": "现金流约束",
-    "payment_risk_alerts": "付款风险提示",
-    "receivables_status": "应收账款状态",
-    "overdue_amount": "逾期金额",
-    "overdue_days": "逾期天数",
-    "collection_history": "催收历史",
-    "escalation_options": "升级措施",
-    "packaging_snapshot": "包装方案",
-    "current_plan": "现有包装方案概述",
-    "identified_flaws": "发现的缺陷",
-    "shipping_mark_gaps": "唛头缺失",
-    "logistics_constraints": "物流限制",
-    "transport_plan": "运输方案",
-    "proposed_mode": "建议运输方式",
-    "justification": "理由说明",
-    "incoterms_focus": "贸易术语关注点",
-    "current_term": "当前贸易术语",
-    "responsibility_gap": "责任盲点",
-    "cost_structure_hint": "成本结构提示",
-    "operation_timeline": "操作时间线",
-    "stakeholder_matrix": "干系人矩阵",
-    "contingency_preplans": "应急预案",
-    "documentation_control": "单证管控",
-    "custom_variables": "特色变量",
-    "customVariables": "特色变量",
-}
-
-
-def _format_field_label(key: str) -> str:
-    if not isinstance(key, str) or not key:
-        return "附加信息"
-    return SCENARIO_FIELD_LABELS.get(key, key.replace("_", " ").title())
-
-
-def _value_to_lines(value: object) -> List[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        stripped = value.strip()
-        return [stripped] if stripped else []
-    if isinstance(value, bool):
-        return ["Yes" if value else "No"]
-    if isinstance(value, (int, float)):
-        if isinstance(value, float) and value.is_integer():
-            value = int(value)
-        return [str(value)]
-    if isinstance(value, list):
-        lines: List[str] = []
-        for item in value:
-            lines.extend(_value_to_lines(item))
-        return lines
-    if isinstance(value, dict):
-        lines: List[str] = []
-        for sub_key, sub_value in value.items():
-            sub_lines = _value_to_lines(sub_value)
-            if not sub_lines:
-                continue
-            label = _format_field_label(str(sub_key))
-            if len(sub_lines) == 1:
-                lines.append(f"{label}: {sub_lines[0]}")
-            else:
-                joined = "; ".join(sub_lines)
-                lines.append(f"{label}: {joined}")
-        if lines:
-            return lines
-        serialized = json.dumps(value, ensure_ascii=False)
-        return [serialized] if serialized and serialized != "{}" else []
-    text = str(value).strip()
-    return [text] if text else []
-
-
-def _prepare_custom_fields(raw: Dict[str, object]) -> List[Dict[str, object]]:
-    extra_fields: Dict[str, object] = {}
-    for key, value in raw.items():
-        if not isinstance(key, str):
-            continue
-        if key in SCENARIO_BASE_KEYS:
-            continue
-        if value is None:
-            continue
-        extra_fields[key] = value
-
-    custom_variables = raw.get("custom_variables") or raw.get("customVariables")
-    if isinstance(custom_variables, dict):
-        for key, value in custom_variables.items():
-            if not isinstance(key, str):
-                continue
-            if key in extra_fields:
-                continue
-            extra_fields[key] = value
-
-    prepared: List[Dict[str, object]] = []
-    for key, value in extra_fields.items():
-        label_override = None
-        items_source = value
-        if isinstance(value, dict) and ("value" in value or "items" in value):
-            if isinstance(value.get("label"), str) and value.get("label"):
-                label_override = value["label"]
-            items_source = value.get("items", value.get("value"))
-        items = _value_to_lines(items_source)
-        if not items:
-            continue
-        prepared.append(
-            {
-                "key": key,
-                "label": label_override or _format_field_label(key),
-                "items": items,
-            }
-        )
-    return prepared
 
 
 class TemplateContext(dict):
@@ -324,7 +170,6 @@ def prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "communicationTone": raw.get("communication_tone", ""),
         "checklist": raw.get("checklist", []) or [],
         "knowledgePoints": raw.get("knowledge_points", []) or [],
-        "customFields": _prepare_custom_fields(raw),
         "difficulty": difficulty_key,
         "difficultyLabel": raw.get("difficulty_label") or profile["label"],
         "difficultyDescription": raw.get("difficulty_description")

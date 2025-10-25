@@ -224,93 +224,16 @@ DOCUMENT_OPENING_BUILDERS: Dict[str, Callable[[Dict[str, object]], str]] = {
 }
 
 
-def _contains_cjk(text: str) -> bool:
-    if not isinstance(text, str):
-        return False
-    for char in text:
-        codepoint = ord(char)
-        if 0x3400 <= codepoint <= 0x4DBF or 0x4E00 <= codepoint <= 0x9FFF:
-            return True
-    return False
-
-
-def _is_english_text(text: Optional[str]) -> bool:
-    if not isinstance(text, str):
-        return False
-    stripped = text.strip()
-    if not stripped:
-        return False
-    return not _contains_cjk(stripped)
-
-
-def _compose_default_opening(scenario: Dict[str, object]) -> str:
-    ai_role = normalize_text(scenario.get("ai_role")) or "your negotiation partner"
-    ai_company = scenario.get("ai_company") or {}
-    ai_company_name = normalize_text(ai_company.get("name")) or "our company"
-    if _contains_cjk(ai_role):
-        ai_role = "your negotiation partner"
-    if _contains_cjk(ai_company_name):
-        ai_company_name = "our company"
-
-    greeting = f"Hello, this is {ai_role} from {ai_company_name}."
-
-    student_role = normalize_text(scenario.get("student_role")) or ""
-    student_company = scenario.get("student_company") or {}
-    student_company_name = normalize_text(student_company.get("name")) or ""
-    if _contains_cjk(student_role):
-        student_role = ""
-    if _contains_cjk(student_company_name):
-        student_company_name = ""
-
-    counterpart_fragments: List[str] = []
-    if student_role:
-        counterpart_fragments.append(student_role)
-    if student_company_name:
-        counterpart_fragments.append(f"at {student_company_name}")
-    counterpart_line = ""
-    if counterpart_fragments:
-        counterpart_line = (
-            "Thank you for joining me "
-            + ("as " + " ".join(counterpart_fragments))
-            + " to review today's objectives."
-        )
-
-    product = scenario.get("product") or {}
-    product_name = normalize_text(product.get("name")) or "the current plan"
-    if _contains_cjk(product_name):
-        product_name = "the current plan"
-
-    focus_line = (
-        f"I'd like to start by aligning on {product_name} and any priorities you want to address."
-    )
-
-    closing_line = "I'm ready to begin our discussion in English whenever you are ready."
-
-    parts = [greeting, counterpart_line, focus_line, closing_line]
-    return " ".join(part.strip() for part in parts if part)
-
-
 def generate_opening_message(section_id: Optional[str], scenario: Dict[str, object]) -> str:
     builder: Optional[Callable[[Dict[str, object]], str]] = DOCUMENT_OPENING_BUILDERS.get(
         section_id or ""
     )
     if builder:
-        candidate = builder(scenario)
-        if _is_english_text(candidate):
-            return candidate.strip()
-
-    for key in (
-        "openingMessage",
-        "opening_message",
-        "opening",
-        "conversation_opening",
-    ):
-        value = scenario.get(key)
-        if isinstance(value, str) and _is_english_text(value):
-            return value.strip()
-
-    fallback = _compose_default_opening(scenario)
-    return fallback or "Hello, this is your negotiation partner. Let's begin our discussion in English."
+        return builder(scenario)
+    opening = scenario.get("opening_message")
+    if isinstance(opening, str) and opening.strip():
+        return opening
+    return ""
 
 
 def build_transcript(history: List[Dict[str, str]], scenario: Dict[str, object]) -> str:
