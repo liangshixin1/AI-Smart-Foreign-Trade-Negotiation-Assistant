@@ -179,6 +179,132 @@ let currentStudentModalTab = null;
 let activeExperienceModule = "chat";
 let isScenarioCollapsed = false;
 
+function sortLevelHierarchy(chapters) {
+  if (!Array.isArray(chapters)) {
+    return [];
+  }
+
+  const collator =
+    typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+      ? new Intl.Collator("zh-Hans-CN", { numeric: true, sensitivity: "base" })
+      : null;
+
+  const normalizeOrderIndex = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+
+  const compareTitle = (aTitle, bTitle) => {
+    const left = (aTitle || "").toString();
+    const right = (bTitle || "").toString();
+    if (collator) {
+      return collator.compare(left, right);
+    }
+    return left.localeCompare(right);
+  };
+
+  const isPrologueChapter = (chapter) => {
+    if (!chapter) {
+      return false;
+    }
+    if (typeof chapter.isPrologue === "boolean") {
+      return chapter.isPrologue;
+    }
+    const id = (chapter.id || "").toString();
+    if (/^chapter-0\b/.test(id)) {
+      return true;
+    }
+    const title = (chapter.title || "").toString().trim();
+    return /^绪论/.test(title);
+  };
+
+  const cleanAfterPrefix = (text, pattern) => {
+    if (typeof text !== "string") {
+      return "";
+    }
+    const stripped = text.replace(pattern, "");
+    return stripped.replace(/^[·•∙・:：\-—\s]+/, "").trim();
+  };
+
+  const deriveChapterPresentation = (chapter, ordinal, prologueFlag) => {
+    const safeTitle = (chapter.title || "").toString().trim();
+    const subtitleFromDescription =
+      typeof chapter.description === "string" && chapter.description.trim() !== ""
+        ? chapter.description.trim()
+        : "";
+    const ordinalLabel = `第 ${ordinal} 章`;
+    const prologueRemainder = cleanAfterPrefix(safeTitle, /^绪论/);
+    const numberedRemainder = cleanAfterPrefix(safeTitle, /^第\s*\d+\s*章/);
+
+    let theme = safeTitle;
+    if (prologueFlag) {
+      theme = "绪论";
+    } else if (numberedRemainder !== "") {
+      theme = numberedRemainder;
+    } else if (prologueRemainder !== "") {
+      theme = prologueRemainder;
+    }
+
+    const displayTitle = `${ordinalLabel} · ${theme || "章节"}`;
+    const fallbackSubtitle = prologueFlag ? prologueRemainder : "";
+    const displaySubtitle = subtitleFromDescription || fallbackSubtitle;
+
+    return {
+      displayTitle,
+      displaySubtitle,
+    };
+  };
+
+  const compareItems = (a, b) => {
+    const orderDiff = normalizeOrderIndex(a && a.orderIndex) - normalizeOrderIndex(b && b.orderIndex);
+    if (orderDiff !== 0) {
+      return orderDiff;
+    }
+    return compareTitle(a && a.title, b && b.title);
+  };
+
+  const sortedChapters = chapters
+    .map((chapter) => {
+      const nextChapter = { ...chapter };
+      const sections = Array.isArray(chapter.sections) ? [...chapter.sections] : [];
+      sections.sort(compareItems);
+      nextChapter.sections = sections;
+      return nextChapter;
+    })
+    .sort(compareItems);
+
+  const movePrologueToFront = (list) => {
+    const prologueIndex = list.findIndex((chapter) => isPrologueChapter(chapter));
+    if (prologueIndex <= 0) {
+      return list;
+    }
+    const reordered = [...list];
+    const [prologue] = reordered.splice(prologueIndex, 1);
+    reordered.unshift(prologue);
+    return reordered;
+  };
+
+  let ordinal = 1;
+  return movePrologueToFront(sortedChapters).map((chapter) => {
+    const nextChapter = { ...chapter };
+    const prologueFlag = isPrologueChapter(nextChapter);
+    const presentation = deriveChapterPresentation(nextChapter, ordinal, prologueFlag);
+    nextChapter.displayOrdinal = ordinal;
+    nextChapter.displayTitle = presentation.displayTitle;
+    nextChapter.displaySubtitle = presentation.displaySubtitle;
+    ordinal += 1;
+    return nextChapter;
+  });
+}
+
 const hasMarked = typeof window !== "undefined" && typeof window.marked !== "undefined";
 if (hasMarked) {
   window.marked.setOptions({
@@ -1153,7 +1279,8 @@ function updateSelectedLevelDetail() {
     updateAssignmentShortcut();
     return;
   }
-  selectedLevelTitle.textContent = `${chapter.title || "章节"}｜${section.title || "小节"}`;
+  const chapterLabel = chapter.displayTitle || chapter.title || "章节";
+  selectedLevelTitle.textContent = `${chapterLabel}｜${section.title || "小节"}`;
   selectedLevelDescription.textContent = section.description || "";
   selectedLevelDetail.classList.remove("hidden");
   startLevelBtn.disabled = false;
@@ -1215,10 +1342,18 @@ function renderLevelMap() {
     summary.className = "chapter-card-summary";
     summary.dataset.chapterId = chapter.id;
     const countClass = totalSections === 0 ? "chapter-card-count chapter-card-count-empty" : "chapter-card-count";
+    const displayTitle = chapter.displayTitle || chapter.title || "章节";
+    const fallbackOrdinal =
+      typeof chapter.displayOrdinal === "number" && Number.isFinite(chapter.displayOrdinal)
+        ? chapter.displayOrdinal
+        : index + 1;
+    const displaySubtitle =
+      chapter.displaySubtitle || chapter.description || `Chapter ${fallbackOrdinal}`;
+
     summary.innerHTML = `
       <div class="chapter-card-summary-content">
-        <p class="chapter-card-title">${chapter.title || "章节"}</p>
-        <p class="chapter-card-description">${chapter.description || `Chapter ${index + 1}`}</p>
+        <p class="chapter-card-title">${displayTitle}</p>
+        <p class="chapter-card-description">${displaySubtitle}</p>
       </div>
       <div class="chapter-card-meta">
         <span class="${countClass}">${
@@ -2506,7 +2641,7 @@ function populateAssignmentChapterOptions() {
   (state.chapters || []).forEach((chapter) => {
     const option = document.createElement("option");
     option.value = chapter.id;
-    option.textContent = chapter.title || chapter.id;
+    option.textContent = chapter.displayTitle || chapter.title || chapter.id;
     if (chapter.id === selected) {
       option.selected = true;
     }
@@ -2564,7 +2699,7 @@ function populateBlueprintChapterOptions() {
   (state.chapters || []).forEach((chapter) => {
     const option = document.createElement("option");
     option.value = chapter.id;
-    option.textContent = chapter.title || chapter.id;
+    option.textContent = chapter.displayTitle || chapter.title || chapter.id;
     if (chapter.id === selected) {
       option.selected = true;
     }
@@ -3121,11 +3256,13 @@ function renderAdminLevelList() {
     headerBtn.type = "button";
     headerBtn.dataset.chapterId = chapter.id;
     headerBtn.className = "flex w-full items-center justify-between px-4 py-3 text-left";
+    const adminChapterLabel = chapter.displayTitle || chapter.title || "章节";
+    const adminChapterSubtitle = chapter.displaySubtitle || chapter.description || "";
     headerBtn.innerHTML =
       '<span class="font-semibold text-slate-100">' +
-      (chapter.title || "章节") +
+      adminChapterLabel +
       '</span><span class="text-xs text-slate-500">' +
-      (chapter.description || "") +
+      adminChapterSubtitle +
       "</span>";
     wrapper.appendChild(headerBtn);
 
@@ -3295,7 +3432,7 @@ async function loadAdminLevels(options = {}) {
       throw new Error("无法加载关卡数据");
     }
     const data = await response.json();
-    state.admin.levels = data.chapters || [];
+    state.admin.levels = sortLevelHierarchy(data.chapters || []);
 
     if (options.chapterId) {
       state.admin.selectedEditorChapterId = options.chapterId;
@@ -3529,7 +3666,7 @@ async function loadLevels() {
       throw new Error("无法载入章节信息");
     }
     const data = await response.json();
-    state.chapters = data.chapters || [];
+    state.chapters = sortLevelHierarchy(data.chapters || []);
     if (!(state.expandedChapters instanceof Set)) {
       state.expandedChapters = new Set();
     }
