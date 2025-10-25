@@ -90,6 +90,17 @@ _SCENARIO_FIELD_DEFINITIONS = {
     "contingency_preplans": '  "contingency_preplans": ["列出预案或风险缓解措施"],',
     "documentation_control": '  "documentation_control": ["列出需掌握的关键单证"],',
     "special_background": '  "special_background": "特殊背景设定（政治、信用、供应链等压力源）",',
+    "inspection_focus": '  "inspection_focus": ["列出 2-3 个待咨询的商品与目的国组合"],',
+    "regulatory_references": '  "regulatory_references": ["列出适用的法律、法规或标准"],',
+    "inspection_agency_options": '  "inspection_agency_options": ["列出 2-3 个可考虑的官方或第三方检验机构"],',
+    "inspection_fee_guidance": '  "inspection_fee_guidance": "说明检验费用的承担惯例或注意事项",',
+    "inspection_risk_alerts": '  "inspection_risk_alerts": ["列出与检验相关的风险提醒"],',
+    "contract_clause_focus": '  "contract_clause_focus": ["列出商检条款需明确的要素"],',
+    "incoterms_implications": '  "incoterms_implications": "说明贸易术语对检验责任的影响点",',
+    "negotiation_conflict_points": '  "negotiation_conflict_points": ["列出双方争议焦点"],',
+    "compliance_consequences": '  "compliance_consequences": "说明未达标的后果（如无法清关、罚款）",',
+    "evidence_package": '  "evidence_package": {\n    "buyer_documents": ["买方提供的证据"],\n    "seller_documents": ["卖方可提供的资料"]\n  },',
+    "dispute_resolution_targets": '  "dispute_resolution_targets": ["列出可能的争议解决路径"],',
 }
 
 
@@ -158,6 +169,39 @@ _LOGISTICS_MASTER_FIELDS = [
     "stakeholder_matrix",
     "contingency_preplans",
     "documentation_control",
+]
+
+_INSPECTION_CONSULT_FIELDS = [
+    "inspection_focus",
+    "regulatory_references",
+    "inspection_agency_options",
+    "inspection_fee_guidance",
+    "inspection_risk_alerts",
+]
+
+_INSPECTION_CONTRACT_FIELDS = [
+    "contract_clause_focus",
+    "incoterms_implications",
+    "inspection_agency_options",
+    "inspection_fee_guidance",
+    "negotiation_conflict_points",
+]
+
+_INSPECTION_NEGOTIATION_FIELDS = [
+    "regulatory_references",
+    "inspection_agency_options",
+    "compliance_consequences",
+    "inspection_fee_guidance",
+    "negotiation_conflict_points",
+]
+
+_INSPECTION_DISPUTE_FIELDS = [
+    "evidence_package",
+    "regulatory_references",
+    "inspection_risk_alerts",
+    "inspection_agency_options",
+    "inspection_fee_guidance",
+    "dispute_resolution_targets",
 ]
 
 _LC_REVIEW_FIELDS = [
@@ -808,6 +852,129 @@ def _logistics_master_evaluation_prompt() -> str:
 """.strip()
 
 
+def _inspection_consultation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，深耕国际商检合规，正在协助 {student_company_name} 的 {student_role} 针对 {inspection_focus} 规划检验方案。
+互动规范：
+1. 首轮需概述 {regulatory_references}，并依次讲解品质检验证书、重量检验证书、卫生检验证书、检疫证书及其他常见证书的适用场景，明确官方与商业检验证书的差异。
+2. 引导学生逐一确认不同产品类别的证书组合，结合 {inspection_agency_options} 提供可行机构，并说明其全球网络或线上查询优势。
+3. 针对学生的问题，提醒潜在风险 {inspection_risk_alerts}，并解释 {inspection_fee_guidance} 中的费用承担惯例；若学生遗漏重点，先反问再补充。
+4. 全程使用英文，每次回复 2-3 段，可穿插要点列表，语气专业且务实。
+""".strip()
+
+
+def _inspection_consultation_evaluation_prompt() -> str:
+    return """
+你是一名外贸合规培训讲师，评估学生梳理商检证书与机构选择的能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Comprehensive / Adequate / Incomplete",
+  "commentary": "中文详尽点评，关注证书识别准确度与机构匹配度",
+  "action_items": ["列出 3 条强化商检规划的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
+}}
+
+评估重点：
+- 能否依据不同商品与目的国明确所需证书类别。
+- 是否区分官方与商业检验证书的用途，并推荐合适机构。
+- 是否提醒检验费用、时间与风险控制要点。
+""".strip()
+
+
+def _inspection_clause_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，正在与 {student_company_name} 的 {student_role} 就合同商检条款展开博弈。
+对话指引：
+1. 首轮明确自身立场，引用 {negotiation_conflict_points} 并强调 {incoterms_implications}，提出对检验时间或地点的要求。
+2. 要求学生提交涵盖检验时间、地点、标准、机构与费用承担的具体条款文本；如描述含糊，立即追问细节或提出异议。
+3. 学生提供方案时，优先质疑成本或责任归属，可引用 {inspection_agency_options} 或 {inspection_fee_guidance} 作为论据；当学生给出充分理由，再逐步让步并确认书面表达。
+4. 全程使用英文，每次回复控制在 2 段以内，语气谨慎但坚决。
+""".strip()
+
+
+def _inspection_clause_evaluation_prompt() -> str:
+    return """
+你是一名国际贸易合同顾问，负责评估学生在商检条款谈判中的条理性与风险意识。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Balanced / Buyer-leaning / Seller-leaning",
+  "commentary": "中文详尽点评，关注条款清晰度与责任划分",
+  "action_items": ["提供 3 条完善商检条款的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，体现学生对谈判节奏的掌控"
+}}
+
+评估重点：
+- 是否明确检验时间、地点、标准、机构及费用承担。
+- 是否结合贸易术语澄清风险转移点与违约后果。
+- 条款语言是否严谨，兼顾双方利益。
+""".strip()
+
+
+def _inspection_negotiation_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表欧洲买方，就 {product_name} 的检验要求与 {student_company_name} 的 {student_role} 展开谈判。
+互动要求：
+1. 首轮引用 {regulatory_references}，强调 EN 标准、CE 标识与 REACH 合规的重要性，并说明 {compliance_consequences}。
+2. 对学生提出的检验安排先保持强硬，要求由目的地或买方指定机构执行；当学生建议 {inspection_agency_options}（如中国境内第三方）时，需先质疑独立性与可接受性。
+3. 讨论费用与时间节点时，引用 {inspection_fee_guidance} 和生产排期提出压力，鼓励学生给出补偿或保障措施；若学生提出可执行的折中方案，再有条件地接受并总结要点。
+4. 全程英文，每次回复 2-3 段，可结合要点列表或数据说明。
+""".strip()
+
+
+def _inspection_negotiation_evaluation_prompt() -> str:
+    return """
+你是一名国际合规谈判教练，评估学生在商检标准争议中的解决能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Compliant / Compromised / Risky",
+  "commentary": "中文详尽点评，关注标准合规性、成本控制与交期保障",
+  "action_items": ["列出 3 条提升商检谈判的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，反映学生的谈判主导度"
+}}
+
+评估重点：
+- 是否确保检验标准满足目的国法规与清关要求。
+- 是否运用第三方机构与时间安排取得平衡，并合理划分费用。
+- 是否就不合格处理、证书交付等关键点给出明确方案。
+""".strip()
+
+
+def _inspection_dispute_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表美国买方，对 {student_company_name} 的 {student_role} 反映到港检验不合格的争议。
+沟通指引：
+1. 首轮提交 {evidence_package} 中的买方证据（检验报告、照片、测试数据），并引用 {regulatory_references} 及《CISG》第38、39条要求。
+2. 当学生提供出厂检验证书或运输质疑时，保持审慎甚至强硬立场，强调 {inspection_risk_alerts}，并要求进一步说明责任归属。
+3. 讨论复检与赔偿方案时，建议共同委托 {inspection_agency_options}（如 Intertek 等）进行复检，探讨 {dispute_resolution_targets}，同时关注 {inspection_fee_guidance} 中的费用承担逻辑。
+4. 全程英文，每次回复 2-3 段，语气专业但不失压力测试，必要时引用合同或法律术语。
+""".strip()
+
+
+def _inspection_dispute_evaluation_prompt() -> str:
+    return """
+你是一名国际贸易争议解决顾问，评估学生在商检不合格纠纷中的应对策略。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Restorative / Balanced / Exposed",
+  "commentary": "中文详尽点评，关注证据运用、责任划分与赔偿方案",
+  "action_items": ["给出 3 条降低损失与维护客户关系的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，体现学生掌控纠纷的能力"
+}}
+
+评估重点：
+- 是否合理引用证据，明确责任归属与法律依据。
+- 是否提出复检、赔偿或保险索赔等可执行的解决路径。
+- 是否兼顾客户关系与后续合作，维持专业沟通。
+""".strip()
+
+
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-1",
@@ -1177,6 +1344,76 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_user_message="生成涵盖政治/信用风险背景的综合谈判 JSON 场景，并突出特殊背景线索。",
                 conversation_prompt_template=_risk_order_conversation_prompt(),
                 evaluation_prompt_template=_risk_order_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-7",
+        title="第 7 章 · 商检 Inspection",
+        sections=[
+            SectionConfig(
+                id="chapter-7-section-1",
+                title="小节 1 · 认知基础：检验证书类型与机构",
+                description=(
+                    "学生需向经验丰富的商检合规专家咨询出口要求，为不同商品与目的国匹配必需证书及权威机构。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 7 章 · 商检 Inspection",
+                    "小节 1 · 认知基础：检验证书类型与机构",
+                    extra_fields=_INSPECTION_CONSULT_FIELDS,
+                ),
+                environment_user_message="生成围绕检验证书咨询与机构选择的 JSON 场景设定。",
+                conversation_prompt_template=_inspection_consultation_conversation_prompt(),
+                evaluation_prompt_template=_inspection_consultation_evaluation_prompt(),
+                expects_bargaining=False,
+            ),
+            SectionConfig(
+                id="chapter-7-section-2",
+                title="小节 2 · 条款结合：将商检嵌入贸易合同",
+                description=(
+                    "学生需在给定贸易术语下，起草并谈判明确检验时间、地点、标准、机构与费用分担的合同条款。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 7 章 · 商检 Inspection",
+                    "小节 2 · 条款结合：将商检嵌入贸易合同",
+                    extra_fields=_INSPECTION_CONTRACT_FIELDS,
+                ),
+                environment_user_message="生成涉及商检条款谈判的 JSON 场景设定，突出合同要素与风险。",
+                conversation_prompt_template=_inspection_clause_conversation_prompt(),
+                evaluation_prompt_template=_inspection_clause_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-7-section-3",
+                title="小节 3 · 综合实战（一）：检验条款谈判",
+                description=(
+                    "以欧洲买家采购中国定制机械为背景，学生需运用第三方机构与法规知识，化解检验标准与费用争议。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 7 章 · 商检 Inspection",
+                    "小节 3 · 综合实战（一）：检验条款谈判",
+                    extra_fields=_INSPECTION_NEGOTIATION_FIELDS,
+                ),
+                environment_user_message="生成围绕欧盟买家与中国卖家就商检标准博弈的 JSON 场景设定。",
+                conversation_prompt_template=_inspection_negotiation_conversation_prompt(),
+                evaluation_prompt_template=_inspection_negotiation_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-7-section-4",
+                title="小节 4 · 综合实战（二）：不合格结果的争议处理",
+                description=(
+                    "模拟东南亚出口商与美国买家围绕到港不合格面料争议，学生需调取证据、安排复检并协商赔偿方案。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 7 章 · 商检 Inspection",
+                    "小节 4 · 综合实战（二）：不合格结果的争议处理",
+                    extra_fields=_INSPECTION_DISPUTE_FIELDS,
+                ),
+                environment_user_message="生成涉及到港不合格争议与复检处理的 JSON 场景设定。",
+                conversation_prompt_template=_inspection_dispute_conversation_prompt(),
+                evaluation_prompt_template=_inspection_dispute_evaluation_prompt(),
                 expects_bargaining=True,
             ),
         ],
