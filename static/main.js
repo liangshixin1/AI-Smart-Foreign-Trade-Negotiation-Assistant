@@ -138,6 +138,39 @@ const sectionEditorOrder = document.getElementById("section-editor-order");
 const levelSaveSectionBtn = document.getElementById("level-save-section");
 const levelDeleteSectionBtn = document.getElementById("level-delete-section");
 
+const theoryPanel = document.getElementById("theory-panel");
+const theoryStatusText = document.getElementById("theory-status");
+const theoryTree = document.getElementById("theory-tree");
+const theoryLessonTitleEl = document.getElementById("theory-lesson-title");
+const theoryLessonCodeEl = document.getElementById("theory-lesson-code");
+const theoryLessonContentEl = document.getElementById("theory-lesson-html");
+const theoryChallengeContainer = document.getElementById("theory-challenge");
+const theoryChallengeTitleEl = document.getElementById("theory-challenge-title");
+const theoryChallengeAction = document.getElementById("theory-challenge-action");
+
+const adminTheoryTree = document.getElementById("admin-theory-tree");
+const adminTheoryCreateTopicBtn = document.getElementById("admin-theory-create-topic");
+const adminTheoryCreateLessonBtn = document.getElementById("admin-theory-create-lesson");
+const adminTheoryStatus = document.getElementById("admin-theory-status");
+const adminTheoryTopicForm = document.getElementById("admin-theory-topic-form");
+const adminTheoryTopicChapter = document.getElementById("admin-theory-topic-chapter");
+const adminTheoryTopicCode = document.getElementById("admin-theory-topic-code");
+const adminTheoryTopicTitle = document.getElementById("admin-theory-topic-title");
+const adminTheoryTopicSummary = document.getElementById("admin-theory-topic-summary");
+const adminTheoryTopicOrder = document.getElementById("admin-theory-topic-order");
+const adminTheoryTopicDeleteBtn = document.getElementById("admin-theory-topic-delete");
+const adminTheoryTopicStatus = document.getElementById("admin-theory-topic-status");
+const adminTheoryLessonForm = document.getElementById("admin-theory-lesson-form");
+const adminTheoryLessonTopic = document.getElementById("admin-theory-lesson-topic");
+const adminTheoryLessonCode = document.getElementById("admin-theory-lesson-code");
+const adminTheoryLessonTitle = document.getElementById("admin-theory-lesson-title");
+const adminTheoryLessonOrder = document.getElementById("admin-theory-lesson-order");
+const adminTheoryLessonSection = document.getElementById("admin-theory-lesson-section");
+const adminTheoryLessonDeleteBtn = document.getElementById("admin-theory-lesson-delete");
+const adminTheoryLessonStatus = document.getElementById("admin-theory-lesson-status");
+const adminTheoryLessonEditorHost = document.getElementById("admin-theory-lesson-editor");
+const adminTheoryLessonContent = document.getElementById("admin-theory-lesson-content");
+
 const scenarioTitleEl = document.getElementById("scenario-title");
 const scenarioSummaryEl = document.getElementById("scenario-summary");
 const studentRoleEl = document.getElementById("student-role");
@@ -350,6 +383,11 @@ const state = {
   activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced" },
   isLevelSelectionCollapsed: false,
   expandedChapters: new Set(),
+  theory: {
+    tree: [],
+    selectedLessonId: null,
+    lessonCache: new Map(),
+  },
   admin: {
     students: [],
     selectedStudentId: null,
@@ -363,11 +401,18 @@ const state = {
     assignments: [],
     selectedBlueprintId: null,
     selectedAssignmentId: null,
+    theory: {
+      tree: [],
+      selectedTopicId: null,
+      selectedLessonId: null,
+    },
   },
   studentInsights: null,
   studentAssignments: [],
   levelVictories: new Set(),
 };
+
+let adminTheoryLessonEditor = null;
 
 const PROMPT_TOKEN_DEFINITIONS = {
   scenario_title: {
@@ -1443,6 +1488,320 @@ function renderLevelMap() {
   state.expandedChapters = expandedChapters;
 
   highlightSelectedLevel();
+}
+
+function ensureTheoryState() {
+  if (!state.theory || typeof state.theory !== "object") {
+    state.theory = { tree: [], selectedLessonId: null, lessonCache: new Map() };
+  }
+  if (!(state.theory.lessonCache instanceof Map)) {
+    state.theory.lessonCache = new Map();
+  }
+}
+
+function findTheoryLessonContext(lessonId) {
+  if (!lessonId) {
+    return null;
+  }
+  const chapters = (state.theory && state.theory.tree) || [];
+  for (const chapter of chapters) {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    for (const topic of topics) {
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      for (const lesson of lessons) {
+        if (lesson && lesson.id === lessonId) {
+          return { chapter, topic, lesson };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function getFirstTheoryLesson(tree) {
+  const chapters = Array.isArray(tree) ? tree : [];
+  for (const chapter of chapters) {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    for (const topic of topics) {
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      if (lessons.length > 0) {
+        return { chapter, topic, lesson: lessons[0] };
+      }
+    }
+  }
+  return null;
+}
+
+function renderStudentTheoryTree() {
+  if (!theoryTree) {
+    return;
+  }
+  ensureTheoryState();
+  const tree = Array.isArray(state.theory.tree) ? state.theory.tree : [];
+  theoryTree.innerHTML = "";
+
+  if (tree.length === 0) {
+    if (theoryPanel) {
+      theoryPanel.classList.add("hidden");
+    }
+    if (theoryStatusText) {
+      theoryStatusText.textContent = "教师尚未发布理论学习内容，敬请期待。";
+    }
+    const empty = document.createElement("div");
+    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400";
+    empty.textContent = "暂无理论学习章节";
+    theoryTree.appendChild(empty);
+    return;
+  }
+
+  if (theoryPanel) {
+    theoryPanel.classList.remove("hidden");
+  }
+  if (theoryStatusText) {
+    theoryStatusText.textContent = "点击左侧目录即可查看对应的理论内容。";
+  }
+
+  const activeLessonId = state.theory.selectedLessonId;
+
+  tree.forEach((chapter) => {
+    const card = document.createElement("div");
+    card.className = "rounded-3xl border border-slate-800 bg-slate-900/50 p-4 shadow-inner shadow-slate-950/20";
+
+    const header = document.createElement("div");
+    header.className = "flex flex-col gap-1";
+    const title = document.createElement("p");
+    title.className = "text-sm font-semibold text-slate-200";
+    title.textContent = chapter.chapterTitle || "章节";
+    header.appendChild(title);
+    if (chapter.chapterDescription) {
+      const desc = document.createElement("p");
+      desc.className = "text-xs text-slate-500";
+      desc.textContent = chapter.chapterDescription;
+      header.appendChild(desc);
+    }
+    card.appendChild(header);
+
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    if (topics.length === 0) {
+      const emptyTopic = document.createElement("p");
+      emptyTopic.className = "mt-3 text-xs text-slate-500";
+      emptyTopic.textContent = "该章节暂未发布理论内容";
+      card.appendChild(emptyTopic);
+    }
+
+    topics.forEach((topic) => {
+      const topicBlock = document.createElement("div");
+      topicBlock.className = "mt-3 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-3";
+
+      const topicTitle = document.createElement("p");
+      topicTitle.className = "text-sm font-semibold text-slate-100";
+      topicTitle.textContent = topic.code ? `${topic.code} ${topic.title || ""}` : topic.title || "理论单元";
+      topicBlock.appendChild(topicTitle);
+
+      if (topic.summary) {
+        const summary = document.createElement("p");
+        summary.className = "mt-1 text-xs text-slate-400";
+        summary.textContent = topic.summary;
+        topicBlock.appendChild(summary);
+      }
+
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      const lessonList = document.createElement("div");
+      lessonList.className = "mt-2 space-y-2";
+      if (lessons.length === 0) {
+        const emptyLesson = document.createElement("p");
+        emptyLesson.className = "rounded-xl border border-dashed border-slate-700/60 bg-slate-900/30 px-3 py-2 text-xs text-slate-500";
+        emptyLesson.textContent = "暂无三级知识点";
+        lessonList.appendChild(emptyLesson);
+      }
+      lessons.forEach((lesson) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.theoryLessonId = lesson.id;
+        button.className = "w-full rounded-xl border px-3 py-2 text-left transition";
+        const isActive = lesson.id === activeLessonId;
+        if (isActive) {
+          button.classList.add(
+            "border-blue-400/70",
+            "bg-blue-500/15",
+            "text-blue-100",
+            "shadow",
+            "shadow-blue-500/20",
+          );
+        } else {
+          button.classList.add(
+            "border-slate-800/80",
+            "bg-slate-900/30",
+            "text-slate-200",
+            "hover:border-blue-500/40",
+            "hover:text-blue-100",
+          );
+        }
+        const label = document.createElement("div");
+        label.className = "flex flex-col gap-0.5";
+        if (lesson.code) {
+          const code = document.createElement("span");
+          code.className = isActive
+            ? "text-[10px] font-semibold uppercase tracking-widest text-blue-300"
+            : "text-[10px] uppercase tracking-widest text-slate-400";
+          code.textContent = lesson.code;
+          label.appendChild(code);
+        }
+        const titleEl = document.createElement("span");
+        titleEl.className = "text-sm font-medium";
+        titleEl.textContent = lesson.title || "理论学习";
+        label.appendChild(titleEl);
+        if (lesson.sectionTitle) {
+          const hint = document.createElement("span");
+          hint.className = isActive ? "text-xs text-blue-200" : "text-xs text-slate-400";
+          hint.textContent = lesson.sectionTitle ? `关联关卡：${lesson.sectionTitle}` : "";
+          if (hint.textContent) {
+            label.appendChild(hint);
+          }
+        }
+        button.appendChild(label);
+        lessonList.appendChild(button);
+      });
+
+      topicBlock.appendChild(lessonList);
+      card.appendChild(topicBlock);
+    });
+
+    theoryTree.appendChild(card);
+  });
+}
+
+function renderTheoryLessonContent(lessonDetail) {
+  if (!theoryLessonTitleEl || !theoryLessonContentEl || !theoryLessonCodeEl) {
+    return;
+  }
+  if (!lessonDetail) {
+    theoryLessonTitleEl.textContent = "请选择理论学习小节";
+    theoryLessonCodeEl.textContent = "";
+    theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">在左侧选择任意知识点即可查看内容。</p>";
+    if (theoryChallengeContainer) {
+      theoryChallengeContainer.classList.add("hidden");
+    }
+    return;
+  }
+
+  theoryLessonTitleEl.textContent = lessonDetail.title || "理论学习";
+  theoryLessonCodeEl.textContent = lessonDetail.code || "";
+  const htmlContent = typeof lessonDetail.contentHtml === "string" ? lessonDetail.contentHtml : "";
+  if (typeof window !== "undefined" && window.DOMPurify) {
+    theoryLessonContentEl.innerHTML = window.DOMPurify.sanitize(htmlContent, {
+      USE_PROFILES: { html: true },
+    });
+  } else {
+    theoryLessonContentEl.innerHTML = htmlContent || "";
+  }
+  if (!theoryLessonContentEl.innerHTML.trim()) {
+    theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">教师尚未填写详细内容。</p>";
+  }
+
+  if (!theoryChallengeContainer || !theoryChallengeTitleEl) {
+    return;
+  }
+  if (!lessonDetail.sectionId) {
+    theoryChallengeContainer.classList.add("hidden");
+    return;
+  }
+  const section = findSection(lessonDetail.chapterId, lessonDetail.sectionId);
+  if (!section) {
+    theoryChallengeContainer.classList.add("hidden");
+    return;
+  }
+  theoryChallengeTitleEl.textContent = `${section.title || "关卡"}`;
+  theoryChallengeContainer.classList.remove("hidden");
+}
+
+function refreshStudentTheorySelection() {
+  ensureTheoryState();
+  const lessonId = state.theory.selectedLessonId;
+  if (!lessonId) {
+    renderTheoryLessonContent(null);
+    return;
+  }
+  const cache = state.theory.lessonCache instanceof Map ? state.theory.lessonCache : null;
+  const lessonDetail = cache ? cache.get(lessonId) : null;
+  if (lessonDetail) {
+    renderTheoryLessonContent(lessonDetail);
+  }
+}
+
+async function selectStudentTheoryLesson(lessonId) {
+  ensureTheoryState();
+  state.theory.selectedLessonId = lessonId || null;
+  renderStudentTheoryTree();
+  if (!lessonId) {
+    renderTheoryLessonContent(null);
+    return;
+  }
+
+  let lessonDetail = state.theory.lessonCache.get(lessonId);
+  if (!lessonDetail) {
+    try {
+      const response = await fetchWithAuth(`/api/theory/lessons/${lessonId}`);
+      if (!response.ok) {
+        throw new Error("无法获取理论学习内容");
+      }
+      const data = await response.json();
+      lessonDetail = data.lesson || null;
+      if (lessonDetail) {
+        state.theory.lessonCache.set(lessonId, lessonDetail);
+      }
+    } catch (error) {
+      console.error(error);
+      if (theoryStatusText) {
+        theoryStatusText.textContent = error.message || "无法获取理论学习内容";
+      }
+    }
+  }
+  renderTheoryLessonContent(lessonDetail || null);
+}
+
+async function loadStudentTheory(options = {}) {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  ensureTheoryState();
+  const keepSelection = !!options.keepSelection;
+  try {
+    const response = await fetchWithAuth("/api/theory");
+    if (!response.ok) {
+      throw new Error("无法加载理论学习目录");
+    }
+    const data = await response.json();
+    const tree = Array.isArray(data.theory) ? data.theory : [];
+    state.theory.tree = tree;
+
+    if (!keepSelection || !findTheoryLessonContext(state.theory.selectedLessonId)) {
+      const first = getFirstTheoryLesson(tree);
+      state.theory.selectedLessonId = first && first.lesson ? first.lesson.id : null;
+    }
+
+    renderStudentTheoryTree();
+    if (state.theory.selectedLessonId) {
+      await selectStudentTheoryLesson(state.theory.selectedLessonId);
+    } else {
+      renderTheoryLessonContent(null);
+    }
+  } catch (error) {
+    console.error(error);
+    if (theoryStatusText) {
+      theoryStatusText.textContent = error.message || "无法加载理论学习目录";
+    }
+    if (theoryTree) {
+      const failure = document.createElement("div");
+      failure.className = "rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200";
+      failure.textContent = "加载理论学习内容失败，请稍后重试。";
+      theoryTree.innerHTML = "";
+      theoryTree.appendChild(failure);
+    }
+    if (theoryPanel) {
+      theoryPanel.classList.remove("hidden");
+    }
+  }
 }
 
 function updateSessionControls() {
@@ -3464,9 +3823,692 @@ async function loadAdminLevels(options = {}) {
     renderAdminLevelList();
     updateChapterForm();
     updateSectionForm();
+    populateAdminTheoryChapterOptions();
+    populateAdminTheorySectionOptions();
   } catch (error) {
     console.error(error);
     alert(error.message || "加载关卡数据失败");
+  }
+}
+
+function ensureAdminTheoryState() {
+  if (!state.admin || typeof state.admin !== "object") {
+    state.admin = {};
+  }
+  if (!state.admin.theory || typeof state.admin.theory !== "object") {
+    state.admin.theory = { tree: [], selectedTopicId: null, selectedLessonId: null };
+  }
+}
+
+function populateAdminTheoryChapterOptions() {
+  if (!adminTheoryTopicChapter) {
+    return;
+  }
+  const chapters = Array.isArray(state.admin.levels) ? state.admin.levels : [];
+  adminTheoryTopicChapter.innerHTML = "";
+  if (chapters.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无章节";
+    adminTheoryTopicChapter.appendChild(option);
+    adminTheoryTopicChapter.disabled = true;
+    return;
+  }
+  adminTheoryTopicChapter.disabled = false;
+  chapters.forEach((chapter) => {
+    const option = document.createElement("option");
+    option.value = chapter.id;
+    option.textContent = chapter.displayTitle || chapter.title || chapter.id;
+    adminTheoryTopicChapter.appendChild(option);
+  });
+}
+
+function populateAdminTheorySectionOptions() {
+  if (!adminTheoryLessonSection) {
+    return;
+  }
+  const chapters = Array.isArray(state.admin.levels) ? state.admin.levels : [];
+  adminTheoryLessonSection.innerHTML = "";
+  const emptyOption = document.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "不关联关卡";
+  adminTheoryLessonSection.appendChild(emptyOption);
+  chapters.forEach((chapter) => {
+    const sections = Array.isArray(chapter.sections) ? chapter.sections : [];
+    sections.forEach((section) => {
+      const option = document.createElement("option");
+      option.value = section.id;
+      const chapterLabel = chapter.displayTitle || chapter.title || chapter.id;
+      option.textContent = `${chapterLabel}｜${section.title || section.id}`;
+      adminTheoryLessonSection.appendChild(option);
+    });
+  });
+}
+
+function collectAdminTheoryTopics() {
+  ensureAdminTheoryState();
+  const chapters = Array.isArray(state.admin.theory.tree) ? state.admin.theory.tree : [];
+  const items = [];
+  chapters.forEach((chapter) => {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    topics.forEach((topic) => {
+      items.push({ chapter, topic });
+    });
+  });
+  return items;
+}
+
+function populateAdminTheoryTopicOptions() {
+  if (!adminTheoryLessonTopic) {
+    return;
+  }
+  const items = collectAdminTheoryTopics();
+  adminTheoryLessonTopic.innerHTML = "";
+  if (items.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无理论目录";
+    adminTheoryLessonTopic.appendChild(option);
+    adminTheoryLessonTopic.disabled = true;
+    return;
+  }
+  adminTheoryLessonTopic.disabled = false;
+  items.forEach(({ chapter, topic }) => {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    const chapterLabel = chapter.chapterTitle || chapter.chapterId || chapter.id;
+    option.textContent = `${chapterLabel}｜${topic.title || topic.id}`;
+    adminTheoryLessonTopic.appendChild(option);
+  });
+}
+
+function findAdminTheoryTopic(topicId) {
+  if (!topicId) {
+    return null;
+  }
+  ensureAdminTheoryState();
+  const chapters = Array.isArray(state.admin.theory.tree) ? state.admin.theory.tree : [];
+  for (const chapter of chapters) {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    for (const topic of topics) {
+      if (topic.id === topicId) {
+        return { chapter, topic };
+      }
+    }
+  }
+  return null;
+}
+
+function findAdminTheoryLesson(lessonId) {
+  if (!lessonId) {
+    return null;
+  }
+  ensureAdminTheoryState();
+  const chapters = Array.isArray(state.admin.theory.tree) ? state.admin.theory.tree : [];
+  for (const chapter of chapters) {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    for (const topic of topics) {
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      for (const lesson of lessons) {
+        if (lesson.id === lessonId) {
+          return { chapter, topic, lesson };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function renderAdminTheoryTree() {
+  if (!adminTheoryTree) {
+    return;
+  }
+  ensureAdminTheoryState();
+  const tree = Array.isArray(state.admin.theory.tree) ? state.admin.theory.tree : [];
+  adminTheoryTree.innerHTML = "";
+
+  if (tree.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "rounded-3xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400";
+    empty.textContent = "暂无理论学习目录";
+    adminTheoryTree.appendChild(empty);
+    return;
+  }
+
+  const activeTopicId = state.admin.theory.selectedTopicId;
+  const activeLessonId = state.admin.theory.selectedLessonId;
+
+  tree.forEach((chapter) => {
+    const card = document.createElement("div");
+    card.className = "rounded-3xl border border-slate-800 bg-slate-900/40 p-4";
+
+    const header = document.createElement("div");
+    header.className = "flex flex-col gap-1";
+    const title = document.createElement("p");
+    title.className = "text-sm font-semibold text-slate-200";
+    title.textContent = chapter.chapterTitle || chapter.chapterId || "章节";
+    header.appendChild(title);
+    if (chapter.chapterDescription) {
+      const desc = document.createElement("p");
+      desc.className = "text-xs text-slate-500";
+      desc.textContent = chapter.chapterDescription;
+      header.appendChild(desc);
+    }
+    card.appendChild(header);
+
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    topics.forEach((topic) => {
+      const topicCard = document.createElement("div");
+      topicCard.className = "mt-3 rounded-2xl border border-slate-800/70 bg-slate-900/50 p-3";
+
+      const topicButton = document.createElement("button");
+      topicButton.type = "button";
+      topicButton.dataset.adminTheoryTopicId = topic.id;
+      topicButton.className = "flex w-full flex-col gap-1 rounded-xl border px-3 py-2 text-left transition";
+      const isTopicActive = topic.id === activeTopicId;
+      if (isTopicActive) {
+        topicButton.classList.add(
+          "border-blue-400/60",
+          "bg-blue-500/10",
+          "text-blue-100",
+          "shadow",
+          "shadow-blue-500/20",
+        );
+      } else {
+        topicButton.classList.add(
+          "border-slate-800/60",
+          "bg-slate-900/30",
+          "text-slate-100",
+          "hover:border-blue-400/50",
+          "hover:text-blue-100",
+        );
+      }
+      const topicLabel = document.createElement("span");
+      topicLabel.className = "text-sm font-semibold";
+      topicLabel.textContent = topic.code ? `${topic.code} ${topic.title || ""}` : topic.title || topic.id;
+      topicButton.appendChild(topicLabel);
+      if (topic.summary) {
+        const summary = document.createElement("span");
+        summary.className = isTopicActive ? "text-xs text-blue-200" : "text-xs text-slate-400";
+        summary.textContent = topic.summary;
+        topicButton.appendChild(summary);
+      }
+      topicCard.appendChild(topicButton);
+
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      const lessonList = document.createElement("div");
+      lessonList.className = "mt-2 space-y-2";
+      lessons.forEach((lesson) => {
+        const lessonButton = document.createElement("button");
+        lessonButton.type = "button";
+        lessonButton.dataset.adminTheoryLessonId = lesson.id;
+        lessonButton.className = "flex w-full flex-col gap-0.5 rounded-xl border px-3 py-2 text-left transition";
+        const isActiveLesson = lesson.id === activeLessonId;
+        if (isActiveLesson) {
+          lessonButton.classList.add(
+            "border-emerald-400/70",
+            "bg-emerald-500/10",
+            "text-emerald-100",
+            "shadow",
+            "shadow-emerald-500/20",
+          );
+        } else {
+          lessonButton.classList.add(
+            "border-slate-800/60",
+            "bg-slate-900/30",
+            "text-slate-100",
+            "hover:border-emerald-400/50",
+            "hover:text-emerald-100",
+          );
+        }
+        if (lesson.code) {
+          const code = document.createElement("span");
+          code.className = isActiveLesson
+            ? "text-[10px] uppercase tracking-widest text-emerald-300"
+            : "text-[10px] uppercase tracking-widest text-slate-400";
+          code.textContent = lesson.code;
+          lessonButton.appendChild(code);
+        }
+        const lessonTitle = document.createElement("span");
+        lessonTitle.className = "text-sm font-medium";
+        lessonTitle.textContent = lesson.title || lesson.id;
+        lessonButton.appendChild(lessonTitle);
+        if (lesson.sectionTitle) {
+          const linked = document.createElement("span");
+          linked.className = isActiveLesson ? "text-xs text-emerald-200" : "text-xs text-slate-400";
+          linked.textContent = `关卡：${lesson.sectionTitle}`;
+          lessonButton.appendChild(linked);
+        }
+        lessonList.appendChild(lessonButton);
+      });
+      if (lessons.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "rounded-xl border border-dashed border-slate-700/60 bg-slate-900/30 px-3 py-2 text-xs text-slate-500";
+        empty.textContent = "暂无三级内容";
+        lessonList.appendChild(empty);
+      }
+      topicCard.appendChild(lessonList);
+      card.appendChild(topicCard);
+    });
+
+    adminTheoryTree.appendChild(card);
+  });
+}
+
+function initAdminTheoryLessonEditor() {
+  if (!adminTheoryLessonEditorHost || adminTheoryLessonEditor) {
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.Quill === "undefined") {
+    if (adminTheoryLessonContent) {
+      adminTheoryLessonContent.classList.remove("hidden");
+    }
+    return;
+  }
+  adminTheoryLessonEditor = new window.Quill(adminTheoryLessonEditorHost, {
+    theme: "snow",
+    placeholder: "请在此编写理论学习的富文本内容…",
+  });
+}
+
+function setAdminTheoryEditorContent(html) {
+  const content = typeof html === "string" ? html : "";
+  if (adminTheoryLessonEditor) {
+    adminTheoryLessonEditor.clipboard.dangerouslyPasteHTML(content || "<p><br></p>");
+  } else if (adminTheoryLessonContent) {
+    adminTheoryLessonContent.value = content;
+  }
+}
+
+function getAdminTheoryEditorContent() {
+  if (adminTheoryLessonEditor) {
+    return adminTheoryLessonEditor.root.innerHTML;
+  }
+  if (adminTheoryLessonContent) {
+    return adminTheoryLessonContent.value;
+  }
+  return "";
+}
+
+function updateAdminTheoryForms() {
+  ensureAdminTheoryState();
+  if (adminTheoryTopicForm) {
+    const mode = adminTheoryTopicForm.dataset.mode || "edit";
+    const topicId = state.admin.theory.selectedTopicId;
+    const topicContext = topicId ? findAdminTheoryTopic(topicId) : null;
+    if (mode === "create") {
+      adminTheoryTopicForm.classList.remove("hidden");
+      adminTheoryTopicForm.dataset.mode = "create";
+      if (adminTheoryTopicChapter) {
+        const options = Array.from(adminTheoryTopicChapter.options || []);
+        adminTheoryTopicChapter.value = options.length > 0 ? options[0].value : "";
+      }
+      if (adminTheoryTopicCode) adminTheoryTopicCode.value = "";
+      if (adminTheoryTopicTitle) adminTheoryTopicTitle.value = "";
+      if (adminTheoryTopicSummary) adminTheoryTopicSummary.value = "";
+      if (adminTheoryTopicOrder) adminTheoryTopicOrder.value = "";
+      if (adminTheoryTopicDeleteBtn) adminTheoryTopicDeleteBtn.disabled = true;
+      updateInlineStatus(adminTheoryTopicStatus, "填写信息后保存即可创建新的理论目录。", "muted");
+    } else if (topicContext) {
+      adminTheoryTopicForm.classList.remove("hidden");
+      adminTheoryTopicForm.dataset.mode = "edit";
+      adminTheoryTopicForm.dataset.topicId = topicContext.topic.id;
+      if (adminTheoryTopicChapter) {
+        adminTheoryTopicChapter.value =
+          topicContext.topic.chapterId || topicContext.chapter.chapterId || topicContext.chapter.id || "";
+      }
+      if (adminTheoryTopicCode) adminTheoryTopicCode.value = topicContext.topic.code || "";
+      if (adminTheoryTopicTitle) adminTheoryTopicTitle.value = topicContext.topic.title || "";
+      if (adminTheoryTopicSummary) adminTheoryTopicSummary.value = topicContext.topic.summary || "";
+      if (adminTheoryTopicOrder) {
+        adminTheoryTopicOrder.value =
+          topicContext.topic.orderIndex !== null && topicContext.topic.orderIndex !== undefined
+            ? topicContext.topic.orderIndex
+            : "";
+      }
+      if (adminTheoryTopicDeleteBtn) adminTheoryTopicDeleteBtn.disabled = false;
+      updateInlineStatus(adminTheoryTopicStatus, "", "muted");
+    } else {
+      adminTheoryTopicForm.classList.add("hidden");
+      if (adminTheoryTopicDeleteBtn) adminTheoryTopicDeleteBtn.disabled = true;
+      updateInlineStatus(adminTheoryTopicStatus, "请选择或新建理论目录。", "muted");
+    }
+  }
+
+  if (!adminTheoryLessonForm) {
+    return;
+  }
+  initAdminTheoryLessonEditor();
+  const mode = adminTheoryLessonForm.dataset.mode || "edit";
+  const lessonId = state.admin.theory.selectedLessonId;
+  const lessonContext = lessonId ? findAdminTheoryLesson(lessonId) : null;
+  if (mode === "create") {
+    const topics = collectAdminTheoryTopics();
+    if (topics.length === 0) {
+      adminTheoryLessonForm.classList.add("hidden");
+      updateInlineStatus(adminTheoryLessonStatus, "请先创建理论目录后再添加内容。", "muted");
+      return;
+    }
+    adminTheoryLessonForm.classList.remove("hidden");
+    adminTheoryLessonForm.dataset.mode = "create";
+    adminTheoryLessonForm.dataset.lessonId = "";
+    const preferredTopicId = state.admin.theory.selectedTopicId || topics[0].topic.id;
+    if (adminTheoryLessonTopic) {
+      adminTheoryLessonTopic.value = preferredTopicId;
+    }
+    if (adminTheoryLessonCode) adminTheoryLessonCode.value = "";
+    if (adminTheoryLessonTitle) adminTheoryLessonTitle.value = "";
+    if (adminTheoryLessonOrder) adminTheoryLessonOrder.value = "";
+    if (adminTheoryLessonSection) adminTheoryLessonSection.value = "";
+    setAdminTheoryEditorContent("<p><br></p>");
+    if (adminTheoryLessonDeleteBtn) adminTheoryLessonDeleteBtn.disabled = true;
+    updateInlineStatus(adminTheoryLessonStatus, "填写内容后保存，即可发布给学生查看。", "muted");
+  } else if (lessonContext) {
+    adminTheoryLessonForm.classList.remove("hidden");
+    adminTheoryLessonForm.dataset.mode = "edit";
+    adminTheoryLessonForm.dataset.lessonId = lessonContext.lesson.id;
+    if (adminTheoryLessonTopic) {
+      adminTheoryLessonTopic.value = lessonContext.topic.id;
+    }
+    if (adminTheoryLessonCode) adminTheoryLessonCode.value = lessonContext.lesson.code || "";
+    if (adminTheoryLessonTitle) adminTheoryLessonTitle.value = lessonContext.lesson.title || "";
+    if (adminTheoryLessonOrder) {
+      adminTheoryLessonOrder.value =
+        lessonContext.lesson.orderIndex !== null && lessonContext.lesson.orderIndex !== undefined
+          ? lessonContext.lesson.orderIndex
+          : "";
+    }
+    if (adminTheoryLessonSection) {
+      adminTheoryLessonSection.value = lessonContext.lesson.sectionId || "";
+    }
+    setAdminTheoryEditorContent(lessonContext.lesson.contentHtml || "<p><br></p>");
+    if (adminTheoryLessonDeleteBtn) adminTheoryLessonDeleteBtn.disabled = false;
+    updateInlineStatus(adminTheoryLessonStatus, "", "muted");
+  } else {
+    adminTheoryLessonForm.classList.add("hidden");
+    if (adminTheoryLessonDeleteBtn) adminTheoryLessonDeleteBtn.disabled = true;
+    updateInlineStatus(adminTheoryLessonStatus, "请选择理论内容以编辑，或新建一个内容小节。", "muted");
+  }
+}
+
+function enterAdminTheoryTopicCreateMode() {
+  ensureAdminTheoryState();
+  if (!adminTheoryTopicForm) {
+    return;
+  }
+  adminTheoryTopicForm.dataset.mode = "create";
+  state.admin.theory.selectedTopicId = null;
+  state.admin.theory.selectedLessonId = null;
+  renderAdminTheoryTree();
+  updateAdminTheoryForms();
+}
+
+function enterAdminTheoryLessonCreateMode() {
+  ensureAdminTheoryState();
+  if (!adminTheoryLessonForm) {
+    return;
+  }
+  adminTheoryLessonForm.dataset.mode = "create";
+  state.admin.theory.selectedLessonId = null;
+  renderAdminTheoryTree();
+  updateAdminTheoryForms();
+}
+
+function selectAdminTheoryTopic(topicId) {
+  ensureAdminTheoryState();
+  state.admin.theory.selectedTopicId = topicId;
+  const context = topicId ? findAdminTheoryTopic(topicId) : null;
+  if (context) {
+    const lessons = Array.isArray(context.topic.lessons) ? context.topic.lessons : [];
+    if (!lessons.some((lesson) => lesson.id === state.admin.theory.selectedLessonId)) {
+      state.admin.theory.selectedLessonId = lessons.length > 0 ? lessons[0].id : null;
+    }
+  } else {
+    state.admin.theory.selectedLessonId = null;
+  }
+  adminTheoryTopicForm.dataset.mode = "edit";
+  renderAdminTheoryTree();
+  updateAdminTheoryForms();
+}
+
+function selectAdminTheoryLesson(lessonId) {
+  ensureAdminTheoryState();
+  state.admin.theory.selectedLessonId = lessonId;
+  adminTheoryLessonForm.dataset.mode = "edit";
+  if (lessonId) {
+    const context = findAdminTheoryLesson(lessonId);
+    if (context) {
+      state.admin.theory.selectedTopicId = context.topic.id;
+    }
+  }
+  renderAdminTheoryTree();
+  updateAdminTheoryForms();
+}
+
+async function loadAdminTheory(options = {}) {
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  ensureAdminTheoryState();
+  const { focusTopicId = null, focusLessonId = null, keepSelection = false } = options;
+  try {
+    const response = await fetchWithAuth("/api/admin/theory?includeContent=true");
+    if (!response.ok) {
+      throw new Error("无法加载理论学习数据");
+    }
+    const data = await response.json();
+    const tree = Array.isArray(data.theory) ? data.theory : [];
+    state.admin.theory.tree = tree;
+
+    let nextTopicId = focusTopicId;
+    if (!nextTopicId) {
+      if (keepSelection && state.admin.theory.selectedTopicId && findAdminTheoryTopic(state.admin.theory.selectedTopicId)) {
+        nextTopicId = state.admin.theory.selectedTopicId;
+      } else {
+        const firstTopic = collectAdminTheoryTopics()[0];
+        nextTopicId = firstTopic ? firstTopic.topic.id : null;
+      }
+    }
+    state.admin.theory.selectedTopicId = nextTopicId;
+
+    let nextLessonId = focusLessonId;
+    if (!nextLessonId) {
+      if (
+        keepSelection &&
+        state.admin.theory.selectedLessonId &&
+        findAdminTheoryLesson(state.admin.theory.selectedLessonId)
+      ) {
+        nextLessonId = state.admin.theory.selectedLessonId;
+      } else if (nextTopicId) {
+        const topic = findAdminTheoryTopic(nextTopicId);
+        if (topic) {
+          const lessons = Array.isArray(topic.topic.lessons) ? topic.topic.lessons : [];
+          nextLessonId = lessons.length > 0 ? lessons[0].id : null;
+        }
+      }
+    }
+    state.admin.theory.selectedLessonId = nextLessonId;
+
+    populateAdminTheoryTopicOptions();
+    populateAdminTheorySectionOptions();
+    renderAdminTheoryTree();
+    updateAdminTheoryForms();
+    updateInlineStatus(adminTheoryStatus, "理论目录已更新", "success");
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryStatus, error.message || "加载理论学习失败", "error");
+  }
+}
+
+async function saveAdminTheoryTopic(event) {
+  event.preventDefault();
+  if (!adminTheoryTopicForm) {
+    return;
+  }
+  const mode = adminTheoryTopicForm.dataset.mode || "edit";
+  const chapterId = adminTheoryTopicChapter ? adminTheoryTopicChapter.value : "";
+  const payload = {
+    chapterId,
+    code: adminTheoryTopicCode ? adminTheoryTopicCode.value.trim() : "",
+    title: adminTheoryTopicTitle ? adminTheoryTopicTitle.value.trim() : "",
+    summary: adminTheoryTopicSummary ? adminTheoryTopicSummary.value.trim() : "",
+  };
+  if (adminTheoryTopicOrder && adminTheoryTopicOrder.value.trim() !== "") {
+    payload.orderIndex = Number(adminTheoryTopicOrder.value);
+  }
+  try {
+    if (mode === "create") {
+      const response = await fetchWithAuth("/api/admin/theory/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "创建理论目录失败");
+      }
+      const data = await response.json();
+      const newTopicId = data.topic && data.topic.id;
+      await loadAdminTheory({ focusTopicId: newTopicId });
+      adminTheoryTopicForm.dataset.mode = "edit";
+      updateInlineStatus(adminTheoryTopicStatus, "理论目录已创建", "success");
+    } else {
+      const topicId = adminTheoryTopicForm.dataset.topicId;
+      if (!topicId) {
+        throw new Error("未选择理论目录");
+      }
+      const response = await fetchWithAuth(`/api/admin/theory/topics/${topicId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "更新理论目录失败");
+      }
+      await loadAdminTheory({ focusTopicId: topicId, keepSelection: true });
+      updateInlineStatus(adminTheoryTopicStatus, "理论目录已保存", "success");
+    }
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryTopicStatus, error.message || "保存失败", "error");
+  }
+}
+
+async function deleteAdminTheoryTopic() {
+  if (!adminTheoryTopicForm) {
+    return;
+  }
+  const topicId = adminTheoryTopicForm.dataset.topicId;
+  if (!topicId) {
+    alert("请选择理论目录");
+    return;
+  }
+  if (!confirm("确认删除该理论目录及其下的所有内容？")) {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth(`/api/admin/theory/topics/${topicId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok && response.status !== 204) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "删除失败");
+    }
+    await loadAdminTheory();
+    adminTheoryTopicForm.dataset.mode = "edit";
+    updateInlineStatus(adminTheoryTopicStatus, "理论目录已删除", "success");
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryTopicStatus, error.message || "删除失败", "error");
+  }
+}
+
+async function saveAdminTheoryLesson(event) {
+  event.preventDefault();
+  if (!adminTheoryLessonForm) {
+    return;
+  }
+  const mode = adminTheoryLessonForm.dataset.mode || "edit";
+  const topicId = adminTheoryLessonTopic ? adminTheoryLessonTopic.value : "";
+  const payload = {
+    topicId,
+    code: adminTheoryLessonCode ? adminTheoryLessonCode.value.trim() : "",
+    title: adminTheoryLessonTitle ? adminTheoryLessonTitle.value.trim() : "",
+    contentHtml: getAdminTheoryEditorContent(),
+  };
+  if (adminTheoryLessonOrder && adminTheoryLessonOrder.value.trim() !== "") {
+    payload.orderIndex = Number(adminTheoryLessonOrder.value);
+  }
+  if (adminTheoryLessonSection) {
+    payload.sectionId = adminTheoryLessonSection.value;
+  }
+  try {
+    if (mode === "create") {
+      const response = await fetchWithAuth("/api/admin/theory/lessons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "创建理论内容失败");
+      }
+      const data = await response.json();
+      const newLessonId = data.lesson && data.lesson.id;
+      const targetTopicId = data.lesson && data.lesson.topicId ? data.lesson.topicId : topicId;
+      await loadAdminTheory({ focusTopicId: targetTopicId, focusLessonId: newLessonId });
+      adminTheoryLessonForm.dataset.mode = "edit";
+      updateInlineStatus(adminTheoryLessonStatus, "理论内容已创建", "success");
+    } else {
+      const lessonId = adminTheoryLessonForm.dataset.lessonId;
+      if (!lessonId) {
+        throw new Error("未选择理论内容");
+      }
+      const response = await fetchWithAuth(`/api/admin/theory/lessons/${lessonId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "保存失败");
+      }
+      await loadAdminTheory({ focusTopicId: topicId, focusLessonId: lessonId, keepSelection: true });
+      updateInlineStatus(adminTheoryLessonStatus, "理论内容已保存", "success");
+    }
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryLessonStatus, error.message || "保存失败", "error");
+  }
+}
+
+async function deleteAdminTheoryLesson() {
+  if (!adminTheoryLessonForm) {
+    return;
+  }
+  const lessonId = adminTheoryLessonForm.dataset.lessonId;
+  if (!lessonId) {
+    alert("请选择理论内容");
+    return;
+  }
+  if (!confirm("确认删除该理论内容？")) {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth(`/api/admin/theory/lessons/${lessonId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok && response.status !== 204) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "删除失败");
+    }
+    const topicId = adminTheoryLessonTopic ? adminTheoryLessonTopic.value : null;
+    await loadAdminTheory({ focusTopicId: topicId });
+    updateInlineStatus(adminTheoryLessonStatus, "理论内容已删除", "success");
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryLessonStatus, error.message || "删除失败", "error");
   }
 }
 
@@ -3692,6 +4734,7 @@ async function loadLevels() {
     }
     renderLevelMap();
     updateSelectedLevelDetail();
+    refreshStudentTheorySelection();
   } catch (error) {
     console.error(error);
     alert(error.message || "加载章节失败");
@@ -3743,6 +4786,7 @@ function updateAuthUI() {
       if (changePasswordBtn) {
         changePasswordBtn.classList.remove("hidden");
       }
+      loadStudentTheory();
     } else {
       studentDashboard.classList.add("hidden");
       hideExperience();
@@ -3757,6 +4801,11 @@ function updateAuthUI() {
         changePasswordBtn.classList.add("hidden");
       }
       closeStudentPasswordModal();
+      ensureAdminTheoryState();
+      renderAdminTheoryTree();
+      updateAdminTheoryForms();
+      loadAdminLevels();
+      loadAdminTheory();
     }
   } else {
     authPanel.classList.remove("hidden");
@@ -3784,6 +4833,10 @@ function updateAuthUI() {
     renderChat();
     closeStudentModal();
     closeStudentPasswordModal();
+    state.theory = { tree: [], selectedLessonId: null, lessonCache: new Map() };
+    if (theoryPanel) {
+      theoryPanel.classList.add("hidden");
+    }
   }
 }
 
@@ -4801,6 +5854,80 @@ if (chatInputEl) {
   });
 }
 
+if (theoryTree) {
+  theoryTree.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-theory-lesson-id]");
+    if (!button) {
+      return;
+    }
+    const lessonId = button.dataset.theoryLessonId;
+    if (lessonId) {
+      selectStudentTheoryLesson(lessonId);
+    }
+  });
+}
+
+if (theoryChallengeAction) {
+  theoryChallengeAction.addEventListener("click", () => {
+    ensureTheoryState();
+    const lessonId = state.theory.selectedLessonId;
+    if (!lessonId) {
+      return;
+    }
+    const context = findTheoryLessonContext(lessonId);
+    if (!context || !context.lesson.sectionId) {
+      return;
+    }
+    setSelectedLevel(context.lesson.chapterId, context.lesson.sectionId);
+    expandLevelSelection();
+    if (levelSelectionPanel && typeof levelSelectionPanel.scrollIntoView === "function") {
+      levelSelectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
+}
+
+if (adminTheoryTree) {
+  adminTheoryTree.addEventListener("click", (event) => {
+    const topicButton = event.target.closest("button[data-admin-theory-topic-id]");
+    if (topicButton) {
+      selectAdminTheoryTopic(topicButton.dataset.adminTheoryTopicId);
+      return;
+    }
+    const lessonButton = event.target.closest("button[data-admin-theory-lesson-id]");
+    if (lessonButton) {
+      selectAdminTheoryLesson(lessonButton.dataset.adminTheoryLessonId);
+    }
+  });
+}
+
+if (adminTheoryCreateTopicBtn) {
+  adminTheoryCreateTopicBtn.addEventListener("click", () => {
+    enterAdminTheoryTopicCreateMode();
+  });
+}
+
+if (adminTheoryCreateLessonBtn) {
+  adminTheoryCreateLessonBtn.addEventListener("click", () => {
+    enterAdminTheoryLessonCreateMode();
+  });
+}
+
+if (adminTheoryTopicForm) {
+  adminTheoryTopicForm.addEventListener("submit", saveAdminTheoryTopic);
+}
+
+if (adminTheoryTopicDeleteBtn) {
+  adminTheoryTopicDeleteBtn.addEventListener("click", deleteAdminTheoryTopic);
+}
+
+if (adminTheoryLessonForm) {
+  adminTheoryLessonForm.addEventListener("submit", saveAdminTheoryLesson);
+}
+
+if (adminTheoryLessonDeleteBtn) {
+  adminTheoryLessonDeleteBtn.addEventListener("click", deleteAdminTheoryLesson);
+}
+
 if (loginForm) {
   loginForm.addEventListener("submit", handleLogin);
 }
@@ -4918,22 +6045,26 @@ if (scenarioCollapseBtn) {
 
 if (adminTabButtons) {
   adminTabButtons.forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const target = button.dataset.adminTab;
       activateAdminTab(target);
       if (target === "levels") {
-        loadAdminLevels();
+        await loadAdminLevels();
       }
       if (target === "students") {
-        loadAdminStudents();
-        loadAdminAnalytics();
+        await loadAdminStudents();
+        await loadAdminAnalytics();
       }
       if (target === "assignments") {
-        loadAdminStudents();
-        loadAdminAssignments();
+        await loadAdminStudents();
+        await loadAdminAssignments();
       }
       if (target === "blueprints") {
-        loadAdminBlueprints();
+        await loadAdminBlueprints();
+      }
+      if (target === "theory") {
+        await loadAdminLevels();
+        await loadAdminTheory();
       }
     });
   });

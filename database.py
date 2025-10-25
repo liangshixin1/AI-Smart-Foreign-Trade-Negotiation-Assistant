@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join(os.path.dirname(__file__), "app.db"))
+UNSET = object()
 
 
 @contextmanager
@@ -159,6 +160,32 @@ def init_database() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_default INTEGER DEFAULT 0,
                 FOREIGN KEY(chapter_id) REFERENCES level_chapters(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS theory_topics (
+                id TEXT PRIMARY KEY,
+                chapter_id TEXT NOT NULL,
+                code TEXT,
+                title TEXT NOT NULL,
+                summary TEXT,
+                order_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(chapter_id) REFERENCES level_chapters(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS theory_lessons (
+                id TEXT PRIMARY KEY,
+                topic_id TEXT NOT NULL,
+                code TEXT,
+                title TEXT NOT NULL,
+                content_html TEXT NOT NULL,
+                order_index INTEGER DEFAULT 0,
+                section_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(topic_id) REFERENCES theory_topics(id) ON DELETE CASCADE,
+                FOREIGN KEY(section_id) REFERENCES level_sections(id) ON DELETE SET NULL
             );
             """
         )
@@ -649,6 +676,460 @@ def update_section(
 def delete_section(section_id: str) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM level_sections WHERE id = ?", (section_id,))
+        conn.commit()
+
+
+def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, object]]:
+    with get_connection() as conn:
+        topic_rows = conn.execute(
+            """
+            SELECT
+                t.id,
+                t.chapter_id,
+                t.code,
+                t.title,
+                t.summary,
+                t.order_index,
+                c.title AS chapter_title,
+                c.description AS chapter_description,
+                c.order_index AS chapter_order_index
+            FROM theory_topics t
+            JOIN level_chapters c ON c.id = t.chapter_id
+            ORDER BY
+                COALESCE(c.order_index, 0),
+                c.title,
+                COALESCE(t.order_index, 0),
+                t.title
+            """,
+        ).fetchall()
+        lesson_rows = conn.execute(
+            """
+            SELECT
+                l.id,
+                l.topic_id,
+                l.code,
+                l.title,
+                l.content_html,
+                l.order_index,
+                l.section_id,
+                s.title AS section_title
+            FROM theory_lessons l
+            JOIN theory_topics t ON t.id = l.topic_id
+            LEFT JOIN level_sections s ON s.id = l.section_id
+            ORDER BY
+                t.chapter_id,
+                COALESCE(t.order_index, 0),
+                t.title,
+                COALESCE(l.order_index, 0),
+                l.title
+            """,
+        ).fetchall()
+
+    chapters: List[Dict[str, object]] = []
+    chapter_lookup: Dict[str, Dict[str, object]] = {}
+    topic_lookup: Dict[str, Dict[str, object]] = {}
+
+    for row in topic_rows:
+        chapter_id = row["chapter_id"]
+        chapter = chapter_lookup.get(chapter_id)
+        if not chapter:
+            chapter = {
+                "chapterId": chapter_id,
+                "chapterTitle": row["chapter_title"],
+                "chapterDescription": row["chapter_description"] or "",
+                "orderIndex": row["chapter_order_index"],
+                "topics": [],
+            }
+            chapter_lookup[chapter_id] = chapter
+            chapters.append(chapter)
+
+        topic_payload = {
+            "id": row["id"],
+            "chapterId": chapter_id,
+            "title": row["title"],
+            "code": row["code"] or "",
+            "summary": row["summary"] or "",
+            "orderIndex": row["order_index"],
+            "lessons": [],
+        }
+        chapter["topics"].append(topic_payload)
+        topic_lookup[row["id"]] = topic_payload
+
+    for row in lesson_rows:
+        topic = topic_lookup.get(row["topic_id"])
+        if not topic:
+            continue
+        lesson_payload: Dict[str, object] = {
+            "id": row["id"],
+            "topicId": row["topic_id"],
+            "chapterId": topic["chapterId"],
+            "title": row["title"],
+            "code": row["code"] or "",
+            "orderIndex": row["order_index"],
+            "sectionId": row["section_id"],
+            "sectionTitle": row["section_title"],
+        }
+        if include_content:
+            lesson_payload["contentHtml"] = row["content_html"]
+        topic["lessons"].append(lesson_payload)
+
+    return chapters
+
+
+def get_theory_topic(topic_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        topic_row = conn.execute(
+            """
+            SELECT
+                t.id,
+                t.chapter_id,
+                t.code,
+                t.title,
+                t.summary,
+                t.order_index,
+                c.title AS chapter_title,
+                c.description AS chapter_description,
+                c.order_index AS chapter_order_index
+            FROM theory_topics t
+            JOIN level_chapters c ON c.id = t.chapter_id
+            WHERE t.id = ?
+            """,
+            (topic_id,),
+        ).fetchone()
+        if not topic_row:
+            return None
+
+        lesson_rows = conn.execute(
+            """
+            SELECT
+                l.id,
+                l.topic_id,
+                l.code,
+                l.title,
+                l.content_html,
+                l.order_index,
+                l.section_id,
+                s.title AS section_title
+            FROM theory_lessons l
+            LEFT JOIN level_sections s ON s.id = l.section_id
+            WHERE l.topic_id = ?
+            ORDER BY COALESCE(l.order_index, 0), l.title
+            """,
+            (topic_id,),
+        ).fetchall()
+
+    topic: Dict[str, object] = {
+        "id": topic_row["id"],
+        "chapterId": topic_row["chapter_id"],
+        "chapterTitle": topic_row["chapter_title"],
+        "chapterDescription": topic_row["chapter_description"] or "",
+        "orderIndex": topic_row["order_index"],
+        "code": topic_row["code"] or "",
+        "title": topic_row["title"],
+        "summary": topic_row["summary"] or "",
+        "lessons": [],
+    }
+
+    for row in lesson_rows:
+        lesson = {
+            "id": row["id"],
+            "topicId": row["topic_id"],
+            "chapterId": topic["chapterId"],
+            "title": row["title"],
+            "code": row["code"] or "",
+            "orderIndex": row["order_index"],
+            "sectionId": row["section_id"],
+            "sectionTitle": row["section_title"],
+            "contentHtml": row["content_html"],
+        }
+        topic["lessons"].append(lesson)
+
+    return topic
+
+
+def get_theory_lesson(lesson_id: str) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                l.id,
+                l.topic_id,
+                l.code,
+                l.title,
+                l.content_html,
+                l.order_index,
+                l.section_id,
+                t.chapter_id,
+                t.title AS topic_title,
+                t.code AS topic_code,
+                c.title AS chapter_title,
+                c.description AS chapter_description,
+                s.title AS section_title
+            FROM theory_lessons l
+            JOIN theory_topics t ON t.id = l.topic_id
+            JOIN level_chapters c ON c.id = t.chapter_id
+            LEFT JOIN level_sections s ON s.id = l.section_id
+            WHERE l.id = ?
+            """,
+            (lesson_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "topicId": row["topic_id"],
+        "topicTitle": row["topic_title"],
+        "topicCode": row["topic_code"] or "",
+        "chapterId": row["chapter_id"],
+        "chapterTitle": row["chapter_title"],
+        "chapterDescription": row["chapter_description"] or "",
+        "title": row["title"],
+        "code": row["code"] or "",
+        "orderIndex": row["order_index"],
+        "sectionId": row["section_id"],
+        "sectionTitle": row["section_title"],
+        "contentHtml": row["content_html"],
+    }
+
+
+def create_theory_topic(
+    *,
+    chapter_id: str,
+    title: str,
+    code: Optional[str] = None,
+    summary: str = "",
+    order_index: Optional[int] = None,
+    topic_id: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        chapter_exists = conn.execute(
+            "SELECT 1 FROM level_chapters WHERE id = ?",
+            (chapter_id,),
+        ).fetchone()
+        if not chapter_exists:
+            return None
+        topic_id = topic_id or f"theory-topic-{uuid.uuid4().hex[:10]}"
+        if order_index is None:
+            order_index = _next_order_index(
+                conn,
+                "theory_topics",
+                "chapter_id = ?",
+                (chapter_id,),
+            )
+        conn.execute(
+            """
+            INSERT INTO theory_topics (id, chapter_id, code, title, summary, order_index)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (topic_id, chapter_id, code, title, summary, order_index),
+        )
+        conn.commit()
+    return get_theory_topic(topic_id)
+
+
+def update_theory_topic(
+    topic_id: str,
+    *,
+    chapter_id: Optional[str] = None,
+    title: Optional[str] = None,
+    code: Optional[str] = None,
+    summary: object = UNSET,
+    order_index: Optional[int] = None,
+) -> Optional[Dict[str, object]]:
+    existing = get_theory_topic(topic_id)
+    if not existing:
+        return None
+
+    with get_connection() as conn:
+        updates: List[str] = []
+        params: List[object] = []
+        target_chapter_id = existing["chapterId"]
+
+        if chapter_id and chapter_id != existing["chapterId"]:
+            chapter_exists = conn.execute(
+                "SELECT 1 FROM level_chapters WHERE id = ?",
+                (chapter_id,),
+            ).fetchone()
+            if not chapter_exists:
+                return None
+            target_chapter_id = chapter_id
+            updates.append("chapter_id = ?")
+            params.append(chapter_id)
+
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+
+        if code is not None:
+            updates.append("code = ?")
+            params.append(code)
+
+        if summary is not UNSET:
+            updates.append("summary = ?")
+            params.append(summary)
+
+        if order_index is not None:
+            updates.append("order_index = ?")
+            params.append(order_index)
+        elif chapter_id and chapter_id != existing["chapterId"]:
+            new_index = _next_order_index(
+                conn,
+                "theory_topics",
+                "chapter_id = ?",
+                (target_chapter_id,),
+            )
+            updates.append("order_index = ?")
+            params.append(new_index)
+
+        if not updates:
+            return existing
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(topic_id)
+        conn.execute(
+            f"UPDATE theory_topics SET {', '.join(updates)} WHERE id = ?",
+            tuple(params),
+        )
+        conn.commit()
+
+    return get_theory_topic(topic_id)
+
+
+def delete_theory_topic(topic_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM theory_topics WHERE id = ?", (topic_id,))
+        conn.commit()
+
+
+def create_theory_lesson(
+    *,
+    topic_id: str,
+    title: str,
+    code: Optional[str] = None,
+    content_html: str = "",
+    order_index: Optional[int] = None,
+    section_id: Optional[str] = None,
+    lesson_id: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
+    with get_connection() as conn:
+        topic_row = conn.execute(
+            "SELECT chapter_id FROM theory_topics WHERE id = ?",
+            (topic_id,),
+        ).fetchone()
+        if not topic_row:
+            return None
+        if section_id:
+            section_exists = conn.execute(
+                "SELECT 1 FROM level_sections WHERE id = ?",
+                (section_id,),
+            ).fetchone()
+            if not section_exists:
+                return None
+        lesson_id = lesson_id or f"theory-lesson-{uuid.uuid4().hex[:10]}"
+        if order_index is None:
+            order_index = _next_order_index(
+                conn,
+                "theory_lessons",
+                "topic_id = ?",
+                (topic_id,),
+            )
+        conn.execute(
+            """
+            INSERT INTO theory_lessons (
+                id, topic_id, code, title, content_html, order_index, section_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (lesson_id, topic_id, code, title, content_html, order_index, section_id),
+        )
+        conn.commit()
+    return get_theory_lesson(lesson_id)
+
+
+def update_theory_lesson(
+    lesson_id: str,
+    *,
+    topic_id: Optional[str] = None,
+    title: Optional[str] = None,
+    code: Optional[str] = None,
+    content_html: object = UNSET,
+    order_index: Optional[int] = None,
+    section_id: object = UNSET,
+) -> Optional[Dict[str, object]]:
+    existing = get_theory_lesson(lesson_id)
+    if not existing:
+        return None
+
+    with get_connection() as conn:
+        updates: List[str] = []
+        params: List[object] = []
+        target_topic_id = existing["topicId"]
+
+        if topic_id and topic_id != existing["topicId"]:
+            topic_row = conn.execute(
+                "SELECT chapter_id FROM theory_topics WHERE id = ?",
+                (topic_id,),
+            ).fetchone()
+            if not topic_row:
+                return None
+            target_topic_id = topic_id
+            updates.append("topic_id = ?")
+            params.append(topic_id)
+
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+
+        if code is not None:
+            updates.append("code = ?")
+            params.append(code)
+
+        if content_html is not UNSET:
+            updates.append("content_html = ?")
+            params.append(content_html)
+
+        if section_id is not UNSET:
+            if section_id:
+                section_exists = conn.execute(
+                    "SELECT 1 FROM level_sections WHERE id = ?",
+                    (section_id,),
+                ).fetchone()
+                if not section_exists:
+                    return None
+                updates.append("section_id = ?")
+                params.append(section_id)
+            else:
+                updates.append("section_id = NULL")
+
+        if order_index is not None:
+            updates.append("order_index = ?")
+            params.append(order_index)
+        elif topic_id and topic_id != existing["topicId"]:
+            new_index = _next_order_index(
+                conn,
+                "theory_lessons",
+                "topic_id = ?",
+                (target_topic_id,),
+            )
+            updates.append("order_index = ?")
+            params.append(new_index)
+
+        if not updates:
+            return existing
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(lesson_id)
+        conn.execute(
+            f"UPDATE theory_lessons SET {', '.join(updates)} WHERE id = ?",
+            tuple(params),
+        )
+        conn.commit()
+
+    return get_theory_lesson(lesson_id)
+
+
+def delete_theory_lesson(lesson_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM theory_lessons WHERE id = ?", (lesson_id,))
         conn.commit()
 
 

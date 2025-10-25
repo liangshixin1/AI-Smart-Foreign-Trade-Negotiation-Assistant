@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import chain
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 from openpyxl import load_workbook
@@ -279,4 +279,166 @@ def delete_admin_section(section_id: str):
     if not section:
         return jsonify({"error": "Section not found"}), 404
     database.delete_section(section_id)
+    return ("", 204)
+
+
+@bp.get("/api/admin/theory")
+@require_role("teacher")
+def list_admin_theory():
+    include_content = as_bool(request.args.get("includeContent"), default=True)
+    records = database.list_theory_hierarchy(include_content=include_content)
+    return jsonify({"theory": records})
+
+
+@bp.post("/api/admin/theory/topics")
+@require_role("teacher")
+def create_admin_theory_topic():
+    data = request.get_json(force=True) or {}
+    chapter_id = normalize_text(data.get("chapterId"))
+    if not chapter_id:
+        return jsonify({"error": "chapterId is required"}), 400
+
+    title = normalize_text(data.get("title")) or "未命名理论单元"
+    code = normalize_text(data.get("code")) or ""
+    summary = normalize_text(data.get("summary"))
+    order_index_raw = data.get("orderIndex")
+    order_index: Optional[int] = None
+    if order_index_raw not in (None, ""):
+        try:
+            order_index = int(order_index_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    record = database.create_theory_topic(
+        chapter_id=chapter_id,
+        title=title,
+        code=code,
+        summary=summary,
+        order_index=order_index,
+    )
+    if not record:
+        return jsonify({"error": "Chapter not found"}), 404
+    return jsonify({"topic": record}), 201
+
+
+@bp.put("/api/admin/theory/topics/<topic_id>")
+@require_role("teacher")
+def update_admin_theory_topic(topic_id: str):
+    data = request.get_json(force=True) or {}
+    updates: Dict[str, object] = {}
+
+    if "chapterId" in data:
+        updates["chapter_id"] = normalize_text(data.get("chapterId"))
+    if "title" in data:
+        title = normalize_text(data.get("title"))
+        if not title:
+            return jsonify({"error": "title is required"}), 400
+        updates["title"] = title
+    if "code" in data:
+        updates["code"] = normalize_text(data.get("code"))
+    if "summary" in data:
+        updates["summary"] = normalize_text(data.get("summary"))
+    if "orderIndex" in data:
+        order_value = data.get("orderIndex")
+        if order_value in (None, ""):
+            updates["order_index"] = None
+        else:
+            try:
+                updates["order_index"] = int(order_value)
+            except (TypeError, ValueError):
+                return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    topic = database.update_theory_topic(topic_id, **updates)
+    if not topic:
+        return jsonify({"error": "Topic not found"}), 404
+    return jsonify({"topic": topic})
+
+
+@bp.delete("/api/admin/theory/topics/<topic_id>")
+@require_role("teacher")
+def delete_admin_theory_topic(topic_id: str):
+    topic = database.get_theory_topic(topic_id)
+    if not topic:
+        return jsonify({"error": "Topic not found"}), 404
+    database.delete_theory_topic(topic_id)
+    return ("", 204)
+
+
+@bp.post("/api/admin/theory/lessons")
+@require_role("teacher")
+def create_admin_theory_lesson():
+    data = request.get_json(force=True) or {}
+    topic_id = normalize_text(data.get("topicId"))
+    if not topic_id:
+        return jsonify({"error": "topicId is required"}), 400
+
+    title = normalize_text(data.get("title")) or "未命名知识点"
+    code = normalize_text(data.get("code")) or ""
+    content_html = data.get("contentHtml") or ""
+    order_index_raw = data.get("orderIndex")
+    order_index: Optional[int] = None
+    if order_index_raw not in (None, ""):
+        try:
+            order_index = int(order_index_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    section_id = normalize_text(data.get("sectionId")) or None
+
+    lesson = database.create_theory_lesson(
+        topic_id=topic_id,
+        title=title,
+        code=code,
+        content_html=content_html,
+        order_index=order_index,
+        section_id=section_id,
+    )
+    if not lesson:
+        return jsonify({"error": "Unable to create lesson"}), 400
+    return jsonify({"lesson": lesson}), 201
+
+
+@bp.put("/api/admin/theory/lessons/<lesson_id>")
+@require_role("teacher")
+def update_admin_theory_lesson(lesson_id: str):
+    data = request.get_json(force=True) or {}
+    updates: Dict[str, object] = {}
+
+    if "topicId" in data:
+        updates["topic_id"] = normalize_text(data.get("topicId"))
+    if "title" in data:
+        title = normalize_text(data.get("title"))
+        if not title:
+            return jsonify({"error": "title is required"}), 400
+        updates["title"] = title
+    if "code" in data:
+        updates["code"] = normalize_text(data.get("code"))
+    if "contentHtml" in data:
+        updates["content_html"] = data.get("contentHtml") or ""
+    if "orderIndex" in data:
+        order_value = data.get("orderIndex")
+        if order_value in (None, ""):
+            updates["order_index"] = None
+        else:
+            try:
+                updates["order_index"] = int(order_value)
+            except (TypeError, ValueError):
+                return jsonify({"error": "orderIndex must be an integer"}), 400
+    if "sectionId" in data:
+        section_value = normalize_text(data.get("sectionId"))
+        updates["section_id"] = section_value or None
+
+    lesson = database.update_theory_lesson(lesson_id, **updates)
+    if not lesson:
+        return jsonify({"error": "Lesson not found"}), 404
+    return jsonify({"lesson": lesson})
+
+
+@bp.delete("/api/admin/theory/lessons/<lesson_id>")
+@require_role("teacher")
+def delete_admin_theory_lesson(lesson_id: str):
+    lesson = database.get_theory_lesson(lesson_id)
+    if not lesson:
+        return jsonify({"error": "Lesson not found"}), 404
+    database.delete_theory_lesson(lesson_id)
     return ("", 204)

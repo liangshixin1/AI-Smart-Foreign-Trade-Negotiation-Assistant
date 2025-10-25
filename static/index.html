@@ -8,6 +8,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -1448,6 +1453,51 @@
         </section>
 
         <section
+          id="theory-panel"
+          class="surface-card hidden p-5 sm:p-6"
+        >
+          <div class="flex flex-col gap-6">
+            <div class="space-y-3">
+              <p class="text-sm text-slate-400">STEP 0</p>
+              <h2 class="text-xl font-semibold text-white">理论学习知识库</h2>
+              <p class="text-sm text-slate-400">
+                在关卡练习之前，先复习章节知识点，理解核心概念后再挑战实战任务。
+              </p>
+              <p id="theory-status" class="text-xs text-slate-500"></p>
+            </div>
+            <div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <aside class="space-y-3">
+                <div id="theory-tree" class="space-y-3 text-sm"></div>
+              </aside>
+              <div class="space-y-4">
+                <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-inner shadow-slate-950/20">
+                  <p
+                    id="theory-lesson-code"
+                    class="text-xs font-semibold uppercase tracking-widest text-blue-300"
+                  ></p>
+                  <h3 id="theory-lesson-title" class="mt-1 text-lg font-semibold text-white"></h3>
+                  <div id="theory-lesson-html" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></div>
+                </article>
+                <div
+                  id="theory-challenge"
+                  class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-100 shadow-inner shadow-blue-500/10"
+                >
+                  <p class="text-xs font-semibold uppercase tracking-widest text-blue-300">关卡挑战</p>
+                  <p id="theory-challenge-title" class="mt-2 text-sm font-semibold"></p>
+                  <button
+                    id="theory-challenge-action"
+                    type="button"
+                    class="mt-3 rounded-xl border border-blue-400/60 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white"
+                  >
+                    前往对应关卡
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
           id="loading-panel"
           class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center text-blue-800"
         >
@@ -1666,6 +1716,7 @@
             </button>
             <button class="tab-trigger" data-admin-tab="assignments">统一作业</button>
             <button class="tab-trigger" data-admin-tab="levels">关卡编辑器</button>
+            <button class="tab-trigger" data-admin-tab="theory">理论学习管理</button>
           </div>
 
           <section class="admin-account-card">
@@ -1913,6 +1964,190 @@
                     保存统一作业
                   </button>
                 </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel" data-admin-panel="theory">
+            <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+              <div class="space-y-4">
+                <div class="space-y-2">
+                  <p class="text-sm text-slate-400">章节 · 目录 · 节点</p>
+                  <h2 class="text-xl font-semibold text-white">理论学习管理</h2>
+                  <p class="text-xs text-slate-400">
+                    按照章节构建三级理论内容，支持富文本编辑并可灵活关联任意关卡挑战。
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300">
+                  <div class="flex flex-1 flex-col gap-1">
+                    <span class="font-semibold text-slate-100">目录结构</span>
+                    <span>先选择章节下的理论目录，再新增或编辑三级内容。</span>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      id="admin-theory-create-topic"
+                      class="rounded-xl border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-300 hover:text-white"
+                    >
+                      新建理论目录
+                    </button>
+                    <button
+                      type="button"
+                      id="admin-theory-create-lesson"
+                      class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                    >
+                      新建三级内容
+                    </button>
+                  </div>
+                </div>
+                <p id="admin-theory-status" class="text-xs text-slate-500"></p>
+                <div id="admin-theory-tree" class="space-y-4"></div>
+              </div>
+
+              <div class="space-y-6">
+                <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div class="space-y-1">
+                    <h3 class="text-lg font-semibold text-white">理论目录</h3>
+                    <p class="text-xs text-slate-400">配置章节下的二级理论目录，设定编码与排序。</p>
+                  </div>
+                  <form id="admin-theory-topic-form" class="space-y-4 hidden">
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">所属章节</span>
+                      <select
+                        id="admin-theory-topic-chapter"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                      ></select>
+                    </label>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">目录编码（如 6-2）</span>
+                      <input
+                        id="admin-theory-topic-code"
+                        type="text"
+                        placeholder="可选，便于与章节对应"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                      />
+                    </label>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">目录标题</span>
+                      <input
+                        id="admin-theory-topic-title"
+                        type="text"
+                        placeholder="请输入目录标题"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                      />
+                    </label>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">目录简介</span>
+                      <textarea
+                        id="admin-theory-topic-summary"
+                        rows="3"
+                        placeholder="用于学生快速了解本目录的内容重点"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                      ></textarea>
+                    </label>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">排序权重（数字越小越靠前）</span>
+                      <input
+                        id="admin-theory-topic-order"
+                        type="number"
+                        class="w-32 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                      />
+                    </label>
+                    <div class="flex flex-wrap gap-3">
+                      <button type="submit" class="rounded-xl bg-blue-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600">
+                        保存目录
+                      </button>
+                      <button
+                        type="button"
+                        id="admin-theory-topic-delete"
+                        class="rounded-xl border border-rose-400/60 px-4 py-2 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50"
+                        disabled
+                      >
+                        删除目录
+                      </button>
+                    </div>
+                  </form>
+                  <p id="admin-theory-topic-status" class="text-xs text-slate-500"></p>
+                </div>
+
+                <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div class="space-y-1">
+                    <h3 class="text-lg font-semibold text-white">理论内容小节</h3>
+                    <p class="text-xs text-slate-400">撰写富文本内容，可选关联任意关卡展示挑战泡泡。</p>
+                  </div>
+                  <form id="admin-theory-lesson-form" class="space-y-4 hidden">
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">归属目录</span>
+                      <select
+                        id="admin-theory-lesson-topic"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                      ></select>
+                    </label>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label class="block space-y-1 text-sm">
+                        <span class="text-slate-300">小节编码（如 6-2-1）</span>
+                        <input
+                          id="admin-theory-lesson-code"
+                          type="text"
+                          placeholder="可选，自定义三级编码"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                        />
+                      </label>
+                      <label class="block space-y-1 text-sm">
+                        <span class="text-slate-300">显示排序</span>
+                        <input
+                          id="admin-theory-lesson-order"
+                          type="number"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">小节标题</span>
+                      <input
+                        id="admin-theory-lesson-title"
+                        type="text"
+                        placeholder="请输入小节标题"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                      />
+                    </label>
+                    <label class="block space-y-1 text-sm">
+                      <span class="text-slate-300">关联关卡挑战（可选）</span>
+                      <select
+                        id="admin-theory-lesson-section"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                      ></select>
+                    </label>
+                    <div class="space-y-2">
+                      <span class="text-sm text-slate-300">理论内容正文</span>
+                      <div
+                        id="admin-theory-lesson-editor"
+                        class="min-h-[240px] rounded-xl border border-slate-700 bg-white text-slate-900"
+                      ></div>
+                      <textarea
+                        id="admin-theory-lesson-content"
+                        class="hidden w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white"
+                      ></textarea>
+                      <p class="text-xs text-slate-500">
+                        若网络无法加载富文本编辑器，将自动显示文本域备用。
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                      <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600">
+                        保存内容
+                      </button>
+                      <button
+                        type="button"
+                        id="admin-theory-lesson-delete"
+                        class="rounded-xl border border-rose-400/60 px-4 py-2 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50"
+                        disabled
+                      >
+                        删除内容
+                      </button>
+                    </div>
+                  </form>
+                  <p id="admin-theory-lesson-status" class="text-xs text-slate-500"></p>
+                </div>
               </div>
             </div>
           </div>
