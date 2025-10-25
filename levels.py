@@ -89,6 +89,7 @@ _SCENARIO_FIELD_DEFINITIONS = {
     "stakeholder_matrix": '  "stakeholder_matrix": ["列出参与方及职责"],',
     "contingency_preplans": '  "contingency_preplans": ["列出预案或风险缓解措施"],',
     "documentation_control": '  "documentation_control": ["列出需掌握的关键单证"],',
+    "special_background": '  "special_background": "特殊背景设定（政治、信用、供应链等压力源）",',
 }
 
 
@@ -157,6 +158,52 @@ _LOGISTICS_MASTER_FIELDS = [
     "stakeholder_matrix",
     "contingency_preplans",
     "documentation_control",
+]
+
+_LC_REVIEW_FIELDS = [
+    "document_snapshot",
+    "compliance_red_flags",
+    "payment_terms_matrix",
+    "payment_risk_alerts",
+    "special_background",
+]
+
+_COLLECTION_NEGOTIATION_FIELDS = [
+    "payment_terms_matrix",
+    "cash_flow_constraints",
+    "payment_risk_alerts",
+    "special_background",
+]
+
+_TT_NEGOTIATION_FIELDS = [
+    "payment_terms_matrix",
+    "cash_flow_constraints",
+    "payment_risk_alerts",
+    "special_background",
+]
+
+_SPLIT_SHIPMENT_FIELDS = [
+    "operation_timeline",
+    "transport_plan",
+    "cash_flow_constraints",
+    "contingency_preplans",
+    "special_background",
+]
+
+_INCOTERMS_NEGOTIATION_FIELDS = [
+    "incoterms_focus",
+    "cost_structure_hint",
+    "transport_plan",
+    "special_background",
+]
+
+_RISK_ORDER_FIELDS = [
+    "payment_terms_matrix",
+    "cash_flow_constraints",
+    "payment_risk_alerts",
+    "incoterms_focus",
+    "contingency_preplans",
+    "special_background",
 ]
 
 
@@ -389,6 +436,99 @@ def _payment_negotiation_evaluation_prompt() -> str:
 """.strip()
 
 
+def _lc_review_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表买方或其开证行，与 {student_company_name} 的 {student_role} 协商信用证条款。
+任务要求：
+1. 首轮回复必须直接抛出一份存在软条款与模糊要求的信用证草稿摘要，引用 {document_snapshot} 与 {payment_terms_matrix} 中的问题点，并以“客检证”“模糊单据描述”等方式制造风险。
+2. 在后续互动中，当学生要求改证或澄清时，先坚持原条款或提供模糊回应；若学生给出充分理由，可逐步让步，但须保留谈判张力。
+3. 将 {special_background} 作为谈判压力来源，强调时间紧迫、合规审查或买方内部流程的束缚。
+4. 每次回复 2-3 段，全程使用英文，语气专业但不完全配合。
+""".strip()
+
+
+def _lc_review_evaluation_prompt() -> str:
+    return """
+你是一名信用证合规教练，负责评估学生审证与改证能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Vigilant / Cautious / Exposed",
+  "commentary": "中文详尽点评，指出识别软条款与改证措辞的表现",
+  "action_items": ["列出 3 条提升审证实务的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，用以衡量学生谈判主导度"
+}}
+
+重点关注：
+- 能否识别软条款、模糊单据要求及不合理银行条款。
+- 是否提出具体改证要求并维护信用证的可操作性。
+- 沟通是否专业、具法律与风险意识。
+""".strip()
+
+
+def _collection_risk_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表信用状况不明或市场波动剧烈的买方，与 {student_company_name} 的 {student_role} 就托收条款展开博弈。
+互动准则：
+1. 起始立场坚持使用 D/P 或 D/A，并结合 {special_background} 说明资金压力或市场不确定性，同时强调 {cash_flow_constraints}。
+2. 学生提出风险或附加条件时，先质疑或拖延，例如声称无法接受提高预付款、拒绝保险等；若学生坚持并给出充分论证，再逐步让步。
+3. 在对话中主动抛出“买方拒付”“承兑后逾期”等情境，引用 {payment_risk_alerts} 触发学生应急方案。
+4. 每轮回复 2 段左右，全程使用英文，语气可略显强势。
+""".strip()
+
+
+def _collection_risk_evaluation_prompt() -> str:
+    return """
+你是一名国际结算风控导师，评估学生应对托收风险的策略。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Protected / Balanced / Vulnerable",
+  "commentary": "中文详尽点评，聚焦托收风险识别与应急预案",
+  "action_items": ["提供 3 条强化托收谈判的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，呈现学生主导度"
+}}
+
+评分重点：
+- 是否正确评估 D/P、D/A 的信用风险与成本。
+- 是否提出有效的附加条件或替代方案以降低风险。
+- 面对拒付或逾期情境时是否具备应急处理思路。
+""".strip()
+
+
+def _tt_balancing_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，与 {student_company_name} 的 {student_role} 针对 T/T 付款节奏反复拉锯。
+互动要求：
+1. 先提出对学生不利的 T/T 结构，例如高额前款或货到付款，并引用 {special_background} 与 {cash_flow_constraints} 合理化你的要求。
+2. 学生提出折中方案时，先以资金调度、内部审批或外汇限制为由拒绝；若学生提出数据、风险对冲或交货联动逻辑，再逐步调整比例与节点。
+3. 动态抛出延迟付款、汇款拆分或凭提单副本付款等情境，促使学生守住底线。
+4. 每次回复 2-3 段，全程使用英文，语气务实但带压力感。
+""".strip()
+
+
+def _tt_balancing_evaluation_prompt() -> str:
+    return """
+你是一名国际结算顾问，评估学生在 T/T 条款上的平衡能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Well-balanced / Acceptable / Risky",
+  "commentary": "中文详尽点评，关注 T/T 节奏设计与风险对价",
+  "action_items": ["提供 3 条优化 T/T 谈判的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，显示学生谈判主动权"
+}}
+
+评估重点：
+- 是否设计出兼顾现金流与交付风险的付款节点。
+- 是否坚守底线并运用让步换取对价。
+- 沟通表达是否专业且逻辑严密。
+""".strip()
+
+
 def _final_contract_conversation_prompt() -> str:
     return """
 你是 {ai_company_name} 的 {ai_role}，向 {student_company_name} 的 {student_role} 递交整合背景的正式合同/销售确认书。
@@ -510,6 +650,99 @@ def _transport_selection_evaluation_prompt() -> str:
 - 是否根据货物特性、交货期与预算做出合理运输决策。
 - 是否准确运用 Incoterms 划分责任、费用与风险。
 - 谈判表达是否专业、有数据支撑并能说服对方。
+""".strip()
+
+
+def _split_shipment_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，与 {student_company_name} 的 {student_role} 就分批交货安排展开谈判。
+互动流程：
+1. 首轮说明分批原因（如仓储、资金或产能问题），并提出对学生不利的初始计划，结合 {special_background} 与 {operation_timeline} 制造紧迫感。
+2. 学生重新规划批次、数量或付款节点时，先从成本、排产或运输角度质疑，必要时引用 {transport_plan} 与 {cash_flow_constraints} 抗辩；若学生给出完整计划，再逐步让步并要求附加条件。
+3. 主动抛出“产线故障”“船期延误”等突发情况，引导学生启动 {contingency_preplans} 并保持沟通节奏。
+4. 每次回复 2 段左右，全程使用英文，语气务实并带有压力测试感。
+""".strip()
+
+
+def _split_shipment_evaluation_prompt() -> str:
+    return """
+你是一名供应链规划导师，评估学生在分批交货谈判中的掌控力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Coordinated / Balanced / Disordered",
+  "commentary": "中文详尽点评，关注批次规划、付款节奏与风险预案",
+  "action_items": ["给出 3 条强化分批交付能力的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，反映学生掌控度"
+}}
+
+评估重点：
+- 是否能设计清晰的分批计划并匹配付款节点。
+- 面对突发事件时是否调整及时且沟通到位。
+- 是否兼顾现金流安全与客户关系。
+""".strip()
+
+
+def _incoterms_responsibility_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，试图在 Incoterms 上模糊责任，与 {student_company_name} 的 {student_role} 进行交货条款谈判。
+互动要求：
+1. 先在 {incoterms_focus} 中制造责任偏差，例如在 EXW 下要求卖方装车、在 CIF 下要求承担目的港滞港费，并引用 {special_background} 作为借口。
+2. 学生澄清责任划分时，先坚持己见或提出额外费用要求；若学生引用规则条款或成本结构（{cost_structure_hint}），逐步让步并协商替代方案或价格调整。
+3. 适时讨论 {transport_plan}，强调风险节点，诱导学生说明保险、装卸、清关等责任归属。
+4. 每次回复 2-3 段，全程使用英文，语气专业但具挑衅性。
+""".strip()
+
+
+def _incoterms_responsibility_evaluation_prompt() -> str:
+    return """
+你是一名 Incoterms 讲师，评估学生划分责任与费用的准确度。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Precise / Adequate / Risky",
+  "commentary": "中文详尽点评，强调责任节点、成本对价与风险控制",
+  "action_items": ["提供 3 条深化 Incoterms 运用的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，展示学生掌控度"
+}}
+
+考核重点：
+- 能否引用 Incoterms 规则澄清责任与风险转移点。
+- 是否据理驳斥对方不合理要求并提出合理对价。
+- 表达是否专业并兼顾成本分析。
+""".strip()
+
+
+def _risk_order_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，代表一个高风险订单的对手方，与 {student_company_name} 的 {student_role} 展开多轮综合谈判。
+互动指引：
+1. 首轮明确 {special_background} 中的政治或信用风险，并递上初步条件（{payment_terms_matrix}、{incoterms_focus}），暗示高利润但伴随不确定性。
+2. 学生尝试设计组合式方案时，先提出质疑或强调内部限制，要求更宽松的付款与交货条件；若学生提供合理风控组合（如保险、担保、预付款），再逐步谈判细节。
+3. 适度引入新变量，如政策突变、汇率波动或产能瓶颈，促使学生动用 {contingency_preplans} 并调整谈判策略。
+4. 每次回复 3 段以内，全程使用英文，语气务实但不失警觉。
+""".strip()
+
+
+def _risk_order_evaluation_prompt() -> str:
+    return """
+你是一名外贸全局风控教练，负责评估学生处理高风险订单的综合能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Secure / Balanced / Hazardous",
+  "commentary": "中文详尽点评，从财务安全、履约可行性与风险对冲三方面给出分析",
+  "action_items": ["提供 3 条进一步强化风控方案的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，显示学生主导度"
+}}
+
+评估重点：
+- 是否全面识别政治、信用与操作风险并提出对应策略。
+- 付款、交货与保障工具的组合是否可执行且互相支撑。
+- 对突发变量的应对是否展现弹性与决策力。
 """.strip()
 
 
@@ -842,6 +1075,108 @@ CHAPTERS: List[ChapterConfig] = [
                 environment_user_message="生成多角色协同的全流程装运 JSON 场景设定。",
                 conversation_prompt_template=_logistics_master_conversation_prompt(),
                 evaluation_prompt_template=_logistics_master_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-6",
+        title="第 6 章 · 付款与交货综合实战",
+        sections=[
+            SectionConfig(
+                id="chapter-6-section-1",
+                title="小节 1 · 付款（一）：信用证审证与改证",
+                description=(
+                    "AI 扮演买方或开证行，提供充满软条款与模糊要求的信用证草稿，学生需识别风险并提出改证。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 1 · 付款（一）：信用证审证与改证",
+                    extra_fields=_LC_REVIEW_FIELDS,
+                ),
+                environment_user_message="生成信用证审证与改证训练所需的 JSON 场景设定，并确保包含特殊背景字段。",
+                conversation_prompt_template=_lc_review_conversation_prompt(),
+                evaluation_prompt_template=_lc_review_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-6-section-2",
+                title="小节 2 · 付款（二）：托收的风险博弈",
+                description=(
+                    "AI 扮演信用状况不明的买方，坚持 D/P 或 D/A，学生需评估风险并提出接受、拒绝或附加条件。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 2 · 付款（二）：托收的风险博弈",
+                    extra_fields=_COLLECTION_NEGOTIATION_FIELDS,
+                ),
+                environment_user_message="生成围绕托收风险与应急策略的 JSON 场景资料，务必体现特殊背景设定。",
+                conversation_prompt_template=_collection_risk_conversation_prompt(),
+                evaluation_prompt_template=_collection_risk_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-6-section-3",
+                title="小节 3 · 付款（三）：电汇的节奏把控",
+                description=(
+                    "AI 与学生围绕 T/T 付款比例与节点进行拉锯，测试学生在资金压力下的底线坚守与灵活应变。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 3 · 付款（三）：电汇的节奏把控",
+                    extra_fields=_TT_NEGOTIATION_FIELDS,
+                ),
+                environment_user_message="生成涉及 T/T 比例、节点谈判与风险缓释的 JSON 场景设定，并写明特殊背景。",
+                conversation_prompt_template=_tt_balancing_conversation_prompt(),
+                evaluation_prompt_template=_tt_balancing_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-6-section-4",
+                title="小节 4 · 交货（一）：分批交货的策略",
+                description=(
+                    "AI 模拟因仓储、资金或产能问题要求分批交货的对手方，学生需规划批次并匹配付款节奏，确保现金流安全。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 4 · 交货（一）：分批交货的策略",
+                    extra_fields=_SPLIT_SHIPMENT_FIELDS,
+                ),
+                environment_user_message="生成分批交货规划与风险应对的 JSON 场景资料，需包含特殊背景描述。",
+                conversation_prompt_template=_split_shipment_conversation_prompt(),
+                evaluation_prompt_template=_split_shipment_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-6-section-5",
+                title="小节 5 · 交货（二）：Incoterms 的责任界定",
+                description=(
+                    "AI 模糊贸易术语责任分界，学生需运用 Incoterms 划分费用、风险与责任，并驳斥不合理要求。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 5 · 交货（二）：Incoterms 的责任界定",
+                    extra_fields=_INCOTERMS_NEGOTIATION_FIELDS,
+                ),
+                environment_user_message="生成聚焦 Incoterms 责任划分与成本分析的 JSON 场景设定，并点明特殊背景。",
+                conversation_prompt_template=_incoterms_responsibility_conversation_prompt(),
+                evaluation_prompt_template=_incoterms_responsibility_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-6-section-6",
+                title="小节 6 · 综合演练：风险订单谈判",
+                description=(
+                    "AI 构建高政治或高信用风险的订单场景，学生需统筹付款与交货组合方案，并完成多轮谈判。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 6 章 · 付款与交货综合实战",
+                    "小节 6 · 综合演练：风险订单谈判",
+                    extra_fields=_RISK_ORDER_FIELDS,
+                ),
+                environment_user_message="生成涵盖政治/信用风险背景的综合谈判 JSON 场景，并突出特殊背景线索。",
+                conversation_prompt_template=_risk_order_conversation_prompt(),
+                evaluation_prompt_template=_risk_order_evaluation_prompt(),
                 expects_bargaining=True,
             ),
         ],
