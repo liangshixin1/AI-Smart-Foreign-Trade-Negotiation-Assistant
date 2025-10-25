@@ -61,7 +61,7 @@ _SCENARIO_FIELD_DEFINITIONS = {
     "communication_tone": '  "communication_tone": "整体语气与礼仪要求",',
     "checklist": '  "checklist": ["列出学生在本关卡需完成的行动步骤"],',
     "knowledge_points": '  "knowledge_points": ["对应该课程的核心知识点词条"],',
-    "opening_message": '  "opening_message": "AI 进入场景后的首句开场白（中英结合）",',
+    "opening_message": '  "opening_message": "AI 进入场景后的首句开场白（全英文）",',
     "contact_background": '  "contact_background": "买卖双方过往合作或推荐来源概览",',
     "inquiry_focus": '  "inquiry_focus": ["列出需优先确认的业务焦点"],',
     "inquiry_information_gaps": '  "inquiry_information_gaps": ["列出学生需要补充的关键信息"],',
