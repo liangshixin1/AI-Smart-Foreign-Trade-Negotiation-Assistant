@@ -25,7 +25,153 @@ class ChapterConfig:
     sections: List[SectionConfig]
 
 
-def _environment_prompt_template(chapter_title: str, section_title: str) -> str:
+_BASE_SCENARIO_FIELDS = [
+    "scenario_title",
+    "scenario_summary",
+    "student_role",
+    "student_company",
+    "ai_role",
+    "ai_company",
+    "product",
+    "market_landscape",
+    "timeline",
+    "logistics",
+    "risks",
+    "negotiation_targets",
+    "communication_tone",
+    "checklist",
+    "knowledge_points",
+    "opening_message",
+]
+
+
+_SCENARIO_FIELD_DEFINITIONS = {
+    "scenario_title": '  "scenario_title": "简短标题",',
+    "scenario_summary": '  "scenario_summary": "1-2 句中文摘要，必要时辅以英文关键词",',
+    "student_role": '  "student_role": "学生扮演的角色与职位",',
+    "student_company": '  "student_company": {\n    "name": "公司名称",\n    "profile": "公司背景与优势"\n  },',
+    "ai_role": '  "ai_role": "AI 扮演的角色与职位",',
+    "ai_company": '  "ai_company": {\n    "name": "公司名称",\n    "profile": "公司背景与优势"\n  },',
+    "product": '  "product": {\n    "name": "产品名称",\n    "specifications": "主要规格/品质标准",\n    "quantity_requirement": "需求或供给数量",\n    "price_expectation": {\n      "student_target": "学生期望价格或条件",\n      "ai_bottom_line": "AI 方可接受底线"\n    }\n  },',
+    "market_landscape": '  "market_landscape": "目标市场现况（可中英混合）",',
+    "timeline": '  "timeline": "交期或时程要求",',
+    "logistics": '  "logistics": "物流/贸易术语关键点",',
+    "risks": '  "risks": ["至少 2 条风险提醒"],',
+    "negotiation_targets": '  "negotiation_targets": ["列出 3-5 条双方需讨论的焦点"],',
+    "communication_tone": '  "communication_tone": "整体语气与礼仪要求",',
+    "checklist": '  "checklist": ["列出学生在本关卡需完成的行动步骤"],',
+    "knowledge_points": '  "knowledge_points": ["对应该课程的核心知识点词条"],',
+    "opening_message": '  "opening_message": "AI 进入场景后的首句开场白（中英结合）",',
+    "contact_background": '  "contact_background": "买卖双方过往合作或推荐来源概览",',
+    "inquiry_focus": '  "inquiry_focus": ["列出需优先确认的业务焦点"],',
+    "inquiry_information_gaps": '  "inquiry_information_gaps": ["列出学生需要补充的关键信息"],',
+    "pricing_positioning": '  "pricing_positioning": "价格定位、成本优势或市场比较提示",',
+    "concession_levers": '  "concession_levers": ["列出可协商的让步项目及优先级"],',
+    "value_add_options": '  "value_add_options": ["列出可附加的增值服务或保障条款"],',
+    "counter_offer_background": '  "counter_offer_background": "上一轮报价与对方回应摘要",',
+    "negotiation_pressures": '  "negotiation_pressures": ["列出市场或内部造成的谈判压力"],',
+    "document_snapshot": '  "document_snapshot": {\n    "document_type": "文件类别",\n    "issues_to_verify": ["列出 3 个可能的漏洞"]\n  },',
+    "compliance_red_flags": '  "compliance_red_flags": ["列出合同/报价中隐藏的风险点"],',
+    "contract_risk_scope": '  "contract_risk_scope": ["列出需重点复核的条款模块"],',
+    "payment_terms_matrix": '  "payment_terms_matrix": {\n    "proposed": "AI 提议的支付方式",\n    "alternatives": ["列出可考虑的支付方案"]\n  },',
+    "cash_flow_constraints": '  "cash_flow_constraints": "学生或对方的资金压力与目标描述",',
+    "payment_risk_alerts": '  "payment_risk_alerts": ["列出需重点防范的风险"],',
+    "receivables_status": '  "receivables_status": {\n    "overdue_amount": "逾期金额或比例",\n    "overdue_days": "逾期天数说明"\n  },',
+    "collection_history": '  "collection_history": ["列出已采取的催款动作"],',
+    "escalation_options": '  "escalation_options": ["列出下一步可执行的催收措施"],',
+    "packaging_snapshot": '  "packaging_snapshot": {\n    "current_plan": "现有包装方案概述",\n    "identified_flaws": ["列出 2-3 个明显缺陷"]\n  },',
+    "shipping_mark_gaps": '  "shipping_mark_gaps": ["列出唛头缺失或错误的要素"],',
+    "logistics_constraints": '  "logistics_constraints": "运输或仓储限制提示",',
+    "transport_plan": '  "transport_plan": {\n    "proposed_mode": "当前提议的运输方式",\n    "justification": "提议理由"\n  },',
+    "incoterms_focus": '  "incoterms_focus": {\n    "current_term": "当前贸易术语",\n    "responsibility_gap": "潜在责任盲点"\n  },',
+    "cost_structure_hint": '  "cost_structure_hint": ["列出需评估的成本构成"],',
+    "operation_timeline": '  "operation_timeline": ["列出主要时间节点或里程碑"],',
+    "stakeholder_matrix": '  "stakeholder_matrix": ["列出参与方及职责"],',
+    "contingency_preplans": '  "contingency_preplans": ["列出预案或风险缓解措施"],',
+    "documentation_control": '  "documentation_control": ["列出需掌握的关键单证"],',
+}
+
+
+_INQUIRY_SCENARIO_FIELDS = [
+    "contact_background",
+    "inquiry_focus",
+    "inquiry_information_gaps",
+]
+
+_OFFER_SCENARIO_FIELDS = [
+    "pricing_positioning",
+    "concession_levers",
+    "value_add_options",
+]
+
+_COUNTER_OFFER_SCENARIO_FIELDS = [
+    "pricing_positioning",
+    "concession_levers",
+    "counter_offer_background",
+    "negotiation_pressures",
+]
+
+_DOCUMENT_REVIEW_FIELDS = [
+    "document_snapshot",
+    "compliance_red_flags",
+]
+
+_CONTRACT_REVIEW_FIELDS = [
+    "document_snapshot",
+    "compliance_red_flags",
+    "contract_risk_scope",
+]
+
+_PAYMENT_NEGOTIATION_FIELDS = [
+    "payment_terms_matrix",
+    "cash_flow_constraints",
+    "payment_risk_alerts",
+]
+
+_RECEIVABLES_FIELDS = [
+    "receivables_status",
+    "collection_history",
+    "escalation_options",
+]
+
+_PACKAGING_FIELDS = [
+    "packaging_snapshot",
+    "shipping_mark_gaps",
+    "logistics_constraints",
+]
+
+_TRANSPORT_FIELDS = [
+    "transport_plan",
+    "incoterms_focus",
+    "cost_structure_hint",
+]
+
+_SHIPMENT_COORDINATION_FIELDS = [
+    "operation_timeline",
+    "stakeholder_matrix",
+    "contingency_preplans",
+]
+
+_LOGISTICS_MASTER_FIELDS = [
+    "operation_timeline",
+    "stakeholder_matrix",
+    "contingency_preplans",
+    "documentation_control",
+]
+
+
+def _environment_prompt_template(
+    chapter_title: str, section_title: str, extra_fields: Optional[List[str]] = None
+) -> str:
+    field_order: List[str] = []
+    for key in _BASE_SCENARIO_FIELDS + (extra_fields or []):
+        if key not in _SCENARIO_FIELD_DEFINITIONS:
+            raise KeyError(f"未知的场景字段：{key}")
+        if key not in field_order:
+            field_order.append(key)
+
+    field_lines = "\n".join(_SCENARIO_FIELD_DEFINITIONS[key] for key in field_order)
+
     return f"""
 你正在为《AI 外贸谈判课助手》的实训课设计章节场景。
 章节：{chapter_title}
@@ -35,36 +181,7 @@ def _environment_prompt_template(chapter_title: str, section_title: str) -> str:
 
 JSON 结构需严格使用以下键名：
 {{
-  "scenario_title": "简短标题",
-  "scenario_summary": "1-2 句中文摘要，必要时辅以英文关键词",
-  "student_role": "学生扮演的角色与职位",
-  "student_company": {{
-    "name": "公司名称",
-    "profile": "公司背景与优势"
-  }},
-  "ai_role": "AI 扮演的角色与职位",
-  "ai_company": {{
-    "name": "公司名称",
-    "profile": "公司背景与优势"
-  }},
-  "product": {{
-    "name": "产品名称",
-    "specifications": "主要规格/品质标准",
-    "quantity_requirement": "需求或供给数量",
-    "price_expectation": {{
-      "student_target": "学生期望价格或条件",
-      "ai_bottom_line": "AI 方可接受底线"
-    }}
-  }},
-  "market_landscape": "目标市场现况（可中英混合）",
-  "timeline": "交期或时程要求",
-  "logistics": "物流/贸易术语关键点",
-  "risks": ["至少 2 条风险提醒"],
-  "negotiation_targets": ["列出 3-5 条双方需讨论的焦点"],
-  "communication_tone": "整体语气与礼仪要求",
-  "checklist": ["列出学生在本关卡需完成的行动步骤"],
-  "knowledge_points": ["对应该课程的核心知识点词条"],
-  "opening_message": "AI 进入场景后的首句开场白（中英结合）"
+{field_lines}
 }}
 
 所有字段均需使用简体中文，可穿插必要的专业英文术语。
@@ -470,7 +587,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "模拟学生作为进口商，向海外供应商发起询盘，完善产品、数量、交期等必要信息。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 1 章 · 询盘 Inquiry", "小节 1 · 首封询盘信息写作"
+                    "第 1 章 · 询盘 Inquiry",
+                    "小节 1 · 首封询盘信息写作",
+                    extra_fields=_INQUIRY_SCENARIO_FIELDS,
                 ),
                 environment_user_message="为上述询盘训练情境生成 JSON 场景设定。",
                 conversation_prompt_template=_inquiry_conversation_prompt(),
@@ -484,7 +603,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生需针对供应商的追问，进一步澄清产品细节与合作意向，学习跟进礼仪。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 1 章 · 询盘 Inquiry", "小节 2 · 询盘需求澄清与跟进"
+                    "第 1 章 · 询盘 Inquiry",
+                    "小节 2 · 询盘需求澄清与跟进",
+                    extra_fields=_INQUIRY_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成有关询盘澄清阶段的 JSON 场景资料。",
                 conversation_prompt_template=_inquiry_conversation_prompt(),
@@ -504,7 +625,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生扮演卖家，向买家提供完整报价单，并处理关于折扣与交期的追问。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 2 章 · 报盘 Offer", "小节 1 · 报盘方案设计"
+                    "第 2 章 · 报盘 Offer",
+                    "小节 1 · 报盘方案设计",
+                    extra_fields=_OFFER_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成报盘方案设计的 JSON 情境设定。",
                 conversation_prompt_template=_offer_conversation_prompt(),
@@ -518,7 +641,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生扮演买家，与卖家围绕折扣、付款与售后条款展开议价，练习让步策略。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 2 章 · 报盘 Offer", "小节 2 · 议价与让步策略"
+                    "第 2 章 · 报盘 Offer",
+                    "小节 2 · 议价与让步策略",
+                    extra_fields=_COUNTER_OFFER_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成议价谈判场景的 JSON 设定。",
                 conversation_prompt_template=_offer_conversation_prompt(),
@@ -538,7 +663,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "占位内容：后续将加入针对还盘场景的完整训练。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 3 章 · 还盘 Counter-offer", "小节 1 · 还盘策略演练"
+                    "第 3 章 · 还盘 Counter-offer",
+                    "小节 1 · 还盘策略演练",
+                    extra_fields=_COUNTER_OFFER_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成还盘策略演练的 JSON 情境（示例）。",
                 conversation_prompt_template=_offer_conversation_prompt(),
@@ -558,7 +685,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "AI 提供存在遗漏或错误的报价单，学生需识别单价、总额、贸易术语、有效期与付款方式中的陷阱。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 1 · 报价单审阅"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 1 · 报价单审阅",
+                    extra_fields=_DOCUMENT_REVIEW_FIELDS,
                 ),
                 environment_user_message="生成围绕报价单审阅与风险识别的 JSON 场景设定。",
                 conversation_prompt_template=_quotation_review_conversation_prompt(),
@@ -572,7 +701,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "AI 提供与前序约定不完全一致的形式发票，学生需核对条款并要求修订。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 2 · 形式发票审阅"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 2 · 形式发票审阅",
+                    extra_fields=_DOCUMENT_REVIEW_FIELDS,
                 ),
                 environment_user_message="生成形式发票审阅与修订的 JSON 场景资料。",
                 conversation_prompt_template=_proforma_invoice_conversation_prompt(),
@@ -586,7 +717,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "模拟发盘谈判，学生需准确运用 FOB/CIF/EXW 等术语，并定义单价、总金额与有效期。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 3 · 综合实战（一）：发盘"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 3 · 综合实战（一）：发盘",
+                    extra_fields=_COUNTER_OFFER_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成发盘综合实战场景的 JSON 设定。",
                 conversation_prompt_template=_offer_mastery_conversation_prompt(),
@@ -600,7 +733,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "AI 提出不利支付方案，学生需分析 T/T、L/C、D/P 等方式的风险并谈判更优条款。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 4 · 综合实战（二）：支付"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 4 · 综合实战（二）：支付",
+                    extra_fields=_PAYMENT_NEGOTIATION_FIELDS,
                 ),
                 environment_user_message="生成支付条款谈判的 JSON 场景设定。",
                 conversation_prompt_template=_payment_negotiation_conversation_prompt(),
@@ -614,7 +749,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "AI 发送含漏洞的合同或销售确认书，学生需完成终审并指出风险。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 5 · 综合实战（三）：接受与订货"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 5 · 综合实战（三）：接受与订货",
+                    extra_fields=_CONTRACT_REVIEW_FIELDS,
                 ),
                 environment_user_message="生成合同终审实战的 JSON 场景设定。",
                 conversation_prompt_template=_final_contract_conversation_prompt(),
@@ -628,7 +765,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "AI 模拟买方尾款逾期，学生需制定催收策略并起草专业催款沟通。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 4 章 · 接受与订货 Acceptance & Order", "小节 6 · 综合实战（四）：后续跟进与执行"
+                    "第 4 章 · 接受与订货 Acceptance & Order",
+                    "小节 6 · 综合实战（四）：后续跟进与执行",
+                    extra_fields=_RECEIVABLES_FIELDS,
                 ),
                 environment_user_message="生成订单执行与催款跟进的 JSON 场景设定。",
                 conversation_prompt_template=_post_order_followup_conversation_prompt(),
@@ -648,7 +787,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生需结合货物特性，与供应商协商专业且具成本效率的包装方案，并补全运输唛头。以下是可能出现的常见包装术语：裸装（Nude pack）、散装（In bulk）、全包装（Full packed）、局部包装（Part packed）、净重（Net weight）、毛重（Gross weight）、唛头（Shipping mark）、指示性标志（Indicative mark）、警告标志（Warning mark）"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 1 · 包装与运输：包装规范与唛头"
+                    "第 5 章 · 订舱与物流 Shipping & Logistics",
+                    "小节 1 · 包装与运输：包装规范与唛头",
+                    extra_fields=_PACKAGING_FIELDS,
                 ),
                 environment_user_message="生成涉及包装方案评估与唛头制定的 JSON 场景设定。",
                 conversation_prompt_template=_packaging_conversation_prompt(),
@@ -662,7 +803,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生需依据货物价值、时效与预算分析运输方案，并与对方就运输方式及 Incoterms 展开谈判。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 2 · 运输方式选择与谈判"
+                    "第 5 章 · 订舱与物流 Shipping & Logistics",
+                    "小节 2 · 运输方式选择与谈判",
+                    extra_fields=_TRANSPORT_FIELDS,
                 ),
                 environment_user_message="生成运输方式评估与 Incoterms 协商的 JSON 场景设定。",
                 conversation_prompt_template=_transport_selection_conversation_prompt(),
@@ -676,7 +819,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生需主导订舱、报关与单证准备流程，协调被动合作方并化解突发风险。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 3 · 装运安排与主动协调"
+                    "第 5 章 · 订舱与物流 Shipping & Logistics",
+                    "小节 3 · 装运安排与主动协调",
+                    extra_fields=_SHIPMENT_COORDINATION_FIELDS,
                 ),
                 environment_user_message="生成装运流程协调与风险应对的 JSON 场景设定。",
                 conversation_prompt_template=_shipment_coordination_conversation_prompt(),
@@ -690,7 +835,9 @@ CHAPTERS: List[ChapterConfig] = [
                     "学生作为出口负责人，需统筹工厂提货至装船离港的全流程，确保单证与风险控制到位。"
                 ),
                 environment_prompt_template=_environment_prompt_template(
-                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 4 · 综合实战：全链路装运指挥"
+                    "第 5 章 · 订舱与物流 Shipping & Logistics",
+                    "小节 4 · 综合实战：全链路装运指挥",
+                    extra_fields=_LOGISTICS_MASTER_FIELDS,
                 ),
                 environment_user_message="生成多角色协同的全流程装运 JSON 场景设定。",
                 conversation_prompt_template=_logistics_master_conversation_prompt(),
