@@ -27,9 +27,51 @@ from services.scenario_generator import (
     render_prompts_from_section,
 )
 from utils.normalizers import normalize_text
+from utils.language import contains_cjk, is_probably_english
 from utils.validators import MissingKeyError, as_bool, require_key
 
 bp = Blueprint("assignments", __name__)
+
+ENGLISH_ONLY_SYSTEM_MESSAGE = (
+    "You are a collaborative trade negotiation coach. Respond exclusively in English with professional business tone, "
+    "even if the student uses another language unless they explicitly request a bilingual answer."
+)
+
+ENGLISH_REWRITE_SYSTEM_MESSAGE = (
+    "You are a bilingual trade negotiation editor. Rewrite assistant replies into natural, professional English only. "
+    "Preserve the factual content, numbers, and commitments, but remove any Chinese characters or bilingual phrasing."
+)
+
+
+def _ensure_english_reply(collab_key: str, reply: str) -> str:
+    text = normalize_text(reply)
+    if is_probably_english(text):
+        return text
+
+    rewrite_messages = [
+        {"role": "system", "content": ENGLISH_REWRITE_SYSTEM_MESSAGE},
+        {
+            "role": "user",
+            "content": (
+                "Rewrite the following assistant reply so that it is entirely in English. "
+                "Keep negotiation details, numbers, and commitments accurate, and avoid apologies unless present.\n\n"
+                f"Reply: {text}"
+            ),
+        },
+    ]
+
+    try:
+        rewritten = normalize_text(complete_chat(collab_key, rewrite_messages, temperature=0.2))
+    except Exception:
+        rewritten = ""
+
+    if is_probably_english(rewritten):
+        return rewritten
+
+    return (
+        "Apologies for the confusion. I will continue our negotiation entirely in English from this point forward. "
+        "Could you please restate your last question or proposal so that I can respond precisely?"
+    )
 
 
 def _serialize_assignment(record: Dict[str, object]) -> Dict[str, object]:
@@ -328,6 +370,7 @@ def chat():
     ]
 
     messages = [{"role": "system", "content": session["system_prompt"]}]
+    messages.append({"role": "system", "content": ENGLISH_ONLY_SYSTEM_MESSAGE})
     messages.extend(history)
 
     stream_requested = as_bool(request.args.get("stream"))
@@ -336,10 +379,17 @@ def chat():
 
         def event_stream():
             chunks: List[str] = []
+            stream_blocked = False
             try:
                 # 流式推送 AI 逐步回答，前端可即时渲染
                 for delta in stream_chat(collab_key, messages, temperature=0.7):
+                    if not isinstance(delta, str):
+                        continue
                     chunks.append(delta)
+                    if not stream_blocked and contains_cjk(delta):
+                        stream_blocked = True
+                    if stream_blocked:
+                        continue
                     payload = json.dumps({"content": delta})
                     yield f"event: chunk\ndata: {payload}\n\n"
             except Exception as exc:
@@ -348,7 +398,10 @@ def chat():
                 yield f"event: error\ndata: {error_payload}\n\n"
                 return
 
-            ai_reply = "".join(chunks).strip() or "(no valid reply received)"
+            ai_reply_raw = "".join(chunks).strip()
+            ai_reply = _ensure_english_reply(
+                collab_key, ai_reply_raw or "(no valid reply received)"
+            )
             database.add_message(session_id, "assistant", ai_reply)
 
             evaluation = evaluate_session(session_id, session)
@@ -369,11 +422,12 @@ def chat():
         return response
 
     try:
-        ai_reply = complete_chat(collab_key, messages, temperature=0.7).strip()
+        raw_reply = complete_chat(collab_key, messages, temperature=0.7).strip()
     except Exception as exc:
         database.remove_last_message(session_id)
         return jsonify({"error": f"Failed to fetch assistant reply: {exc}"}), 500
 
+    ai_reply = _ensure_english_reply(collab_key, raw_reply)
     database.add_message(session_id, "assistant", ai_reply)
 
     evaluation = evaluate_session(session_id, session)
