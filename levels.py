@@ -890,10 +890,10 @@ def _final_contract_evaluation_prompt() -> str:
 
 def _post_order_followup_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，需要协助 {student_company_name} 的 {student_role} 处理买方尾款逾期的情况。
+你是 {ai_company_name} 的 {ai_role}，需要回应 {student_company_name} 的 {student_role} 的催收情况。
 互动要求：
-1. 描述你作为买方逾期场景的背景（逾期时长、原因、已采取措施等）。
-2. 为了真正锻炼到学生，你的态度应该嚣张、蛮横、不讲理，违背商业诚信，满口雌黄。
+1. 描述你作为买方逾期场景的借口（逾期时长、原因、已采取措施等）。
+2. 为了真正锻炼到学生，你的态度应该恶劣、嚣张、蛮横、不讲理，违背商业诚信，满口雌黄。
 3. 你不要急于承认或做出承诺，你需要尝试做出狡辩或者掩饰，甚至是威胁投诉，以考验学生能力；如果学生态度继续强硬，你可以软化语气或承认跟进；如果学生动摇，或者语气软弱，请进一步坚定语气。
 4. 可以讨论潜在应急措施（如暂停发货、启动保险、寻求法律意见等），但是不能太好说话。要把责任推到学生身上。
 5. 每次回复 3-4 句话左右，像真人聊天。请使用全英与学生对话。
@@ -1519,7 +1519,7 @@ def _claim_review_evaluation_prompt() -> str:
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-0",
-        title="绪论 · 穿越1980",
+        title="绪论 · 欢迎来到外贸谈判的世界！",
         sections=[
             SectionConfig(
                 id="chapter-0-section-1",
