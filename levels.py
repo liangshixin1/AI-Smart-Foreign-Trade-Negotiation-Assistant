@@ -332,6 +332,130 @@ def _post_order_followup_evaluation_prompt() -> str:
 """.strip()
 
 
+def _packaging_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，负责向 {student_company_name} 的 {student_role} 提供包装与运输建议。
+请严格遵循以下互动流程：
+1. 第一轮必须先给出一个存在明显缺陷的包装与唛头方案（例如：易碎品却建议普通纸箱、缺少警示唛头、尺寸重量与实际不符等）。
+2. 方案需包含：包装方式、主要材料/结构、加固方式与费用考量；同时列出不完整的唛头信息以制造漏洞。
+3. 后续对话中，当学生指出问题或提出修正要求，你需要先辩解或淡化风险；若学生坚持专业判断，再逐步让步并根据其要求更新方案。
+4. 每次回复 2 段以内，可使用要点列举，并穿插必要的专业英文术语（如 "shipping mark"、"carton"、"pallet" 等）。
+5. 若学生未覆盖唛头五要素（收货人、箱号、尺寸重量、原产国、警示标记），不要主动提醒。
+""".strip()
+
+
+def _packaging_evaluation_prompt() -> str:
+    return """
+你是一名国际物流与包装工程导师，负责评估学生对包装方案与运输唛头的把控力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Professional / Adequate / Risky",
+  "commentary": "中文详尽点评，关注包装匹配度、唛头完整性与成本意识",
+  "action_items": ["列出 3 条可执行的改进建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
+}}
+
+评估重点：
+- 是否依据货物特性选择合适的包装方式及加固措施。
+- 是否提供完整、规范的唛头五要素并说明警示标志。
+- 是否兼顾成本与风险控制，并明确运输中的防范措施。
+""".strip()
+
+
+def _transport_selection_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，与 {student_company_name} 的 {student_role} 协商运输方式与贸易术语。
+互动要求：
+1. 首轮先提出一个欠优化的运输方案（例如：高价值急单坚持海运、低值大宗提议空运，或 Incoterms 与责任划分不符）。
+2. 明确你的立场或限制，并简要说明成本、时效或风险的片面理由，为学生留下纠错空间。
+3. 当学生提出更优方案或质疑 Incoterms 责任划分时，先尝试坚持原方案或提出反问；若学生给出充分分析，可逐步接受并协商费用/保险承担。
+4. 对话保持专业商务语气，每次回复 2 段左右，可列出运费、保险费、燃油附加费等成本构成。
+""".strip()
+
+
+def _transport_selection_evaluation_prompt() -> str:
+    return """
+你是一名国际运输与贸易术语教练，需评估学生在运输方式选择与谈判中的决策力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Optimized / Balanced / Misaligned",
+  "commentary": "中文详尽点评，关注运输方式匹配度、成本测算与条款运用",
+  "action_items": ["给出 3 条提升运输谈判能力的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，反映学生谈判掌控度"
+}}
+
+考评重点：
+- 是否根据货物特性、交货期与预算做出合理运输决策。
+- 是否准确运用 Incoterms 划分责任、费用与风险。
+- 谈判表达是否专业、有数据支撑并能说服对方。
+""".strip()
+
+
+def _shipment_coordination_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}，对接 {student_company_name} 的 {student_role}，场景已约定贸易术语（如 FOB/CIF 等）。
+沟通准则：
+1. 先以被动或模糊的方式提出装运请求或问题（如“快截港了，你们安排一下”），可能伴随突发情况（错过截港、资料缺失、货代效率低等）。
+2. 在学生未给出明确计划前，保持模糊或推诿，测试其流程主导力；当学生提出完整的时间表、责任分工与文件清单时，再逐步配合。
+3. 可根据情节引入额外难题（如海关查验预警、提单签发延迟），观察学生如何协调订舱、报关、单据确认。
+4. 回复 2 段以内，可混合要点与简短段落，必要时引用英文术语（cut-off、booking confirmation、SI 等）。
+""".strip()
+
+
+def _shipment_coordination_evaluation_prompt() -> str:
+    return """
+你是一名国际物流运营导师，评估学生在装运安排与协调中的主动性与风险控制。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Orchestrator / Reactive / Chaotic",
+  "commentary": "中文详尽点评，关注计划制定、责任界定与风险预案",
+  "action_items": ["列出 3 条强化装运协调能力的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"]
+}}
+
+评估重点：
+- 是否主动明确订舱、报关、截港、开船等关键时间节点。
+- 是否要求并核对必要单据（订舱委托书、发票、装箱单、提单草稿等）。
+- 是否针对突发情况提出可执行的备选方案并控制滞费或延误风险。
+""".strip()
+
+
+def _logistics_master_conversation_prompt() -> str:
+    return """
+你是一支多角色协作团队的调度 AI，需要分别扮演工厂仓库、车队、货代、报关行、船公司等角色，向 {student_company_name} 的 {student_role} 实时汇报。
+执行规范：
+1. 每轮回复需整合 3-5 条来自不同角色的动态，可用“工厂：…”、“货代：…”的方式提示角色身份，语气保持群聊式自然互动。
+2. 基于场景简报的 CIF 订单背景，动态反馈各环节状态（如工厂备货、拖车、进港、报关、装船、提单签发），并随机插入突发事件（天气导致延误、单证缺失、海关查验等）。
+3. 初始信息应等待学生发起指令，如学生未规划流程，可继续追问“下一步怎么安排？”。
+4. 当学生下达清晰指令、分配责任或提出解决方案时，相应角色再确认执行结果；若指令模糊则继续反问或指出风险。
+5. 每次回复控制在 3-5 条角色信息，保持节奏真实，必要时使用英文专业词（WH draft、S/O、B/L release 等）。
+""".strip()
+
+
+def _logistics_master_evaluation_prompt() -> str:
+    return """
+你是一名国际供应链总控教练，负责评估学生在全流程装运中的统筹与风控能力。
+请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{{
+  "score": 0-100 的整数,
+  "score_label": "如 Commanding / Coordinated / At Risk",
+  "commentary": "中文详尽点评，关注节点衔接、单证掌控与风险处置",
+  "action_items": ["提供 3 条提升全流程指挥能力的建议"],
+  "knowledge_points": ["优先覆盖：{knowledge_points_hint}"],
+  "bargaining_win_rate": "0-100 的估值，体现对流程与风险的掌控度"
+}}
+
+评估重点：
+- 是否主导从提货、报关到装船的时间节点与责任划分。
+- 是否及时获取并核对关键单证（装货单、场站收据、大副收据、提单）。
+- 是否对突发问题作出高效决策并兼顾成本控制。
+""".strip()
+
+
 CHAPTERS: List[ChapterConfig] = [
     ChapterConfig(
         id="chapter-1",
@@ -508,6 +632,68 @@ CHAPTERS: List[ChapterConfig] = [
                 conversation_prompt_template=_post_order_followup_conversation_prompt(),
                 evaluation_prompt_template=_post_order_followup_evaluation_prompt(),
                 expects_bargaining=False,
+            ),
+        ],
+    ),
+    ChapterConfig(
+        id="chapter-5",
+        title="第 5 章 · 订舱与物流 Shipping & Logistics",
+        sections=[
+            SectionConfig(
+                id="chapter-5-section-1",
+                title="小节 1 · 包装与运输：包装规范与唛头",
+                description=(
+                    "学生需结合货物特性，与供应商协商专业且具成本效率的包装方案，并补全运输唛头。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 1 · 包装与运输：包装规范与唛头"
+                ),
+                environment_user_message="生成涉及包装方案评估与唛头制定的 JSON 场景设定。",
+                conversation_prompt_template=_packaging_conversation_prompt(),
+                evaluation_prompt_template=_packaging_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-5-section-2",
+                title="小节 2 · 运输方式选择与谈判",
+                description=(
+                    "学生需依据货物价值、时效与预算分析运输方案，并与对方就运输方式及 Incoterms 展开谈判。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 2 · 运输方式选择与谈判"
+                ),
+                environment_user_message="生成运输方式评估与 Incoterms 协商的 JSON 场景设定。",
+                conversation_prompt_template=_transport_selection_conversation_prompt(),
+                evaluation_prompt_template=_transport_selection_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-5-section-3",
+                title="小节 3 · 装运安排与主动协调",
+                description=(
+                    "学生需主导订舱、报关与单证准备流程，协调被动合作方并化解突发风险。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 3 · 装运安排与主动协调"
+                ),
+                environment_user_message="生成装运流程协调与风险应对的 JSON 场景设定。",
+                conversation_prompt_template=_shipment_coordination_conversation_prompt(),
+                evaluation_prompt_template=_shipment_coordination_evaluation_prompt(),
+                expects_bargaining=True,
+            ),
+            SectionConfig(
+                id="chapter-5-section-4",
+                title="小节 4 · 综合实战：全链路装运指挥",
+                description=(
+                    "学生作为出口负责人，需统筹工厂提货至装船离港的全流程，确保单证与风险控制到位。"
+                ),
+                environment_prompt_template=_environment_prompt_template(
+                    "第 5 章 · 订舱与物流 Shipping & Logistics", "小节 4 · 综合实战：全链路装运指挥"
+                ),
+                environment_user_message="生成多角色协同的全流程装运 JSON 场景设定。",
+                conversation_prompt_template=_logistics_master_conversation_prompt(),
+                evaluation_prompt_template=_logistics_master_evaluation_prompt(),
+                expects_bargaining=True,
             ),
         ],
     ),
