@@ -179,6 +179,57 @@ let currentStudentModalTab = null;
 let activeExperienceModule = "chat";
 let isScenarioCollapsed = false;
 
+function sortLevelHierarchy(chapters) {
+  if (!Array.isArray(chapters)) {
+    return [];
+  }
+
+  const collator =
+    typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+      ? new Intl.Collator("zh-Hans-CN", { numeric: true, sensitivity: "base" })
+      : null;
+
+  const normalizeOrderIndex = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+
+  const compareTitle = (aTitle, bTitle) => {
+    const left = (aTitle || "").toString();
+    const right = (bTitle || "").toString();
+    if (collator) {
+      return collator.compare(left, right);
+    }
+    return left.localeCompare(right);
+  };
+
+  const compareItems = (a, b) => {
+    const orderDiff = normalizeOrderIndex(a && a.orderIndex) - normalizeOrderIndex(b && b.orderIndex);
+    if (orderDiff !== 0) {
+      return orderDiff;
+    }
+    return compareTitle(a && a.title, b && b.title);
+  };
+
+  return chapters
+    .map((chapter) => {
+      const nextChapter = { ...chapter };
+      const sections = Array.isArray(chapter.sections) ? [...chapter.sections] : [];
+      sections.sort(compareItems);
+      nextChapter.sections = sections;
+      return nextChapter;
+    })
+    .sort(compareItems);
+}
+
 const hasMarked = typeof window !== "undefined" && typeof window.marked !== "undefined";
 if (hasMarked) {
   window.marked.setOptions({
@@ -3295,7 +3346,7 @@ async function loadAdminLevels(options = {}) {
       throw new Error("无法加载关卡数据");
     }
     const data = await response.json();
-    state.admin.levels = data.chapters || [];
+    state.admin.levels = sortLevelHierarchy(data.chapters || []);
 
     if (options.chapterId) {
       state.admin.selectedEditorChapterId = options.chapterId;
@@ -3529,7 +3580,7 @@ async function loadLevels() {
       throw new Error("无法载入章节信息");
     }
     const data = await response.json();
-    state.chapters = data.chapters || [];
+    state.chapters = sortLevelHierarchy(data.chapters || []);
     if (!(state.expandedChapters instanceof Set)) {
       state.expandedChapters = new Set();
     }
