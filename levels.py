@@ -1,6 +1,7 @@
 """Scenario and evaluation configuration for negotiation training levels."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -530,7 +531,7 @@ def flatten_scenario_for_template(scenario: Dict[str, object]) -> Dict[str, str]
     def _safe(value: Optional[str]) -> str:
         return value if isinstance(value, str) else ""
 
-    return {
+    base: Dict[str, str] = {
         "scenario_title": _safe(scenario.get("scenario_title")),
         "scenario_summary": _safe(scenario.get("scenario_summary")),
         "student_role": _safe(scenario.get("student_role")),
@@ -553,6 +554,61 @@ def flatten_scenario_for_template(scenario: Dict[str, object]) -> Dict[str, str]
         "knowledge_points_hint": "、".join(knowledge_points),
         "negotiation_focus_hint": "、".join(negotiation_targets),
     }
+
+    def _stringify(value: object) -> str:
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
+            return str(value)
+        if isinstance(value, list):
+            items = [item for item in (_stringify(item) for item in value) if item]
+            return "；".join(items)
+        if isinstance(value, dict):
+            serialized: Dict[str, str] = {}
+            for key, sub_value in value.items():
+                text = _stringify(sub_value)
+                if not text:
+                    continue
+                serialized[str(key)] = text
+            if serialized:
+                return json.dumps(serialized, ensure_ascii=False)
+            return ""
+        return str(value)
+
+    # Expose any additional top-level fields to support custom variables.
+    extra_keys: Dict[str, str] = {}
+    for key, value in scenario.items():
+        if not isinstance(key, str):
+            continue
+        normalized = key.strip()
+        if not normalized or normalized in base:
+            continue
+        text_value = _stringify(value)
+        if text_value:
+            extra_keys[normalized] = text_value
+
+    # Prefer explicitly defined custom variables when available.
+    for custom_key in ("custom_variables", "customVariables"):
+        custom_values = scenario.get(custom_key)
+        if isinstance(custom_values, dict):
+            for key, value in custom_values.items():
+                if not isinstance(key, str):
+                    continue
+                normalized = key.strip()
+                if not normalized or normalized in base or normalized in extra_keys:
+                    continue
+                text_value = _stringify(value)
+                if text_value:
+                    extra_keys[normalized] = text_value
+
+    base.update(extra_keys)
+    return base
 
 
 __all__ = [

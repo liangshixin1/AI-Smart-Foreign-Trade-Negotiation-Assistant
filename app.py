@@ -100,6 +100,21 @@ ENGLISH_ENFORCEMENT_HINT = (
 )
 
 
+class _TemplateContext(dict):
+    def __missing__(self, key: str) -> str:  # pragma: no cover - defensive fallback
+        return "{" + key + "}"
+
+
+def _format_template(template: object, context: Dict[str, str]) -> str:
+    if not isinstance(template, str):
+        return ""
+    mapping = context if isinstance(context, _TemplateContext) else _TemplateContext(context)
+    try:
+        return template.format_map(mapping)
+    except ValueError:  # pragma: no cover - safeguard against malformed templates
+        return template
+
+
 def _get_difficulty_profile(key: Optional[str]) -> Dict[str, str]:
     normalized = str(key or DEFAULT_DIFFICULTY)
     return DIFFICULTY_PROFILES.get(normalized, DIFFICULTY_PROFILES[DEFAULT_DIFFICULTY])
@@ -274,7 +289,7 @@ def _render_prompts_from_section(
     difficulty_key: str,
     difficulty_profile: Dict[str, str],
 ) -> Tuple[str, str]:
-    flat_context = flatten_scenario_for_template(scenario)
+    flat_context = _TemplateContext(flatten_scenario_for_template(scenario))
     if not flat_context.get("knowledge_points_hint"):
         flat_context["knowledge_points_hint"] = (
             "報盤結構, 議價策略, 跨文化溝通"
@@ -282,8 +297,8 @@ def _render_prompts_from_section(
             else "英文商務函電寫作, 信息提取, 跨文化表達"
         )
 
-    conversation_prompt = section["conversation_prompt_template"].format_map(
-        flat_context
+    conversation_prompt = _format_template(
+        section.get("conversation_prompt_template"), flat_context
     )
     prompt_suffix = difficulty_profile.get("prompt_suffix")
     if prompt_suffix:
@@ -302,7 +317,9 @@ def _render_prompts_from_section(
             f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
         )
 
-    evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
+    evaluation_prompt = _format_template(
+        section.get("evaluation_prompt_template"), flat_context
+    )
     return conversation_prompt, evaluation_prompt
 
 
@@ -1225,14 +1242,16 @@ def start_level():
             500,
         )
 
-    flat_context = flatten_scenario_for_template(scenario)
+    flat_context = _TemplateContext(flatten_scenario_for_template(scenario))
     if not flat_context.get("knowledge_points_hint"):
         flat_context["knowledge_points_hint"] = (
             "報盤結構, 議價策略, 跨文化溝通"
             if section.get("expects_bargaining")
             else "英文商務函電寫作, 信息提取, 跨文化表達"
         )
-    conversation_prompt = section["conversation_prompt_template"].format_map(flat_context)
+    conversation_prompt = _format_template(
+        section.get("conversation_prompt_template"), flat_context
+    )
     prompt_suffix = difficulty_profile.get("prompt_suffix")
     if prompt_suffix:
         conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
@@ -1249,7 +1268,9 @@ def start_level():
         conversation_prompt = (
             f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
         )
-    evaluation_prompt = section["evaluation_prompt_template"].format_map(flat_context)
+    evaluation_prompt = _format_template(
+        section.get("evaluation_prompt_template"), flat_context
+    )
 
     session_id = uuid.uuid4().hex
 
