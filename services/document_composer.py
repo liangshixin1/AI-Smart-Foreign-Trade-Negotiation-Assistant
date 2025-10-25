@@ -6,6 +6,9 @@ import uuid
 from typing import Callable, Dict, List, Optional, Tuple
 
 from utils.language import contains_cjk, is_probably_english
+
+
+CJK_OPENING_SECTIONS = {"chapter-0-section-1"}
 from utils.normalizers import (
     extract_numeric_value,
     format_currency,
@@ -273,13 +276,17 @@ def _compose_default_opening(scenario: Dict[str, object]) -> str:
 
 
 def generate_opening_message(section_id: Optional[str], scenario: Dict[str, object]) -> str:
+    normalized_id = section_id or ""
+    allow_cjk = normalized_id in CJK_OPENING_SECTIONS
     builder: Optional[Callable[[Dict[str, object]], str]] = DOCUMENT_OPENING_BUILDERS.get(
-        section_id or ""
+        normalized_id
     )
     if builder:
         candidate = builder(scenario)
-        if is_probably_english(candidate):
-            return candidate.strip()
+        if isinstance(candidate, str):
+            stripped = candidate.strip()
+            if stripped and (allow_cjk or is_probably_english(stripped)):
+                return stripped
 
     for key in (
         "openingMessage",
@@ -288,8 +295,10 @@ def generate_opening_message(section_id: Optional[str], scenario: Dict[str, obje
         "conversation_opening",
     ):
         value = scenario.get(key)
-        if isinstance(value, str) and is_probably_english(value):
-            return value.strip()
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped and (allow_cjk or is_probably_english(stripped)):
+                return stripped
 
     fallback = _compose_default_opening(scenario)
     return fallback or "Hello, this is your negotiation partner. Let's begin our discussion in English."

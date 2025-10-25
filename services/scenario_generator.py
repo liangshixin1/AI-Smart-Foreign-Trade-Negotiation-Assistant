@@ -6,7 +6,7 @@ import copy
 import json
 from typing import Dict, List, Optional, Tuple
 
-from levels import CHAPTERS, flatten_scenario_for_template
+from levels import CHAPTERS, STATIC_SCENARIO_MARKER, flatten_scenario_for_template
 from models.scenario import Scenario
 from utils.normalizers import normalize_company, normalize_product, normalize_text_list
 from utils.validators import MissingKeyError, extract_json_block, first_non_empty, require_key
@@ -76,6 +76,9 @@ ENGLISH_ENFORCEMENT_HINT = (
     "All assistant-facing outputs, including scenario briefings and conversation replies, must be written entirely in English."
     " Avoid inserting Chinese characters unless the student explicitly provides them or requests bilingual content."
 )
+
+
+SCRIPTED_SECTION_IDS = {"chapter-0-section-1"}
 
 
 SCENARIO_BASE_KEYS = {
@@ -369,27 +372,29 @@ def render_prompts_from_section(
 
     conversation_prompt = format_template(
         section.get("conversation_prompt_template"), flat_context
-    )
-    prompt_suffix = difficulty_profile.get("prompt_suffix")
-    if prompt_suffix:
-        conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
-    if CONVERSATION_DIVERSITY_HINT not in conversation_prompt:
-        conversation_prompt = (
-            f"{conversation_prompt}\n\n[案例多样性提醒]\n{CONVERSATION_DIVERSITY_HINT}"
-        )
-    if ROLE_ENFORCEMENT_HINT not in conversation_prompt:
-        conversation_prompt = (
-            f"{conversation_prompt}\n\n[角色约束]\n请始终以学生为中国买家或中国卖家来组织对话，"
-            "在回应中适时引用中国市场或供应链视角。"
-        )
-    if ENGLISH_ENFORCEMENT_HINT not in conversation_prompt:
-        conversation_prompt = (
-            f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
-        )
+    ).strip()
+    is_scripted = section.get("id") in SCRIPTED_SECTION_IDS
+    if not is_scripted:
+        prompt_suffix = difficulty_profile.get("prompt_suffix")
+        if prompt_suffix:
+            conversation_prompt = f"{conversation_prompt}\n\n[難度設定]\n{prompt_suffix}"
+        if CONVERSATION_DIVERSITY_HINT not in conversation_prompt:
+            conversation_prompt = (
+                f"{conversation_prompt}\n\n[案例多样性提醒]\n{CONVERSATION_DIVERSITY_HINT}"
+            )
+        if ROLE_ENFORCEMENT_HINT not in conversation_prompt:
+            conversation_prompt = (
+                f"{conversation_prompt}\n\n[角色约束]\n请始终以学生为中国买家或中国卖家来组织对话，"
+                "在回应中适时引用中国市场或供应链视角。"
+            )
+        if ENGLISH_ENFORCEMENT_HINT not in conversation_prompt:
+            conversation_prompt = (
+                f"{conversation_prompt}\n\n[Language Requirement]\n{ENGLISH_ENFORCEMENT_HINT}"
+            )
 
     evaluation_prompt = format_template(
         section.get("evaluation_prompt_template"), flat_context
-    )
+    ).strip()
     return conversation_prompt, evaluation_prompt
 
 
@@ -505,6 +510,20 @@ def assemble_scenario_from_blueprint(
 
 
 def generate_scenario_for_section(section: Dict[str, object], difficulty_key: str) -> Tuple[Dict[str, object], Dict[str, str]]:
+    marker = str(section.get("environment_prompt_template") or "").strip()
+    if marker == STATIC_SCENARIO_MARKER:
+        raw_payload = section.get("environment_user_message")
+        if not isinstance(raw_payload, str) or not raw_payload.strip():
+            raise MissingKeyError("Static scenario JSON is missing")
+        try:
+            scenario_raw = json.loads(raw_payload)
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+            raise MissingKeyError(f"Invalid static scenario JSON: {exc}") from exc
+        scenario_obj = Scenario.from_dict(scenario_raw)
+        scenario_dict = scenario_obj.to_dict()
+        scenario_dict, profile = apply_difficulty_profile(scenario_dict, difficulty_key)
+        return scenario_dict, profile
+
     generator_key = require_key("DEEPSEEK_GENERATOR_KEY")
     system_prompt = section.get("environment_prompt_template")
     user_prompt = section.get("environment_user_message")
