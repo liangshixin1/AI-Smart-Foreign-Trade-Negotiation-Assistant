@@ -371,13 +371,20 @@ class TokenEditor {
     this.container = container;
     this.textarea = textarea;
     this.definitions = definitions || {};
-    this.groups = groups || [];
+    this.groups = Array.isArray(groups)
+      ? groups.map((group) => ({
+          label: group.label,
+          tokens: Array.isArray(group.tokens) ? [...group.tokens] : [],
+        }))
+      : [];
     this.placeholder = placeholder || "";
+    this.customTokens = new Set();
 
     this._handleToolbarClick = this._handleToolbarClick.bind(this);
     this._handleKeyDown = this._handleKeyDown.bind(this);
     this._handlePaste = this._handlePaste.bind(this);
     this._emitChange = this._emitChange.bind(this);
+    this._handleCustomTokenSubmit = this._handleCustomTokenSubmit.bind(this);
 
     if (!this.container) {
       return;
@@ -402,6 +409,7 @@ class TokenEditor {
     this.container.appendChild(this.toolbar);
     this.container.appendChild(this.surface);
 
+    this._createCustomControls();
     this._renderToolbar();
     this._bindEvents();
     const initialValue = this.textarea ? this.textarea.value : "";
@@ -480,6 +488,164 @@ class TokenEditor {
       });
       this.toolbar.appendChild(groupEl);
     });
+    if (this.customTokens && this.customTokens.size > 0) {
+      const customGroup = document.createElement("div");
+      customGroup.className = "token-editor-group token-editor-group-custom";
+      const labelEl = document.createElement("span");
+      labelEl.className = "token-editor-group-label";
+      labelEl.textContent = "自定义变量";
+      customGroup.appendChild(labelEl);
+      Array.from(this.customTokens)
+        .sort()
+        .forEach((tokenName) => {
+          const def = this.definitions[tokenName] || { label: tokenName };
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.tokenName = tokenName;
+          button.textContent = def.label || tokenName;
+          const tokenLabel = `{${tokenName}}`;
+          button.title = def.description ? `${tokenLabel}｜${def.description}` : tokenLabel;
+          customGroup.appendChild(button);
+        });
+      this.toolbar.appendChild(customGroup);
+    }
+    if (this.customControls) {
+      this.toolbar.appendChild(this.customControls);
+    }
+  }
+
+  _createCustomControls() {
+    if (!this.toolbar) {
+      return;
+    }
+    this.customControls = document.createElement("div");
+    this.customControls.className = "token-editor-actions";
+    const hint = document.createElement("p");
+    hint.className = "token-editor-actions-hint";
+    hint.textContent = "如需新的占位符，可在此新增变量名，系统会自动以 {变量名} 形式替换。";
+    this.customControls.appendChild(hint);
+    const form = document.createElement("form");
+    form.className = "token-editor-add-form";
+    this.customNameInput = document.createElement("input");
+    this.customNameInput.type = "text";
+    this.customNameInput.placeholder = "变量名（仅字母、数字、下划线）";
+    this.customLabelInput = document.createElement("input");
+    this.customLabelInput.type = "text";
+    this.customLabelInput.placeholder = "展示名称（选填）";
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "submit";
+    submitBtn.textContent = "添加变量";
+    form.appendChild(this.customNameInput);
+    form.appendChild(this.customLabelInput);
+    form.appendChild(submitBtn);
+    form.addEventListener("submit", this._handleCustomTokenSubmit);
+    this.customControls.appendChild(form);
+    this.customFeedback = document.createElement("p");
+    this.customFeedback.classList.add("token-editor-actions-feedback", "text-slate-500");
+    this.customControls.appendChild(this.customFeedback);
+  }
+
+  _handleCustomTokenSubmit(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.customNameInput) {
+      return;
+    }
+    const rawName = (this.customNameInput.value || "").trim();
+    const normalized = this._normalizeTokenName(rawName);
+    if (!normalized) {
+      this._setCustomFeedback("变量名需以字母开头，仅包含字母、数字或下划线。", "error");
+      return;
+    }
+    if (this._hasToken(normalized)) {
+      this._setCustomFeedback("该变量已存在，可直接在上方列表中使用。", "success");
+      return;
+    }
+    const label = (this.customLabelInput && this.customLabelInput.value
+      ? this.customLabelInput.value.trim()
+      : "")
+      || normalized;
+    const definition = {
+      label,
+      description: `自定义变量，可在保存后由系统替换真实的 ${label}。`,
+    };
+    this.registerCustomToken(normalized, definition);
+    PROMPT_TOKEN_DEFINITIONS[normalized] = definition;
+    Object.values(tokenEditors).forEach((editor) => {
+      if (editor && editor !== this && typeof editor.registerCustomToken === "function") {
+        editor.registerCustomToken(normalized, definition);
+      }
+    });
+    if (this.customNameInput) {
+      this.customNameInput.value = "";
+    }
+    if (this.customLabelInput) {
+      this.customLabelInput.value = "";
+    }
+    this._setCustomFeedback("变量已添加，可在正文中点击插入。", "success");
+    this._insertToken(normalized);
+    this.focus();
+  }
+
+  registerCustomToken(name, definition = {}) {
+    const normalized = this._normalizeTokenName(name);
+    if (!normalized) {
+      return null;
+    }
+    const def = {
+      label: definition.label || normalized,
+      description: definition.description || `自定义变量 {${normalized}}`,
+    };
+    this.definitions[normalized] = def;
+    if (!this.customTokens) {
+      this.customTokens = new Set();
+    }
+    if (!this.customTokens.has(normalized)) {
+      this.customTokens.add(normalized);
+      this._renderToolbar();
+    } else {
+      this._renderToolbar();
+    }
+    return normalized;
+  }
+
+  _normalizeTokenName(name) {
+    if (typeof name !== "string") {
+      return "";
+    }
+    const trimmed = name.trim().replace(/\s+/g, "_");
+    if (!/^[A-Za-z][A-Za-z0-9_]{1,48}$/.test(trimmed)) {
+      return "";
+    }
+    return trimmed;
+  }
+
+  _hasToken(name) {
+    if (!name) {
+      return false;
+    }
+    const baseGroups = this.groups || [];
+    const existsInGroups = baseGroups.some(
+      (group) => Array.isArray(group.tokens) && group.tokens.includes(name),
+    );
+    return existsInGroups || (this.customTokens && this.customTokens.has(name));
+  }
+
+  _setCustomFeedback(message, variant = "muted") {
+    if (!this.customFeedback) {
+      return;
+    }
+    this.customFeedback.textContent = message || "";
+    this.customFeedback.classList.remove("text-slate-500", "text-emerald-500", "text-rose-500");
+    if (!message || variant === "muted") {
+      this.customFeedback.classList.add("text-slate-500");
+    } else if (variant === "success") {
+      this.customFeedback.classList.add("text-emerald-500");
+    } else if (variant === "error") {
+      this.customFeedback.classList.add("text-rose-500");
+    } else {
+      this.customFeedback.classList.add("text-slate-500");
+    }
   }
 
   _bindEvents() {
@@ -780,44 +946,102 @@ class TokenEditor {
 
 const tokenEditors = {};
 
+function activateTokenEditorFallback(textarea, host) {
+  if (host && !host.dataset.fallbackMessage) {
+    host.dataset.fallbackMessage = "true";
+    host.classList.remove("token-editor");
+    host.classList.add("token-editor-fallback-wrapper");
+    host.innerHTML =
+      '<p class="token-editor-fallback-message">富文本编辑器未加载，已切换到基础文本框，请直接输入内容并使用 {变量名} 占位符。</p>';
+  }
+  if (textarea) {
+    textarea.classList.remove("hidden");
+    textarea.classList.add(
+      "w-full",
+      "rounded-xl",
+      "border",
+      "border-slate-700",
+      "bg-slate-950/60",
+      "px-3",
+      "py-2",
+      "text-sm",
+      "text-white",
+      "focus:border-emerald-400",
+      "focus:outline-none"
+    );
+  }
+}
+
 function initTokenEditors() {
   const definitions = PROMPT_TOKEN_DEFINITIONS;
   const groups = PROMPT_TOKEN_GROUPS;
   if (sectionEditorEnvironment && sectionEditorEnvironmentHost) {
-    tokenEditors.environment = new TokenEditor({
-      container: sectionEditorEnvironmentHost,
-      textarea: sectionEditorEnvironment,
-      definitions,
-      groups,
-      placeholder: "描述用于生成场景的系统提示，变量会被后台自动替换。",
-    });
+    try {
+      tokenEditors.environment = new TokenEditor({
+        container: sectionEditorEnvironmentHost,
+        textarea: sectionEditorEnvironment,
+        definitions,
+        groups,
+        placeholder: "描述用于生成场景的系统提示，变量会被后台自动替换。",
+      });
+    } catch (error) {
+      console.error("初始化环境提示编辑器失败", error);
+      tokenEditors.environment = null;
+      activateTokenEditorFallback(sectionEditorEnvironment, sectionEditorEnvironmentHost);
+    }
+  } else if (sectionEditorEnvironment) {
+    activateTokenEditorFallback(sectionEditorEnvironment, sectionEditorEnvironmentHost);
   }
   if (sectionEditorConversation && sectionEditorConversationHost) {
-    tokenEditors.conversation = new TokenEditor({
-      container: sectionEditorConversationHost,
-      textarea: sectionEditorConversation,
-      definitions,
-      groups,
-      placeholder: "规划 AI 的回应策略、语气与规则，可随时插入变量。",
-    });
+    try {
+      tokenEditors.conversation = new TokenEditor({
+        container: sectionEditorConversationHost,
+        textarea: sectionEditorConversation,
+        definitions,
+        groups,
+        placeholder: "规划 AI 的回应策略、语气与规则，可随时插入变量。",
+      });
+    } catch (error) {
+      console.error("初始化对话提示编辑器失败", error);
+      tokenEditors.conversation = null;
+      activateTokenEditorFallback(sectionEditorConversation, sectionEditorConversationHost);
+    }
+  } else if (sectionEditorConversation) {
+    activateTokenEditorFallback(sectionEditorConversation, sectionEditorConversationHost);
   }
   if (sectionEditorEvaluation && sectionEditorEvaluationHost) {
-    tokenEditors.evaluation = new TokenEditor({
-      container: sectionEditorEvaluationHost,
-      textarea: sectionEditorEvaluation,
-      definitions,
-      groups,
-      placeholder: "定义评估维度与输出格式，变量将用于生成针对性的反馈。",
-    });
+    try {
+      tokenEditors.evaluation = new TokenEditor({
+        container: sectionEditorEvaluationHost,
+        textarea: sectionEditorEvaluation,
+        definitions,
+        groups,
+        placeholder: "定义评估维度与输出格式，变量将用于生成针对性的反馈。",
+      });
+    } catch (error) {
+      console.error("初始化评价提示编辑器失败", error);
+      tokenEditors.evaluation = null;
+      activateTokenEditorFallback(sectionEditorEvaluation, sectionEditorEvaluationHost);
+    }
+  } else if (sectionEditorEvaluation) {
+    activateTokenEditorFallback(sectionEditorEvaluation, sectionEditorEvaluationHost);
   }
   if (adminAssignmentScenario && adminAssignmentScenarioHost) {
-    tokenEditors.assignmentScenario = new TokenEditor({
-      container: adminAssignmentScenarioHost,
-      textarea: adminAssignmentScenario,
-      definitions,
-      groups,
-      placeholder: "使用 JSON 描述统一作业场景，可插入变量占位符。",
-    });
+    try {
+      tokenEditors.assignmentScenario = new TokenEditor({
+        container: adminAssignmentScenarioHost,
+        textarea: adminAssignmentScenario,
+        definitions,
+        groups,
+        placeholder: "使用 JSON 描述统一作业场景，可插入变量占位符。",
+      });
+    } catch (error) {
+      console.error("初始化统一作业场景编辑器失败", error);
+      tokenEditors.assignmentScenario = null;
+      activateTokenEditorFallback(adminAssignmentScenario, adminAssignmentScenarioHost);
+    }
+  } else if (adminAssignmentScenario) {
+    activateTokenEditorFallback(adminAssignmentScenario, adminAssignmentScenarioHost);
   }
 }
 
