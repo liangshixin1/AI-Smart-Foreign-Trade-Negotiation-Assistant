@@ -3404,26 +3404,26 @@ async function saveAdminSection() {
   if (sectionEditorTitle) payload.title = sectionEditorTitle.value.trim();
   if (sectionEditorDescription) payload.description = sectionEditorDescription.value.trim();
   if (tokenEditors.environment) {
-    payload.environment_prompt_template = tokenEditors.environment.getValue();
+    payload.environmentPromptTemplate = tokenEditors.environment.getValue();
   } else if (sectionEditorEnvironment) {
-    payload.environment_prompt_template = sectionEditorEnvironment.value;
+    payload.environmentPromptTemplate = sectionEditorEnvironment.value;
   }
   if (sectionEditorEnvironmentUser)
-    payload.environment_user_message = sectionEditorEnvironmentUser.value;
+    payload.environmentUserMessage = sectionEditorEnvironmentUser.value;
   if (tokenEditors.conversation) {
-    payload.conversation_prompt_template = tokenEditors.conversation.getValue();
+    payload.conversationPromptTemplate = tokenEditors.conversation.getValue();
   } else if (sectionEditorConversation) {
-    payload.conversation_prompt_template = sectionEditorConversation.value;
+    payload.conversationPromptTemplate = sectionEditorConversation.value;
   }
   if (tokenEditors.evaluation) {
-    payload.evaluation_prompt_template = tokenEditors.evaluation.getValue();
+    payload.evaluationPromptTemplate = tokenEditors.evaluation.getValue();
   } else if (sectionEditorEvaluation) {
-    payload.evaluation_prompt_template = sectionEditorEvaluation.value;
+    payload.evaluationPromptTemplate = sectionEditorEvaluation.value;
   }
   if (sectionEditorBargaining !== null)
-    payload.expects_bargaining = !!sectionEditorBargaining.checked;
+    payload.expectsBargaining = !!sectionEditorBargaining.checked;
   if (sectionEditorOrder && sectionEditorOrder.value.trim() !== "") {
-    payload.order_index = Number(sectionEditorOrder.value);
+    payload.orderIndex = Number(sectionEditorOrder.value);
   }
 
   try {
