@@ -9,7 +9,11 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Dict, Iterator, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, TYPE_CHECKING
+
+from html import unescape
+from html.parser import HTMLParser
+import re
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from levels import ChapterConfig
@@ -188,6 +192,21 @@ def init_database() -> None:
                 FOREIGN KEY(topic_id) REFERENCES theory_topics(id) ON DELETE CASCADE,
                 FOREIGN KEY(section_id) REFERENCES level_sections(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS theory_keypoints (
+                id TEXT PRIMARY KEY,
+                lesson_id TEXT NOT NULL,
+                code TEXT,
+                title TEXT NOT NULL,
+                summary TEXT,
+                anchor TEXT,
+                skill_tags TEXT,
+                content_html TEXT,
+                order_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(lesson_id) REFERENCES theory_lessons(id) ON DELETE CASCADE
+            );
             """
         )
         conn.commit()
@@ -280,6 +299,30 @@ def ensure_schema() -> None:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_assignment_students_session ON assignment_students(session_id)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS theory_keypoints (
+                id TEXT PRIMARY KEY,
+                lesson_id TEXT NOT NULL,
+                code TEXT,
+                title TEXT NOT NULL,
+                summary TEXT,
+                anchor TEXT,
+                skill_tags TEXT,
+                content_html TEXT,
+                order_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(lesson_id) REFERENCES theory_lessons(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_theory_keypoints_lesson_order
+            ON theory_keypoints(lesson_id, order_index)
+            """
         )
         conn.commit()
 
@@ -793,6 +836,212 @@ def list_theory_hierarchy(
     return chapters
 
 
+def _deserialize_skill_tags(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    raw_value = raw.strip()
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        parsed = [segment.strip() for segment in raw_value.split(",") if segment.strip()]
+    if isinstance(parsed, str):
+        return [parsed]
+    if isinstance(parsed, (list, tuple)):
+        result: List[str] = []
+        for item in parsed:
+            if isinstance(item, str):
+                normalized = item.strip()
+                if normalized:
+                    result.append(normalized)
+        return result
+    return []
+
+
+def _normalize_whitespace(text: str) -> str:
+    collapsed = re.sub(r"\s+", " ", text or "").strip()
+    return unescape(collapsed)
+
+
+def _extract_inline_keypoints_from_html(
+    html: Optional[str], *, lesson_id: str
+) -> List[Dict[str, Any]]:
+    if not html:
+        return []
+
+    class KeypointParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stack: List[Tuple[str, Optional[Dict[str, Any]]]] = []
+            self.keypoints: List[Dict[str, Any]] = []
+            self.counter = 0
+
+        def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+            attr_map = {name: value for name, value in attrs}
+            keypoint_marker = attr_map.get("data-keypoint")
+            node: Optional[Dict[str, Any]] = None
+            if keypoint_marker is not None:
+                node_id = attr_map.get("id") or attr_map.get("data-id")
+                self.counter += 1
+                node = {
+                    "id": node_id or f"{lesson_id}-inline-kp-{self.counter}",
+                    "lessonId": lesson_id,
+                    "code": (attr_map.get("data-code") or attr_map.get("data-short") or keypoint_marker or "").strip(),
+                    "title": (attr_map.get("data-title") or "").strip(),
+                    "summary": (attr_map.get("data-summary") or "").strip(),
+                    "anchor": (attr_map.get("data-anchor") or node_id or "").strip(),
+                    "skillTags": _deserialize_skill_tags(attr_map.get("data-skills") or attr_map.get("data-tags")),
+                    "orderIndex": self.counter,
+                    "source": "inline",
+                    "_text_parts": [],
+                }
+                self.keypoints.append(node)
+            self.stack.append((tag, node))
+
+        def handle_data(self, data: str) -> None:
+            if not self.stack:
+                return
+            # append text to the most recent keypoint node in the stack
+            for _, node in reversed(self.stack):
+                if node is not None:
+                    node["_text_parts"].append(data)
+                    break
+
+        def handle_endtag(self, tag: str) -> None:
+            if not self.stack:
+                return
+            while self.stack:
+                start_tag, node = self.stack.pop()
+                if node is not None:
+                    text_content = _normalize_whitespace("".join(node.get("_text_parts", [])))
+                    if not node.get("title"):
+                        node["title"] = text_content[:80]
+                    if not node.get("summary"):
+                        node["summary"] = text_content
+                    if not node.get("code"):
+                        node["code"] = node["title"][:24]
+                    node.pop("_text_parts", None)
+                    break
+                if start_tag == tag:
+                    break
+
+    parser = KeypointParser()
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        return []
+
+    keypoints: List[Dict[str, Any]] = []
+    for item in parser.keypoints:
+        normalized = {
+            "id": item.get("id", f"{lesson_id}-inline-kp"),
+            "lessonId": lesson_id,
+            "code": (item.get("code") or "").strip(),
+            "title": (item.get("title") or "关键知识点").strip(),
+            "summary": (item.get("summary") or "").strip(),
+            "anchor": (item.get("anchor") or "").strip(),
+            "skillTags": item.get("skillTags") or [],
+            "orderIndex": int(item.get("orderIndex") or 0),
+            "source": "inline",
+        }
+        keypoints.append(normalized)
+    keypoints.sort(key=lambda item: item.get("orderIndex") or 0)
+    return keypoints
+
+
+def list_keypoints_for_lessons(
+    lesson_ids: Sequence[str], *, fallback_html: Optional[Dict[str, Optional[str]]] = None
+) -> Dict[str, List[Dict[str, Any]]]:
+    if not lesson_ids:
+        return {}
+    placeholders = ",".join("?" for _ in lesson_ids)
+    query = f"""
+        SELECT
+            id,
+            lesson_id,
+            code,
+            title,
+            summary,
+            anchor,
+            skill_tags,
+            content_html,
+            order_index
+        FROM theory_keypoints
+        WHERE lesson_id IN ({placeholders})
+        ORDER BY lesson_id, COALESCE(order_index, 0), title
+    """
+    with get_connection() as conn:
+        rows = conn.execute(query, tuple(lesson_ids)).fetchall()
+
+    result: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        payload: Dict[str, Any] = {
+            "id": row["id"],
+            "lessonId": row["lesson_id"],
+            "code": (row["code"] or "").strip(),
+            "title": row["title"],
+            "summary": (row["summary"] or "").strip(),
+            "anchor": (row["anchor"] or "").strip(),
+            "skillTags": _deserialize_skill_tags(row["skill_tags"]),
+            "contentHtml": row["content_html"],
+            "orderIndex": row["order_index"],
+            "source": "manual",
+        }
+        result[row["lesson_id"]].append(payload)
+
+    if fallback_html:
+        for lesson_id in lesson_ids:
+            if result.get(lesson_id):
+                continue
+            html = fallback_html.get(lesson_id) if fallback_html else None
+            inline_keypoints = _extract_inline_keypoints_from_html(html, lesson_id=lesson_id)
+            if inline_keypoints:
+                result[lesson_id] = inline_keypoints
+    return result
+
+
+def list_theory_graph(published_only: bool = True) -> List[Dict[str, Any]]:
+    hierarchy = list_theory_hierarchy(include_content=True, published_only=published_only)
+    lesson_html_map: Dict[str, Optional[str]] = {}
+    lesson_ids: List[str] = []
+    for chapter in hierarchy:
+        for topic in chapter.get("topics", []) or []:
+            for lesson in topic.get("lessons", []) or []:
+                lesson_id = lesson.get("id")
+                if lesson_id:
+                    lesson_ids.append(lesson_id)
+                    lesson_html_map[lesson_id] = lesson.get("contentHtml")
+
+    keypoint_map = list_keypoints_for_lessons(lesson_ids, fallback_html=lesson_html_map)
+
+    for chapter in hierarchy:
+        for topic in chapter.get("topics", []) or []:
+            for lesson in topic.get("lessons", []) or []:
+                lesson_id = lesson.get("id")
+                if not lesson_id:
+                    lesson["keypoints"] = []
+                    continue
+                lesson_keypoints = keypoint_map.get(lesson_id, [])
+                lesson["keypoints"] = [
+                    {
+                        "id": kp.get("id"),
+                        "lessonId": kp.get("lessonId", lesson_id),
+                        "code": kp.get("code", ""),
+                        "title": kp.get("title", ""),
+                        "summary": kp.get("summary", ""),
+                        "anchor": kp.get("anchor", ""),
+                        "skillTags": kp.get("skillTags", []),
+                        "orderIndex": kp.get("orderIndex"),
+                        "source": kp.get("source", "manual"),
+                    }
+                    for kp in lesson_keypoints
+                ]
+                lesson.pop("contentHtml", None)
+    return hierarchy
+
+
 def get_theory_topic(
     topic_id: str, *, published_only: bool = False
 ) -> Optional[Dict[str, object]]:
@@ -901,7 +1150,7 @@ def get_theory_lesson(
         row = conn.execute(query, tuple(params)).fetchone()
     if not row:
         return None
-    return {
+    lesson = {
         "id": row["id"],
         "topicId": row["topic_id"],
         "topicTitle": row["topic_title"],
@@ -917,6 +1166,24 @@ def get_theory_lesson(
         "isPublished": bool(row["is_published"]),
         "contentHtml": row["content_html"],
     }
+    keypoint_map = list_keypoints_for_lessons(
+        [lesson_id], fallback_html={lesson_id: row["content_html"]}
+    )
+    lesson["keypoints"] = [
+        {
+            "id": kp.get("id"),
+            "lessonId": kp.get("lessonId", lesson_id),
+            "code": kp.get("code", ""),
+            "title": kp.get("title", ""),
+            "summary": kp.get("summary", ""),
+            "anchor": kp.get("anchor", ""),
+            "skillTags": kp.get("skillTags", []),
+            "orderIndex": kp.get("orderIndex"),
+            "source": kp.get("source", "manual"),
+        }
+        for kp in keypoint_map.get(lesson_id, [])
+    ]
+    return lesson
 
 
 def create_theory_topic(

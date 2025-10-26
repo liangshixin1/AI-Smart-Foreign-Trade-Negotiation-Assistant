@@ -18,6 +18,11 @@ function createInitialState() {
       tree: [],
       selectedLessonId: null,
       lessonCache: new Map(),
+      graphData: null,
+      graphLoaded: false,
+      graphLoading: false,
+      graphError: null,
+      mindmapVisible: false,
     },
     admin: {
       students: [],

@@ -150,9 +150,17 @@ const theoryTree = document.getElementById("theory-tree");
 const theoryLessonTitleEl = document.getElementById("theory-lesson-title");
 const theoryLessonCodeEl = document.getElementById("theory-lesson-code");
 const theoryLessonContentEl = document.getElementById("theory-lesson-html");
+const theoryLessonKeypointContainer = document.getElementById("theory-lesson-keypoints");
+const theoryLessonKeypointList = document.getElementById("theory-lesson-keypoint-list");
 const theoryChallengeContainer = document.getElementById("theory-challenge");
 const theoryChallengeTitleEl = document.getElementById("theory-challenge-title");
 const theoryChallengeAction = document.getElementById("theory-challenge-action");
+const theoryMindmapSection = document.getElementById("theory-mindmap-section");
+const theoryMindmapToggle = document.getElementById("toggle-theory-mindmap");
+const theoryMindmapRefresh = document.getElementById("refresh-theory-mindmap");
+const theoryMindmapStatus = document.getElementById("theory-mindmap-status");
+const theoryMindmapWrapper = document.getElementById("theory-mindmap-wrapper");
+const theoryMindmapCanvas = document.getElementById("theory-mindmap");
 
 const adminTheoryTree = document.getElementById("admin-theory-tree");
 const adminTheoryCreateTopicBtn = document.getElementById("admin-theory-create-topic");
