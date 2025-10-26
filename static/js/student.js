@@ -1633,7 +1633,7 @@ function renderSessionHistory() {
 
 
 
-function loadLevels() {
+async function loadLevels() {
   try {
     const response = await fetch("/api/levels");
     if (!response.ok) {
@@ -1675,7 +1675,7 @@ function loadLevels() {
 
 
 
-function loadSessions() {
+async function loadSessions() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
   }
@@ -1696,7 +1696,7 @@ function loadSessions() {
 
 
 
-function loadStudentDashboardInsights() {
+async function loadStudentDashboardInsights() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
   }
@@ -1715,7 +1715,7 @@ function loadStudentDashboardInsights() {
 
 
 
-function loadStudentSession(sessionId) {
+async function loadStudentSession(sessionId) {
   if (!sessionId) return;
   try {
     const response = await fetchWithAuth(`/api/sessions/${sessionId}`);
@@ -1749,7 +1749,7 @@ function loadStudentSession(sessionId) {
 
 
 
-function loadStudentAssignments() {
+async function loadStudentAssignments() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
   }
@@ -1775,7 +1775,7 @@ function loadStudentAssignments() {
 
 
 
-function startAssignmentSession(assignmentId) {
+async function startAssignmentSession(assignmentId) {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
   }
@@ -1830,7 +1830,7 @@ function startAssignmentSession(assignmentId) {
 
 
 
-function handleStudentPasswordChange(event) {
+async function handleStudentPasswordChange(event) {
   event.preventDefault();
   if (!state.auth.user) return;
   try {
@@ -1857,7 +1857,7 @@ function handleStudentPasswordChange(event) {
 
 
 
-function startLevel() {
+async function startLevel() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请先使用学生账号登录");
     return;
@@ -1920,7 +1920,7 @@ function startLevel() {
 
 
 
-function resetCurrentSession() {
+async function resetCurrentSession() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请使用学生账号体验对话");
     return;
@@ -1966,7 +1966,7 @@ function resetCurrentSession() {
 
 
 
-function sendMessage() {
+async function sendMessage() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请使用学生账号体验对话");
     return;
