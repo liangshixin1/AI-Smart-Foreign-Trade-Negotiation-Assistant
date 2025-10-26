@@ -2461,7 +2461,6 @@
                 <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div class="space-y-1">
                     <h3 class="text-lg font-semibold text-white">理论目录</h3>
-                    <p class="text-xs text-slate-400">配置章节下的二级理论目录，设定编码与排序。</p>
                   </div>
                   <form id="admin-theory-topic-form" class="space-y-4 hidden">
                     <label class="block space-y-1 text-sm">
@@ -2529,41 +2528,12 @@
                     <p class="text-xs text-slate-400">WYSIWYG 富文本编辑，支持插入可交互的关卡挑战气泡。</p>
                   </div>
                   <form id="admin-theory-lesson-form" class="space-y-4 hidden">
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">归属目录</span>
-                      <select
-                        id="admin-theory-lesson-topic"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                      ></select>
-                    </label>
-                    <div class="grid gap-3 sm:grid-cols-2">
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">小节编码（如 6-2-1）</span>
-                        <input
-                          id="admin-theory-lesson-code"
-                          type="text"
-                          placeholder="可选，自定义三级编码"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        />
-                      </label>
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">显示排序</span>
-                        <input
-                          id="admin-theory-lesson-order"
-                          type="number"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        />
-                      </label>
+                    <div
+                      id="admin-theory-lesson-heading"
+                      class="space-y-1 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4 text-sm text-slate-200"
+                    >
+                      <p class="text-xs text-slate-400">根据左侧目录选择知识点，即可在此查看结构化标题。</p>
                     </div>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">小节标题</span>
-                      <input
-                        id="admin-theory-lesson-title"
-                        type="text"
-                        placeholder="请输入小节标题"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                      />
-                    </label>
                     <div class="grid gap-3 sm:grid-cols-2">
                       <label class="flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
                         <input id="admin-theory-lesson-published" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400 focus:ring-emerald-400" />
