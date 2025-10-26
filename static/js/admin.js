@@ -1996,9 +1996,32 @@ async function saveAdminSection() {
 }
 
 async function deleteAdminSection() {
+  const chapterId = state.admin.selectedEditorChapterId;
+  const sectionId = state.admin.selectedEditorSectionId;
+  if (!chapterId || !sectionId) {
+    alert("请先选择小节");
+    return;
+  }
+  if (!confirm("确认删除该小节？")) {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth(`/api/admin/sections/${sectionId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok && response.status !== 204) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "删除小节失败");
+    }
+    state.admin.selectedEditorSectionId = null;
+    await loadAdminLevels({ chapterId });
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "删除小节失败");
+  }
+}
 
-
-function loadAdminStudents() {
+async function loadAdminStudents() {
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
   }
@@ -2019,7 +2042,7 @@ function loadAdminStudents() {
 
 
 
-function loadAdminStudentDetail(studentId) {
+async function loadAdminStudentDetail(studentId) {
   try {
     const response = await fetchWithAuth(`/api/admin/students/${studentId}`);
     if (!response.ok) {
@@ -2038,7 +2061,7 @@ function loadAdminStudentDetail(studentId) {
 
 
 
-function loadAdminSessionDetail(sessionId) {
+async function loadAdminSessionDetail(sessionId) {
   try {
     const response = await fetchWithAuth(`/api/sessions/${sessionId}`);
     if (!response.ok) {
@@ -2059,7 +2082,7 @@ function loadAdminSessionDetail(sessionId) {
 
 
 
-function loadAdminAnalytics() {
+async function loadAdminAnalytics() {
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
   }
@@ -2078,7 +2101,7 @@ function loadAdminAnalytics() {
 
 
 
-function loadAdminBlueprints() {
+async function loadAdminBlueprints() {
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
   }
@@ -2108,7 +2131,7 @@ function loadAdminBlueprints() {
 
 
 
-function loadAdminAssignments() {
+async function loadAdminAssignments() {
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
   }
@@ -2146,7 +2169,7 @@ function loadAdminAssignments() {
 
 
 
-function submitBlueprint(event) {
+async function submitBlueprint(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
@@ -2188,7 +2211,7 @@ function submitBlueprint(event) {
 
 
 
-function deleteBlueprint(blueprintId) {
+async function deleteBlueprint(blueprintId) {
   if (!blueprintId) return;
   try {
     const response = await fetchWithAuth(`/api/blueprints/${blueprintId}`, { method: "DELETE" });
@@ -2210,7 +2233,7 @@ function deleteBlueprint(blueprintId) {
 
 
 
-function submitAssignment(event) {
+async function submitAssignment(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
@@ -2276,7 +2299,7 @@ function submitAssignment(event) {
 
 
 
-function handleAdminProfileUpdate(event) {
+async function handleAdminProfileUpdate(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
@@ -2314,7 +2337,7 @@ function handleAdminProfileUpdate(event) {
 
 
 
-function handleAdminPasswordUpdate(event) {
+async function handleAdminPasswordUpdate(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
@@ -2347,7 +2370,7 @@ function handleAdminPasswordUpdate(event) {
 
 
 
-function handleAdminStudentPasswordReset(event) {
+async function handleAdminStudentPasswordReset(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
@@ -2381,7 +2404,7 @@ function handleAdminStudentPasswordReset(event) {
 
 
 
-function handleStudentImport(event) {
+async function handleStudentImport(event) {
   event.preventDefault();
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
