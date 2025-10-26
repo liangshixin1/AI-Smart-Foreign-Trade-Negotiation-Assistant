@@ -286,7 +286,9 @@ def delete_admin_section(section_id: str):
 @require_role("teacher")
 def list_admin_theory():
     include_content = as_bool(request.args.get("includeContent"), default=True)
-    records = database.list_theory_hierarchy(include_content=include_content)
+    records = database.list_theory_hierarchy(
+        include_content=include_content, published_only=False
+    )
     return jsonify({"theory": records})
 
 
@@ -384,6 +386,7 @@ def create_admin_theory_lesson():
             return jsonify({"error": "orderIndex must be an integer"}), 400
 
     section_id = normalize_text(data.get("sectionId")) or None
+    is_published = as_bool(data.get("isPublished"), default=False)
 
     lesson = database.create_theory_lesson(
         topic_id=topic_id,
@@ -392,6 +395,7 @@ def create_admin_theory_lesson():
         content_html=content_html,
         order_index=order_index,
         section_id=section_id,
+        is_published=is_published,
     )
     if not lesson:
         return jsonify({"error": "Unable to create lesson"}), 400
@@ -427,6 +431,8 @@ def update_admin_theory_lesson(lesson_id: str):
     if "sectionId" in data:
         section_value = normalize_text(data.get("sectionId"))
         updates["section_id"] = section_value or None
+    if "isPublished" in data:
+        updates["is_published"] = as_bool(data.get("isPublished"))
 
     lesson = database.update_theory_lesson(lesson_id, **updates)
     if not lesson:
@@ -437,7 +443,7 @@ def update_admin_theory_lesson(lesson_id: str):
 @bp.delete("/api/admin/theory/lessons/<lesson_id>")
 @require_role("teacher")
 def delete_admin_theory_lesson(lesson_id: str):
-    lesson = database.get_theory_lesson(lesson_id)
+    lesson = database.get_theory_lesson(lesson_id, include_unpublished=True)
     if not lesson:
         return jsonify({"error": "Lesson not found"}), 404
     database.delete_theory_lesson(lesson_id)

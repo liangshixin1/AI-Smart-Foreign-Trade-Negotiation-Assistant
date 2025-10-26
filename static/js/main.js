@@ -1,3 +1,11 @@
+function escapeDataSelector(value) {
+  const stringValue = value === undefined || value === null ? "" : String(value);
+  if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(stringValue);
+  }
+  return stringValue.replace(/['"\\]/g, "\\$&");
+}
+
 if (startLevelBtn) {
   startLevelBtn.addEventListener("click", startLevel);
 }
@@ -62,14 +70,125 @@ if (theoryChallengeAction) {
 
 if (adminTheoryTree) {
   adminTheoryTree.addEventListener("click", (event) => {
-    const topicButton = event.target.closest("button[data-admin-theory-topic-id]");
-    if (topicButton) {
-      selectAdminTheoryTopic(topicButton.dataset.adminTheoryTopicId);
+    const addTopicButton = event.target.closest("[data-admin-theory-add-topic]");
+    if (addTopicButton) {
+      createAdminTheoryTopicInline(addTopicButton.dataset.adminTheoryAddTopic || "");
       return;
     }
-    const lessonButton = event.target.closest("button[data-admin-theory-lesson-id]");
-    if (lessonButton) {
-      selectAdminTheoryLesson(lessonButton.dataset.adminTheoryLessonId);
+    const addLessonButton = event.target.closest("[data-admin-theory-add-lesson]");
+    if (addLessonButton) {
+      createAdminTheoryLessonInline(addLessonButton.dataset.adminTheoryAddLesson || "");
+      return;
+    }
+    const removeTopicButton = event.target.closest("[data-admin-theory-remove-topic]");
+    if (removeTopicButton) {
+      deleteAdminTheoryTopicInline(removeTopicButton.dataset.adminTheoryRemoveTopic || "");
+      return;
+    }
+    const removeLessonButton = event.target.closest("[data-admin-theory-remove-lesson]");
+    if (removeLessonButton) {
+      deleteAdminTheoryLessonInline(removeLessonButton.dataset.adminTheoryRemoveLesson || "");
+      return;
+    }
+    const topicRow = event.target.closest("[data-admin-theory-topic-row]");
+    if (topicRow && !event.target.closest("button")) {
+      const topicId = topicRow.dataset.adminTheoryTopicRow || "";
+      const topicInput = topicRow.querySelector("input[data-admin-theory-topic-title]");
+      const needRefresh = topicId && state.admin.theory && state.admin.theory.selectedTopicId !== topicId;
+      if (topicId && needRefresh) {
+        selectAdminTheoryTopic(topicId);
+        window.setTimeout(() => {
+          const selector = `[data-admin-theory-topic-title="${escapeDataSelector(topicId)}"]`;
+          const refreshedInput = adminTheoryTree.querySelector(selector);
+          if (refreshedInput) {
+            refreshedInput.focus();
+            refreshedInput.select();
+          }
+        }, 0);
+      } else if (topicInput && event.target !== topicInput) {
+        topicInput.focus();
+        topicInput.select();
+      }
+      return;
+    }
+    const lessonRow = event.target.closest("[data-admin-theory-lesson-row]");
+    if (lessonRow && !event.target.closest("button")) {
+      const lessonId = lessonRow.dataset.adminTheoryLessonRow || "";
+      const lessonInput = lessonRow.querySelector("input[data-admin-theory-lesson-title]");
+      const needRefresh =
+        lessonId && state.admin.theory && state.admin.theory.selectedLessonId !== lessonId;
+      if (lessonId && needRefresh) {
+        selectAdminTheoryLesson(lessonId);
+        window.setTimeout(() => {
+          const selector = `[data-admin-theory-lesson-title="${escapeDataSelector(lessonId)}"]`;
+          const refreshedInput = adminTheoryTree.querySelector(selector);
+          if (refreshedInput) {
+            refreshedInput.focus();
+            refreshedInput.select();
+          }
+        }, 0);
+      } else if (lessonInput && event.target !== lessonInput) {
+        lessonInput.focus();
+        lessonInput.select();
+      }
+    }
+  });
+
+  adminTheoryTree.addEventListener(
+    "focusin",
+    (event) => {
+      const topicInput = event.target.closest("input[data-admin-theory-topic-title]");
+      if (topicInput) {
+        const topicId = topicInput.dataset.adminTheoryTopicTitle || "";
+        if (topicId && state.admin.theory && state.admin.theory.selectedTopicId !== topicId) {
+          selectAdminTheoryTopic(topicId);
+          window.setTimeout(() => {
+            const selector = `[data-admin-theory-topic-title="${escapeDataSelector(topicId)}"]`;
+            const refreshedInput = adminTheoryTree.querySelector(selector);
+            if (refreshedInput && refreshedInput !== document.activeElement) {
+              refreshedInput.focus();
+              refreshedInput.select();
+            }
+          }, 0);
+        }
+        return;
+      }
+      const lessonInput = event.target.closest("input[data-admin-theory-lesson-title]");
+      if (lessonInput) {
+        const lessonId = lessonInput.dataset.adminTheoryLessonTitle || "";
+        if (lessonId && state.admin.theory && state.admin.theory.selectedLessonId !== lessonId) {
+          selectAdminTheoryLesson(lessonId);
+          window.setTimeout(() => {
+            const selector = `[data-admin-theory-lesson-title="${escapeDataSelector(lessonId)}"]`;
+            const refreshedInput = adminTheoryTree.querySelector(selector);
+            if (refreshedInput && refreshedInput !== document.activeElement) {
+              refreshedInput.focus();
+              refreshedInput.select();
+            }
+          }, 0);
+        }
+      }
+    },
+    true,
+  );
+
+  adminTheoryTree.addEventListener("change", (event) => {
+    const topicInput = event.target.closest("input[data-admin-theory-topic-title]");
+    if (topicInput) {
+      updateAdminTheoryTopicTitleInline(
+        topicInput.dataset.adminTheoryTopicTitle || "",
+        topicInput.value,
+        topicInput,
+      );
+      return;
+    }
+    const lessonInput = event.target.closest("input[data-admin-theory-lesson-title]");
+    if (lessonInput) {
+      updateAdminTheoryLessonTitleInline(
+        lessonInput.dataset.adminTheoryLessonTitle || "",
+        lessonInput.value,
+        lessonInput,
+      );
     }
   });
 }
@@ -100,6 +219,69 @@ if (adminTheoryLessonForm) {
 
 if (adminTheoryLessonDeleteBtn) {
   adminTheoryLessonDeleteBtn.addEventListener("click", deleteAdminTheoryLesson);
+}
+
+if (insertChallengeBtn) {
+  insertChallengeBtn.addEventListener("click", () => {
+    const preferredSectionId = adminTheoryLessonSection ? adminTheoryLessonSection.value : "";
+    openChallengeSelectorModal(preferredSectionId || null);
+  });
+}
+
+if (challengeSelectorClose) {
+  challengeSelectorClose.addEventListener("click", () => {
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorCancel) {
+  challengeSelectorCancel.addEventListener("click", () => {
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorConfirm) {
+  challengeSelectorConfirm.addEventListener("click", () => {
+    const chapterId = challengeSelectorChapter ? challengeSelectorChapter.value : "";
+    const sectionId = challengeSelectorSection ? challengeSelectorSection.value : "";
+    if (!chapterId || !sectionId) {
+      alert("请选择章节与小节关卡");
+      return;
+    }
+    const customLabel = challengeSelectorLabel ? challengeSelectorLabel.value.trim() : "";
+    insertChallengeBubbleIntoEditor(chapterId, sectionId, customLabel);
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorModal) {
+  challengeSelectorModal.addEventListener("click", (event) => {
+    if (
+      event.target === challengeSelectorModal ||
+      (event.target && event.target.classList && event.target.classList.contains("challenge-modal__backdrop"))
+    ) {
+      closeChallengeSelectorModal();
+    }
+  });
+}
+
+if (challengeSelectorChapter) {
+  challengeSelectorChapter.addEventListener("change", () => {
+    populateChallengeSelectorSections(challengeSelectorChapter.value, "");
+    updateChallengeSelectorPreview();
+  });
+}
+
+if (challengeSelectorSection) {
+  challengeSelectorSection.addEventListener("change", () => {
+    updateChallengeSelectorPreview();
+  });
+}
+
+if (challengeSelectorLabel) {
+  challengeSelectorLabel.addEventListener("input", () => {
+    updateChallengeSelectorPreview();
+  });
 }
 
 if (loginForm) {
