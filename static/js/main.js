@@ -62,6 +62,16 @@ if (theoryChallengeAction) {
 
 if (adminTheoryTree) {
   adminTheoryTree.addEventListener("click", (event) => {
+    const addTopicButton = event.target.closest("button[data-admin-theory-add-topic]");
+    if (addTopicButton) {
+      enterAdminTheoryTopicCreateMode(addTopicButton.dataset.adminTheoryAddTopic || null);
+      return;
+    }
+    const addLessonButton = event.target.closest("button[data-admin-theory-add-lesson]");
+    if (addLessonButton) {
+      enterAdminTheoryLessonCreateMode(addLessonButton.dataset.adminTheoryAddLesson || null);
+      return;
+    }
     const topicButton = event.target.closest("button[data-admin-theory-topic-id]");
     if (topicButton) {
       selectAdminTheoryTopic(topicButton.dataset.adminTheoryTopicId);
@@ -100,6 +110,69 @@ if (adminTheoryLessonForm) {
 
 if (adminTheoryLessonDeleteBtn) {
   adminTheoryLessonDeleteBtn.addEventListener("click", deleteAdminTheoryLesson);
+}
+
+if (insertChallengeBtn) {
+  insertChallengeBtn.addEventListener("click", () => {
+    const preferredSectionId = adminTheoryLessonSection ? adminTheoryLessonSection.value : "";
+    openChallengeSelectorModal(preferredSectionId || null);
+  });
+}
+
+if (challengeSelectorClose) {
+  challengeSelectorClose.addEventListener("click", () => {
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorCancel) {
+  challengeSelectorCancel.addEventListener("click", () => {
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorConfirm) {
+  challengeSelectorConfirm.addEventListener("click", () => {
+    const chapterId = challengeSelectorChapter ? challengeSelectorChapter.value : "";
+    const sectionId = challengeSelectorSection ? challengeSelectorSection.value : "";
+    if (!chapterId || !sectionId) {
+      alert("请选择章节与小节关卡");
+      return;
+    }
+    const customLabel = challengeSelectorLabel ? challengeSelectorLabel.value.trim() : "";
+    insertChallengeBubbleIntoEditor(chapterId, sectionId, customLabel);
+    closeChallengeSelectorModal();
+  });
+}
+
+if (challengeSelectorModal) {
+  challengeSelectorModal.addEventListener("click", (event) => {
+    if (
+      event.target === challengeSelectorModal ||
+      (event.target && event.target.classList && event.target.classList.contains("challenge-modal__backdrop"))
+    ) {
+      closeChallengeSelectorModal();
+    }
+  });
+}
+
+if (challengeSelectorChapter) {
+  challengeSelectorChapter.addEventListener("change", () => {
+    populateChallengeSelectorSections(challengeSelectorChapter.value, "");
+    updateChallengeSelectorPreview();
+  });
+}
+
+if (challengeSelectorSection) {
+  challengeSelectorSection.addEventListener("change", () => {
+    updateChallengeSelectorPreview();
+  });
+}
+
+if (challengeSelectorLabel) {
+  challengeSelectorLabel.addEventListener("input", () => {
+    updateChallengeSelectorPreview();
+  });
 }
 
 if (loginForm) {
