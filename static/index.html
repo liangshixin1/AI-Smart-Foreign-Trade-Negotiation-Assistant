@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>外贸英语谈判实战互动</title>
+    <title>外贸英语谈判实战互动 Beta 1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -1998,8 +1998,8 @@
     <header class="app-hero">
       <div class="app-hero__inner">
         <div class="app-hero__title">
-          <h1>外贸英语谈判实战互动</h1>
-          <p>AI Smart Foreign Trade Negotiation Assistant</p>
+          <h1>外贸英语谈判实战互动 Beta 1</h1>
+          <p>AI Smart Foreign Trade Negotiation Platform Beta 1</p>
         </div>
         <div class="app-hero__meta">
           <div id="user-status" class="app-hero__user">
@@ -2738,98 +2738,12 @@
                       所见即所得地编辑理论内容，灵活插入关卡挑战泡泡，帮助学生在阅读与实战之间无缝切换。
                     </p>
                   </div>
-                  <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-950/40 p-3 text-xs text-slate-300">
-                    <div class="flex flex-1 flex-col gap-1">
-                      <span class="font-semibold text-slate-100">目录结构</span>
-                      <span>使用树形结构管理章节、二级目录与知识点。</span>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        id="admin-theory-create-topic"
-                        class="rounded-xl border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-300 hover:text-white"
-                      >
-                        新建理论目录
-                      </button>
-                      <button
-                        type="button"
-                        id="admin-theory-create-lesson"
-                        class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-                      >
-                        新建知识点
-                      </button>
-                    </div>
-                  </div>
                   <p id="admin-theory-status" class="text-xs text-slate-500"></p>
                   <nav id="admin-theory-tree" class="admin-theory-tree text-sm"></nav>
                 </div>
               </aside>
 
               <div class="space-y-6">
-                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div class="space-y-1">
-                    <h3 class="text-lg font-semibold text-white">理论目录</h3>
-                  </div>
-                  <form id="admin-theory-topic-form" class="space-y-4 hidden">
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">所属章节</span>
-                      <select
-                        id="admin-theory-topic-chapter"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-                      ></select>
-                    </label>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">目录编码（如 6-2）</span>
-                      <input
-                        id="admin-theory-topic-code"
-                        type="text"
-                        placeholder="可选，便于与章节对应"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">目录标题</span>
-                      <input
-                        id="admin-theory-topic-title"
-                        type="text"
-                        placeholder="请输入目录标题"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-                      />
-                    </label>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">目录简介</span>
-                      <textarea
-                        id="admin-theory-topic-summary"
-                        rows="3"
-                        placeholder="用于学生快速了解本目录的内容重点"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">排序权重（数字越小越靠前）</span>
-                      <input
-                        id="admin-theory-topic-order"
-                        type="number"
-                        class="w-32 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-                      />
-                    </label>
-                    <div class="flex flex-wrap gap-3">
-                      <button type="submit" class="rounded-xl bg-blue-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600">
-                        保存目录
-                      </button>
-                      <button
-                        type="button"
-                        id="admin-theory-topic-delete"
-                        class="rounded-xl border border-rose-400/60 px-4 py-2 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50"
-                        disabled
-                      >
-                        删除目录
-                      </button>
-                    </div>
-                  </form>
-                  <p id="admin-theory-topic-status" class="text-xs text-slate-500"></p>
-                </section>
-
                 <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div class="space-y-1">
                     <h3 class="text-lg font-semibold text-white">知识点内容</h3>
@@ -2864,7 +2778,7 @@
                         <button
                           type="button"
                           id="insert-challenge-btn"
-                          class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                          class="rounded-xl bg-emerald-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-emerald-300"
                         >
                           ➕ 插入关卡挑战
                         </button>
