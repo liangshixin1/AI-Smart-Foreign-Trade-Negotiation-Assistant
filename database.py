@@ -1093,7 +1093,7 @@ def update_theory_lesson(
     section_id: object = UNSET,
     is_published: Optional[bool] = None,
 ) -> Optional[Dict[str, object]]:
-    existing = get_theory_lesson(lesson_id)
+    existing = get_theory_lesson(lesson_id, include_unpublished=True)
     if not existing:
         return None
 
