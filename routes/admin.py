@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, request
 from openpyxl import load_workbook
 
 import database
-from services.auth_service import require_role
+from services.auth_service import current_user, require_role
 from services.scenario_generator import ensure_level_hierarchy, inject_difficulty_metadata
 from utils.normalizers import normalize_text
 from utils.validators import as_bool
