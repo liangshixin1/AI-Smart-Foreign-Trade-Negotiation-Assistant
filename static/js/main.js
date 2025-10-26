@@ -68,6 +68,30 @@ if (theoryChallengeAction) {
   });
 }
 
+if (studentPracticeEntryBtn) {
+  studentPracticeEntryBtn.addEventListener("click", () => {
+    expandLevelSelection();
+    updateSelectedLevelDetail();
+    if (levelSelectionPanel && typeof levelSelectionPanel.scrollIntoView === "function") {
+      levelSelectionPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+}
+
+if (studentTheoryEntryBtn) {
+  studentTheoryEntryBtn.addEventListener("click", () => {
+    enterTheoryMode({ scrollIntoView: true });
+  });
+}
+
+if (levelsBackHomeBtn) {
+  levelsBackHomeBtn.addEventListener("click", showStudentDashboardHome);
+}
+
+if (theoryBackHomeBtn) {
+  theoryBackHomeBtn.addEventListener("click", showStudentDashboardHome);
+}
+
 if (adminTheoryTree) {
   adminTheoryTree.addEventListener("click", (event) => {
     const addTopicButton = event.target.closest("[data-admin-theory-add-topic]");
@@ -370,6 +394,10 @@ if (reopenLevelMapBtn) {
   reopenLevelMapBtn.addEventListener("click", () => {
     expandLevelSelection();
     highlightSelectedLevel();
+    updateSelectedLevelDetail();
+    if (levelSelectionPanel && typeof levelSelectionPanel.scrollIntoView === "function") {
+      levelSelectionPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 }
 

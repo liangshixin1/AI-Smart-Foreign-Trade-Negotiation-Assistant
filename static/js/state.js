@@ -12,6 +12,7 @@ function createInitialState() {
     selectedLevel: { chapterId: null, sectionId: null },
     activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced" },
     isLevelSelectionCollapsed: false,
+    studentActiveView: "home",
     expandedChapters: new Set(),
     theory: {
       tree: [],

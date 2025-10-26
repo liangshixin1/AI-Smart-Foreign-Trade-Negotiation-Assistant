@@ -204,8 +204,15 @@ function expandLevelSelection() {
   if (!levelSelectionPanel) {
     return;
   }
+  if (studentHomeSection) {
+    studentHomeSection.classList.add("hidden");
+  }
+  if (theoryPanel) {
+    theoryPanel.classList.add("hidden");
+  }
   levelSelectionPanel.classList.remove("hidden");
   state.isLevelSelectionCollapsed = false;
+  state.studentActiveView = "practice";
   highlightSelectedLevel();
 }
 
@@ -491,22 +498,17 @@ function renderStudentTheoryTree() {
   theoryTree.innerHTML = "";
 
   if (tree.length === 0) {
-    if (theoryPanel) {
-      theoryPanel.classList.add("hidden");
-    }
     if (theoryStatusText) {
       theoryStatusText.textContent = "教师尚未发布理论学习内容，敬请期待。";
     }
     const empty = document.createElement("p");
-    empty.className = "rounded-2xl border border-dashed border-slate-700/70 bg-slate-900/40 p-4 text-sm text-slate-400";
+    empty.className =
+      "rounded-2xl border border-dashed border-indigo-400/40 bg-indigo-500/10 p-4 text-sm text-slate-300";
     empty.textContent = "暂无理论学习章节";
     theoryTree.appendChild(empty);
     return;
   }
 
-  if (theoryPanel) {
-    theoryPanel.classList.remove("hidden");
-  }
   if (theoryStatusText) {
     theoryStatusText.textContent = "点击左侧目录即可查看对应的理论内容。";
   }
@@ -522,12 +524,12 @@ function renderStudentTheoryTree() {
     const chapterHeader = document.createElement("div");
     chapterHeader.className = "flex flex-col gap-1";
     const chapterTitle = document.createElement("p");
-    chapterTitle.className = "text-sm font-semibold text-slate-200";
+    chapterTitle.className = "text-sm font-semibold text-slate-100";
     chapterTitle.textContent = chapter.chapterTitle || chapter.chapterId || "章节";
     chapterHeader.appendChild(chapterTitle);
     if (chapter.chapterDescription) {
       const chapterDesc = document.createElement("p");
-      chapterDesc.className = "text-xs text-slate-500";
+      chapterDesc.className = "text-xs text-slate-400";
       chapterDesc.textContent = chapter.chapterDescription;
       chapterHeader.appendChild(chapterDesc);
     }
@@ -539,7 +541,7 @@ function renderStudentTheoryTree() {
 
     if (topics.length === 0) {
       const emptyTopic = document.createElement("li");
-      emptyTopic.className = "text-xs text-slate-500";
+      emptyTopic.className = "text-xs text-slate-400";
       emptyTopic.textContent = "该章节暂未发布理论内容";
       topicList.appendChild(emptyTopic);
     }
@@ -564,7 +566,7 @@ function renderStudentTheoryTree() {
       }
       if (topic.summary) {
         const topicSummary = document.createElement("span");
-        topicSummary.className = "text-xs text-slate-500";
+        topicSummary.className = "text-xs text-slate-400";
         topicSummary.textContent = topic.summary;
         topicLabel.appendChild(topicSummary);
       }
@@ -577,7 +579,7 @@ function renderStudentTheoryTree() {
 
       if (lessons.length === 0) {
         const emptyLesson = document.createElement("li");
-        emptyLesson.className = "text-xs text-slate-500";
+        emptyLesson.className = "text-xs text-slate-400";
         emptyLesson.textContent = "暂无知识点";
         lessonList.appendChild(emptyLesson);
       }
@@ -785,7 +787,7 @@ async function loadStudentTheory(options = {}) {
       theoryTree.innerHTML = "";
       theoryTree.appendChild(failure);
     }
-    if (theoryPanel) {
+    if (state.studentActiveView === "theory" && theoryPanel) {
       theoryPanel.classList.remove("hidden");
     }
   }
@@ -946,6 +948,12 @@ function showExperience() {
     return;
   }
   studentDashboard.classList.remove("hidden");
+  if (studentHomeSection) {
+    studentHomeSection.classList.add("hidden");
+  }
+  if (theoryPanel) {
+    theoryPanel.classList.add("hidden");
+  }
   experienceSection.classList.remove("hidden");
   setActiveExperienceModule("chat");
   if (chatInputEl) {
@@ -955,6 +963,7 @@ function showExperience() {
   if (sendMessageBtn) {
     sendMessageBtn.disabled = false;
   }
+  state.studentActiveView = "practice";
 }
 
 function showStudentDashboardHome() {
@@ -962,8 +971,40 @@ function showStudentDashboardHome() {
     return;
   }
   studentDashboard.classList.remove("hidden");
-  expandLevelSelection();
   hideExperience();
+  collapseLevelSelection();
+  if (studentHomeSection) {
+    studentHomeSection.classList.remove("hidden");
+  }
+  if (levelSelectionPanel) {
+    levelSelectionPanel.classList.add("hidden");
+  }
+  if (theoryPanel) {
+    theoryPanel.classList.add("hidden");
+  }
+  state.studentActiveView = "home";
+}
+
+function enterTheoryMode(options = {}) {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  studentDashboard.classList.remove("hidden");
+  hideExperience();
+  collapseLevelSelection();
+  if (studentHomeSection) {
+    studentHomeSection.classList.add("hidden");
+  }
+  if (theoryPanel) {
+    theoryPanel.classList.remove("hidden");
+  }
+  state.studentActiveView = "theory";
+  ensureTheoryState();
+  renderStudentTheoryTree();
+  refreshStudentTheorySelection();
+  if (options.scrollIntoView && theoryPanel && typeof theoryPanel.scrollIntoView === "function") {
+    theoryPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function hideExperience() {
@@ -976,7 +1017,7 @@ function hideExperience() {
   }
 }
 
-function goToLevelSelection({ clearSelection = false } = {}) {
+function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
   if (clearSelection) {
     state.selectedLevel = { chapterId: null, sectionId: null };
   }
@@ -991,7 +1032,11 @@ function goToLevelSelection({ clearSelection = false } = {}) {
   renderScenario({});
   resetEvaluation();
   hideExperience();
-  expandLevelSelection();
+  if (showPanel) {
+    expandLevelSelection();
+  } else {
+    collapseLevelSelection();
+  }
   updateSelectedLevelDetail();
   updateSessionControls();
   if (chatInputEl) {
