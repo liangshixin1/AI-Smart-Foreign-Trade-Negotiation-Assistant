@@ -85,7 +85,7 @@ function updateAuthUI() {
 
 
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
