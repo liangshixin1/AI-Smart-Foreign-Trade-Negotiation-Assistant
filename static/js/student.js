@@ -497,8 +497,8 @@ function renderStudentTheoryTree() {
     if (theoryStatusText) {
       theoryStatusText.textContent = "教师尚未发布理论学习内容，敬请期待。";
     }
-    const empty = document.createElement("div");
-    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400";
+    const empty = document.createElement("p");
+    empty.className = "rounded-2xl border border-dashed border-slate-700/70 bg-slate-900/40 p-4 text-sm text-slate-400";
     empty.textContent = "暂无理论学习章节";
     theoryTree.appendChild(empty);
     return;
@@ -512,112 +512,147 @@ function renderStudentTheoryTree() {
   }
 
   const activeLessonId = state.theory.selectedLessonId;
+  const root = document.createElement("ul");
+  root.className = "theory-tree__list";
 
   tree.forEach((chapter) => {
-    const card = document.createElement("div");
-    card.className = "rounded-3xl border border-slate-800 bg-slate-900/50 p-4 shadow-inner shadow-slate-950/20";
+    const chapterItem = document.createElement("li");
+    chapterItem.className = "theory-tree__item";
 
-    const header = document.createElement("div");
-    header.className = "flex flex-col gap-1";
-    const title = document.createElement("p");
-    title.className = "text-sm font-semibold text-slate-200";
-    title.textContent = chapter.chapterTitle || "章节";
-    header.appendChild(title);
+    const chapterHeader = document.createElement("div");
+    chapterHeader.className = "flex flex-col gap-1";
+    const chapterTitle = document.createElement("p");
+    chapterTitle.className = "text-sm font-semibold text-slate-200";
+    chapterTitle.textContent = chapter.chapterTitle || chapter.chapterId || "章节";
+    chapterHeader.appendChild(chapterTitle);
     if (chapter.chapterDescription) {
-      const desc = document.createElement("p");
-      desc.className = "text-xs text-slate-500";
-      desc.textContent = chapter.chapterDescription;
-      header.appendChild(desc);
+      const chapterDesc = document.createElement("p");
+      chapterDesc.className = "text-xs text-slate-500";
+      chapterDesc.textContent = chapter.chapterDescription;
+      chapterHeader.appendChild(chapterDesc);
     }
-    card.appendChild(header);
+    chapterItem.appendChild(chapterHeader);
 
     const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    const topicList = document.createElement("ul");
+    topicList.className = "theory-tree__group";
+
     if (topics.length === 0) {
-      const emptyTopic = document.createElement("p");
-      emptyTopic.className = "mt-3 text-xs text-slate-500";
+      const emptyTopic = document.createElement("li");
+      emptyTopic.className = "text-xs text-slate-500";
       emptyTopic.textContent = "该章节暂未发布理论内容";
-      card.appendChild(emptyTopic);
+      topicList.appendChild(emptyTopic);
     }
 
     topics.forEach((topic) => {
-      const topicBlock = document.createElement("div");
-      topicBlock.className = "mt-3 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-3";
+      const topicItem = document.createElement("li");
+      topicItem.className = "theory-tree__item";
 
-      const topicTitle = document.createElement("p");
-      topicTitle.className = "text-sm font-semibold text-slate-100";
-      topicTitle.textContent = topic.code ? `${topic.code} ${topic.title || ""}` : topic.title || "理论单元";
-      topicBlock.appendChild(topicTitle);
-
-      if (topic.summary) {
-        const summary = document.createElement("p");
-        summary.className = "mt-1 text-xs text-slate-400";
-        summary.textContent = topic.summary;
-        topicBlock.appendChild(summary);
+      const topicButton = document.createElement("div");
+      topicButton.className = "theory-tree__button theory-tree__button--static";
+      const topicLabel = document.createElement("div");
+      topicLabel.className = "flex flex-col gap-1";
+      const topicTitle = document.createElement("span");
+      topicTitle.className = "text-sm font-semibold";
+      topicTitle.textContent = topic.title || topic.id;
+      topicLabel.appendChild(topicTitle);
+      if (topic.code) {
+        const topicCode = document.createElement("span");
+        topicCode.className = "theory-tree__meta";
+        topicCode.textContent = topic.code;
+        topicLabel.appendChild(topicCode);
       }
+      if (topic.summary) {
+        const topicSummary = document.createElement("span");
+        topicSummary.className = "text-xs text-slate-500";
+        topicSummary.textContent = topic.summary;
+        topicLabel.appendChild(topicSummary);
+      }
+      topicButton.appendChild(topicLabel);
+      topicItem.appendChild(topicButton);
 
       const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
-      const lessonList = document.createElement("div");
-      lessonList.className = "mt-2 space-y-2";
+      const lessonList = document.createElement("ul");
+      lessonList.className = "theory-tree__group";
+
       if (lessons.length === 0) {
-        const emptyLesson = document.createElement("p");
-        emptyLesson.className = "rounded-xl border border-dashed border-slate-700/60 bg-slate-900/30 px-3 py-2 text-xs text-slate-500";
-        emptyLesson.textContent = "暂无三级知识点";
+        const emptyLesson = document.createElement("li");
+        emptyLesson.className = "text-xs text-slate-500";
+        emptyLesson.textContent = "暂无知识点";
         lessonList.appendChild(emptyLesson);
       }
+
       lessons.forEach((lesson) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.dataset.theoryLessonId = lesson.id;
-        button.className = "w-full rounded-xl border px-3 py-2 text-left transition";
-        const isActive = lesson.id === activeLessonId;
-        if (isActive) {
-          button.classList.add(
-            "border-blue-400/70",
-            "bg-blue-500/15",
-            "text-blue-100",
-            "shadow",
-            "shadow-blue-500/20",
-          );
-        } else {
-          button.classList.add(
-            "border-slate-800/80",
-            "bg-slate-900/30",
-            "text-slate-200",
-            "hover:border-blue-500/40",
-            "hover:text-blue-100",
-          );
+        const lessonItem = document.createElement("li");
+        lessonItem.className = "theory-tree__item";
+        const lessonButton = document.createElement("button");
+        lessonButton.type = "button";
+        lessonButton.dataset.theoryLessonId = lesson.id;
+        lessonButton.className = "theory-tree__button";
+        if (lesson.id === activeLessonId) {
+          lessonButton.classList.add("is-active");
         }
-        const label = document.createElement("div");
-        label.className = "flex flex-col gap-0.5";
-        if (lesson.code) {
-          const code = document.createElement("span");
-          code.className = isActive
-            ? "text-[10px] font-semibold uppercase tracking-widest text-blue-300"
-            : "text-[10px] uppercase tracking-widest text-slate-400";
-          code.textContent = lesson.code;
-          label.appendChild(code);
+        const lessonLabel = document.createElement("div");
+        lessonLabel.className = "flex flex-col gap-1";
+        const lessonTitle = document.createElement("span");
+        lessonTitle.className = "text-sm font-semibold";
+        lessonTitle.textContent = lesson.title || lesson.id;
+        lessonLabel.appendChild(lessonTitle);
+        const metaParts = [];
+        if (lesson.code) metaParts.push(lesson.code);
+        if (lesson.sectionTitle) metaParts.push(lesson.sectionTitle);
+        if (metaParts.length > 0) {
+          const lessonMeta = document.createElement("span");
+          lessonMeta.className = "theory-tree__meta";
+          lessonMeta.textContent = metaParts.join(" ｜ ");
+          lessonLabel.appendChild(lessonMeta);
         }
-        const titleEl = document.createElement("span");
-        titleEl.className = "text-sm font-medium";
-        titleEl.textContent = lesson.title || "理论学习";
-        label.appendChild(titleEl);
-        if (lesson.sectionTitle) {
-          const hint = document.createElement("span");
-          hint.className = isActive ? "text-xs text-blue-200" : "text-xs text-slate-400";
-          hint.textContent = lesson.sectionTitle ? `关联关卡：${lesson.sectionTitle}` : "";
-          if (hint.textContent) {
-            label.appendChild(hint);
-          }
-        }
-        button.appendChild(label);
-        lessonList.appendChild(button);
+        lessonButton.appendChild(lessonLabel);
+        lessonItem.appendChild(lessonButton);
+        lessonList.appendChild(lessonItem);
       });
 
-      topicBlock.appendChild(lessonList);
-      card.appendChild(topicBlock);
+      topicItem.appendChild(lessonList);
+      topicList.appendChild(topicItem);
     });
 
-    theoryTree.appendChild(card);
+    chapterItem.appendChild(topicList);
+    root.appendChild(chapterItem);
+  });
+
+  theoryTree.appendChild(root);
+}
+
+function attachChallengeBubbleHandlers(container) {
+  if (!container) {
+    return;
+  }
+  const bubbles = container.querySelectorAll(
+    ".challenge-link-bubble[data-chapter-id][data-section-id]",
+  );
+  if (bubbles.length === 0) {
+    return;
+  }
+  bubbles.forEach((bubble) => {
+    bubble.setAttribute("role", "button");
+    bubble.setAttribute("tabindex", "0");
+    const activate = () => {
+      const chapterId = bubble.getAttribute("data-chapter-id");
+      const sectionId = bubble.getAttribute("data-section-id");
+      if (!chapterId || !sectionId) {
+        return;
+      }
+      setSelectedLevel(chapterId, sectionId);
+      expandLevelSelection();
+      startLevel();
+    };
+    bubble.addEventListener("click", activate);
+    bubble.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate();
+      }
+    });
   });
 }
 
@@ -641,6 +676,7 @@ function renderTheoryLessonContent(lessonDetail) {
   if (typeof window !== "undefined" && window.DOMPurify) {
     theoryLessonContentEl.innerHTML = window.DOMPurify.sanitize(htmlContent, {
       USE_PROFILES: { html: true },
+      ADD_ATTR: ["data-chapter-id", "data-section-id", "data-label", "contenteditable"],
     });
   } else {
     theoryLessonContentEl.innerHTML = htmlContent || "";
@@ -648,6 +684,7 @@ function renderTheoryLessonContent(lessonDetail) {
   if (!theoryLessonContentEl.innerHTML.trim()) {
     theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">教师尚未填写详细内容。</p>";
   }
+  attachChallengeBubbleHandlers(theoryLessonContentEl);
 
   if (!theoryChallengeContainer || !theoryChallengeTitleEl) {
     return;

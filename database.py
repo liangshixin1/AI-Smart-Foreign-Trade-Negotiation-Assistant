@@ -182,6 +182,7 @@ def init_database() -> None:
                 content_html TEXT NOT NULL,
                 order_index INTEGER DEFAULT 0,
                 section_id TEXT,
+                is_published INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(topic_id) REFERENCES theory_topics(id) ON DELETE CASCADE,
@@ -256,6 +257,14 @@ def ensure_schema() -> None:
         if section_columns and "order_index" not in section_columns:
             conn.execute(
                 "ALTER TABLE level_sections ADD COLUMN order_index INTEGER DEFAULT 0"
+            )
+
+        lesson_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(theory_lessons)").fetchall()
+        }
+        if lesson_columns and "is_published" not in lesson_columns:
+            conn.execute(
+                "ALTER TABLE theory_lessons ADD COLUMN is_published INTEGER DEFAULT 0"
             )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_level_chapters_order ON level_chapters(order_index, title)"
@@ -679,7 +688,9 @@ def delete_section(section_id: str) -> None:
         conn.commit()
 
 
-def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, object]]:
+def list_theory_hierarchy(
+    include_content: bool = False, *, published_only: bool = False
+) -> List[Dict[str, object]]:
     with get_connection() as conn:
         topic_rows = conn.execute(
             """
@@ -702,8 +713,7 @@ def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, objec
                 t.title
             """,
         ).fetchall()
-        lesson_rows = conn.execute(
-            """
+        lesson_query = """
             SELECT
                 l.id,
                 l.topic_id,
@@ -712,18 +722,24 @@ def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, objec
                 l.content_html,
                 l.order_index,
                 l.section_id,
+                l.is_published,
                 s.title AS section_title
             FROM theory_lessons l
             JOIN theory_topics t ON t.id = l.topic_id
             LEFT JOIN level_sections s ON s.id = l.section_id
+        """
+        params: Tuple[object, ...] = ()
+        if published_only:
+            lesson_query += " WHERE l.is_published = 1"
+        lesson_query += """
             ORDER BY
                 t.chapter_id,
                 COALESCE(t.order_index, 0),
                 t.title,
                 COALESCE(l.order_index, 0),
                 l.title
-            """,
-        ).fetchall()
+        """
+        lesson_rows = conn.execute(lesson_query, params).fetchall()
 
     chapters: List[Dict[str, object]] = []
     chapter_lookup: Dict[str, Dict[str, object]] = {}
@@ -768,6 +784,7 @@ def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, objec
             "orderIndex": row["order_index"],
             "sectionId": row["section_id"],
             "sectionTitle": row["section_title"],
+            "isPublished": bool(row["is_published"]),
         }
         if include_content:
             lesson_payload["contentHtml"] = row["content_html"]
@@ -776,7 +793,9 @@ def list_theory_hierarchy(include_content: bool = False) -> List[Dict[str, objec
     return chapters
 
 
-def get_theory_topic(topic_id: str) -> Optional[Dict[str, object]]:
+def get_theory_topic(
+    topic_id: str, *, published_only: bool = False
+) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
         topic_row = conn.execute(
             """
@@ -799,8 +818,7 @@ def get_theory_topic(topic_id: str) -> Optional[Dict[str, object]]:
         if not topic_row:
             return None
 
-        lesson_rows = conn.execute(
-            """
+        lesson_query = """
             SELECT
                 l.id,
                 l.topic_id,
@@ -809,14 +827,17 @@ def get_theory_topic(topic_id: str) -> Optional[Dict[str, object]]:
                 l.content_html,
                 l.order_index,
                 l.section_id,
+                l.is_published,
                 s.title AS section_title
             FROM theory_lessons l
             LEFT JOIN level_sections s ON s.id = l.section_id
             WHERE l.topic_id = ?
-            ORDER BY COALESCE(l.order_index, 0), l.title
-            """,
-            (topic_id,),
-        ).fetchall()
+        """
+        params: List[object] = [topic_id]
+        if published_only:
+            lesson_query += " AND l.is_published = 1"
+        lesson_query += " ORDER BY COALESCE(l.order_index, 0), l.title"
+        lesson_rows = conn.execute(lesson_query, tuple(params)).fetchall()
 
     topic: Dict[str, object] = {
         "id": topic_row["id"],
@@ -841,16 +862,18 @@ def get_theory_topic(topic_id: str) -> Optional[Dict[str, object]]:
             "sectionId": row["section_id"],
             "sectionTitle": row["section_title"],
             "contentHtml": row["content_html"],
+            "isPublished": bool(row["is_published"]),
         }
         topic["lessons"].append(lesson)
 
     return topic
 
 
-def get_theory_lesson(lesson_id: str) -> Optional[Dict[str, object]]:
+def get_theory_lesson(
+    lesson_id: str, *, include_unpublished: bool = False
+) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
-        row = conn.execute(
-            """
+        query = """
             SELECT
                 l.id,
                 l.topic_id,
@@ -859,6 +882,7 @@ def get_theory_lesson(lesson_id: str) -> Optional[Dict[str, object]]:
                 l.content_html,
                 l.order_index,
                 l.section_id,
+                l.is_published,
                 t.chapter_id,
                 t.title AS topic_title,
                 t.code AS topic_code,
@@ -870,9 +894,11 @@ def get_theory_lesson(lesson_id: str) -> Optional[Dict[str, object]]:
             JOIN level_chapters c ON c.id = t.chapter_id
             LEFT JOIN level_sections s ON s.id = l.section_id
             WHERE l.id = ?
-            """,
-            (lesson_id,),
-        ).fetchone()
+        """
+        params: List[object] = [lesson_id]
+        if not include_unpublished:
+            query += " AND l.is_published = 1"
+        row = conn.execute(query, tuple(params)).fetchone()
     if not row:
         return None
     return {
@@ -888,6 +914,7 @@ def get_theory_lesson(lesson_id: str) -> Optional[Dict[str, object]]:
         "orderIndex": row["order_index"],
         "sectionId": row["section_id"],
         "sectionTitle": row["section_title"],
+        "isPublished": bool(row["is_published"]),
         "contentHtml": row["content_html"],
     }
 
@@ -1009,6 +1036,7 @@ def create_theory_lesson(
     content_html: str = "",
     order_index: Optional[int] = None,
     section_id: Optional[str] = None,
+    is_published: bool = False,
     lesson_id: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     with get_connection() as conn:
@@ -1036,13 +1064,22 @@ def create_theory_lesson(
         conn.execute(
             """
             INSERT INTO theory_lessons (
-                id, topic_id, code, title, content_html, order_index, section_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, topic_id, code, title, content_html, order_index, section_id, is_published
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (lesson_id, topic_id, code, title, content_html, order_index, section_id),
+            (
+                lesson_id,
+                topic_id,
+                code,
+                title,
+                content_html,
+                order_index,
+                section_id,
+                1 if is_published else 0,
+            ),
         )
         conn.commit()
-    return get_theory_lesson(lesson_id)
+    return get_theory_lesson(lesson_id, include_unpublished=True)
 
 
 def update_theory_lesson(
@@ -1054,6 +1091,7 @@ def update_theory_lesson(
     content_html: object = UNSET,
     order_index: Optional[int] = None,
     section_id: object = UNSET,
+    is_published: Optional[bool] = None,
 ) -> Optional[Dict[str, object]]:
     existing = get_theory_lesson(lesson_id)
     if not existing:
@@ -1100,6 +1138,10 @@ def update_theory_lesson(
             else:
                 updates.append("section_id = NULL")
 
+        if is_published is not None:
+            updates.append("is_published = ?")
+            params.append(1 if is_published else 0)
+
         if order_index is not None:
             updates.append("order_index = ?")
             params.append(order_index)
@@ -1124,7 +1166,7 @@ def update_theory_lesson(
         )
         conn.commit()
 
-    return get_theory_lesson(lesson_id)
+    return get_theory_lesson(lesson_id, include_unpublished=True)
 
 
 def delete_theory_lesson(lesson_id: str) -> None:
