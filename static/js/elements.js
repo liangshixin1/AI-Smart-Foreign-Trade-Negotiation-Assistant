@@ -13,6 +13,12 @@ const adminPanel = document.getElementById("admin-panel");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sessionHistoryList = document.getElementById("session-history");
 const studentTopControls = document.getElementById("student-top-controls");
+const studentHomeSection = document.getElementById("student-home");
+const studentHomeName = document.getElementById("student-home-name");
+const studentTheoryEntryBtn = document.getElementById("enter-theory");
+const studentPracticeEntryBtn = document.getElementById("enter-practice");
+const theoryBackHomeBtn = document.getElementById("theory-back-home");
+const levelsBackHomeBtn = document.getElementById("levels-back-home");
 
 const adminStudentList = document.getElementById("admin-student-list");
 const adminStudentMeta = document.getElementById("admin-student-meta");

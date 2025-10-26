@@ -21,13 +21,16 @@ function updateAuthUI() {
     if (state.auth.user.role === "student") {
       studentDashboard.classList.remove("hidden");
       adminPanel.classList.add("hidden");
-      goToLevelSelection();
+      goToLevelSelection({ showPanel: false });
       closeStudentModal();
       if (studentTopControls) {
         studentTopControls.classList.remove("hidden");
       }
       if (changePasswordBtn) {
         changePasswordBtn.classList.remove("hidden");
+      }
+      if (studentHomeName) {
+        studentHomeName.textContent = display || "同学";
       }
       loadStudentTheory();
     } else {
@@ -67,6 +70,9 @@ function updateAuthUI() {
     }
     if (changePasswordBtn) {
       changePasswordBtn.classList.add("hidden");
+    }
+    if (studentHomeName) {
+      studentHomeName.textContent = "同学";
     }
     chatInputEl.value = "";
     chatInputEl.disabled = true;
@@ -144,6 +150,7 @@ function handleLogout() {
   state.messages = [];
   state.activeLevel = { chapterId: null, sectionId: null, difficulty: "balanced" };
   state.selectedLevel = { chapterId: null, sectionId: null };
+  state.studentActiveView = "home";
   state.admin = {
     students: [],
     selectedStudentId: null,
