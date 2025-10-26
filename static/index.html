@@ -154,6 +154,209 @@
         transition: background 0.3s ease, color 0.3s ease;
       }
 
+      .theory-tree {
+        display: block;
+        max-height: 540px;
+        overflow-y: auto;
+        padding: 0.5rem 0.25rem 0.5rem 0.5rem;
+        border-radius: 1.25rem;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(15, 23, 42, 0.35);
+      }
+
+      .theory-tree__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .theory-tree__group {
+        border-left: 1px solid rgba(148, 163, 184, 0.25);
+        margin-left: 0.75rem;
+        padding-left: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .theory-tree__item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .theory-tree__button {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        border-radius: 1rem;
+        border: 1px solid transparent;
+        background: rgba(15, 23, 42, 0.6);
+        color: #e2e8f0;
+        font-size: 0.875rem;
+        padding: 0.65rem 0.85rem;
+        text-align: left;
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .theory-tree__button:hover,
+      .theory-tree__button:focus {
+        border-color: rgba(96, 165, 250, 0.45);
+        box-shadow: 0 12px 28px -24px rgba(59, 130, 246, 0.55);
+        outline: none;
+      }
+
+      .theory-tree__button.is-active {
+        border-color: rgba(59, 130, 246, 0.65);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(37, 99, 235, 0.18));
+        box-shadow: 0 18px 34px -24px rgba(37, 99, 235, 0.6);
+        color: #f8fafc;
+      }
+
+      .theory-tree__button--static {
+        cursor: default;
+      }
+
+      .theory-tree__meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.75rem;
+        color: rgba(148, 163, 184, 0.9);
+      }
+
+      .theory-tree__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .theory-tree__badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(148, 163, 184, 0.12);
+        color: rgba(226, 232, 240, 0.92);
+      }
+
+      .theory-tree__badge--draft {
+        border-color: rgba(248, 113, 113, 0.45);
+        background: rgba(248, 113, 113, 0.16);
+        color: #fecaca;
+      }
+
+      .theory-tree__badge--published {
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(34, 197, 94, 0.18);
+        color: #bbf7d0;
+      }
+
+      .theory-tree__action-btn {
+        border-radius: 999px;
+        border: 1px dashed rgba(96, 165, 250, 0.45);
+        padding: 0.25rem 0.6rem;
+        font-size: 0.7rem;
+        color: rgba(147, 197, 253, 0.95);
+        transition: all 0.2s ease;
+        background: transparent;
+      }
+
+      .theory-tree__action-btn:hover {
+        border-color: rgba(59, 130, 246, 0.65);
+        color: #bfdbfe;
+      }
+
+      .theory-tree--student {
+        background: rgba(15, 23, 42, 0.25);
+      }
+
+      .theory-tree--admin {
+        max-height: 600px;
+      }
+
+      .challenge-link-bubble {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid rgba(59, 130, 246, 0.45);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(14, 165, 233, 0.18));
+        color: #bfdbfe;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+
+      .challenge-link-bubble::before {
+        content: "🎯";
+      }
+
+      .challenge-link-bubble:hover,
+      .challenge-link-bubble:focus {
+        border-color: rgba(59, 130, 246, 0.8);
+        box-shadow: 0 10px 28px -18px rgba(59, 130, 246, 0.6);
+        transform: translateY(-1px);
+        outline: none;
+      }
+
+      .challenge-link-bubble:focus-visible {
+        box-shadow: 0 0 0 2px rgba(191, 219, 254, 0.35);
+      }
+
+      .challenge-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+      }
+
+      .challenge-modal:not(.hidden) {
+        display: flex;
+      }
+
+      .challenge-modal__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(6px);
+      }
+
+      .challenge-modal__panel {
+        position: relative;
+        width: min(480px, 100%);
+        border-radius: 1.5rem;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.95);
+        padding: 1.75rem;
+        box-shadow: 0 28px 60px -32px rgba(15, 23, 42, 0.75);
+        z-index: 1;
+      }
+
+      .theory-lesson-content p {
+        margin: 0;
+      }
+
+      .theory-lesson-content p + p,
+      .theory-lesson-content ul,
+      .theory-lesson-content ol {
+        margin-top: 0.75rem;
+      }
+
       .app-hero {
         position: relative;
         background: linear-gradient(120deg, #ff4d57, #ff6b6b);
@@ -1079,6 +1282,240 @@
         transition: border-color 0.25s ease, box-shadow 0.25s ease;
       }
 
+      .admin-theory-tree {
+        display: block;
+      }
+
+      .admin-theory-chapter-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .admin-theory-card {
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      }
+
+      .admin-theory-card-body {
+        gap: 1.25rem;
+        background: rgba(59, 130, 246, 0.04);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .admin-theory-card-body {
+          background: rgba(59, 130, 246, 0.08);
+        }
+      }
+
+      .admin-theory-structure {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+
+      .admin-theory-node,
+      .admin-theory-leaf {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        border-radius: 1.1rem;
+        border: 1px solid var(--surface-border);
+        background: var(--surface-color);
+        padding: 0.75rem 0.9rem;
+        cursor: pointer;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      }
+
+      .admin-theory-node.is-active,
+      .admin-theory-leaf.is-active {
+        border-color: rgba(59, 130, 246, 0.55);
+        box-shadow: 0 18px 34px -26px rgba(59, 130, 246, 0.4);
+        background: rgba(59, 130, 246, 0.08);
+      }
+
+      .admin-theory-node__header,
+      .admin-theory-leaf__header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        justify-content: space-between;
+      }
+
+      .admin-theory-node__title,
+      .admin-theory-leaf__title {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        color: var(--text-strong);
+        font-weight: 600;
+        font-size: 0.95rem;
+        outline: none;
+      }
+
+      .admin-theory-node__title::placeholder,
+      .admin-theory-leaf__title::placeholder {
+        color: var(--text-muted);
+      }
+
+      .admin-theory-node__title:focus,
+      .admin-theory-leaf__title:focus {
+        outline: none;
+      }
+
+      .admin-theory-node__title,
+      .admin-theory-leaf__title {
+        cursor: text;
+      }
+
+      .admin-theory-node__actions,
+      .admin-theory-leaf__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .admin-theory-node__action,
+      .admin-theory-leaf__action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(255, 255, 255, 0.45);
+        color: var(--primary-color);
+        font-weight: 700;
+        transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      }
+
+      .admin-theory-node__action:hover,
+      .admin-theory-leaf__action:hover {
+        background: rgba(255, 255, 255, 0.7);
+        border-color: rgba(59, 130, 246, 0.55);
+        color: rgba(59, 130, 246, 0.9);
+      }
+
+      .admin-theory-node__action--danger,
+      .admin-theory-leaf__action--danger {
+        color: #f43f5e;
+        border-color: rgba(244, 63, 94, 0.45);
+        background: rgba(244, 63, 94, 0.1);
+      }
+
+      .admin-theory-node__action--danger:hover,
+      .admin-theory-leaf__action--danger:hover {
+        background: rgba(244, 63, 94, 0.18);
+        border-color: rgba(244, 63, 94, 0.6);
+        color: #fff;
+      }
+
+      .admin-theory-node__meta,
+      .admin-theory-leaf__meta {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      .admin-theory-node__note {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+
+      .admin-theory-leaf__badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.18rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(96, 165, 250, 0.16);
+        color: rgba(30, 64, 175, 0.85);
+      }
+
+      .admin-theory-leaf__badge--draft {
+        background: rgba(148, 163, 184, 0.18);
+        color: rgba(71, 85, 105, 0.9);
+      }
+
+      .admin-theory-leaf__badge--published {
+        background: rgba(16, 185, 129, 0.16);
+        color: rgba(5, 150, 105, 0.9);
+      }
+
+      .admin-theory-leaf__footer {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        justify-content: space-between;
+      }
+
+      .admin-theory-add-row {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        width: 100%;
+        border-radius: 9999px;
+        border: 1px dashed var(--surface-border);
+        padding: 0.65rem 0.75rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        background: transparent;
+        color: var(--text-muted);
+        transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      }
+
+      .admin-theory-add-row:hover {
+        border-color: rgba(59, 130, 246, 0.55);
+        color: rgba(59, 130, 246, 0.85);
+        background: rgba(59, 130, 246, 0.08);
+      }
+
+      .admin-theory-empty {
+        border-radius: 1rem;
+        border: 1px dashed var(--surface-border);
+        padding: 0.75rem;
+        text-align: center;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.4);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .admin-theory-node,
+        .admin-theory-leaf {
+          background: rgba(15, 23, 42, 0.8);
+        }
+
+        .admin-theory-node.is-active,
+        .admin-theory-leaf.is-active {
+          background: rgba(59, 130, 246, 0.22);
+        }
+
+        .admin-theory-node__action,
+        .admin-theory-leaf__action {
+          background: rgba(30, 41, 59, 0.8);
+          border-color: rgba(148, 163, 184, 0.4);
+          color: rgba(148, 163, 184, 0.9);
+        }
+
+        .admin-theory-node__action:hover,
+        .admin-theory-leaf__action:hover {
+          background: rgba(59, 130, 246, 0.25);
+          border-color: rgba(59, 130, 246, 0.55);
+          color: #e0f2fe;
+        }
+
+        .admin-theory-add-row {
+          background: rgba(15, 23, 42, 0.8);
+        }
+
+        .admin-theory-empty {
+          background: rgba(15, 23, 42, 0.65);
+        }
+      }
+
       .chapter-card[open] {
         border-color: rgba(59, 130, 246, 0.35);
         box-shadow: 0 18px 36px -24px rgba(59, 130, 246, 0.32);
@@ -1465,18 +1902,32 @@
               </p>
               <p id="theory-status" class="text-xs text-slate-500"></p>
             </div>
-            <div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <aside class="space-y-3">
-                <div id="theory-tree" class="space-y-3 text-sm"></div>
+            <div class="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <aside class="theory-directory-card space-y-4 rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5">
+                <div class="space-y-2">
+                  <p class="text-xs font-semibold uppercase tracking-widest text-slate-400">目录导航</p>
+                  <h3 class="text-lg font-semibold text-white">章节知识结构</h3>
+                  <p class="text-xs text-slate-400">
+                    采用章节 → 小节 → 知识点的三级结构，点击任意节点即可在右侧阅读对应内容。
+                  </p>
+                </div>
+                <nav id="theory-tree" class="theory-tree theory-tree--student text-sm"></nav>
               </aside>
-              <div class="space-y-4">
-                <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-inner shadow-slate-950/20">
+              <div id="student-theory-content" class="space-y-4">
+                <header class="rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5">
                   <p
                     id="theory-lesson-code"
                     class="text-xs font-semibold uppercase tracking-widest text-blue-300"
                   ></p>
-                  <h3 id="theory-lesson-title" class="mt-1 text-lg font-semibold text-white"></h3>
-                  <div id="theory-lesson-html" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></div>
+                  <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <h3 id="theory-lesson-title" class="text-xl font-semibold text-white"></h3>
+                    <p class="text-xs text-slate-400">
+                      点击正文中的<span class="challenge-link-bubble inline-flex">关卡挑战</span>气泡，可立即跳转至对应练习。
+                    </p>
+                  </div>
+                </header>
+                <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-inner shadow-slate-950/20">
+                  <div id="theory-lesson-html" class="prose-invert theory-lesson-content space-y-4 text-sm leading-relaxed"></div>
                 </article>
                 <div
                   id="theory-challenge"
@@ -1969,43 +2420,45 @@
           </div>
 
           <div class="tab-panel" data-admin-panel="theory">
-            <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <div class="space-y-4">
-                <div class="space-y-2">
-                  <p class="text-sm text-slate-400">章节 · 目录 · 节点</p>
-                  <h2 class="text-xl font-semibold text-white">理论学习管理</h2>
-                  <p class="text-xs text-slate-400">
-                    按照章节构建三级理论内容，支持富文本编辑并可灵活关联任意关卡挑战。
-                  </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300">
-                  <div class="flex flex-1 flex-col gap-1">
-                    <span class="font-semibold text-slate-100">目录结构</span>
-                    <span>先选择章节下的理论目录，再新增或编辑三级内容。</span>
+            <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+              <aside class="space-y-4">
+                <div class="space-y-4 rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5">
+                  <div class="space-y-2">
+                    <p class="text-sm text-slate-400">章节 · 目录 · 节点</p>
+                    <h2 class="text-xl font-semibold text-white">理论学习管理</h2>
+                    <p class="text-xs text-slate-400">
+                      所见即所得地编辑理论内容，灵活插入关卡挑战泡泡，帮助学生在阅读与实战之间无缝切换。
+                    </p>
                   </div>
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      id="admin-theory-create-topic"
-                      class="rounded-xl border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-300 hover:text-white"
-                    >
-                      新建理论目录
-                    </button>
-                    <button
-                      type="button"
-                      id="admin-theory-create-lesson"
-                      class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-                    >
-                      新建三级内容
-                    </button>
+                  <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-950/40 p-3 text-xs text-slate-300">
+                    <div class="flex flex-1 flex-col gap-1">
+                      <span class="font-semibold text-slate-100">目录结构</span>
+                      <span>使用树形结构管理章节、二级目录与知识点。</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        id="admin-theory-create-topic"
+                        class="rounded-xl border border-blue-400/60 px-3 py-1 text-xs text-blue-100 transition hover:border-blue-300 hover:text-white"
+                      >
+                        新建理论目录
+                      </button>
+                      <button
+                        type="button"
+                        id="admin-theory-create-lesson"
+                        class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                      >
+                        新建知识点
+                      </button>
+                    </div>
                   </div>
+                  <p id="admin-theory-status" class="text-xs text-slate-500"></p>
+                  <nav id="admin-theory-tree" class="admin-theory-tree text-sm"></nav>
                 </div>
-                <p id="admin-theory-status" class="text-xs text-slate-500"></p>
-                <div id="admin-theory-tree" class="space-y-4"></div>
-              </div>
+              </aside>
 
               <div class="space-y-6">
-                <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div class="space-y-1">
                     <h3 class="text-lg font-semibold text-white">理论目录</h3>
                     <p class="text-xs text-slate-400">配置章节下的二级理论目录，设定编码与排序。</p>
@@ -2068,12 +2521,12 @@
                     </div>
                   </form>
                   <p id="admin-theory-topic-status" class="text-xs text-slate-500"></p>
-                </div>
+                </section>
 
-                <div class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div class="space-y-1">
-                    <h3 class="text-lg font-semibold text-white">理论内容小节</h3>
-                    <p class="text-xs text-slate-400">撰写富文本内容，可选关联任意关卡展示挑战泡泡。</p>
+                    <h3 class="text-lg font-semibold text-white">知识点内容</h3>
+                    <p class="text-xs text-slate-400">WYSIWYG 富文本编辑，支持插入可交互的关卡挑战气泡。</p>
                   </div>
                   <form id="admin-theory-lesson-form" class="space-y-4 hidden">
                     <label class="block space-y-1 text-sm">
@@ -2111,18 +2564,36 @@
                         class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
                       />
                     </label>
-                    <label class="block space-y-1 text-sm">
-                      <span class="text-slate-300">关联关卡挑战（可选）</span>
-                      <select
-                        id="admin-theory-lesson-section"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                      ></select>
-                    </label>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label class="flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+                        <input id="admin-theory-lesson-published" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400 focus:ring-emerald-400" />
+                        <span>
+                          <span class="font-semibold text-white">发布给学生</span>
+                          <span class="block text-xs text-slate-400">切换为草稿或已发布状态。</span>
+                        </span>
+                      </label>
+                      <label class="block space-y-1 text-sm">
+                        <span class="text-slate-300">默认关联关卡（可选）</span>
+                        <select
+                          id="admin-theory-lesson-section"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                        ></select>
+                      </label>
+                    </div>
                     <div class="space-y-2">
-                      <span class="text-sm text-slate-300">理论内容正文</span>
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <span class="text-sm text-slate-300">理论内容正文</span>
+                        <button
+                          type="button"
+                          id="insert-challenge-btn"
+                          class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                        >
+                          ➕ 插入关卡挑战
+                        </button>
+                      </div>
                       <div
                         id="admin-theory-lesson-editor"
-                        class="min-h-[240px] rounded-xl border border-slate-700 bg-white text-slate-900"
+                        class="min-h-[260px] rounded-xl border border-slate-700 bg-white text-slate-900"
                       ></div>
                       <textarea
                         id="admin-theory-lesson-content"
@@ -2147,7 +2618,7 @@
                     </div>
                   </form>
                   <p id="admin-theory-lesson-status" class="text-xs text-slate-500"></p>
-                </div>
+                </section>
               </div>
             </div>
           </div>
@@ -2334,6 +2805,80 @@
       </section>
     </main>
 
+    <div
+      id="challenge-selector-modal"
+      class="challenge-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="challenge-selector-title"
+    >
+      <div class="challenge-modal__backdrop"></div>
+      <div class="challenge-modal__panel">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <h3 id="challenge-selector-title" class="text-lg font-semibold text-white">
+              插入关卡挑战气泡
+            </h3>
+            <p class="text-xs text-slate-400">
+              选择关卡后，可自定义按钮文案，学生点击后将直接跳转到对应实战关卡。
+            </p>
+          </div>
+          <button
+            id="challenge-selector-close"
+            type="button"
+            class="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
+            aria-label="关闭关卡选择器"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="mt-5 space-y-4 text-sm">
+          <label class="block space-y-1">
+            <span class="text-slate-300">选择章节</span>
+            <select
+              id="challenge-selector-chapter"
+              class="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+            ></select>
+          </label>
+          <label class="block space-y-1">
+            <span class="text-slate-300">选择小节关卡</span>
+            <select
+              id="challenge-selector-section"
+              class="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+            ></select>
+          </label>
+          <label class="block space-y-1">
+            <span class="text-slate-300">按钮显示名称（可选）</span>
+            <input
+              id="challenge-selector-label"
+              type="text"
+              placeholder="默认为关卡标题"
+              class="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+            />
+          </label>
+          <div class="rounded-2xl border border-slate-700/70 bg-slate-950/40 p-4 text-xs text-slate-400">
+            <p class="text-slate-300">预览</p>
+            <div id="challenge-selector-preview" class="mt-3"></div>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end gap-3 text-sm">
+          <button
+            type="button"
+            id="challenge-selector-cancel"
+            class="rounded-xl border border-slate-700 px-4 py-2 text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            id="challenge-selector-confirm"
+            class="rounded-xl bg-emerald-500 px-5 py-2 font-semibold text-white transition hover:bg-emerald-600"
+          >
+            插入气泡
+          </button>
+        </div>
+      </div>
+    </div>
     <div
       id="student-modal-overlay"
       class="fixed inset-0 z-50 hidden overflow-y-auto bg-slate-950/80 px-3 py-6 sm:px-6"
