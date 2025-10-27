@@ -2,14 +2,6 @@ let abilityRadarChart = null;
 let currentStudentModalTab = null;
 let activeExperienceModule = "chat";
 let isScenarioCollapsed = false;
-let theoryMindmapInstance = null;
-const theoryMindmapLessonNodeLookup = new Map();
-const theoryMindmapKeypointNodeLookup = new Map();
-let isTheoryMindmapVisible = false;
-const hasJsMind =
-  typeof window !== "undefined" &&
-  typeof window.jsMind !== "undefined" &&
-  typeof window.jsMind.show === "function";
 
 function sortLevelHierarchy(chapters) {
   if (!Array.isArray(chapters)) {
@@ -457,435 +449,10 @@ function renderLevelMap() {
 
 function ensureTheoryState() {
   if (!state.theory || typeof state.theory !== "object") {
-    state.theory = {
-      tree: [],
-      selectedLessonId: null,
-      lessonCache: new Map(),
-      graphData: null,
-      graphLoaded: false,
-      graphLoading: false,
-      graphError: null,
-      mindmapVisible: false,
-    };
+    state.theory = { tree: [], selectedLessonId: null, lessonCache: new Map() };
   }
   if (!(state.theory.lessonCache instanceof Map)) {
     state.theory.lessonCache = new Map();
-  }
-  if (!("graphData" in state.theory)) {
-    state.theory.graphData = null;
-  }
-  if (typeof state.theory.graphLoaded !== "boolean") {
-    state.theory.graphLoaded = false;
-  }
-  if (typeof state.theory.graphLoading !== "boolean") {
-    state.theory.graphLoading = false;
-  }
-  if (!("graphError" in state.theory)) {
-    state.theory.graphError = null;
-  }
-  if (typeof state.theory.mindmapVisible !== "boolean") {
-    state.theory.mindmapVisible = false;
-  }
-}
-
-function clearTheoryMindmapRendering() {
-  if (theoryMindmapCanvas) {
-    theoryMindmapCanvas.innerHTML = "";
-  }
-  theoryMindmapLessonNodeLookup.clear();
-  theoryMindmapKeypointNodeLookup.clear();
-  theoryMindmapInstance = null;
-}
-
-function collapseTheoryMindmap() {
-  isTheoryMindmapVisible = false;
-  if (state.theory) {
-    state.theory.mindmapVisible = false;
-  }
-  if (theoryMindmapWrapper) {
-    theoryMindmapWrapper.classList.add("hidden");
-  }
-  updateTheoryMindmapToggleLabel();
-}
-
-function updateTheoryMindmapToggleLabel() {
-  if (!theoryMindmapToggle) {
-    return;
-  }
-  theoryMindmapToggle.textContent = isTheoryMindmapVisible ? "收起思维导图" : "展开思维导图";
-}
-
-async function loadTheoryGraph({ force = false } = {}) {
-  ensureTheoryState();
-  if (!force && state.theory.graphLoaded && Array.isArray(state.theory.graphData)) {
-    return state.theory.graphData;
-  }
-  if (state.theory.graphLoading) {
-    return state.theory.graphData || [];
-  }
-  state.theory.graphLoading = true;
-  if (theoryMindmapStatus) {
-    theoryMindmapStatus.textContent = "正在整理知识节点...";
-  }
-  try {
-    const response = await fetchWithAuth("/api/theory/graph");
-    if (!response.ok) {
-      throw new Error("思维导图数据获取失败");
-    }
-    const data = await response.json();
-    const graph = Array.isArray(data.graph) ? data.graph : [];
-    state.theory.graphData = graph;
-    state.theory.graphLoaded = true;
-    state.theory.graphError = null;
-    return graph;
-  } catch (error) {
-    state.theory.graphError = error;
-    if (theoryMindmapStatus) {
-      theoryMindmapStatus.textContent = (error && error.message) || "无法加载思维导图";
-    }
-    throw error;
-  } finally {
-    state.theory.graphLoading = false;
-  }
-}
-
-function convertTheoryGraphToMindData(graph) {
-  const chapters = Array.isArray(graph) ? graph : [];
-  const children = [];
-  chapters.forEach((chapter, chapterIndex) => {
-    const chapterId = chapter.chapterId || `chapter-${chapterIndex + 1}`;
-    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
-    const chapterNode = {
-      id: `chapter-${chapterId}`,
-      topic: chapter.chapterTitle || `章节 ${chapterIndex + 1}`,
-      direction: chapterIndex % 2 === 0 ? "left" : "right",
-      data: {
-        type: "chapter",
-        chapterId: chapter.chapterId || chapterId,
-        summary: chapter.chapterDescription || "",
-      },
-      children: [],
-    };
-    topics.forEach((topic, topicIndex) => {
-      const topicId = topic.id || `${chapterId}-topic-${topicIndex + 1}`;
-      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
-      const topicNode = {
-        id: `topic-${topicId}`,
-        topic: `${topic.code ? `${topic.code} · ` : ""}${topic.title || "专题"}`,
-        data: {
-          type: "topic",
-          topicId: topic.id || topicId,
-          chapterId: chapter.chapterId || chapterId,
-          summary: topic.summary || "",
-        },
-        children: [],
-      };
-      lessons.forEach((lesson, lessonIndex) => {
-        const lessonId = lesson.id || `${topicId}-lesson-${lessonIndex + 1}`;
-        const keypoints = Array.isArray(lesson.keypoints) ? lesson.keypoints : [];
-        const lessonNode = {
-          id: `lesson-${lessonId}`,
-          topic: `${lesson.code ? `[${lesson.code}] ` : ""}${lesson.title || "课时"}`,
-          data: {
-            type: "lesson",
-            lessonId: lesson.id || lessonId,
-            topicId: topic.id || topicId,
-            chapterId: chapter.chapterId || chapterId,
-            summary: lesson.sectionTitle || "",
-          },
-          children: [],
-        };
-        keypoints.forEach((keypoint, keypointIndex) => {
-          const keypointId = keypoint.id || `${lessonId}-kp-${keypointIndex + 1}`;
-          lessonNode.children.push({
-            id: `keypoint-${keypointId}`,
-            topic: `${keypoint.code ? `${keypoint.code} · ` : ""}${keypoint.title || "知识点"}`,
-            data: {
-              type: "keypoint",
-              keypointId: keypoint.id || keypointId,
-              lessonId: lesson.id || lessonId,
-              summary: keypoint.summary || "",
-              anchor: keypoint.anchor || "",
-              skillTags: Array.isArray(keypoint.skillTags) ? keypoint.skillTags : [],
-            },
-          });
-        });
-        topicNode.children.push(lessonNode);
-      });
-      chapterNode.children.push(topicNode);
-    });
-    children.push(chapterNode);
-  });
-  return {
-    meta: { name: "theory-mindmap", author: "AI Smart Tutor", version: "0.1" },
-    format: "node_tree",
-    data: {
-      id: "theory-root",
-      topic: "理论知识图谱",
-      data: { type: "root" },
-      children,
-    },
-  };
-}
-
-function annotateMindmapNodes() {
-  if (!theoryMindmapInstance || !theoryMindmapInstance.mind) {
-    return;
-  }
-  theoryMindmapLessonNodeLookup.clear();
-  theoryMindmapKeypointNodeLookup.clear();
-  const nodes = theoryMindmapInstance.mind.nodes || {};
-  Object.values(nodes).forEach((node) => {
-    if (!node) {
-      return;
-    }
-    const element = theoryMindmapInstance.viewProvider.getNodeElement(node);
-    if (!element) {
-      return;
-    }
-    element.classList.add("theory-mindmap-node");
-    const nodeType = node.data && node.data.type;
-    if (nodeType) {
-      element.classList.add(`theory-mindmap-node--${nodeType}`);
-      element.dataset.nodeType = nodeType;
-    }
-    const summary = node.data && node.data.summary;
-    if (summary) {
-      element.setAttribute("title", summary);
-    }
-    const lessonId = node.data && node.data.lessonId;
-    const keypointId = node.data && node.data.keypointId;
-    if (lessonId) {
-      element.dataset.lessonId = lessonId;
-    }
-    if (keypointId) {
-      element.dataset.mindmapKeypoint = keypointId;
-    }
-    if (Array.isArray(node.data && node.data.skillTags) && node.data.skillTags.length > 0) {
-      element.dataset.skillTags = node.data.skillTags.join(",");
-    }
-    if (lessonId && nodeType === "lesson") {
-      theoryMindmapLessonNodeLookup.set(lessonId, node.id);
-    }
-    if (keypointId) {
-      theoryMindmapKeypointNodeLookup.set(keypointId, node.id);
-    }
-  });
-}
-
-function renderTheoryMindmapFallback(graph) {
-  if (!theoryMindmapCanvas) {
-    return;
-  }
-  clearTheoryMindmapRendering();
-  const root = document.createElement("div");
-  root.className = "theory-mindmap-fallback";
-  const chapters = Array.isArray(graph) ? graph : [];
-  if (chapters.length === 0) {
-    const empty = document.createElement("p");
-    empty.textContent = "暂无发布的理论知识节点。";
-    root.appendChild(empty);
-  }
-  chapters.forEach((chapter) => {
-    const chapterDetails = document.createElement("details");
-    chapterDetails.open = true;
-    const chapterSummary = document.createElement("summary");
-    chapterSummary.textContent = chapter.chapterTitle || chapter.chapterId || "章节";
-    chapterDetails.appendChild(chapterSummary);
-
-    const topicList = document.createElement("div");
-    topicList.className = "space-y-2 pt-2";
-    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
-    topics.forEach((topic) => {
-      const topicDetails = document.createElement("details");
-      topicDetails.open = true;
-      const topicSummary = document.createElement("summary");
-      topicSummary.textContent = `${topic.code ? `${topic.code} · ` : ""}${topic.title || "专题"}`;
-      topicDetails.appendChild(topicSummary);
-
-      const lessonList = document.createElement("div");
-      lessonList.className = "space-y-1 pt-2";
-      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
-      lessons.forEach((lesson) => {
-        const lessonButton = document.createElement("button");
-        lessonButton.type = "button";
-        lessonButton.className = "w-full rounded-lg border border-slate-700/60 bg-slate-800/70 px-3 py-2 text-left text-xs text-sky-100 hover:border-sky-300/70 hover:text-white";
-        lessonButton.dataset.lessonId = lesson.id || "";
-        lessonButton.dataset.mindmapLesson = lesson.id || "";
-        lessonButton.innerHTML = `<strong class="font-semibold">${lesson.code ? `[${lesson.code}] ` : ""}${lesson.title || "课时"}</strong>`;
-
-        const keypoints = Array.isArray(lesson.keypoints) ? lesson.keypoints : [];
-        if (keypoints.length > 0) {
-          const list = document.createElement("ul");
-          list.className = "mt-2 space-y-1 text-[0.7rem] text-slate-200/80";
-          keypoints.forEach((kp) => {
-            const item = document.createElement("li");
-            item.dataset.mindmapKeypoint = kp.id || "";
-            item.dataset.lessonId = lesson.id || "";
-            item.innerHTML = `<span class="font-semibold text-emerald-200/90">${kp.code ? `${kp.code} · ` : ""}${kp.title || "知识点"}</span>`;
-            list.appendChild(item);
-          });
-          lessonButton.appendChild(list);
-        }
-        lessonList.appendChild(lessonButton);
-      });
-      if (lessons.length === 0) {
-        const emptyLesson = document.createElement("p");
-        emptyLesson.className = "rounded-lg border border-dashed border-slate-600/50 bg-slate-800/40 px-3 py-2 text-[0.7rem] text-slate-400";
-        emptyLesson.textContent = "暂无课时";
-        lessonList.appendChild(emptyLesson);
-      }
-      topicDetails.appendChild(lessonList);
-      topicList.appendChild(topicDetails);
-    });
-    if (topics.length === 0) {
-      const emptyTopic = document.createElement("p");
-      emptyTopic.className = "rounded-lg border border-dashed border-slate-600/50 bg-slate-800/40 px-3 py-2 text-[0.7rem] text-slate-400";
-      emptyTopic.textContent = "暂无专题";
-      topicList.appendChild(emptyTopic);
-    }
-    chapterDetails.appendChild(topicList);
-    root.appendChild(chapterDetails);
-  });
-  theoryMindmapCanvas.appendChild(root);
-  if (theoryMindmapStatus) {
-    theoryMindmapStatus.textContent = "以折叠列表展示知识结构";
-  }
-}
-
-function renderTheoryMindmap(graph) {
-  if (!theoryMindmapCanvas) {
-    return;
-  }
-  const nodes = Array.isArray(graph) ? graph : [];
-  if (nodes.length === 0) {
-    clearTheoryMindmapRendering();
-    const placeholder = document.createElement("div");
-    placeholder.className = "theory-mindmap-fallback";
-    const message = document.createElement("p");
-    message.textContent = "暂无发布的理论知识节点。";
-    placeholder.appendChild(message);
-    theoryMindmapCanvas.appendChild(placeholder);
-    if (theoryMindmapStatus) {
-      theoryMindmapStatus.textContent = "暂无节点";
-    }
-    return;
-  }
-  if (!hasJsMind) {
-    renderTheoryMindmapFallback(nodes);
-    return;
-  }
-  try {
-    const mindData = convertTheoryGraphToMindData(nodes);
-    clearTheoryMindmapRendering();
-    theoryMindmapInstance = window.jsMind.show(
-      { container: theoryMindmapCanvas.id, editable: false, support_html: true, theme: "primary" },
-      mindData,
-    );
-    annotateMindmapNodes();
-    if (theoryMindmapStatus) {
-      theoryMindmapStatus.textContent = "思维导图已加载";
-    }
-    if (state.theory && state.theory.selectedLessonId) {
-      highlightMindmapLesson(state.theory.selectedLessonId);
-    }
-  } catch (error) {
-    if (theoryMindmapStatus) {
-      theoryMindmapStatus.textContent = "思维导图加载失败，已切换列表模式";
-    }
-    renderTheoryMindmapFallback(nodes);
-  }
-}
-
-function setActiveMindmapNode(nodeId) {
-  if (!theoryMindmapInstance || !theoryMindmapInstance.mind) {
-    return;
-  }
-  const nodes = theoryMindmapInstance.mind.nodes || {};
-  Object.values(nodes).forEach((node) => {
-    if (!node) {
-      return;
-    }
-    const element = theoryMindmapInstance.viewProvider.getNodeElement(node);
-    if (!element) {
-      return;
-    }
-    if (node.id === nodeId) {
-      element.classList.add("is-active");
-    } else {
-      element.classList.remove("is-active");
-    }
-  });
-}
-
-function highlightMindmapLesson(lessonId, { keypointId = null } = {}) {
-  if (!lessonId || (!isTheoryMindmapVisible && !theoryMindmapInstance)) {
-    return;
-  }
-  if (!theoryMindmapInstance) {
-    return;
-  }
-  let targetNodeId = null;
-  if (keypointId && theoryMindmapKeypointNodeLookup.has(keypointId)) {
-    targetNodeId = theoryMindmapKeypointNodeLookup.get(keypointId) || null;
-  }
-  if (!targetNodeId && theoryMindmapLessonNodeLookup.has(lessonId)) {
-    targetNodeId = theoryMindmapLessonNodeLookup.get(lessonId) || null;
-  }
-  if (!targetNodeId) {
-    return;
-  }
-  theoryMindmapInstance.select_node(targetNodeId);
-  setActiveMindmapNode(targetNodeId);
-}
-
-function highlightMindmapKeypoint(keypointId, lessonId) {
-  if (!keypointId) {
-    highlightMindmapLesson(lessonId);
-    return;
-  }
-  highlightMindmapLesson(lessonId, { keypointId });
-}
-
-async function toggleTheoryMindmap() {
-  ensureTheoryState();
-  if (isTheoryMindmapVisible) {
-    collapseTheoryMindmap();
-    return;
-  }
-  isTheoryMindmapVisible = true;
-  state.theory.mindmapVisible = true;
-  if (theoryMindmapWrapper) {
-    theoryMindmapWrapper.classList.remove("hidden");
-  }
-  updateTheoryMindmapToggleLabel();
-  try {
-    const graph = await loadTheoryGraph();
-    renderTheoryMindmap(graph);
-  } catch (error) {
-    const fallbackGraph = Array.isArray(state.theory.graphData) ? state.theory.graphData : [];
-    renderTheoryMindmapFallback(fallbackGraph);
-  }
-}
-
-async function refreshTheoryMindmap() {
-  ensureTheoryState();
-  state.theory.graphLoaded = false;
-  state.theory.graphData = null;
-  state.theory.graphError = null;
-  if (!isTheoryMindmapVisible) {
-    await toggleTheoryMindmap();
-    return;
-  }
-  if (theoryMindmapStatus) {
-    theoryMindmapStatus.textContent = "正在刷新节点...";
-  }
-  try {
-    const graph = await loadTheoryGraph({ force: true });
-    renderTheoryMindmap(graph);
-  } catch (error) {
-    const fallbackGraph = Array.isArray(state.theory.graphData) ? state.theory.graphData : [];
-    renderTheoryMindmapFallback(fallbackGraph);
   }
 }
 
@@ -1099,12 +666,6 @@ function renderTheoryLessonContent(lessonDetail) {
     theoryLessonTitleEl.textContent = "请选择理论学习小节";
     theoryLessonCodeEl.textContent = "";
     theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">在左侧选择任意知识点即可查看内容。</p>";
-    if (theoryLessonKeypointContainer) {
-      theoryLessonKeypointContainer.classList.add("hidden");
-    }
-    if (theoryLessonKeypointList) {
-      theoryLessonKeypointList.innerHTML = "";
-    }
     if (theoryChallengeContainer) {
       theoryChallengeContainer.classList.add("hidden");
     }
@@ -1113,70 +674,6 @@ function renderTheoryLessonContent(lessonDetail) {
 
   theoryLessonTitleEl.textContent = lessonDetail.title || "理论学习";
   theoryLessonCodeEl.textContent = lessonDetail.code || "";
-  const keypoints = Array.isArray(lessonDetail.keypoints) ? lessonDetail.keypoints : [];
-  if (theoryLessonKeypointContainer && theoryLessonKeypointList) {
-    theoryLessonKeypointList.innerHTML = "";
-    if (keypoints.length === 0) {
-      theoryLessonKeypointContainer.classList.add("hidden");
-    } else {
-      keypoints
-        .slice()
-        .sort((a, b) => {
-          const aIndex = typeof a.orderIndex === "number" ? a.orderIndex : 0;
-          const bIndex = typeof b.orderIndex === "number" ? b.orderIndex : 0;
-          return aIndex - bIndex;
-        })
-        .forEach((keypoint) => {
-          const item = document.createElement("li");
-          item.className = "theory-keypoints__item";
-          item.dataset.keypointId = keypoint.id || "";
-          item.dataset.lessonId = lessonDetail.id || "";
-
-          const header = document.createElement("div");
-          header.className = "theory-keypoints__header";
-
-          const title = document.createElement("span");
-          title.className = "theory-keypoints__title-text";
-          title.textContent = keypoint.title || "知识点";
-          header.appendChild(title);
-
-          if (keypoint.code) {
-            const code = document.createElement("span");
-            code.className = "theory-keypoints__code";
-            code.textContent = keypoint.code;
-            header.appendChild(code);
-          }
-          item.appendChild(header);
-
-          if (keypoint.summary) {
-            const summary = document.createElement("p");
-            summary.className = "theory-keypoints__summary";
-            summary.textContent = keypoint.summary;
-            item.appendChild(summary);
-          }
-
-          if (Array.isArray(keypoint.skillTags) && keypoint.skillTags.length > 0) {
-            const tags = document.createElement("div");
-            tags.className = "theory-keypoints__tags";
-            keypoint.skillTags.forEach((tag) => {
-              if (!tag) {
-                return;
-              }
-              const chip = document.createElement("span");
-              chip.className = "theory-keypoints__tag";
-              chip.textContent = tag;
-              tags.appendChild(chip);
-            });
-            if (tags.childNodes.length > 0) {
-              item.appendChild(tags);
-            }
-          }
-
-          theoryLessonKeypointList.appendChild(item);
-        });
-      theoryLessonKeypointContainer.classList.remove("hidden");
-    }
-  }
   const htmlContent = typeof lessonDetail.contentHtml === "string" ? lessonDetail.contentHtml : "";
   if (typeof window !== "undefined" && window.DOMPurify) {
     theoryLessonContentEl.innerHTML = window.DOMPurify.sanitize(htmlContent, {
@@ -1250,9 +747,6 @@ async function selectStudentTheoryLesson(lessonId) {
     }
   }
   renderTheoryLessonContent(lessonDetail || null);
-  if (lessonId) {
-    highlightMindmapLesson(lessonId);
-  }
 }
 
 async function loadStudentTheory(options = {}) {
@@ -1269,13 +763,6 @@ async function loadStudentTheory(options = {}) {
     const data = await response.json();
     const tree = Array.isArray(data.theory) ? data.theory : [];
     state.theory.tree = tree;
-    state.theory.graphData = null;
-    state.theory.graphLoaded = false;
-    state.theory.graphError = null;
-    clearTheoryMindmapRendering();
-    if (isTheoryMindmapVisible && theoryMindmapStatus) {
-      theoryMindmapStatus.textContent = "目录已更新，请刷新导图";
-    }
 
     if (!keepSelection || !findTheoryLessonContext(state.theory.selectedLessonId)) {
       const first = getFirstTheoryLesson(tree);
@@ -1495,7 +982,6 @@ function showStudentDashboardHome() {
   if (theoryPanel) {
     theoryPanel.classList.add("hidden");
   }
-  collapseTheoryMindmap();
   state.studentActiveView = "home";
 }
 
@@ -1514,12 +1000,6 @@ function enterTheoryMode(options = {}) {
   }
   state.studentActiveView = "theory";
   ensureTheoryState();
-  collapseTheoryMindmap();
-  clearTheoryMindmapRendering();
-  if (theoryMindmapStatus) {
-    theoryMindmapStatus.textContent = "";
-  }
-  updateTheoryMindmapToggleLabel();
   renderStudentTheoryTree();
   refreshStudentTheorySelection();
   if (options.scrollIntoView && theoryPanel && typeof theoryPanel.scrollIntoView === "function") {
