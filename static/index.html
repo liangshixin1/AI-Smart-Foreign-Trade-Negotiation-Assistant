@@ -10,6 +10,11 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <link
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/style/jsmind.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/es6/jsmind.js"></script>
+    <link
+      rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css"
     />
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
@@ -348,6 +353,201 @@
         border-color: var(--theory-badge-published-border);
         background: var(--theory-badge-published-bg);
         color: var(--theory-badge-published-text);
+      }
+      .theory-keypoints {
+        background: linear-gradient(135deg, rgba(129, 140, 248, 0.12), rgba(59, 130, 246, 0.12));
+        border: 1px solid rgba(129, 140, 248, 0.35);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+      .theory-keypoints__title {
+        font-size: 0.75rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(191, 219, 254, 0.9);
+      }
+      .theory-keypoints__list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .theory-keypoints__item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        border-radius: 0.85rem;
+        border: 1px solid rgba(59, 130, 246, 0.25);
+        background: rgba(30, 64, 175, 0.15);
+        padding: 0.75rem 0.9rem;
+      }
+      .theory-keypoints__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+      .theory-keypoints__code {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: rgba(191, 219, 254, 0.18);
+        color: rgba(191, 219, 254, 0.95);
+        border: 1px solid rgba(191, 219, 254, 0.35);
+      }
+      .theory-keypoints__title-text {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #e0f2fe;
+      }
+      .theory-keypoints__summary {
+        font-size: 0.75rem;
+        line-height: 1.5;
+        color: rgba(226, 232, 240, 0.85);
+      }
+      .theory-keypoints__tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+      }
+      .theory-keypoints__tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.65rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        background: rgba(56, 189, 248, 0.18);
+        color: rgba(224, 242, 254, 0.95);
+      }
+      .theory-mindmap-card {
+        border: 1px solid rgba(129, 140, 248, 0.35);
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.18), rgba(30, 64, 175, 0.22));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+      .theory-mindmap-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .theory-mindmap-toolbar button {
+        border-radius: 999px;
+        border: 1px solid rgba(191, 219, 254, 0.35);
+        background: rgba(191, 219, 254, 0.14);
+        color: rgba(226, 232, 240, 0.95);
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.4rem 0.95rem;
+        transition: all 0.2s ease;
+      }
+      .theory-mindmap-toolbar button:hover,
+      .theory-mindmap-toolbar button:focus {
+        border-color: rgba(255, 255, 255, 0.7);
+        background: rgba(96, 165, 250, 0.35);
+        color: #ffffff;
+      }
+      .theory-mindmap-status {
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgba(191, 219, 254, 0.75);
+      }
+      #theory-mindmap-wrapper {
+        margin-top: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      @media (min-width: 1024px) {
+        #theory-mindmap-wrapper {
+          flex-direction: row;
+        }
+      }
+      .theory-mindmap-canvas {
+        position: relative;
+        flex: 1 1 0%;
+        min-height: 360px;
+        border-radius: 1.25rem;
+        border: 1px solid rgba(129, 140, 248, 0.4);
+        background: rgba(15, 23, 42, 0.55);
+        overflow: hidden;
+      }
+      .theory-mindmap-hints {
+        flex: 0 0 260px;
+        border-radius: 1.25rem;
+        border: 1px dashed rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.45);
+        padding: 1rem;
+        font-size: 0.75rem;
+        color: rgba(226, 232, 240, 0.8);
+      }
+      .theory-mindmap-hints strong {
+        color: rgba(191, 219, 254, 0.95);
+        font-weight: 600;
+      }
+      .theory-mindmap-canvas jmnode {
+        border-radius: 999px;
+        border-width: 1px;
+        border-style: solid;
+        border-color: rgba(148, 163, 184, 0.35);
+        background: rgba(30, 64, 175, 0.22);
+        color: rgba(226, 232, 240, 0.95);
+        font-size: 0.75rem;
+        padding: 0.35rem 0.8rem;
+        cursor: pointer;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+      .theory-mindmap-canvas jmnode:hover,
+      .theory-mindmap-canvas jmnode:focus {
+        border-color: rgba(165, 180, 252, 0.65);
+        box-shadow: 0 12px 24px -12px rgba(79, 70, 229, 0.45);
+      }
+      .theory-mindmap-node--chapter {
+        background: rgba(59, 130, 246, 0.25) !important;
+        border-color: rgba(59, 130, 246, 0.45) !important;
+      }
+      .theory-mindmap-node--topic {
+        background: rgba(129, 140, 248, 0.2) !important;
+        border-color: rgba(129, 140, 248, 0.45) !important;
+      }
+      .theory-mindmap-node--lesson {
+        background: rgba(56, 189, 248, 0.2) !important;
+        border-color: rgba(56, 189, 248, 0.45) !important;
+      }
+      .theory-mindmap-node--keypoint {
+        background: rgba(16, 185, 129, 0.2) !important;
+        border-color: rgba(16, 185, 129, 0.45) !important;
+      }
+      .theory-mindmap-node.is-active {
+        border-color: rgba(255, 255, 255, 0.8) !important;
+        box-shadow: 0 20px 36px -18px rgba(255, 255, 255, 0.35) !important;
+      }
+      .theory-mindmap-fallback {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1rem;
+        font-size: 0.8rem;
+        color: rgba(226, 232, 240, 0.85);
+      }
+      .theory-mindmap-fallback details {
+        border-radius: 0.85rem;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.4);
+        padding: 0.75rem 1rem;
+      }
+      .theory-mindmap-fallback summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: rgba(191, 219, 254, 0.95);
       }
 
       .theory-tree__action-btn {
@@ -2234,9 +2434,60 @@
                     </p>
                   </div>
                 </header>
+                <div
+                  id="theory-lesson-keypoints"
+                  class="theory-keypoints hidden rounded-3xl p-5 text-xs"
+                >
+                  <div class="flex flex-col gap-3">
+                    <div class="flex flex-col gap-1">
+                      <p class="theory-keypoints__title">关键知识点</p>
+                      <p class="text-[0.7rem] text-indigo-200/80">
+                        按照发布顺序整理的小结，快速定位思维导图中的节点。
+                      </p>
+                    </div>
+                    <ul
+                      id="theory-lesson-keypoint-list"
+                      class="theory-keypoints__list"
+                    ></ul>
+                  </div>
+                </div>
                 <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-inner shadow-slate-950/20">
                   <div id="theory-lesson-html" class="prose-invert theory-lesson-content space-y-4 text-sm leading-relaxed"></div>
                 </article>
+                <section
+                  id="theory-mindmap-section"
+                  class="theory-mindmap-card rounded-3xl border border-indigo-500/40 bg-indigo-500/10 p-5"
+                >
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="space-y-2">
+                      <p class="text-xs font-semibold uppercase tracking-widest text-indigo-200/80">
+                        知识图谱预览
+                      </p>
+                      <h4 class="text-lg font-semibold text-white">理论思维导图</h4>
+                      <p class="text-xs leading-relaxed text-indigo-100/80">
+                        以章节 → 专题 → 课时 → 关键点的层级展示知识结构。悬停可查看摘要，点击节点即刻打开对应课时。
+                      </p>
+                    </div>
+                    <div class="theory-mindmap-toolbar">
+                      <button id="toggle-theory-mindmap" type="button">展开思维导图</button>
+                      <button id="refresh-theory-mindmap" type="button">刷新节点</button>
+                      <span id="theory-mindmap-status" class="theory-mindmap-status"></span>
+                    </div>
+                  </div>
+                  <div id="theory-mindmap-wrapper" class="hidden">
+                    <div id="theory-mindmap" class="theory-mindmap-canvas"></div>
+                    <div class="theory-mindmap-hints space-y-3">
+                      <p>
+                        <strong>使用提示</strong>
+                      </p>
+                      <ul class="space-y-2">
+                        <li>· 蓝色节点为章节，紫色为专题，青色表示课时，绿色代表关键知识点。</li>
+                        <li>· 鼠标悬停可预览摘要，点击节点会同步右侧课时内容。</li>
+                        <li>· 若网络受限或思维导图库未能加载，将自动切换为折叠列表展示。</li>
+                      </ul>
+                    </div>
+                  </div>
+                </section>
                 <div
                   id="theory-challenge"
                   class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-100 shadow-inner shadow-blue-500/10"
