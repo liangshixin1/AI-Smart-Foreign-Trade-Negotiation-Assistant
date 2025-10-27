@@ -49,59 +49,6 @@ if (theoryTree) {
   });
 }
 
-if (theoryMindmapToggle) {
-  theoryMindmapToggle.addEventListener("click", () => {
-    toggleTheoryMindmap();
-  });
-}
-
-if (theoryMindmapRefresh) {
-  theoryMindmapRefresh.addEventListener("click", () => {
-    refreshTheoryMindmap();
-  });
-}
-
-if (theoryMindmapCanvas) {
-  theoryMindmapCanvas.addEventListener("click", (event) => {
-    const keypointNode = event.target.closest("[data-mindmap-keypoint]");
-    if (keypointNode) {
-      const lessonId = keypointNode.dataset.lessonId || keypointNode.dataset.lessonid;
-      const keypointId = keypointNode.dataset.mindmapKeypoint || keypointNode.dataset.mindmapkeypoint;
-      if (lessonId) {
-        selectStudentTheoryLesson(lessonId);
-        highlightMindmapLesson(lessonId, { keypointId });
-      }
-      return;
-    }
-    const lessonNode = event.target.closest("[data-lesson-id],[data-mindmap-lesson]");
-    if (lessonNode) {
-      const lessonId =
-        lessonNode.dataset.lessonId ||
-        lessonNode.dataset.lessonid ||
-        lessonNode.dataset.mindmapLesson ||
-        lessonNode.dataset.mindmaplesson ||
-        "";
-      if (lessonId) {
-        selectStudentTheoryLesson(lessonId);
-      }
-    }
-  });
-}
-
-if (theoryLessonKeypointList) {
-  theoryLessonKeypointList.addEventListener("click", (event) => {
-    const item = event.target.closest("[data-keypoint-id]");
-    if (!item) {
-      return;
-    }
-    const keypointId = item.dataset.keypointId || item.dataset.keypointid;
-    const lessonId = item.dataset.lessonId || item.dataset.lessonid || state.theory.selectedLessonId;
-    if (lessonId) {
-      highlightMindmapKeypoint(keypointId || "", lessonId);
-    }
-  });
-}
-
 if (theoryChallengeAction) {
   theoryChallengeAction.addEventListener("click", () => {
     ensureTheoryState();
