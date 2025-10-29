@@ -2,6 +2,9 @@ let abilityRadarChart = null;
 let currentStudentModalTab = null;
 let activeExperienceModule = "chat";
 let isScenarioCollapsed = false;
+const RECOMMENDATION_SCORE_THRESHOLD = 80;
+let theoryRelatedRequestToken = 0;
+let evaluationRecommendationToken = 0;
 
 function sortLevelHierarchy(chapters) {
   if (!Array.isArray(chapters)) {
@@ -189,6 +192,23 @@ function updateInlineStatus(element, message, variant = "muted") {
     element.classList.add("text-rose-500");
   } else {
     element.classList.add("text-slate-500");
+  }
+}
+
+function setStatusText(element, message, variant = "muted") {
+  if (!element) {
+    return;
+  }
+  element.textContent = message || "";
+  element.classList.remove("text-slate-400", "text-emerald-400", "text-rose-400");
+  if (!message || variant === "muted") {
+    element.classList.add("text-slate-400");
+  } else if (variant === "success") {
+    element.classList.add("text-emerald-400");
+  } else if (variant === "error") {
+    element.classList.add("text-rose-400");
+  } else {
+    element.classList.add("text-slate-400");
   }
 }
 
@@ -456,6 +476,18 @@ function ensureTheoryState() {
   }
 }
 
+function ensureStudentGraphState() {
+  if (!state.studentGraph || typeof state.studentGraph !== "object") {
+    state.studentGraph = { lessonPractices: new Map(), practiceLessons: new Map() };
+  }
+  if (!(state.studentGraph.lessonPractices instanceof Map)) {
+    state.studentGraph.lessonPractices = new Map();
+  }
+  if (!(state.studentGraph.practiceLessons instanceof Map)) {
+    state.studentGraph.practiceLessons = new Map();
+  }
+}
+
 function findTheoryLessonContext(lessonId) {
   if (!lessonId) {
     return null;
@@ -709,12 +741,16 @@ function refreshStudentTheorySelection() {
   const lessonId = state.theory.selectedLessonId;
   if (!lessonId) {
     renderTheoryLessonContent(null);
+    updateTheoryRelatedPractices(null);
     return;
   }
   const cache = state.theory.lessonCache instanceof Map ? state.theory.lessonCache : null;
   const lessonDetail = cache ? cache.get(lessonId) : null;
   if (lessonDetail) {
     renderTheoryLessonContent(lessonDetail);
+    updateTheoryRelatedPractices(lessonId, { preferCache: true });
+  } else {
+    updateTheoryRelatedPractices(null);
   }
 }
 
@@ -747,6 +783,11 @@ async function selectStudentTheoryLesson(lessonId) {
     }
   }
   renderTheoryLessonContent(lessonDetail || null);
+  if (lessonDetail) {
+    await updateTheoryRelatedPractices(lessonId);
+  } else {
+    updateTheoryRelatedPractices(null);
+  }
 }
 
 async function loadStudentTheory(options = {}) {
@@ -1050,6 +1091,15 @@ function resetEvaluation() {
   evaluationCommentaryEl.textContent = "等待新的对话内容...";
   evaluationActionsEl.innerHTML = "";
   evaluationKnowledgeEl.innerHTML = "";
+  if (evaluationRecommendationsSection) {
+    evaluationRecommendationsSection.classList.add("hidden");
+  }
+  if (evaluationRecommendationsStatus) {
+    setStatusText(evaluationRecommendationsStatus, "");
+  }
+  if (evaluationRecommendationsList) {
+    evaluationRecommendationsList.innerHTML = "";
+  }
 }
 
 function renderList(container, items, ordered = false) {
@@ -1106,6 +1156,329 @@ function renderKnowledge(container, items) {
       pill.textContent = item;
     }
     container.appendChild(pill);
+  });
+}
+
+function renderTheoryRelatedPracticeItems(practices) {
+  if (!theoryRelatedPracticeList) {
+    return;
+  }
+  theoryRelatedPracticeList.innerHTML = "";
+  const items = Array.isArray(practices) ? practices : [];
+  items.forEach((practice) => {
+    if (!practice || !practice.id) {
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "w-full rounded-2xl border border-slate-800/60 bg-slate-900/70 px-4 py-3 text-left text-slate-200 transition hover:border-blue-400/60 hover:bg-slate-900";
+
+    const title = document.createElement("p");
+    title.className = "text-sm font-semibold";
+    title.textContent = practice.title || "未命名关卡";
+    button.appendChild(title);
+
+    let chapterLabel = "关联章节未设置";
+    let targetChapterId = practice.chapterId || null;
+    if (practice.chapterId) {
+      const chapter = findChapter(practice.chapterId);
+      chapterLabel = chapter
+        ? chapter.displayTitle || chapter.title || chapter.id || chapterLabel
+        : practice.chapterId;
+    } else {
+      const chapters = Array.isArray(state.chapters) ? state.chapters : [];
+      for (const chapter of chapters) {
+        const sections = Array.isArray(chapter.sections) ? chapter.sections : [];
+        if (sections.find((section) => section.id === practice.id)) {
+          chapterLabel = chapter.displayTitle || chapter.title || chapter.id || chapterLabel;
+          targetChapterId = chapter.id || targetChapterId;
+          break;
+        }
+      }
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "text-xs text-slate-400";
+    meta.textContent = chapterLabel;
+    button.appendChild(meta);
+
+    if (practice.description) {
+      const description = document.createElement("p");
+      description.className = "text-xs text-slate-500";
+      description.textContent = practice.description;
+      button.appendChild(description);
+    }
+
+    button.addEventListener("click", () => {
+      setSelectedLevel(targetChapterId, practice.id);
+      expandLevelSelection();
+      const maybeStart = startLevel();
+      if (maybeStart && typeof maybeStart.catch === "function") {
+        maybeStart.catch((error) => {
+          console.error(error);
+          alert(error.message || "无法启动实战关卡");
+        });
+      }
+    });
+
+    const listItem = document.createElement("li");
+    listItem.appendChild(button);
+    theoryRelatedPracticeList.appendChild(listItem);
+  });
+}
+
+async function updateTheoryRelatedPractices(lessonId, options = {}) {
+  ensureStudentGraphState();
+  const requestId = ++theoryRelatedRequestToken;
+  const forceRefresh = !!options.forceRefresh;
+
+  if (!theoryRelatedPracticesSection) {
+    return;
+  }
+
+  if (!lessonId) {
+    theoryRelatedPracticesSection.classList.add("hidden");
+    if (theoryRelatedPracticeList) {
+      theoryRelatedPracticeList.innerHTML = "";
+    }
+    setStatusText(theoryRelatedPracticesStatus, "");
+    return;
+  }
+
+  theoryRelatedPracticesSection.classList.remove("hidden");
+  if (theoryRelatedPracticeList) {
+    theoryRelatedPracticeList.innerHTML = "";
+  }
+
+  const cache = state.studentGraph.lessonPractices;
+  if (forceRefresh && cache && cache.delete) {
+    cache.delete(lessonId);
+  }
+
+  let practices = cache instanceof Map ? cache.get(lessonId) : null;
+  if (!practices) {
+    setStatusText(theoryRelatedPracticesStatus, "正在匹配相关关卡…", "muted");
+    try {
+      const response = await fetchWithAuth(
+        `/api/graph/theory-lessons/${lessonId}/related-practices`,
+      );
+      if (!response.ok) {
+        let errorMessage = "无法加载相关实战练习";
+        if (response.status === 503) {
+          errorMessage = "知识图谱服务暂不可用";
+        } else if (response.status === 404) {
+          errorMessage = "未找到对应的理论小节";
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData && errorData.error) {
+            errorMessage = errorData.error;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      const data = await response.json();
+      practices = Array.isArray(data.practices) ? data.practices : [];
+      if (cache && cache.set) {
+        cache.set(lessonId, practices);
+      }
+    } catch (error) {
+      if (theoryRelatedRequestToken !== requestId) {
+        return;
+      }
+      setStatusText(
+        theoryRelatedPracticesStatus,
+        error.message || "无法加载相关实战练习",
+        "error",
+      );
+      return;
+    }
+  }
+
+  if (theoryRelatedRequestToken !== requestId) {
+    return;
+  }
+
+  const items = Array.isArray(practices) ? practices : [];
+  if (items.length === 0) {
+    setStatusText(
+      theoryRelatedPracticesStatus,
+      "当前知识点暂未关联实战练习，敬请期待教师更新。",
+      "muted",
+    );
+    return;
+  }
+
+  setStatusText(
+    theoryRelatedPracticesStatus,
+    "点击下方关卡即可直接进入实战练习。",
+    "muted",
+  );
+  renderTheoryRelatedPracticeItems(items);
+}
+
+function shouldRecommendLessons(evaluation) {
+  if (!evaluation) {
+    return false;
+  }
+  if (evaluation.score !== null && evaluation.score !== undefined) {
+    const numericScore = Number(evaluation.score);
+    if (Number.isFinite(numericScore)) {
+      return numericScore < RECOMMENDATION_SCORE_THRESHOLD;
+    }
+  }
+  if (evaluation.bargainingWinRate !== null && evaluation.bargainingWinRate !== undefined) {
+    const winRate = Number(evaluation.bargainingWinRate);
+    if (Number.isFinite(winRate)) {
+      return winRate < RECOMMENDATION_SCORE_THRESHOLD;
+    }
+  }
+  return false;
+}
+
+async function navigateToTheoryLesson(lessonId) {
+  if (!lessonId || !state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  enterTheoryMode({ scrollIntoView: true });
+  ensureTheoryState();
+  if (!findTheoryLessonContext(lessonId)) {
+    try {
+      await loadStudentTheory({ keepSelection: true });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+  try {
+    await selectStudentTheoryLesson(lessonId);
+  } catch (error) {
+    console.error(error);
+    if (theoryStatusText) {
+      theoryStatusText.textContent = error.message || "无法加载理论学习内容";
+    }
+  }
+}
+
+async function updateEvaluationRecommendations(evaluation) {
+  const requestId = ++evaluationRecommendationToken;
+  if (!evaluationRecommendationsSection) {
+    return;
+  }
+  if (!evaluation || !shouldRecommendLessons(evaluation)) {
+    evaluationRecommendationsSection.classList.add("hidden");
+    if (evaluationRecommendationsList) {
+      evaluationRecommendationsList.innerHTML = "";
+    }
+    setStatusText(evaluationRecommendationsStatus, "");
+    return;
+  }
+
+  const practiceId = state.activeLevel && state.activeLevel.sectionId;
+  if (!practiceId) {
+    evaluationRecommendationsSection.classList.add("hidden");
+    if (evaluationRecommendationsList) {
+      evaluationRecommendationsList.innerHTML = "";
+    }
+    setStatusText(evaluationRecommendationsStatus, "");
+    return;
+  }
+
+  ensureStudentGraphState();
+  evaluationRecommendationsSection.classList.remove("hidden");
+  if (evaluationRecommendationsList) {
+    evaluationRecommendationsList.innerHTML = "";
+  }
+  setStatusText(evaluationRecommendationsStatus, "正在查找推荐课程…", "muted");
+
+  const cache = state.studentGraph.practiceLessons;
+  let lessons = cache instanceof Map ? cache.get(practiceId) : null;
+  if (!lessons) {
+    try {
+      const response = await fetchWithAuth(
+        `/api/graph/practices/${practiceId}/related-lessons`,
+      );
+      if (!response.ok) {
+        let errorMessage = "无法加载推荐课程";
+        if (response.status === 503) {
+          errorMessage = "知识图谱服务暂不可用";
+        } else if (response.status === 404) {
+          errorMessage = "未找到对应的关卡";
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData && errorData.error) {
+            errorMessage = errorData.error;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      const data = await response.json();
+      lessons = Array.isArray(data.lessons) ? data.lessons : [];
+      if (cache && cache.set) {
+        cache.set(practiceId, lessons);
+      }
+    } catch (error) {
+      if (evaluationRecommendationToken !== requestId) {
+        return;
+      }
+      setStatusText(
+        evaluationRecommendationsStatus,
+        error.message || "无法加载推荐课程",
+        "error",
+      );
+      return;
+    }
+  }
+
+  if (evaluationRecommendationToken !== requestId) {
+    return;
+  }
+
+  const items = Array.isArray(lessons)
+    ? lessons.filter((lesson) => lesson && lesson.id && lesson.isPublished !== false)
+    : [];
+  if (items.length === 0) {
+    setStatusText(
+      evaluationRecommendationsStatus,
+      "当前关卡尚未关联理论课程，建议联系教师补充知识图谱。",
+      "muted",
+    );
+    return;
+  }
+
+  setStatusText(
+    evaluationRecommendationsStatus,
+    "建议复习以下理论课程，点击即可跳转。",
+    "muted",
+  );
+
+  items.forEach((lesson) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "w-full rounded-2xl border border-slate-800/60 bg-slate-900/60 px-4 py-3 text-left text-slate-200 transition hover:border-emerald-400/60 hover:bg-slate-900";
+
+    const title = document.createElement("p");
+    title.className = "text-sm font-semibold";
+    title.textContent = lesson.title || "理论课程";
+    button.appendChild(title);
+
+    if (lesson.code) {
+      const codeLine = document.createElement("p");
+      codeLine.className = "text-xs text-slate-400";
+      codeLine.textContent = lesson.code;
+      button.appendChild(codeLine);
+    }
+
+    button.addEventListener("click", async () => {
+      try {
+        await navigateToTheoryLesson(lesson.id);
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "无法打开理论课程");
+      }
+    });
+
+    evaluationRecommendationsList.appendChild(button);
   });
 }
 
@@ -1662,6 +2035,7 @@ function renderEvaluation(evaluation) {
 
   renderKnowledge(evaluationKnowledgeEl, evaluation.knowledgePoints || []);
   maybeRecordVictory(evaluation);
+  updateEvaluationRecommendations(evaluation);
 }
 
 function renderSessionHistory() {
