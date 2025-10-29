@@ -383,7 +383,9 @@ def sync_static_content() -> None:
     driver = _get_driver()
 
     chapters = database.list_level_hierarchy(include_prompts=True)
-    theory_topics = database.list_theory_hierarchy(include_content=True, published_only=False)
+    theory_hierarchy = database.list_theory_hierarchy(
+        include_content=True, published_only=False
+    )
 
     with driver.session() as session:
         session.execute_write(_merge_process_steps)
@@ -396,13 +398,28 @@ def sync_static_content() -> None:
                 if preset:
                     session.execute_write(_ensure_practice_knowledge, section["id"], list(preset))
 
-        for topic in theory_topics:
-            session.execute_write(_merge_theory_topic, topic)
-            for lesson in topic.get("lessons", []):
-                session.execute_write(_merge_theory_lesson, topic, lesson)
-                preset = LESSON_KNOWLEDGE_PRESETS.get(lesson["id"], ())
-                if preset:
-                    session.execute_write(_ensure_lesson_knowledge, lesson["id"], list(preset))
+        for theory_chapter in theory_hierarchy:
+            for topic in theory_chapter.get("topics", []):
+                if not topic.get("id"):
+                    LOGGER.warning(
+                        "Skipping theory topic with missing id in chapter %s",
+                        theory_chapter.get("chapterId"),
+                    )
+                    continue
+                session.execute_write(_merge_theory_topic, topic)
+                for lesson in topic.get("lessons", []):
+                    if not lesson.get("id"):
+                        LOGGER.warning(
+                            "Skipping theory lesson with missing id for topic %s",
+                            topic.get("id"),
+                        )
+                        continue
+                    session.execute_write(_merge_theory_lesson, topic, lesson)
+                    preset = LESSON_KNOWLEDGE_PRESETS.get(lesson["id"], ())
+                    if preset:
+                        session.execute_write(
+                            _ensure_lesson_knowledge, lesson["id"], list(preset)
+                        )
 
 
 def _merge_process_steps(tx) -> None:
