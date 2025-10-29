@@ -7,7 +7,7 @@
 - **沉浸式关卡式训练**：内置章节—小节层级的情境地图，学生可按需选择行业场景与难度，快速开启外贸谈判模拟。
 - **多模型协同生成**：分别配置场景生成、协作对话与评估批改的 DeepSeek Key，保证情境多样性、对话流畅度和学习反馈的专业性。
 - **教师工作台**：支持关卡蓝图积木式编辑、统一作业布置、班级学习看板、学生画像与成绩明细查询。
-- **学生成长中心**：保存所有谈判会话、知识点与改进行动项，帮助学生形成可追踪的学习档案。
+- **学生成长中心**：保存所有谈判会话、知识点与改进行动项，帮助学生形成可追踪的学习档案，并结合 Neo4j 图谱呈现多维洞察。
 - **多维评价与复盘**：自动生成谈判评分、评语、改进建议、知识点提取以及讨价还价胜率等指标。
 - **批量账号导入**：读取 Excel 模板快速导入学生账号，默认生成安全密码，便于大规模课堂部署。
 
@@ -65,6 +65,18 @@ DEEPSEEK_COLLAB_KEY=sk-yyyyyyyy
 DEEPSEEK_CRITIC_KEY=sk-zzzzzzzz
 ```
 
+如需启用 Beta2 知识图谱功能，请额外配置 Neo4j 连接参数：
+
+```
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+# 可选参数
+NEO4J_DATABASE=neo4j
+NEO4J_MAX_POOL_SIZE=10
+NEO4J_MAX_RETRY_TIME=15
+```
+
 启动时 `.env` 会被自动读取；缺失必需 Key 时，对应功能会返回提示错误。
 
 ### 3. 初始化数据库
@@ -103,6 +115,9 @@ python app.py
 | `/api/chat` | POST | 学生与 AI 对手对话，可选流式输出 |
 | `/api/admin/analytics` | GET | 教师端班级洞察与能力分析 |
 | `/api/sessions` | GET | 获取个人历史会话与评估结果 |
+| `/api/knowledge_graph/health` | GET | Neo4j 连接健康检查（教师权限） |
+| `/api/knowledge_graph/me/knowledge` | GET | 学生图谱知识点与行动项汇总 |
+| `/api/knowledge_graph/users/<id>/knowledge` | GET | 教师查看指定学生的图谱画像 |
 | `/api/admin/students/import` | POST | Excel 导入学生账号 |
 
 更多端点可参考 `routes/` 目录下各模块的蓝图定义。
@@ -120,6 +135,18 @@ python app.py
 - 配合 `supervisor` 或 systemd 守护进程保证高可用。
 - 将 `app.db` 存放于持久化卷或外部数据库，定期备份。
 - 对公网部署时，请通过 HTTPS 代理加密流量并在前端增加访问控制（如学校 OAuth 或 SSO）。
+
+### Neo4j 知识图谱运维
+
+- 参考 `docs/knowledge_graph_schema.md` 了解节点/关系设计。
+- `docs/data_migration.md` 提供 SQLite → Neo4j 回填脚本的使用说明。
+- `docs/ops_neo4j.md` 汇总常见监控指标与故障排查建议。
+- 初次导入历史数据可执行：
+
+  ```bash
+  python scripts/backfill_neo4j.py --dry-run  # 预估同步数据量
+  python scripts/backfill_neo4j.py            # 实际写入 Neo4j
+  ```
 
 ### 常见线上故障排查
 
