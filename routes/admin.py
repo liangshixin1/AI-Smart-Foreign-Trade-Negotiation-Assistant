@@ -5,10 +5,11 @@ from __future__ import annotations
 from itertools import chain
 from typing import Dict, List, Optional
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from openpyxl import load_workbook
 
 import database
+from services import graph_service
 from services.auth_service import current_user, require_role
 from services.scenario_generator import ensure_level_hierarchy, inject_difficulty_metadata
 from utils.normalizers import normalize_text
@@ -60,6 +61,15 @@ def _parse_student_records(file_storage) -> List[Dict[str, str]]:
         if entry["id"] and entry["password"]:
             records.append(entry)
     return records
+
+
+def _sync_graph_background() -> None:
+    try:
+        graph_service.sync_static_content()
+    except graph_service.GraphUnavailableError as exc:
+        current_app.logger.warning("Skipping graph sync: %s", exc)
+    except Exception as exc:  # pragma: no cover - logging safeguard
+        current_app.logger.exception("Failed to sync knowledge graph: %s", exc)
 
 
 @bp.post("/api/admin/students/import")
@@ -154,6 +164,7 @@ def create_admin_chapter():
         order_index=order_value,
         chapter_id=chapter_id,
     )
+    _sync_graph_background()
     return jsonify({"chapter": chapter}), 201
 
 
@@ -175,6 +186,7 @@ def update_admin_chapter(chapter_id: str):
     chapter = database.update_chapter(chapter_id, **kwargs)
     if not chapter:
         return jsonify({"error": "Chapter not found"}), 404
+    _sync_graph_background()
     return jsonify({"chapter": chapter})
 
 
@@ -185,6 +197,7 @@ def delete_admin_chapter(chapter_id: str):
     if not existing:
         return jsonify({"error": "Chapter not found"}), 404
     database.delete_chapter(chapter_id)
+    _sync_graph_background()
     return ("", 204)
 
 
@@ -228,6 +241,7 @@ def create_admin_section():
     )
     if not section:
         return jsonify({"error": "Chapter not found"}), 404
+    _sync_graph_background()
     return jsonify({"section": section}), 201
 
 
@@ -269,6 +283,7 @@ def update_admin_section(section_id: str):
     section = database.update_section(section_id, **kwargs)
     if not section:
         return jsonify({"error": "Section not found"}), 404
+    _sync_graph_background()
     return jsonify({"section": section})
 
 
@@ -279,6 +294,7 @@ def delete_admin_section(section_id: str):
     if not section:
         return jsonify({"error": "Section not found"}), 404
     database.delete_section(section_id)
+    _sync_graph_background()
     return ("", 204)
 
 
@@ -320,6 +336,7 @@ def create_admin_theory_topic():
     )
     if not record:
         return jsonify({"error": "Chapter not found"}), 404
+    _sync_graph_background()
     return jsonify({"topic": record}), 201
 
 
@@ -353,6 +370,7 @@ def update_admin_theory_topic(topic_id: str):
     topic = database.update_theory_topic(topic_id, **updates)
     if not topic:
         return jsonify({"error": "Topic not found"}), 404
+    _sync_graph_background()
     return jsonify({"topic": topic})
 
 
@@ -363,6 +381,7 @@ def delete_admin_theory_topic(topic_id: str):
     if not topic:
         return jsonify({"error": "Topic not found"}), 404
     database.delete_theory_topic(topic_id)
+    _sync_graph_background()
     return ("", 204)
 
 
@@ -399,6 +418,7 @@ def create_admin_theory_lesson():
     )
     if not lesson:
         return jsonify({"error": "Unable to create lesson"}), 400
+    _sync_graph_background()
     return jsonify({"lesson": lesson}), 201
 
 
@@ -437,6 +457,7 @@ def update_admin_theory_lesson(lesson_id: str):
     lesson = database.update_theory_lesson(lesson_id, **updates)
     if not lesson:
         return jsonify({"error": "Lesson not found"}), 404
+    _sync_graph_background()
     return jsonify({"lesson": lesson})
 
 
@@ -447,4 +468,5 @@ def delete_admin_theory_lesson(lesson_id: str):
     if not lesson:
         return jsonify({"error": "Lesson not found"}), 404
     database.delete_theory_lesson(lesson_id)
+    _sync_graph_background()
     return ("", 204)
