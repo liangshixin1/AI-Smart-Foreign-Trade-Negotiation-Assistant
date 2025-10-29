@@ -16,8 +16,13 @@ bp = Blueprint("graph", __name__)
 def _graph_operation(fn: Callable[[], Tuple[dict, int]]):
     try:
         payload, status = fn()
-    except graph_service.GraphUnavailableError:
-        return jsonify({"error": "Knowledge graph service is unavailable"}), 503
+    except graph_service.GraphUnavailableError as exc:
+        status_payload = graph_service.graph_status()
+        response = {"error": str(exc) or "Knowledge graph service is unavailable"}
+        if status_payload.get("message"):
+            response["detail"] = status_payload["message"]
+        response["graphStatus"] = status_payload
+        return jsonify(response), 503
     except graph_service.GraphEntityNotFoundError as exc:
         return jsonify({"error": str(exc)}), 404
     return jsonify(payload), status

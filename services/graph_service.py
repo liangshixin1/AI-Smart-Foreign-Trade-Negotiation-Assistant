@@ -25,6 +25,8 @@ class GraphEntityNotFoundError(RuntimeError):
 
 
 _DRIVER = None
+_GRAPH_DISABLED = False
+_GRAPH_DISABLED_REASON = ""
 
 
 def _neo4j_credentials() -> Tuple[str, str, str]:
@@ -37,7 +39,10 @@ def _neo4j_credentials() -> Tuple[str, str, str]:
 
 
 def _get_driver():
-    global _DRIVER
+    global _DRIVER, _GRAPH_DISABLED, _GRAPH_DISABLED_REASON
+    if _GRAPH_DISABLED:
+        raise GraphUnavailableError(_GRAPH_DISABLED_REASON or "Knowledge graph connectivity disabled")
+
     if _DRIVER is not None:
         return _DRIVER
 
@@ -47,9 +52,13 @@ def _get_driver():
         driver.verify_connectivity()
     except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - network
         LOGGER.error("Failed to connect to Neo4j at %s: %s", uri, exc)
+        _GRAPH_DISABLED = True
+        _GRAPH_DISABLED_REASON = f"Failed to connect to Neo4j at {uri}: {exc}"
         raise GraphUnavailableError("Failed to connect to Neo4j") from exc
 
     _DRIVER = driver
+    _GRAPH_DISABLED = False
+    _GRAPH_DISABLED_REASON = ""
     return driver
 
 
@@ -59,13 +68,52 @@ def is_configured() -> bool:
     return bool(os.getenv("NEO4J_URI"))
 
 
+def graph_status() -> Dict[str, object]:
+    """Return diagnostic information about the knowledge graph backend."""
+
+    return {
+        "configured": is_configured(),
+        "available": is_configured() and not _GRAPH_DISABLED,
+        "message": _GRAPH_DISABLED_REASON,
+    }
+
+
 def close_driver() -> None:
     """Dispose of the cached Neo4j driver."""
 
-    global _DRIVER
+    global _DRIVER, _GRAPH_DISABLED, _GRAPH_DISABLED_REASON
     if _DRIVER is not None:
         _DRIVER.close()
         _DRIVER = None
+    _GRAPH_DISABLED = False
+    _GRAPH_DISABLED_REASON = ""
+
+
+def _fallback_practice_detail(practice_id: str) -> Dict[str, object]:
+    practice = database.get_section(practice_id)
+    if not practice:
+        raise GraphEntityNotFoundError(f"Practice {practice_id} not found")
+    return {
+        "id": practice.get("id"),
+        "title": practice.get("title"),
+        "description": practice.get("description"),
+        "orderIndex": practice.get("order_index"),
+        "chapterId": practice.get("chapter_id"),
+        "knowledgePoints": [],
+    }
+
+
+def _fallback_lesson_detail(lesson_id: str) -> Dict[str, object]:
+    lesson = database.get_theory_lesson(lesson_id, include_unpublished=True)
+    if not lesson:
+        raise GraphEntityNotFoundError(f"Theory lesson {lesson_id} not found")
+    return {
+        "id": lesson.get("id"),
+        "title": lesson.get("title"),
+        "code": lesson.get("code"),
+        "topicId": lesson.get("topicId"),
+        "knowledgePoints": [],
+    }
 
 
 def _execute_read(query: str, parameters: Optional[Dict[str, object]] = None) -> List[Dict[str, object]]:
@@ -560,15 +608,20 @@ def _normalize_knowledge_points(points: Sequence[str]) -> List[str]:
 
 
 def get_practice_detail(practice_id: str) -> Dict[str, object]:
-    records = _execute_read(
-        """
-        MATCH (p:Practice {id: $id})
-        OPTIONAL MATCH (p)-[:TESTS]->(k:KnowledgePoint)
-        OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
-        RETURN p AS practice, collect(DISTINCT k.name) AS knowledge, c.id AS chapterId
-        """,
-        {"id": practice_id},
-    )
+    try:
+        records = _execute_read(
+            """
+            MATCH (p:Practice {id: $id})
+            OPTIONAL MATCH (p)-[:TESTS]->(k:KnowledgePoint)
+            OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
+            RETURN p AS practice, collect(DISTINCT k.name) AS knowledge, c.id AS chapterId
+            """,
+            {"id": practice_id},
+        )
+    except GraphUnavailableError:
+        LOGGER.debug("Graph unavailable when fetching practice %s; returning fallback", practice_id)
+        return _fallback_practice_detail(practice_id)
+
     if not records:
         raise GraphEntityNotFoundError(f"Practice {practice_id} not found")
 
@@ -586,15 +639,20 @@ def get_practice_detail(practice_id: str) -> Dict[str, object]:
 
 
 def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
-    records = _execute_read(
-        """
-        MATCH (l:TheoryLesson {id: $id})
-        OPTIONAL MATCH (l)-[:EXPLAINS]->(k:KnowledgePoint)
-        OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
-        RETURN l AS lesson, collect(DISTINCT k.name) AS knowledge, t.id AS topicId
-        """,
-        {"id": lesson_id},
-    )
+    try:
+        records = _execute_read(
+            """
+            MATCH (l:TheoryLesson {id: $id})
+            OPTIONAL MATCH (l)-[:EXPLAINS]->(k:KnowledgePoint)
+            OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
+            RETURN l AS lesson, collect(DISTINCT k.name) AS knowledge, t.id AS topicId
+            """,
+            {"id": lesson_id},
+        )
+    except GraphUnavailableError:
+        LOGGER.debug("Graph unavailable when fetching lesson %s; returning fallback", lesson_id)
+        return _fallback_lesson_detail(lesson_id)
+
     if not records:
         raise GraphEntityNotFoundError(f"Theory lesson {lesson_id} not found")
 
@@ -624,29 +682,46 @@ def list_knowledge_points() -> List[Dict[str, object]]:
 
 
 def get_related_practices_for_lesson(lesson_id: str) -> List[Dict[str, object]]:
-    return _execute_read(
-        """
-        MATCH (l:TheoryLesson {id: $id})-[:EXPLAINS]->(k:KnowledgePoint)<-[:TESTS]-(p:Practice)
-        OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
-        RETURN DISTINCT p.id AS id, p.title AS title, p.description AS description,
-               p.orderIndex AS orderIndex, c.id AS chapterId
-        ORDER BY p.orderIndex, p.title
-        """,
-        {"id": lesson_id},
-    )
+    try:
+        return _execute_read(
+            """
+            MATCH (l:TheoryLesson {id: $id})-[:EXPLAINS]->(k:KnowledgePoint)<-[:TESTS]-(p:Practice)
+            OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
+            RETURN DISTINCT p.id AS id, p.title AS title, p.description AS description,
+                   p.orderIndex AS orderIndex, c.id AS chapterId
+            ORDER BY p.orderIndex, p.title
+            """,
+            {"id": lesson_id},
+        )
+    except GraphUnavailableError:
+        LOGGER.debug(
+            "Graph unavailable when listing practices for lesson %s; returning empty list",
+            lesson_id,
+        )
+        # Ensure the lesson exists before returning an empty payload.
+        _fallback_lesson_detail(lesson_id)
+        return []
 
 
 def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]]:
-    return _execute_read(
-        """
-        MATCH (p:Practice {id: $id})-[:TESTS]->(k:KnowledgePoint)<-[:EXPLAINS]-(l:TheoryLesson)
-        OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
-        RETURN DISTINCT l.id AS id, l.title AS title, l.code AS code, l.orderIndex AS orderIndex,
-               l.isPublished AS isPublished, t.id AS topicId
-        ORDER BY l.orderIndex, l.title
-        """,
-        {"id": practice_id},
-    )
+    try:
+        return _execute_read(
+            """
+            MATCH (p:Practice {id: $id})-[:TESTS]->(k:KnowledgePoint)<-[:EXPLAINS]-(l:TheoryLesson)
+            OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
+            RETURN DISTINCT l.id AS id, l.title AS title, l.code AS code, l.orderIndex AS orderIndex,
+                   l.isPublished AS isPublished, t.id AS topicId
+            ORDER BY l.orderIndex, l.title
+            """,
+            {"id": practice_id},
+        )
+    except GraphUnavailableError:
+        LOGGER.debug(
+            "Graph unavailable when listing lessons for practice %s; returning empty list",
+            practice_id,
+        )
+        _fallback_practice_detail(practice_id)
+        return []
 
 
 def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:

@@ -67,6 +67,29 @@ DEEPSEEK_CRITIC_KEY=sk-zzzzzzzz
 
 启动时 `.env` 会被自动读取；缺失必需 Key 时，对应功能会返回提示错误。
 
+#### 知识图谱（Neo4j）配置
+
+知识图谱相关功能默认可选；若未配置 Neo4j，学生端的“相关练习/推荐课时”会自动回退为空列表。要启用完整体验，请：
+
+1. 安装并启动 Neo4j 5.x 服务，或使用 Docker 快速体验：
+
+   ```bash
+   docker run -it --rm \
+     -p7474:7474 -p7687:7687 \
+     -e NEO4J_AUTH=neo4j/testpass \
+     neo4j:5
+   ```
+
+2. 在 `.env` 中补充以下变量，指向可连接的 Bolt 地址与认证：
+
+   ```
+   NEO4J_URI=bolt://127.0.0.1:7687
+   NEO4J_USER=neo4j
+   NEO4J_PASSWORD=testpass
+   ```
+
+3. 首次启动 Flask 应用时会自动创建唯一约束并导入章节/理论课时等静态数据。若连接失败，可查看控制台日志，系统会临时禁用图谱查询并退回 SQLite 结果。
+
 ### 3. 初始化数据库
 
 首次运行会在项目目录生成 `app.db`，并写入默认账户与预置章节。如果需要自定义路径，可设置环境变量 `DATABASE_PATH`。
