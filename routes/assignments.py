@@ -14,7 +14,6 @@ from services.auth_service import current_user, require_role
 from services.document_composer import generate_opening_message
 from services.evaluation_service import evaluate_session
 from services.llm_service import complete_chat, stream_chat
-from services import knowledge_graph_ingest
 from services.scenario_generator import (
     DIFFICULTY_PROFILES,
     DEFAULT_DIFFICULTY,
@@ -149,16 +148,6 @@ def start_level():
         scenario=scenario,
         expects_bargaining=bool(section.get("expects_bargaining")),
         difficulty=difficulty_key,
-    )
-
-    knowledge_graph_ingest.record_session_creation(
-        session_id=session_id,
-        user=user,
-        scenario=scenario,
-        difficulty=difficulty_key,
-        expects_bargaining=bool(section.get("expects_bargaining")),
-        chapter=database.get_chapter(chapter_id) if chapter_id else None,
-        section=section,
     )
 
     opening_message = generate_opening_message(section_id, scenario)
@@ -333,23 +322,6 @@ def start_assignment(assignment_id: str):
         assignment_id=assignment_id,
     )
     database.link_assignment_session(assignment_id, user.id, session_id)
-
-    chapter = database.get_chapter(record.get("chapterId")) if record.get("chapterId") else None
-    section = (
-        database.get_section_template(record.get("chapterId"), record.get("sectionId"))
-        if record.get("chapterId") and record.get("sectionId")
-        else None
-    )
-    knowledge_graph_ingest.record_session_creation(
-        session_id=session_id,
-        user=user,
-        scenario=scenario,
-        difficulty=difficulty_key,
-        expects_bargaining=expects_bargaining,
-        chapter=chapter,
-        section=section,
-        assignment_id=assignment_id,
-    )
 
     opening_message = generate_opening_message(record.get("sectionId"), scenario)
     if opening_message:

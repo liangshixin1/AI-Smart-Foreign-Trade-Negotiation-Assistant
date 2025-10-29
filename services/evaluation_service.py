@@ -7,7 +7,6 @@ from typing import Dict
 import database
 from services.document_composer import build_transcript
 from services.llm_service import complete_chat
-from services import knowledge_graph_ingest
 from utils.validators import MissingKeyError, extract_json_block, require_key
 
 
@@ -75,11 +74,6 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     }
 
     database.save_evaluation(session_id, result)
-    knowledge_graph_ingest.record_evaluation(
-        session_id=session_id,
-        evaluation=result,
-        scenario=session.get("scenario") if session else None,
-    )
     if session.get("assignment_id"):
         database.mark_assignment_completed_by_session(session_id)
     return result
