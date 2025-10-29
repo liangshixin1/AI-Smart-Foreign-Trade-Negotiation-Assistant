@@ -1,5 +1,7 @@
 let adminTheoryLessonEditor = null;
 let challengeBubbleBlotRegistered = false;
+let adminGraphNetwork = null;
+let adminGraphSelectionKey = null;
 
 function registerChallengeBubbleBlot() {
   if (challengeBubbleBlotRegistered) {
@@ -224,6 +226,559 @@ function splitLines(value) {
 
 function joinLines(list) {
   return Array.isArray(list) ? list.join("\n") : "";
+}
+
+function readKnowledgeFromTextarea(element) {
+  if (!element) {
+    return [];
+  }
+  return splitLines(element.value);
+}
+
+function writeKnowledgeToTextarea(element, points) {
+  if (!element) {
+    return;
+  }
+  element.value = joinLines(points || []);
+}
+
+function clearPracticeKnowledgeCache(targetIds = null) {
+  const cache = state.admin.graph && state.admin.graph.practiceKnowledge;
+  if (!cache || typeof cache !== "object") {
+    return;
+  }
+  if (targetIds === null || targetIds === undefined) {
+    if (typeof cache.clear === "function") {
+      cache.clear();
+    }
+    return;
+  }
+  const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+  ids
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter((id) => id)
+    .forEach((id) => {
+      if (typeof cache.delete === "function") {
+        cache.delete(id);
+      }
+    });
+}
+
+function clearLessonKnowledgeCache(targetIds = null) {
+  const cache = state.admin.graph && state.admin.graph.lessonKnowledge;
+  if (!cache || typeof cache !== "object") {
+    return;
+  }
+  if (targetIds === null || targetIds === undefined) {
+    if (typeof cache.clear === "function") {
+      cache.clear();
+    }
+    return;
+  }
+  const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+  ids
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter((id) => id)
+    .forEach((id) => {
+      if (typeof cache.delete === "function") {
+        cache.delete(id);
+      }
+    });
+}
+
+async function fetchPracticeKnowledge(practiceId, { forceRefresh = false } = {}) {
+  if (!practiceId || !state.auth.user || state.auth.user.role !== "teacher") {
+    return [];
+  }
+  const cache = state.admin.graph.practiceKnowledge;
+  if (!forceRefresh && cache && cache.has(practiceId)) {
+    return cache.get(practiceId) || [];
+  }
+  try {
+    const response = await fetchWithAuth(`/api/graph/practices/${practiceId}`);
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      throw new Error("无法加载关卡知识点");
+    }
+    const data = await response.json();
+    const knowledge = (data.practice && data.practice.knowledgePoints) || [];
+    if (cache && cache.set) {
+      cache.set(practiceId, knowledge);
+    }
+    return knowledge;
+  } catch (error) {
+    console.warn(error);
+    return cache && cache.get ? cache.get(practiceId) || [] : [];
+  }
+}
+
+async function persistPracticeKnowledge(practiceId, knowledgePoints) {
+  if (!practiceId || !state.auth.user || state.auth.user.role !== "teacher") {
+    return [];
+  }
+  try {
+    const response = await fetchWithAuth(`/api/graph/practices/${practiceId}/knowledge`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ knowledgePoints }),
+    });
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新关卡知识点失败");
+    }
+    const data = await response.json();
+    const updated = (data.practice && data.practice.knowledgePoints) || knowledgePoints;
+    const cache = state.admin.graph.practiceKnowledge;
+    if (cache && cache.set) {
+      cache.set(practiceId, updated);
+    }
+    return updated;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+}
+
+async function fetchLessonKnowledge(lessonId, { forceRefresh = false } = {}) {
+  if (!lessonId || !state.auth.user || state.auth.user.role !== "teacher") {
+    return [];
+  }
+  const cache = state.admin.graph.lessonKnowledge;
+  if (!forceRefresh && cache && cache.has(lessonId)) {
+    return cache.get(lessonId) || [];
+  }
+  try {
+    const response = await fetchWithAuth(`/api/graph/theory-lessons/${lessonId}`);
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      throw new Error("无法加载理论知识点");
+    }
+    const data = await response.json();
+    const knowledge = (data.lesson && data.lesson.knowledgePoints) || [];
+    if (cache && cache.set) {
+      cache.set(lessonId, knowledge);
+    }
+    return knowledge;
+  } catch (error) {
+    console.warn(error);
+    return cache && cache.get ? cache.get(lessonId) || [] : [];
+  }
+}
+
+async function persistLessonKnowledge(lessonId, knowledgePoints) {
+  if (!lessonId || !state.auth.user || state.auth.user.role !== "teacher") {
+    return [];
+  }
+  try {
+    const response = await fetchWithAuth(`/api/graph/theory-lessons/${lessonId}/knowledge`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ knowledgePoints }),
+    });
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新理论知识点失败");
+    }
+    const data = await response.json();
+    const updated = (data.lesson && data.lesson.knowledgePoints) || knowledgePoints;
+    const cache = state.admin.graph.lessonKnowledge;
+    if (cache && cache.set) {
+      cache.set(lessonId, updated);
+    }
+    return updated;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+}
+
+async function hydrateSectionKnowledge(sectionId) {
+  if (!sectionEditorKnowledge) {
+    return;
+  }
+  if (!sectionId) {
+    writeKnowledgeToTextarea(sectionEditorKnowledge, []);
+    return;
+  }
+  const knowledge = await fetchPracticeKnowledge(sectionId);
+  if (state.admin.selectedEditorSectionId !== sectionId) {
+    return;
+  }
+  writeKnowledgeToTextarea(sectionEditorKnowledge, knowledge);
+}
+
+async function hydrateLessonKnowledge(lessonId) {
+  if (!adminTheoryLessonKnowledge) {
+    return;
+  }
+  if (!lessonId) {
+    writeKnowledgeToTextarea(adminTheoryLessonKnowledge, []);
+    return;
+  }
+  const knowledge = await fetchLessonKnowledge(lessonId);
+  if (state.admin.theory.selectedLessonId !== lessonId) {
+    return;
+  }
+  writeKnowledgeToTextarea(adminTheoryLessonKnowledge, knowledge);
+}
+
+function describeGraphNodeKey(key) {
+  if (typeof key !== "string") {
+    return { label: "", id: "" };
+  }
+  const [label, ...rest] = key.split(":");
+  return { label: label || "", id: rest.join(":") };
+}
+
+function renderAdminGraphKnowledgeList() {
+  if (!adminGraphKnowledgeList) {
+    return;
+  }
+  const list = Array.isArray(state.admin.graph.knowledgePoints)
+    ? state.admin.graph.knowledgePoints
+    : [];
+  adminGraphKnowledgeList.innerHTML = "";
+  if (list.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-500";
+    empty.textContent = "暂无知识点数据或图谱尚未初始化。";
+    adminGraphKnowledgeList.appendChild(empty);
+    return;
+  }
+  list.forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "rounded-xl border border-slate-800/70 bg-slate-950/60 p-3";
+    const practiceCount = typeof item.practiceCount === "number" ? item.practiceCount : 0;
+    const lessonCount = typeof item.lessonCount === "number" ? item.lessonCount : 0;
+    li.innerHTML = `
+      <p class="text-sm text-slate-200">${escapeHtmlText(item.name || "知识点")}</p>
+      <p class="text-xs text-slate-500">实战关卡：${practiceCount} · 理论课程：${lessonCount}</p>
+    `;
+    adminGraphKnowledgeList.appendChild(li);
+  });
+}
+
+function renderAdminGraphSelection(detail) {
+  if (!adminGraphSelection) {
+    return;
+  }
+  adminGraphSelection.innerHTML = "";
+  if (!detail) {
+    adminGraphSelection.innerHTML = '<p class="text-xs text-slate-500">请选择节点以查看详细信息。</p>';
+    return;
+  }
+  if (detail.title) {
+    const titleEl = document.createElement("p");
+    titleEl.className = "text-sm font-semibold text-white";
+    titleEl.textContent = detail.title;
+    adminGraphSelection.appendChild(titleEl);
+  }
+  if (detail.subtitle) {
+    const subtitleEl = document.createElement("p");
+    subtitleEl.className = "text-xs text-slate-400";
+    subtitleEl.textContent = detail.subtitle;
+    adminGraphSelection.appendChild(subtitleEl);
+  }
+  const meta = Array.isArray(detail.meta) ? detail.meta.filter(Boolean) : [];
+  if (meta.length > 0) {
+    const list = document.createElement("ul");
+    list.className = "mt-2 space-y-1 text-xs text-slate-400";
+    meta.forEach((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      list.appendChild(li);
+    });
+    adminGraphSelection.appendChild(list);
+  }
+  const knowledge = Array.isArray(detail.knowledge) ? detail.knowledge.filter(Boolean) : [];
+  if (knowledge.length > 0) {
+    const wrap = document.createElement("div");
+    wrap.className = "mt-3 flex flex-wrap gap-2";
+    knowledge.forEach((kp) => {
+      const pill = document.createElement("span");
+      pill.className = "knowledge-pill";
+      pill.textContent = kp;
+      wrap.appendChild(pill);
+    });
+    adminGraphSelection.appendChild(wrap);
+  }
+  if (Array.isArray(detail.relatedLessons) && detail.relatedLessons.length > 0) {
+    const header = document.createElement("p");
+    header.className = "mt-3 text-xs font-semibold text-emerald-400";
+    header.textContent = "关联理论课程";
+    adminGraphSelection.appendChild(header);
+    const list = document.createElement("ul");
+    list.className = "mt-1 space-y-1 text-xs text-slate-300";
+    detail.relatedLessons.forEach((lesson) => {
+      const li = document.createElement("li");
+      const code = lesson.code ? `（${lesson.code}）` : "";
+      li.textContent = `${lesson.title || lesson.id}${code}`;
+      list.appendChild(li);
+    });
+    adminGraphSelection.appendChild(list);
+  }
+  if (Array.isArray(detail.relatedPractices) && detail.relatedPractices.length > 0) {
+    const header = document.createElement("p");
+    header.className = "mt-3 text-xs font-semibold text-sky-400";
+    header.textContent = "关联实战关卡";
+    adminGraphSelection.appendChild(header);
+    const list = document.createElement("ul");
+    list.className = "mt-1 space-y-1 text-xs text-slate-300";
+    detail.relatedPractices.forEach((practice) => {
+      const li = document.createElement("li");
+      li.textContent = `${practice.title || practice.id}`;
+      list.appendChild(li);
+    });
+    adminGraphSelection.appendChild(list);
+  }
+}
+
+async function loadPracticeGraphDetail(practiceId) {
+  try {
+    const response = await fetchWithAuth(`/api/graph/practices/${practiceId}/related-lessons`);
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      throw new Error("无法加载关卡关联数据");
+    }
+    const data = await response.json();
+    const practice = data.practice || {};
+    const lessons = Array.isArray(data.lessons) ? data.lessons : [];
+    return {
+      title: practice.title || practice.id || "实战关卡",
+      subtitle: practice.description || "",
+      meta: [
+        practice.chapterId ? `所属章节：${practice.chapterId}` : "",
+        typeof practice.orderIndex === "number" ? `排序权重：${practice.orderIndex}` : "",
+        practice.expectsBargaining ? "博弈回合：开启" : "",
+      ],
+      knowledge: practice.knowledgePoints || [],
+      relatedLessons: lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title || lesson.id,
+        code: lesson.code || "",
+      })),
+    };
+  } catch (error) {
+    console.error(error);
+    return { title: "实战关卡", meta: [error.message || "加载失败"], knowledge: [] };
+  }
+}
+
+async function loadLessonGraphDetail(lessonId) {
+  try {
+    const response = await fetchWithAuth(`/api/graph/theory-lessons/${lessonId}/related-practices`);
+    if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      throw new Error("无法加载理论关联数据");
+    }
+    const data = await response.json();
+    const lesson = data.lesson || {};
+    const practices = Array.isArray(data.practices) ? data.practices : [];
+    return {
+      title: lesson.title || lesson.id || "理论课程",
+      subtitle: lesson.code ? `课程编号：${lesson.code}` : "",
+      meta: [lesson.topicId ? `所属主题：${lesson.topicId}` : ""],
+      knowledge: lesson.knowledgePoints || [],
+      relatedPractices: practices.map((practice) => ({
+        id: practice.id,
+        title: practice.title || practice.id,
+      })),
+    };
+  } catch (error) {
+    console.error(error);
+    return { title: "理论课程", meta: [error.message || "加载失败"], knowledge: [] };
+  }
+}
+
+function buildKnowledgePointDetail(name) {
+  const record = Array.isArray(state.admin.graph.knowledgePoints)
+    ? state.admin.graph.knowledgePoints.find((item) => item.name === name)
+    : null;
+  const practiceCount = record && typeof record.practiceCount === "number" ? record.practiceCount : 0;
+  const lessonCount = record && typeof record.lessonCount === "number" ? record.lessonCount : 0;
+  return {
+    title: name,
+    meta: [`关联实战：${practiceCount}`, `关联理论：${lessonCount}`],
+  };
+}
+
+function buildChapterDetail(chapterId) {
+  const chapter = findAdminChapter(chapterId);
+  if (!chapter) {
+    return { title: chapterId, meta: ["尚未在系统中维护详细信息"] };
+  }
+  const sections = Array.isArray(chapter.sections) ? chapter.sections : [];
+  return {
+    title: chapter.title || chapterId,
+    subtitle: chapter.description || "",
+    meta: [`关卡数量：${sections.length}`],
+    relatedPractices: sections.map((section) => ({ id: section.id, title: section.title })),
+  };
+}
+
+function buildProcessDetail(processId) {
+  const node = (state.admin.graph.network && state.admin.graph.network.nodes || []).find(
+    (item) => item.key === `ProcessStep:${processId}`,
+  );
+  return {
+    title: (node && node.title) || processId,
+    subtitle: node && node.subtitle ? node.subtitle : "",
+  };
+}
+
+async function handleGraphNodeSelection(nodeKey) {
+  adminGraphSelectionKey = nodeKey;
+  if (!nodeKey) {
+    renderAdminGraphSelection(null);
+    return;
+  }
+  renderAdminGraphSelection({ title: "加载中...", meta: [] });
+  const { label, id } = describeGraphNodeKey(nodeKey);
+  let detail = null;
+  if (label === "Practice") {
+    detail = await loadPracticeGraphDetail(id);
+  } else if (label === "TheoryLesson") {
+    detail = await loadLessonGraphDetail(id);
+  } else if (label === "KnowledgePoint") {
+    detail = buildKnowledgePointDetail(id);
+  } else if (label === "Chapter") {
+    detail = buildChapterDetail(id);
+  } else if (label === "ProcessStep") {
+    detail = buildProcessDetail(id);
+  } else {
+    detail = { title: nodeKey, meta: ["暂未提供详细信息"] };
+  }
+  if (adminGraphSelectionKey !== nodeKey) {
+    return;
+  }
+  renderAdminGraphSelection(detail);
+}
+
+function renderAdminGraphNetwork() {
+  if (!adminGraphCanvas) {
+    return;
+  }
+  const networkData = state.admin.graph.network || { nodes: [], edges: [] };
+  if (!window.vis || !window.vis.Network) {
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "可视化库未加载，无法渲染图谱";
+    }
+    return;
+  }
+  adminGraphCanvas.innerHTML = "";
+  const nodes = new window.vis.DataSet(
+    (networkData.nodes || []).map((node) => ({
+      id: node.key,
+      label: node.title,
+      title: node.subtitle || node.title,
+      group: node.label,
+    })),
+  );
+  const edges = new window.vis.DataSet(
+    (networkData.edges || []).map((edge) => ({
+      from: edge.source,
+      to: edge.target,
+      label: edge.type,
+      arrows: "to",
+    })),
+  );
+  if (adminGraphNetwork) {
+    adminGraphNetwork.destroy();
+    adminGraphNetwork = null;
+  }
+  const options = {
+    nodes: {
+      shape: "dot",
+      size: 14,
+      font: { color: "#e2e8f0", size: 12 },
+      borderWidth: 1,
+    },
+    edges: {
+      color: "#64748b",
+      smooth: { type: "dynamic" },
+      font: { color: "#94a3b8", size: 10, align: "middle" },
+    },
+    physics: {
+      stabilization: true,
+      barnesHut: { gravitationalConstant: -4200, springLength: 160, springConstant: 0.04 },
+    },
+    groups: {
+      Chapter: { color: { background: "#312e81", border: "#6366f1" } },
+      Practice: { color: { background: "#0f766e", border: "#2dd4bf" } },
+      TheoryTopic: { color: { background: "#5b21b6", border: "#a855f7" } },
+      TheoryLesson: { color: { background: "#9a3412", border: "#fb923c" } },
+      KnowledgePoint: { color: { background: "#78350f", border: "#facc15" } },
+      ProcessStep: { color: { background: "#14532d", border: "#22c55e" } },
+    },
+    interaction: { hover: true, tooltipDelay: 120 },
+  };
+  adminGraphNetwork = new window.vis.Network(adminGraphCanvas, { nodes, edges }, options);
+  adminGraphNetwork.on("selectNode", (params) => {
+    const key = params.nodes && params.nodes[0];
+    if (key) {
+      handleGraphNodeSelection(key);
+    }
+  });
+  adminGraphNetwork.on("deselectNode", () => {
+    adminGraphSelectionKey = null;
+    renderAdminGraphSelection(null);
+  });
+}
+
+async function refreshAdminGraph() {
+  if (!state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  if (!adminGraphCanvas) {
+    return;
+  }
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = "加载知识图谱中...";
+  }
+  try {
+    const [networkResp, knowledgeResp] = await Promise.all([
+      fetchWithAuth("/api/graph/network?limit=400"),
+      fetchWithAuth("/api/graph/knowledge-points"),
+    ]);
+    if (!networkResp.ok) {
+      if (networkResp.status === 503) {
+        throw new Error("知识图谱服务暂不可用");
+      }
+      throw new Error("无法加载知识图谱");
+    }
+    const networkData = await networkResp.json();
+    state.admin.graph.network = networkData || { nodes: [], edges: [] };
+    if (knowledgeResp.ok) {
+      const knowledgeData = await knowledgeResp.json();
+      state.admin.graph.knowledgePoints = knowledgeData.knowledgePoints || [];
+    }
+    renderAdminGraphKnowledgeList();
+    renderAdminGraphNetwork();
+    if (adminGraphStatus) {
+      const nodeCount = (networkData.nodes || []).length;
+      const edgeCount = (networkData.edges || []).length;
+      adminGraphStatus.textContent = `节点 ${nodeCount} · 关系 ${edgeCount}`;
+    }
+  } catch (error) {
+    console.error(error);
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = error.message || "加载知识图谱失败";
+    }
+  }
 }
 
 function resetBlueprintForm(blueprint = null) {
@@ -1107,6 +1662,7 @@ function updateSectionForm() {
     }
     if (sectionEditorBargaining) sectionEditorBargaining.checked = false;
     if (sectionEditorOrder) sectionEditorOrder.value = "";
+    writeKnowledgeToTextarea(sectionEditorKnowledge, []);
     return;
   }
 
@@ -1135,6 +1691,12 @@ function updateSectionForm() {
   if (sectionEditorOrder) {
     sectionEditorOrder.value =
       section.orderIndex !== null && section.orderIndex !== undefined ? section.orderIndex : "";
+  }
+  if (sectionEditorKnowledge) {
+    const cache = state.admin.graph.practiceKnowledge;
+    const cached = cache && cache.get ? cache.get(section.id) || [] : [];
+    writeKnowledgeToTextarea(sectionEditorKnowledge, cached);
+    hydrateSectionKnowledge(section.id);
   }
   if (levelSaveSectionBtn) levelSaveSectionBtn.disabled = false;
   if (levelDeleteSectionBtn) levelDeleteSectionBtn.disabled = false;
@@ -1688,6 +2250,7 @@ async function createAdminTheoryTopicInline(chapterId) {
     const data = await response.json().catch(() => ({}));
     const newTopicId = data.topic && data.topic.id;
     await loadAdminTheory({ focusTopicId: newTopicId || null, keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "已创建新的二级小节", "success");
   } catch (error) {
     console.error(error);
@@ -1717,6 +2280,7 @@ async function createAdminTheoryLessonInline(topicId) {
     const newLessonId = lesson.id || null;
     const focusTopicId = lesson.topicId || targetTopicId;
     await loadAdminTheory({ focusTopicId, focusLessonId: newLessonId, keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "已创建新的三级小节", "success");
   } catch (error) {
     console.error(error);
@@ -1756,6 +2320,7 @@ async function updateAdminTheoryTopicTitleInline(topicId, rawTitle, inputElement
       inputElement.dataset.previousValue = nextTitle;
     }
     await loadAdminTheory({ focusTopicId: targetTopicId, keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "二级小节标题已更新", "success");
   } catch (error) {
     console.error(error);
@@ -1798,6 +2363,7 @@ async function updateAdminTheoryLessonTitleInline(lessonId, rawTitle, inputEleme
       inputElement.dataset.previousValue = nextTitle;
     }
     await loadAdminTheory({ focusLessonId: targetLessonId, keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "三级小节标题已更新", "success");
   } catch (error) {
     console.error(error);
@@ -1813,6 +2379,10 @@ async function deleteAdminTheoryTopicInline(topicId) {
   if (!targetTopicId) {
     return;
   }
+  const context = findAdminTheoryTopic(targetTopicId);
+  const removedLessonIds = context && context.topic && Array.isArray(context.topic.lessons)
+    ? context.topic.lessons.map((lesson) => lesson && lesson.id).filter((id) => id)
+    : [];
   if (!confirm("确认删除该二级小节及其下的所有内容？")) {
     return;
   }
@@ -1829,7 +2399,9 @@ async function deleteAdminTheoryTopicInline(topicId) {
       state.admin.theory.selectedTopicId = null;
       state.admin.theory.selectedLessonId = null;
     }
+    clearLessonKnowledgeCache(removedLessonIds);
     await loadAdminTheory({ keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "二级小节已删除", "success");
   } catch (error) {
     console.error(error);
@@ -1857,7 +2429,9 @@ async function deleteAdminTheoryLessonInline(lessonId) {
     if (state.admin.theory && state.admin.theory.selectedLessonId === targetLessonId) {
       state.admin.theory.selectedLessonId = null;
     }
+    clearLessonKnowledgeCache(targetLessonId);
     await loadAdminTheory({ keepSelection: true });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryStatus, "三级小节已删除", "success");
   } catch (error) {
     console.error(error);
@@ -2143,6 +2717,12 @@ function updateAdminTheoryForms() {
       adminTheoryLessonPublished.checked = !!lessonContext.lesson.isPublished;
     }
     setAdminTheoryEditorContent(lessonContext.lesson.contentHtml || "<p><br></p>");
+    if (adminTheoryLessonKnowledge) {
+      const cache = state.admin.graph.lessonKnowledge;
+      const cached = cache && cache.get ? cache.get(lessonContext.lesson.id) || [] : [];
+      writeKnowledgeToTextarea(adminTheoryLessonKnowledge, cached);
+      hydrateLessonKnowledge(lessonContext.lesson.id);
+    }
     if (adminTheoryLessonDeleteBtn) adminTheoryLessonDeleteBtn.disabled = false;
     updateInlineStatus(adminTheoryLessonStatus, "", "muted");
   } else {
@@ -2151,6 +2731,7 @@ function updateAdminTheoryForms() {
     adminTheoryLessonForm.dataset.lessonId = "";
     if (adminTheoryLessonDeleteBtn) adminTheoryLessonDeleteBtn.disabled = true;
     setAdminTheoryEditorContent("<p><br></p>");
+    writeKnowledgeToTextarea(adminTheoryLessonKnowledge, []);
     updateInlineStatus(adminTheoryLessonStatus, "请选择理论内容以编辑，或新建一个内容小节。", "muted");
   }
 }
@@ -2295,6 +2876,7 @@ async function saveAdminTheoryTopic(event) {
       await loadAdminTheory({ focusTopicId: newTopicId });
       adminTheoryTopicForm.dataset.mode = "edit";
       updateInlineStatus(adminTheoryTopicStatus, "理论目录已创建", "success");
+      refreshAdminGraph();
     } else {
       const topicId = adminTheoryTopicForm.dataset.topicId;
       if (!topicId) {
@@ -2311,6 +2893,7 @@ async function saveAdminTheoryTopic(event) {
       }
       await loadAdminTheory({ focusTopicId: topicId, keepSelection: true });
       updateInlineStatus(adminTheoryTopicStatus, "理论目录已保存", "success");
+      refreshAdminGraph();
     }
   } catch (error) {
     console.error(error);
@@ -2331,6 +2914,10 @@ async function deleteAdminTheoryTopic() {
     return;
   }
   try {
+    const context = findAdminTheoryTopic(topicId);
+    const removedLessonIds = context && context.topic && Array.isArray(context.topic.lessons)
+      ? context.topic.lessons.map((lesson) => lesson && lesson.id).filter((id) => id)
+      : [];
     const response = await fetchWithAuth(`/api/admin/theory/topics/${topicId}`, {
       method: "DELETE",
     });
@@ -2338,9 +2925,11 @@ async function deleteAdminTheoryTopic() {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || "删除失败");
     }
+    clearLessonKnowledgeCache(removedLessonIds);
     await loadAdminTheory();
     adminTheoryTopicForm.dataset.mode = "edit";
     updateInlineStatus(adminTheoryTopicStatus, "理论目录已删除", "success");
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     updateInlineStatus(adminTheoryTopicStatus, error.message || "删除失败", "error");
@@ -2361,6 +2950,7 @@ async function saveAdminTheoryLesson(event) {
   const payload = {
     contentHtml: getAdminTheoryEditorContent(),
   };
+  const knowledgePoints = readKnowledgeFromTextarea(adminTheoryLessonKnowledge);
   if (adminTheoryLessonSection) {
     payload.sectionId = adminTheoryLessonSection.value;
   }
@@ -2380,6 +2970,13 @@ async function saveAdminTheoryLesson(event) {
     }
     const targetTopicId = contextBeforeSave ? contextBeforeSave.topic.id : state.admin.theory.selectedTopicId;
     await loadAdminTheory({ focusTopicId: targetTopicId, focusLessonId: lessonId, keepSelection: true });
+    try {
+      const updated = await persistLessonKnowledge(lessonId, knowledgePoints);
+      writeKnowledgeToTextarea(adminTheoryLessonKnowledge, updated);
+      refreshAdminGraph();
+    } catch (graphError) {
+      updateInlineStatus(adminTheoryLessonStatus, graphError.message || "知识点更新失败", "error");
+    }
     updateInlineStatus(adminTheoryLessonStatus, "理论内容已保存", "success");
   } catch (error) {
     console.error(error);
@@ -2409,8 +3006,10 @@ async function deleteAdminTheoryLesson() {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || "删除失败");
     }
+    clearLessonKnowledgeCache(lessonId);
     const topicId = contextBeforeDelete ? contextBeforeDelete.topic.id : state.admin.theory.selectedTopicId;
     await loadAdminTheory({ focusTopicId: topicId });
+    refreshAdminGraph();
     updateInlineStatus(adminTheoryLessonStatus, "理论内容已删除", "success");
   } catch (error) {
     console.error(error);
@@ -2435,6 +3034,7 @@ async function createAdminChapter() {
     if (chapterId) {
       selectEditorChapter(chapterId);
     }
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     alert(error.message || "创建章节失败");
@@ -2472,6 +3072,7 @@ async function createAdminSection() {
     if (sectionId) {
       selectEditorSection(sectionId);
     }
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     alert(error.message || "创建小节失败");
@@ -2501,6 +3102,7 @@ async function saveAdminChapter() {
       throw new Error(errorData.error || "保存章节失败");
     }
     await loadAdminLevels({ chapterId });
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     alert(error.message || "保存章节失败");
@@ -2526,7 +3128,10 @@ async function deleteAdminChapter() {
     }
     state.admin.selectedEditorChapterId = null;
     state.admin.selectedEditorSectionId = null;
+    clearPracticeKnowledgeCache();
+    clearLessonKnowledgeCache();
     await loadAdminLevels();
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     alert(error.message || "删除章节失败");
@@ -2543,6 +3148,7 @@ async function saveAdminSection() {
   const payload = {};
   if (sectionEditorTitle) payload.title = sectionEditorTitle.value.trim();
   if (sectionEditorDescription) payload.description = sectionEditorDescription.value.trim();
+  const knowledgePoints = readKnowledgeFromTextarea(sectionEditorKnowledge);
   if (tokenEditors.environment) {
     payload.environmentPromptTemplate = tokenEditors.environment.getValue();
   } else if (sectionEditorEnvironment) {
@@ -2577,6 +3183,13 @@ async function saveAdminSection() {
       throw new Error(errorData.error || "保存小节失败");
     }
     await loadAdminLevels({ chapterId, sectionId });
+    try {
+      const updated = await persistPracticeKnowledge(sectionId, knowledgePoints);
+      writeKnowledgeToTextarea(sectionEditorKnowledge, updated);
+      refreshAdminGraph();
+    } catch (graphError) {
+      alert(graphError.message || "更新知识点失败");
+    }
   } catch (error) {
     console.error(error);
     alert(error.message || "保存小节失败");
@@ -2601,8 +3214,10 @@ async function deleteAdminSection() {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || "删除小节失败");
     }
+    clearPracticeKnowledgeCache(sectionId);
     state.admin.selectedEditorSectionId = null;
     await loadAdminLevels({ chapterId });
+    refreshAdminGraph();
   } catch (error) {
     console.error(error);
     alert(error.message || "删除小节失败");
