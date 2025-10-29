@@ -134,12 +134,12 @@ def ensure_indexes() -> None:
 
     driver = _get_driver()
     statements = [
-        "CREATE CONSTRAINT chapter_id IF NOT EXISTS ON (c:Chapter) ASSERT c.id IS UNIQUE",
-        "CREATE CONSTRAINT practice_id IF NOT EXISTS ON (p:Practice) ASSERT p.id IS UNIQUE",
-        "CREATE CONSTRAINT theory_topic_id IF NOT EXISTS ON (t:TheoryTopic) ASSERT t.id IS UNIQUE",
-        "CREATE CONSTRAINT lesson_id IF NOT EXISTS ON (l:TheoryLesson) ASSERT l.id IS UNIQUE",
-        "CREATE CONSTRAINT knowledge_point_name IF NOT EXISTS ON (k:KnowledgePoint) ASSERT k.name IS UNIQUE",
-        "CREATE CONSTRAINT process_step_id IF NOT EXISTS ON (s:ProcessStep) ASSERT s.id IS UNIQUE",
+        "CREATE CONSTRAINT chapter_id IF NOT EXISTS FOR (c:Chapter) REQUIRE c.id IS UNIQUE",
+        "CREATE CONSTRAINT practice_id IF NOT EXISTS FOR (p:Practice) REQUIRE p.id IS UNIQUE",
+        "CREATE CONSTRAINT theory_topic_id IF NOT EXISTS FOR (t:TheoryTopic) REQUIRE t.id IS UNIQUE",
+        "CREATE CONSTRAINT lesson_id IF NOT EXISTS FOR (l:TheoryLesson) REQUIRE l.id IS UNIQUE",
+        "CREATE CONSTRAINT knowledge_point_name IF NOT EXISTS FOR (k:KnowledgePoint) REQUIRE k.name IS UNIQUE",
+        "CREATE CONSTRAINT process_step_id IF NOT EXISTS FOR (s:ProcessStep) REQUIRE s.id IS UNIQUE",
     ]
 
     with driver.session() as session:
