@@ -12,6 +12,8 @@ from routes import assignments as assignment_routes
 from routes import auth as auth_routes
 from routes import scenarios as scenario_routes
 from routes import theory as theory_routes
+from routes import knowledge_graph as knowledge_graph_routes
+from services import neo4j_client
 
 
 def create_app() -> Flask:
@@ -19,6 +21,7 @@ def create_app() -> Flask:
     load_dotenv()
     database.init_database()
     database.seed_default_levels(CHAPTERS)
+    neo4j_client.init_neo4j()
 
     app = Flask(__name__, static_folder="static")
 
@@ -28,6 +31,7 @@ def create_app() -> Flask:
     app.register_blueprint(assignment_routes.bp)
     app.register_blueprint(admin_routes.bp)
     app.register_blueprint(theory_routes.bp)
+    app.register_blueprint(knowledge_graph_routes.bp)
 
     @app.route("/")
     def index() -> str:
