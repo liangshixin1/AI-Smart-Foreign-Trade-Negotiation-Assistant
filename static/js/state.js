@@ -19,6 +19,10 @@ function createInitialState() {
       selectedLessonId: null,
       lessonCache: new Map(),
     },
+    studentGraph: {
+      lessonPractices: new Map(),
+      practiceLessons: new Map(),
+    },
     admin: {
       students: [],
       selectedStudentId: null,
@@ -36,6 +40,12 @@ function createInitialState() {
         tree: [],
         selectedTopicId: null,
         selectedLessonId: null,
+      },
+      graph: {
+        knowledgePoints: [],
+        network: { nodes: [], edges: [] },
+        practiceKnowledge: new Map(),
+        lessonKnowledge: new Map(),
       },
     },
     studentInsights: null,

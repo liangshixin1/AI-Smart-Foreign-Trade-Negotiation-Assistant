@@ -2251,6 +2251,23 @@
                     前往对应关卡
                   </button>
                 </div>
+                <section
+                  id="theory-related-practices"
+                  class="hidden rounded-3xl border border-slate-800 bg-slate-900/60 p-6"
+                >
+                  <div class="flex flex-col gap-1">
+                    <p class="text-xs uppercase tracking-widest text-slate-500">Practice Bridge</p>
+                    <h4 class="text-sm font-semibold text-slate-100">相关实战练习</h4>
+                  </div>
+                  <p
+                    id="theory-related-practices-status"
+                    class="mt-3 text-xs text-slate-400"
+                  ></p>
+                  <ul
+                    id="theory-related-practice-list"
+                    class="mt-3 space-y-2 text-sm text-slate-300"
+                  ></ul>
+                </section>
               </div>
             </div>
           </div>
@@ -2430,6 +2447,20 @@
                 <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
                 <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
               </div>
+              <div
+                id="evaluation-recommendations-section"
+                class="hidden space-y-3"
+              >
+                <h3 class="text-sm font-semibold text-slate-200">推荐巩固课程</h3>
+                <p
+                  id="evaluation-recommendations-status"
+                  class="text-xs text-slate-400"
+                ></p>
+                <div
+                  id="evaluation-recommendations-list"
+                  class="space-y-2"
+                ></div>
+              </div>
             </aside>
           </div>
         </div>
@@ -2476,6 +2507,7 @@
             <button class="tab-trigger" data-admin-tab="assignments">统一作业</button>
             <button class="tab-trigger" data-admin-tab="levels">关卡编辑器</button>
             <button class="tab-trigger" data-admin-tab="theory">理论学习管理</button>
+            <button class="tab-trigger" data-admin-tab="graph">知识图谱</button>
           </div>
 
           <section class="admin-account-card">
@@ -2795,6 +2827,17 @@
                         若网络无法加载富文本编辑器，将自动显示文本域备用。
                       </p>
                     </div>
+                    <label class="block space-y-1 text-sm">
+                      <span class="flex items-center justify-between text-slate-300">
+                        <span>关联核心知识点</span>
+                        <span class="text-xs text-slate-500">建议 3-5 个关键词，换行或逗号分隔</span>
+                      </span>
+                      <textarea
+                        id="admin-theory-lesson-knowledge"
+                        rows="2"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                      ></textarea>
+                    </label>
                     <div class="flex flex-wrap gap-3">
                       <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600">
                         保存内容
@@ -2957,6 +3000,17 @@
                           常见变量如 {knowledge_points_hint} 可直接点击插入，若需新增指标也可通过“添加变量”自定义后使用。
                         </p>
                       </label>
+                      <label class="block space-y-1 text-sm">
+                        <span class="flex items-center justify-between text-slate-300">
+                          <span>关联知识点</span>
+                          <span class="text-xs text-slate-500">换行或使用逗号分隔多个词条</span>
+                        </span>
+                        <textarea
+                          id="section-editor-knowledge"
+                          rows="2"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                        ></textarea>
+                      </label>
                       <div class="flex flex-wrap items-center gap-4 text-sm text-slate-300">
                         <label class="flex items-center gap-2">
                           <input id="section-editor-bargaining" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-400" />
@@ -2990,6 +3044,53 @@
                     </form>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-panel" data-admin-panel="graph">
+            <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+              <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">知识图谱总览</h3>
+                    <p class="text-xs text-slate-400">基于 Neo4j 的谈判知识节点与关系可视化。</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      id="admin-graph-refresh"
+                      type="button"
+                      class="rounded-xl border border-emerald-500/70 px-3 py-1 text-xs text-emerald-300 transition hover:border-emerald-300 hover:text-emerald-100"
+                    >
+                      刷新图谱
+                    </button>
+                  </div>
+                </div>
+                <div
+                  id="admin-graph-canvas"
+                  class="h-[420px] w-full rounded-2xl border border-slate-800 bg-slate-950/60"
+                ></div>
+                <p id="admin-graph-status" class="text-xs text-slate-500">加载知识图谱中...</p>
+                <p class="text-xs text-slate-500">
+                  提示：可拖拽节点查看层级关系，滚轮缩放视图。节点颜色区分章节、关卡、知识点与流程步骤。
+                </p>
+              </section>
+              <div class="space-y-6">
+                <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">知识点索引</h3>
+                    <p class="text-xs text-slate-400">展示已关联的知识点数量与覆盖范围。</p>
+                  </div>
+                  <ul id="admin-graph-knowledge-list" class="space-y-2 text-sm text-slate-200"></ul>
+                </section>
+                <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">节点详情</h3>
+                    <p class="text-xs text-slate-400">点击图谱节点查看关联知识点、关卡或理论课程。</p>
+                  </div>
+                  <div id="admin-graph-selection" class="min-h-[160px] space-y-2 text-sm text-slate-300">
+                    <p class="text-xs text-slate-500">请选择节点以查看详细信息。</p>
+                  </div>
+                </section>
               </div>
             </div>
           </div>
@@ -3229,6 +3330,7 @@
     </div>
     </div>
 
+    <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
     <script src="/static/js/elements.js"></script>
     <script src="/static/js/state.js"></script>
     <script src="/static/js/api.js"></script>
