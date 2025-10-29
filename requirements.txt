@@ -2,3 +2,4 @@ flask
 openai
 openpyxl
 python-dotenv
+neo4j

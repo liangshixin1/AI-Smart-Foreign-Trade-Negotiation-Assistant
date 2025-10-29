@@ -643,6 +643,12 @@ if (levelDeleteSectionBtn) {
   levelDeleteSectionBtn.addEventListener("click", deleteAdminSection);
 }
 
+if (adminGraphRefresh) {
+  adminGraphRefresh.addEventListener("click", () => {
+    refreshAdminGraph();
+  });
+}
+
 window.addEventListener("resize", updateExperienceLayout);
 updateExperienceLayout();
 
@@ -654,3 +660,4 @@ activateAdminTab();
 updateSessionControls();
 loadLevels();
 updateAuthUI();
+refreshAdminGraph();
