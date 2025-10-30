@@ -258,6 +258,12 @@ if (insertChallengeBtn) {
   });
 }
 
+if (adminTheoryDocxGlobalTrigger && adminTheoryDocxInput) {
+  adminTheoryDocxGlobalTrigger.addEventListener("click", () => {
+    adminTheoryDocxInput.click();
+  });
+}
+
 if (adminTheoryDocxTrigger && adminTheoryDocxInput) {
   adminTheoryDocxTrigger.addEventListener("click", () => {
     adminTheoryDocxInput.click();

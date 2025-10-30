@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from neo4j import GraphDatabase, basic_auth
-from neo4j.exceptions import Neo4jError, ServiceUnavailable
+from neo4j.exceptions import IncompleteCommit, Neo4jError, ServiceUnavailable
 
 import database
 
@@ -38,6 +38,15 @@ def _neo4j_credentials() -> Tuple[str, str, str]:
     return uri, user, password
 
 
+def _disable_graph(reason: str) -> None:
+    """Disable knowledge graph operations after a fatal connectivity issue."""
+
+    global _GRAPH_DISABLED, _GRAPH_DISABLED_REASON
+    close_driver()
+    _GRAPH_DISABLED = True
+    _GRAPH_DISABLED_REASON = reason
+
+
 def _get_driver():
     global _DRIVER, _GRAPH_DISABLED, _GRAPH_DISABLED_REASON
     if _GRAPH_DISABLED:
@@ -52,8 +61,7 @@ def _get_driver():
         driver.verify_connectivity()
     except (Neo4jError, ServiceUnavailable, OSError) as exc:  # pragma: no cover - network
         LOGGER.error("Failed to connect to Neo4j at %s: %s", uri, exc)
-        _GRAPH_DISABLED = True
-        _GRAPH_DISABLED_REASON = f"Failed to connect to Neo4j at {uri}: {exc}"
+        _disable_graph(f"Failed to connect to Neo4j at {uri}: {exc}")
         raise GraphUnavailableError("Failed to connect to Neo4j") from exc
 
     _DRIVER = driver
@@ -375,6 +383,9 @@ def bootstrap_graph() -> None:
         sync_static_content()
     except GraphUnavailableError as exc:  # pragma: no cover - depends on external service
         LOGGER.warning("Unable to bootstrap knowledge graph: %s", exc)
+    except (Neo4jError, ServiceUnavailable, IncompleteCommit, OSError, TimeoutError) as exc:
+        LOGGER.warning("Knowledge graph bootstrap failed: %s", exc)
+        _disable_graph(f"Knowledge graph bootstrap failed: {exc}")
 
 
 def sync_static_content() -> None:
@@ -387,39 +398,46 @@ def sync_static_content() -> None:
         include_content=True, published_only=False
     )
 
-    with driver.session() as session:
-        session.execute_write(_merge_process_steps)
-        for chapter in chapters:
-            session.execute_write(_merge_chapter, chapter)
-            session.execute_write(_link_chapter_process, chapter["id"])
-            for section in chapter.get("sections", []):
-                session.execute_write(_merge_practice, chapter, section)
-                preset = SECTION_KNOWLEDGE_PRESETS.get(section["id"], ())
-                if preset:
-                    session.execute_write(_ensure_practice_knowledge, section["id"], list(preset))
-
-        for theory_chapter in theory_hierarchy:
-            for topic in theory_chapter.get("topics", []):
-                if not topic.get("id"):
-                    LOGGER.warning(
-                        "Skipping theory topic with missing id in chapter %s",
-                        theory_chapter.get("chapterId"),
-                    )
-                    continue
-                session.execute_write(_merge_theory_topic, topic)
-                for lesson in topic.get("lessons", []):
-                    if not lesson.get("id"):
-                        LOGGER.warning(
-                            "Skipping theory lesson with missing id for topic %s",
-                            topic.get("id"),
-                        )
-                        continue
-                    session.execute_write(_merge_theory_lesson, topic, lesson)
-                    preset = LESSON_KNOWLEDGE_PRESETS.get(lesson["id"], ())
+    try:
+        with driver.session() as session:
+            session.execute_write(_merge_process_steps)
+            for chapter in chapters:
+                session.execute_write(_merge_chapter, chapter)
+                session.execute_write(_link_chapter_process, chapter["id"])
+                for section in chapter.get("sections", []):
+                    session.execute_write(_merge_practice, chapter, section)
+                    preset = SECTION_KNOWLEDGE_PRESETS.get(section["id"], ())
                     if preset:
                         session.execute_write(
-                            _ensure_lesson_knowledge, lesson["id"], list(preset)
+                            _ensure_practice_knowledge, section["id"], list(preset)
                         )
+
+            for theory_chapter in theory_hierarchy:
+                for topic in theory_chapter.get("topics", []):
+                    if not topic.get("id"):
+                        LOGGER.warning(
+                            "Skipping theory topic with missing id in chapter %s",
+                            theory_chapter.get("chapterId"),
+                        )
+                        continue
+                    session.execute_write(_merge_theory_topic, topic)
+                    for lesson in topic.get("lessons", []):
+                        if not lesson.get("id"):
+                            LOGGER.warning(
+                                "Skipping theory lesson with missing id for topic %s",
+                                topic.get("id"),
+                            )
+                            continue
+                        session.execute_write(_merge_theory_lesson, topic, lesson)
+                        preset = LESSON_KNOWLEDGE_PRESETS.get(lesson["id"], ())
+                        if preset:
+                            session.execute_write(
+                                _ensure_lesson_knowledge, lesson["id"], list(preset)
+                            )
+    except (Neo4jError, ServiceUnavailable, IncompleteCommit, OSError, TimeoutError) as exc:
+        LOGGER.error("Failed to synchronise static content with Neo4j: %s", exc)
+        _disable_graph(f"Failed to synchronise static content: {exc}")
+        raise GraphUnavailableError("Failed to synchronise static content") from exc
 
 
 def _merge_process_steps(tx) -> None:

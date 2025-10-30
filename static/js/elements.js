@@ -181,6 +181,7 @@ const adminTheoryLessonContent = document.getElementById("admin-theory-lesson-co
 const adminTheoryLessonKnowledge = document.getElementById("admin-theory-lesson-knowledge");
 const insertKnowledgeBtn = document.getElementById("insert-knowledge-btn");
 const insertChallengeBtn = document.getElementById("insert-challenge-btn");
+const adminTheoryDocxGlobalTrigger = document.getElementById("admin-theory-docx-global-trigger");
 const adminTheoryDocxTrigger = document.getElementById("admin-theory-docx-trigger");
 const adminTheoryDocxInput = document.getElementById("admin-theory-docx-input");
 const adminTheoryDocxStatus = document.getElementById("admin-theory-docx-status");
