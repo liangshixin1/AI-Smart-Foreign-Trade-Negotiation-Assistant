@@ -3056,9 +3056,22 @@
             <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
               <aside class="space-y-4">
                 <div class="space-y-4 rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5">
-                  <div class="space-y-2">
-                    <p class="text-sm text-slate-400">章节 · 目录 · 节点</p>
-                    <h2 class="text-xl font-semibold text-white">理论学习管理</h2>
+                  <div class="space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="space-y-1">
+                        <p class="text-sm text-slate-400">章节 · 目录 · 节点</p>
+                        <h2 class="text-xl font-semibold text-white">理论学习管理</h2>
+                      </div>
+                      <button
+                        type="button"
+                        id="admin-theory-docx-global-trigger"
+                        class="rounded-xl border border-emerald-400/60 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300 hover:text-white"
+                        title="上传 Word 文档导入理论内容"
+                        aria-label="上传 Word 文档导入理论内容"
+                      >
+                        📄 上传 Word
+                      </button>
+                    </div>
                     <p class="text-xs text-slate-400">
                       所见即所得地编辑理论内容，灵活插入关卡挑战泡泡，帮助学生在阅读与实战之间无缝切换。
                     </p>
@@ -3074,134 +3087,136 @@
                     <h3 class="text-lg font-semibold text-white">知识点内容</h3>
                     <p class="text-xs text-slate-400">WYSIWYG 富文本编辑，支持插入可交互的关卡挑战气泡。</p>
                   </div>
-                  <form id="admin-theory-lesson-form" class="space-y-4 hidden">
+                  <div class="space-y-4">
                     <div
-                      id="admin-theory-lesson-heading"
-                      class="space-y-1 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4 text-sm text-slate-200"
+                      class="space-y-3 rounded-xl border border-slate-800/70 bg-slate-950/50 p-3 text-xs text-slate-300"
                     >
-                      <p class="text-xs text-slate-400">根据左侧目录选择知识点，即可在此查看结构化标题。</p>
-                    </div>
-                    <div class="grid gap-3 sm:grid-cols-2">
-                      <label class="flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-                        <input id="admin-theory-lesson-published" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400 focus:ring-emerald-400" />
-                        <span>
-                          <span class="font-semibold text-white">发布给学生</span>
-                          <span class="block text-xs text-slate-400">切换为草稿或已发布状态。</span>
-                        </span>
-                      </label>
-                      <label class="block space-y-1 text-sm">
-                        <span class="text-slate-300">默认关联关卡（可选）</span>
-                        <select
-                          id="admin-theory-lesson-section"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                        ></select>
-                      </label>
-                    </div>
-                    <div class="space-y-2">
-                      <div class="flex flex-wrap items-center justify-between gap-3">
-                        <span class="text-sm text-slate-300">理论内容正文</span>
-                        <div class="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            id="insert-knowledge-btn"
-                            class="rounded-xl border border-sky-400/70 px-3 py-1 text-xs font-semibold text-sky-200 transition hover:border-sky-200 hover:text-white"
-                          >
-                            🔖 插入关键知识点
-                          </button>
-                          <button
-                            type="button"
-                            id="insert-challenge-btn"
-                            class="rounded-xl bg-emerald-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-emerald-300"
-                          >
-                            ➕ 插入关卡挑战
-                          </button>
-                        </div>
-                      </div>
-                      <div
-                        class="space-y-3 rounded-xl border border-slate-800/70 bg-slate-950/50 p-3 text-xs text-slate-300"
-                      >
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                          <span class="font-semibold text-white">Word 导入实验（Beta）</span>
-                          <button
-                            type="button"
-                            id="admin-theory-docx-reset"
-                            class="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white"
-                          >
-                            清除预览
-                          </button>
-                        </div>
-                        <p class="text-[11px] text-slate-400">
-                          上传包含一级/二级/三级标题的 Word 文档（.docx），系统会自动生成理论目录与正文草稿，帮助快速搭建知识结构。
-                        </p>
-                        <div class="flex flex-wrap items-center gap-2">
-                          <input id="admin-theory-docx-input" type="file" accept=".docx" class="hidden" />
-                          <button
-                            type="button"
-                            id="admin-theory-docx-trigger"
-                            class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-emerald-400 hover:text-white"
-                          >
-                            📄 选择 Word 文档
-                          </button>
-                          <select
-                            id="admin-theory-docx-chapter"
-                            class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
-                          >
-                            <option value="">选择导入到的章节</option>
-                          </select>
-                          <button
-                            type="button"
-                            id="admin-theory-docx-apply"
-                            class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-                            disabled
-                          >
-                            ⚙️ 生成目录草稿
-                          </button>
-                        </div>
-                        <p id="admin-theory-docx-status" class="text-[11px] text-slate-500"></p>
-                        <div
-                          id="admin-theory-docx-preview"
-                          class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-950/40 p-3 text-[11px] text-slate-300"
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-semibold text-white">Word 导入实验（Beta）</span>
+                        <button
+                          type="button"
+                          id="admin-theory-docx-reset"
+                          class="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white"
                         >
-                          <p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>
-                        </div>
+                          清除预览
+                        </button>
                       </div>
-                      <div
-                        id="admin-theory-lesson-editor"
-                        class="min-h-[260px] rounded-xl border border-slate-700 bg-white text-slate-900"
-                      ></div>
-                      <textarea
-                        id="admin-theory-lesson-content"
-                        class="hidden w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white"
-                      ></textarea>
-                      <p class="text-xs text-slate-500">
-                        若网络无法加载富文本编辑器，将自动显示文本域备用。
+                      <p class="text-[11px] text-slate-400">
+                        上传包含一级/二级/三级标题的 Word 文档（.docx），系统会自动生成理论目录与正文草稿，帮助快速搭建知识结构。
                       </p>
-                    </div>
-                    <label class="block space-y-1 text-sm">
-                      <span class="flex items-center justify-between text-slate-300">
-                        <span>关联核心知识点</span>
-                        <span class="text-xs text-slate-500">建议 3-5 个关键词，换行或逗号分隔</span>
-                      </span>
-                      <textarea
-                        id="admin-theory-lesson-knowledge"
-                        rows="2"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-                    <div class="flex flex-wrap gap-3">
-                      <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600">
-                        保存内容
-                      </button>
-                      <button
-                        type="button"
-                        id="admin-theory-lesson-delete"
-                        class="rounded-xl border border-rose-400/60 px-4 py-2 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50"
-                        disabled
+                      <div class="flex flex-wrap items-center gap-2">
+                        <input id="admin-theory-docx-input" type="file" accept=".docx" class="hidden" />
+                        <button
+                          type="button"
+                          id="admin-theory-docx-trigger"
+                          class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-emerald-400 hover:text-white"
+                        >
+                          📄 选择 Word 文档
+                        </button>
+                        <select
+                          id="admin-theory-docx-chapter"
+                          class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
+                        >
+                          <option value="">选择导入到的章节</option>
+                        </select>
+                        <button
+                          type="button"
+                          id="admin-theory-docx-apply"
+                          class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                          disabled
+                        >
+                          ⚙️ 生成目录草稿
+                        </button>
+                      </div>
+                      <p id="admin-theory-docx-status" class="text-[11px] text-slate-500"></p>
+                      <div
+                        id="admin-theory-docx-preview"
+                        class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-950/40 p-3 text-[11px] text-slate-300"
                       >
-                        删除内容
-                      </button>
+                        <p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>
+                      </div>
                     </div>
+                    <form id="admin-theory-lesson-form" class="space-y-4 hidden">
+                      <div
+                        id="admin-theory-lesson-heading"
+                        class="space-y-1 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4 text-sm text-slate-200"
+                      >
+                        <p class="text-xs text-slate-400">根据左侧目录选择知识点，即可在此查看结构化标题。</p>
+                      </div>
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+                          <input id="admin-theory-lesson-published" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400 focus:ring-emerald-400" />
+                          <span>
+                            <span class="font-semibold text-white">发布给学生</span>
+                            <span class="block text-xs text-slate-400">切换为草稿或已发布状态。</span>
+                          </span>
+                        </label>
+                        <label class="block space-y-1 text-sm">
+                          <span class="text-slate-300">默认关联关卡（可选）</span>
+                          <select
+                            id="admin-theory-lesson-section"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                          ></select>
+                        </label>
+                      </div>
+                      <div class="space-y-2">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                          <span class="text-sm text-slate-300">理论内容正文</span>
+                          <div class="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              id="insert-knowledge-btn"
+                              class="rounded-xl border border-sky-400/70 px-3 py-1 text-xs font-semibold text-sky-200 transition hover:border-sky-200 hover:text-white"
+                            >
+                              🔖 插入关键知识点
+                            </button>
+                            <button
+                              type="button"
+                              id="insert-challenge-btn"
+                              class="rounded-xl bg-emerald-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-emerald-300"
+                            >
+                              ➕ 插入关卡挑战
+                            </button>
+                          </div>
+                        </div>
+                        <div
+                          id="admin-theory-lesson-editor"
+                          class="min-h-[260px] rounded-xl border border-slate-700 bg-white text-slate-900"
+                        ></div>
+                        <textarea
+                          id="admin-theory-lesson-content"
+                          class="hidden w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white"
+                        ></textarea>
+                        <p class="text-xs text-slate-500">
+                          若网络无法加载富文本编辑器，将自动显示文本域备用。
+                        </p>
+                      </div>
+                      <label class="block space-y-1 text-sm">
+                        <span class="flex items-center justify-between text-slate-300">
+                          <span>关联核心知识点</span>
+                          <span class="text-xs text-slate-500">建议 3-5 个关键词，换行或逗号分隔</span>
+                        </span>
+                        <textarea
+                          id="admin-theory-lesson-knowledge"
+                          rows="2"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                        ></textarea>
+                      </label>
+                      <div class="flex flex-wrap gap-3">
+                        <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600">
+                          保存内容
+                        </button>
+                        <button
+                          type="button"
+                          id="admin-theory-lesson-delete"
+                          class="rounded-xl border border-rose-400/60 px-4 py-2 text-xs text-rose-200 transition hover:border-rose-300 hover:text-rose-50"
+                          disabled
+                        >
+                          删除内容
+                        </button>
+                      </div>
                   </form>
+                </div>
                   <p id="admin-theory-lesson-status" class="text-xs text-slate-500"></p>
                 </section>
               </div>

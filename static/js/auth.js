@@ -243,5 +243,25 @@ function handleLogout() {
   updateAuthUI();
 }
 
+function handleUnauthorizedResponse() {
+  if (!state.auth || !state.auth.token) {
+    return;
+  }
+  const message = "登录状态已过期，请重新登录";
+  handleLogout();
+  if (loginErrorEl) {
+    loginErrorEl.textContent = message;
+  }
+  updateInlineStatus(adminTheoryStatus, message, "error");
+  updateInlineStatus(adminAssignmentStatus, message, "error");
+  updateInlineStatus(adminBlueprintStatus, message, "error");
+  updateInlineStatus(adminStudentImportStatus, message, "error");
+  updateInlineStatus(adminStudentPasswordStatus, message, "error");
+  updateInlineStatus(adminProfileStatus, message, "error");
+  updateInlineStatus(adminPasswordStatus, message, "error");
+}
+
+window.handleUnauthorizedResponse = handleUnauthorizedResponse;
+
 
 
