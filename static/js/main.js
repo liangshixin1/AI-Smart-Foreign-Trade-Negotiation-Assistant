@@ -245,6 +245,12 @@ if (adminTheoryLessonDeleteBtn) {
   adminTheoryLessonDeleteBtn.addEventListener("click", deleteAdminTheoryLesson);
 }
 
+if (insertKnowledgeBtn) {
+  insertKnowledgeBtn.addEventListener("click", () => {
+    openKnowledgeCardModal();
+  });
+}
+
 if (insertChallengeBtn) {
   insertChallengeBtn.addEventListener("click", () => {
     const preferredSectionId = adminTheoryLessonSection ? adminTheoryLessonSection.value : "";
@@ -305,6 +311,75 @@ if (challengeSelectorSection) {
 if (challengeSelectorLabel) {
   challengeSelectorLabel.addEventListener("input", () => {
     updateChallengeSelectorPreview();
+  });
+}
+
+if (knowledgeCardClose) {
+  knowledgeCardClose.addEventListener("click", () => {
+    closeKnowledgeCardModal();
+  });
+}
+
+if (knowledgeCardCancel) {
+  knowledgeCardCancel.addEventListener("click", () => {
+    closeKnowledgeCardModal();
+  });
+}
+
+if (knowledgeCardConfirm) {
+  knowledgeCardConfirm.addEventListener("click", () => {
+    handleKnowledgeCardConfirm();
+  });
+}
+
+if (knowledgeCardModal) {
+  knowledgeCardModal.addEventListener("click", (event) => {
+    if (
+      event.target === knowledgeCardModal ||
+      (event.target && event.target.classList && event.target.classList.contains("knowledge-modal__backdrop"))
+    ) {
+      closeKnowledgeCardModal();
+    }
+  });
+}
+
+if (knowledgeCardSearch) {
+  knowledgeCardSearch.addEventListener("input", handleKnowledgeCardSearchInput);
+}
+
+if (knowledgeCardList) {
+  knowledgeCardList.addEventListener("click", handleKnowledgeCardListClick);
+}
+
+if (knowledgeCardNew) {
+  knowledgeCardNew.addEventListener("click", handleKnowledgeCardNew);
+}
+
+if (knowledgeCardImageInput) {
+  knowledgeCardImageInput.addEventListener("change", handleKnowledgeCardImageChange);
+}
+
+if (knowledgeCardRemoveImageBtn) {
+  knowledgeCardRemoveImageBtn.addEventListener("click", handleKnowledgeCardRemoveImage);
+}
+
+if (knowledgeCardInsertTableBtn) {
+  knowledgeCardInsertTableBtn.addEventListener("click", handleKnowledgeCardInsertTable);
+}
+
+if (knowledgeCardClearBodyBtn) {
+  knowledgeCardClearBodyBtn.addEventListener("click", handleKnowledgeCardClearBody);
+}
+
+if (adminGraphSelection) {
+  adminGraphSelection.addEventListener("click", (event) => {
+    const anchorButton = event.target.closest("[data-knowledge-anchor]");
+    if (anchorButton) {
+      const anchorId = anchorButton.dataset.knowledgeAnchor || "";
+      if (anchorId) {
+        scrollToKnowledgeCardAnchor(anchorId);
+      }
+    }
   });
 }
 

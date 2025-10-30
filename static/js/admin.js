@@ -1,7 +1,143 @@
 let adminTheoryLessonEditor = null;
 let challengeBubbleBlotRegistered = false;
+let knowledgePointCardBlotRegistered = false;
 let adminGraphNetwork = null;
 let adminGraphSelectionKey = null;
+const knowledgeCardModalState = {
+  editingNode: null,
+  selectedKnowledge: null,
+  imageDataUrl: "",
+  indexRecords: [],
+};
+
+function sanitizeKnowledgeCardHtml(html) {
+  const value = typeof html === "string" ? html : "";
+  if (typeof window !== "undefined" && window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
+    return window.DOMPurify.sanitize(value, { USE_PROFILES: { html: true } });
+  }
+  return value;
+}
+
+function buildKnowledgeCardMarkup(payload = {}) {
+  const title = escapeHtmlText(payload.name || payload.title || "关键知识点");
+  const summary = escapeHtmlText(payload.summary || "");
+  const tags = Array.isArray(payload.tags) ? payload.tags.filter(Boolean) : [];
+  const imageUrl = payload.imageUrl ? escapeHtmlAttribute(payload.imageUrl) : "";
+  const imageAlt = payload.imageAlt ? escapeHtmlAttribute(payload.imageAlt) : title;
+  const bodyHtml = sanitizeKnowledgeCardHtml(payload.bodyHtml || "");
+  const chipsHtml =
+    tags.length > 0
+      ? `<div class="knowledge-card__footer">${tags
+          .map((tag) => `<span class="knowledge-card__chip">${escapeHtmlText(tag)}</span>`)
+          .join("")}</div>`
+      : "";
+  const summaryHtml = summary
+    ? `<p class="knowledge-card__summary">${summary}</p>`
+    : "";
+  const bodySection = bodyHtml
+    ? `<div class="knowledge-card__body">${bodyHtml}</div>`
+    : "";
+  const mediaSection = imageUrl
+    ? `<div class="knowledge-card__media"><img src="${imageUrl}" alt="${imageAlt}" loading="lazy" /></div>`
+    : "";
+  return `
+    <article class="knowledge-card">
+      <header class="knowledge-card__header">
+        <h4 class="knowledge-card__title">${title}</h4>
+        <span class="knowledge-card__tag">知识卡</span>
+      </header>
+      ${summaryHtml}
+      ${mediaSection}
+      ${bodySection}
+      ${chipsHtml}
+    </article>
+  `;
+}
+
+function normalizeKnowledgeCardPayload(rawValue) {
+  const source = rawValue && typeof rawValue === "object" ? { ...rawValue } : {};
+  const payload = {
+    name: source.name || source.title || source.label || "",
+    summary: source.summary || source.description || "",
+    bodyHtml: source.bodyHtml || source.html || "",
+    imageUrl: source.imageUrl || source.image || "",
+    imageAlt: source.imageAlt || source.alt || "",
+    anchorId: source.anchorId || source.anchor || "",
+    tags: Array.isArray(source.tags)
+      ? source.tags
+          .map((tag) => (tag && tag.toString ? tag.toString().trim() : ""))
+          .filter((tag) => tag)
+      : typeof source.tags === "string"
+      ? source.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+      : [],
+    knowledgeId: source.knowledgeId || source.sourceId || "",
+  };
+  if (!payload.anchorId && typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
+    payload.anchorId = `kp-${window.crypto.randomUUID()}`;
+  } else if (!payload.anchorId) {
+    payload.anchorId = `kp-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  }
+  return payload;
+}
+
+function registerKnowledgePointCardBlot() {
+  if (knowledgePointCardBlotRegistered) {
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.Quill === "undefined") {
+    return;
+  }
+  const Quill = window.Quill;
+  const BlockEmbed = Quill.import("blots/block/embed");
+  class KnowledgePointCardBlot extends BlockEmbed {
+    static blotName = "knowledgePointCard";
+
+    static tagName = "div";
+
+    static className = "ql-knowledge-point-card";
+
+    static create(value) {
+      const node = super.create();
+      const payload = normalizeKnowledgeCardPayload(value);
+      node.dataset.payload = JSON.stringify(payload);
+      node.dataset.knowledgeAnchor = payload.anchorId || "";
+      node.setAttribute("data-knowledge-anchor", payload.anchorId || "");
+      node.setAttribute("contenteditable", "false");
+      node.innerHTML = buildKnowledgeCardMarkup(payload);
+      return node;
+    }
+
+    static value(node) {
+      if (!node) {
+        return {};
+      }
+      try {
+        const payload = JSON.parse(node.getAttribute("data-payload") || node.dataset.payload || "{}") || {};
+        if (!payload.anchorId && node.dataset.knowledgeAnchor) {
+          payload.anchorId = node.dataset.knowledgeAnchor;
+        }
+        return normalizeKnowledgeCardPayload(payload);
+      } catch (error) {
+        const fallback = {
+          name: node.querySelector(".knowledge-card__title")
+            ? node.querySelector(".knowledge-card__title").textContent
+            : "",
+          summary: node.querySelector(".knowledge-card__summary")
+            ? node.querySelector(".knowledge-card__summary").textContent
+            : "",
+          bodyHtml: node.querySelector(".knowledge-card__body")
+            ? node.querySelector(".knowledge-card__body").innerHTML
+            : "",
+          anchorId: node.dataset.knowledgeAnchor || node.getAttribute("data-knowledge-anchor") || "",
+        };
+        return normalizeKnowledgeCardPayload(fallback);
+      }
+    }
+  }
+
+  Quill.register(KnowledgePointCardBlot);
+  knowledgePointCardBlotRegistered = true;
+}
 
 function registerChallengeBubbleBlot() {
   if (challengeBubbleBlotRegistered) {
@@ -65,6 +201,560 @@ function escapeHtmlAttribute(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/'/g, "&#39;");
+}
+
+function extractKnowledgeName(entry) {
+  if (!entry) {
+    return "";
+  }
+  if (typeof entry === "string") {
+    return entry.trim();
+  }
+  if (typeof entry === "object") {
+    const name = entry.name || entry.title || entry.label || entry.id || "";
+    return typeof name === "string" ? name.trim() : String(name).trim();
+  }
+  return String(entry).trim();
+}
+
+function mergeKnowledgePayload(target, source) {
+  if (!source) {
+    return target;
+  }
+  if (!target.name && source.name) {
+    target.name = source.name;
+  }
+  if (!target.summary && source.summary) {
+    target.summary = source.summary;
+  }
+  if (!target.bodyHtml && source.bodyHtml) {
+    target.bodyHtml = source.bodyHtml;
+  }
+  if (!target.imageUrl && source.imageUrl) {
+    target.imageUrl = source.imageUrl;
+  }
+  if (!target.imageAlt && source.imageAlt) {
+    target.imageAlt = source.imageAlt;
+  }
+  if (!target.anchorId && source.anchorId) {
+    target.anchorId = source.anchorId;
+  }
+  if (!target.knowledgeId && source.knowledgeId) {
+    target.knowledgeId = source.knowledgeId;
+  }
+  const existingTags = Array.isArray(target.tags) ? target.tags : [];
+  const incomingTags = Array.isArray(source.tags) ? source.tags : [];
+  const combined = existingTags.slice();
+  incomingTags.forEach((tag) => {
+    const value = (tag || "").toString().trim();
+    if (value && !combined.includes(value)) {
+      combined.push(value);
+    }
+  });
+  target.tags = combined;
+  return target;
+}
+
+function normalizeKnowledgePayloadList(list) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const map = new Map();
+  list.forEach((entry) => {
+    const payload = normalizeKnowledgeCardPayload(entry);
+    const name = extractKnowledgeName(payload);
+    if (!name) {
+      return;
+    }
+    payload.name = name;
+    if (map.has(name)) {
+      const existing = map.get(name);
+      mergeKnowledgePayload(existing, payload);
+      return;
+    }
+    map.set(name, payload);
+  });
+  return Array.from(map.values());
+}
+
+function readKnowledgeCardNodePayload(node) {
+  if (!node) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(node.getAttribute("data-payload") || node.dataset.payload || "{}") || {};
+    if (!raw.anchorId && node.dataset.knowledgeAnchor) {
+      raw.anchorId = node.dataset.knowledgeAnchor;
+    }
+    return normalizeKnowledgeCardPayload(raw);
+  } catch (error) {
+    const fallback = {
+      name: node.querySelector(".knowledge-card__title")
+        ? node.querySelector(".knowledge-card__title").textContent
+        : "",
+      summary: node.querySelector(".knowledge-card__summary")
+        ? node.querySelector(".knowledge-card__summary").textContent
+        : "",
+      bodyHtml: node.querySelector(".knowledge-card__body")
+        ? node.querySelector(".knowledge-card__body").innerHTML
+        : "",
+      imageUrl: node.querySelector(".knowledge-card__media img")
+        ? node.querySelector(".knowledge-card__media img").getAttribute("src")
+        : "",
+      imageAlt: node.querySelector(".knowledge-card__media img")
+        ? node.querySelector(".knowledge-card__media img").getAttribute("alt")
+        : "",
+      tags: Array.from(node.querySelectorAll(".knowledge-card__chip")).map((chip) => chip.textContent.trim()),
+      anchorId: node.dataset.knowledgeAnchor || node.getAttribute("data-knowledge-anchor") || "",
+    };
+    return normalizeKnowledgeCardPayload(fallback);
+  }
+}
+
+function updateKnowledgeCardNode(node, payload) {
+  if (!node) {
+    return;
+  }
+  const normalized = normalizeKnowledgeCardPayload(payload);
+  node.dataset.payload = JSON.stringify(normalized);
+  node.dataset.knowledgeAnchor = normalized.anchorId || "";
+  node.setAttribute("data-knowledge-anchor", normalized.anchorId || "");
+  node.innerHTML = buildKnowledgeCardMarkup(normalized);
+}
+
+function collectKnowledgePointPayloadsFromEditor() {
+  if (!adminTheoryLessonEditor) {
+    return [];
+  }
+  const root = adminTheoryLessonEditor.root;
+  if (!root) {
+    return [];
+  }
+  const nodes = root.querySelectorAll(".ql-knowledge-point-card");
+  const payloads = Array.from(nodes)
+    .map((node) => readKnowledgeCardNodePayload(node))
+    .filter((item) => item && extractKnowledgeName(item));
+  return normalizeKnowledgePayloadList(payloads);
+}
+
+function syncKnowledgePointsFromEditor({ updateCache = true } = {}) {
+  if (!adminTheoryLessonEditor) {
+    return [];
+  }
+  const payloads = collectKnowledgePointPayloadsFromEditor();
+  if (adminTheoryLessonKnowledge) {
+    writeKnowledgeToTextarea(adminTheoryLessonKnowledge, payloads);
+  }
+  if (updateCache) {
+    const lessonId = state.admin && state.admin.theory ? state.admin.theory.selectedLessonId : null;
+    if (lessonId && state.admin.graph && state.admin.graph.lessonKnowledge && state.admin.graph.lessonKnowledge.set) {
+      state.admin.graph.lessonKnowledge.set(lessonId, payloads);
+    }
+  }
+  return payloads;
+}
+
+function scrollToKnowledgeCardAnchor(anchorId) {
+  const targetId = typeof anchorId === "string" ? anchorId.trim() : "";
+  if (!targetId) {
+    return false;
+  }
+  const escape =
+    typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function"
+      ? window.CSS.escape
+      : (value) => value.replace(/['"\\]/g, "\\$&");
+  const selector = `[data-knowledge-anchor="${escape(targetId)}"]`;
+  let target = null;
+  if (adminTheoryLessonEditor && adminTheoryLessonEditor.root) {
+    target = adminTheoryLessonEditor.root.querySelector(selector);
+  }
+  if (!target) {
+    target = document.querySelector(selector);
+  }
+  if (!target) {
+    return false;
+  }
+  if (typeof target.scrollIntoView === "function") {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  target.classList.add("knowledge-card-highlight");
+  window.setTimeout(() => {
+    target.classList.remove("knowledge-card-highlight");
+  }, 1600);
+  return true;
+}
+
+function getAdminKnowledgeIndexRecords() {
+  const rawList =
+    state.admin &&
+    state.admin.graph &&
+    Array.isArray(state.admin.graph.knowledgePoints)
+      ? state.admin.graph.knowledgePoints
+      : [];
+  return rawList
+    .map((item) => ({
+      name: extractKnowledgeName(item),
+      summary: item.summary || "",
+      bodyHtml: item.bodyHtml || "",
+      imageUrl: item.imageUrl || "",
+      imageAlt: item.imageAlt || "",
+      knowledgeId: item.knowledgeId || "",
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      practiceCount: typeof item.practiceCount === "number" ? item.practiceCount : 0,
+      lessonCount: typeof item.lessonCount === "number" ? item.lessonCount : 0,
+    }))
+    .filter((record) => record.name);
+}
+
+function renderKnowledgeCardList({ keyword = "", selectedName = "" } = {}) {
+  if (!knowledgeCardList) {
+    return;
+  }
+  const searchTerm = (keyword || "").trim().toLowerCase();
+  const records = knowledgeCardModalState.indexRecords || [];
+  const filtered = records.filter((record) => {
+    if (!searchTerm) {
+      return true;
+    }
+    return (
+      record.name.toLowerCase().includes(searchTerm) ||
+      (record.summary || "").toLowerCase().includes(searchTerm) ||
+      (Array.isArray(record.tags) ? record.tags.join(" ") : "").toLowerCase().includes(searchTerm)
+    );
+  });
+  if (filtered.length === 0) {
+    knowledgeCardList.innerHTML =
+      '<div class="p-4 text-xs text-slate-400">暂无匹配的知识点，可新建一个标签。</div>';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  filtered.forEach((record) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "knowledge-modal__item";
+    if (selectedName && record.name === selectedName) {
+      button.setAttribute("aria-selected", "true");
+    }
+    button.dataset.knowledgeName = record.name;
+    button.innerHTML = `
+      <span class="knowledge-modal__item-title">${escapeHtmlText(record.name)}</span>
+      <span class="knowledge-modal__item-meta">理论 ${record.lessonCount || 0} · 实战 ${record.practiceCount || 0}</span>
+      ${record.summary ? `<span class="knowledge-modal__item-meta">${escapeHtmlText(record.summary)}</span>` : ""}
+    `;
+    fragment.appendChild(button);
+  });
+  knowledgeCardList.innerHTML = "";
+  knowledgeCardList.appendChild(fragment);
+}
+
+function resetKnowledgeCardForm(payload = null) {
+  const basePayload = payload ? normalizeKnowledgeCardPayload(payload) : null;
+  const selectedPayload = knowledgeCardModalState.selectedKnowledge
+    ? normalizeKnowledgeCardPayload(knowledgeCardModalState.selectedKnowledge)
+    : null;
+  const normalized = selectedPayload
+    ? mergeKnowledgePayload({ ...(basePayload || {}) }, selectedPayload)
+    : basePayload;
+  if (knowledgeCardNameInput) {
+    knowledgeCardNameInput.value = normalized ? normalized.name || "" : "";
+  }
+  if (knowledgeCardSummaryInput) {
+    knowledgeCardSummaryInput.value = normalized ? normalized.summary || "" : "";
+  }
+  if (knowledgeCardTagsInput) {
+    const tags = normalized && Array.isArray(normalized.tags) ? normalized.tags.join(", ") : "";
+    knowledgeCardTagsInput.value = tags;
+  }
+  if (knowledgeCardBodyEditor) {
+    knowledgeCardBodyEditor.innerHTML = normalized ? sanitizeKnowledgeCardHtml(normalized.bodyHtml || "") : "";
+  }
+  const imageUrl = knowledgeCardModalState.imageDataUrl
+    ? knowledgeCardModalState.imageDataUrl
+    : normalized && normalized.imageUrl
+    ? normalized.imageUrl
+    : "";
+  if (knowledgeCardImagePreview) {
+    if (imageUrl) {
+      const safeUrl = escapeHtmlAttribute(imageUrl);
+      const safeAlt = escapeHtmlAttribute(
+        (normalized && (normalized.imageAlt || normalized.summary || normalized.name)) || "关键知识点配图",
+      );
+      knowledgeCardImagePreview.innerHTML = `<img src="${safeUrl}" alt="${safeAlt}" />`;
+    } else {
+      knowledgeCardImagePreview.innerHTML = '<span class="text-xs text-slate-500">未选择图片</span>';
+    }
+  }
+  if (knowledgeCardImageInput) {
+    knowledgeCardImageInput.value = "";
+  }
+}
+
+function openKnowledgeCardModal(payload = null, node = null) {
+  if (!knowledgeCardModal) {
+    return;
+  }
+  knowledgeCardModalState.editingNode = node || null;
+  knowledgeCardModalState.selectedKnowledge = null;
+  knowledgeCardModalState.imageDataUrl = "";
+  knowledgeCardModalState.indexRecords = getAdminKnowledgeIndexRecords();
+  const selectedName = payload ? extractKnowledgeName(payload) : "";
+  if (selectedName) {
+    const matched = knowledgeCardModalState.indexRecords.find((item) => item.name === selectedName);
+    if (matched) {
+      knowledgeCardModalState.selectedKnowledge = matched;
+    }
+  }
+  renderKnowledgeCardList({ selectedName });
+  resetKnowledgeCardForm(payload);
+  if (knowledgeCardSearch) {
+    knowledgeCardSearch.value = "";
+  }
+  if (knowledgeCardStatus) {
+    knowledgeCardStatus.textContent = "";
+  }
+  knowledgeCardModal.classList.remove("hidden");
+  if (knowledgeCardNameInput) {
+    window.setTimeout(() => {
+      knowledgeCardNameInput.focus();
+      knowledgeCardNameInput.select();
+    }, 0);
+  }
+}
+
+function closeKnowledgeCardModal() {
+  if (!knowledgeCardModal) {
+    return;
+  }
+  knowledgeCardModal.classList.add("hidden");
+  knowledgeCardModalState.editingNode = null;
+  knowledgeCardModalState.selectedKnowledge = null;
+  knowledgeCardModalState.imageDataUrl = "";
+  knowledgeCardModalState.indexRecords = [];
+}
+
+function handleKnowledgeCardSearchInput() {
+  if (!knowledgeCardSearch) {
+    return;
+  }
+  renderKnowledgeCardList({
+    keyword: knowledgeCardSearch.value || "",
+    selectedName:
+      knowledgeCardModalState.selectedKnowledge && knowledgeCardModalState.selectedKnowledge.name
+        ? knowledgeCardModalState.selectedKnowledge.name
+        : knowledgeCardModalState.editingNode
+        ? extractKnowledgeName(readKnowledgeCardNodePayload(knowledgeCardModalState.editingNode))
+        : "",
+  });
+}
+
+function applyKnowledgeCardSelection(record) {
+  if (!record) {
+    return;
+  }
+  knowledgeCardModalState.selectedKnowledge = record;
+  resetKnowledgeCardForm(record);
+  renderKnowledgeCardList({
+    keyword: knowledgeCardSearch ? knowledgeCardSearch.value : "",
+    selectedName: record.name,
+  });
+}
+
+function handleKnowledgeCardListClick(event) {
+  const button = event.target.closest(".knowledge-modal__item");
+  if (!button) {
+    return;
+  }
+  const name = button.dataset.knowledgeName || "";
+  if (!name) {
+    return;
+  }
+  const record = (knowledgeCardModalState.indexRecords || []).find((item) => item.name === name);
+  if (record) {
+    applyKnowledgeCardSelection(record);
+  }
+}
+
+function handleKnowledgeCardNew() {
+  knowledgeCardModalState.selectedKnowledge = null;
+  knowledgeCardModalState.imageDataUrl = "";
+  resetKnowledgeCardForm();
+  renderKnowledgeCardList({ keyword: knowledgeCardSearch ? knowledgeCardSearch.value : "", selectedName: "" });
+  if (knowledgeCardStatus) {
+    knowledgeCardStatus.textContent = "";
+  }
+}
+
+function handleKnowledgeCardImageChange(event) {
+  const files = event && event.target && event.target.files ? event.target.files : null;
+  if (!files || files.length === 0) {
+    return;
+  }
+  const file = files[0];
+  if (!file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    knowledgeCardModalState.imageDataUrl = reader.result || "";
+    resetKnowledgeCardForm(knowledgeCardModalState.selectedKnowledge || null);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleKnowledgeCardRemoveImage() {
+  knowledgeCardModalState.imageDataUrl = "";
+  resetKnowledgeCardForm(knowledgeCardModalState.selectedKnowledge || null);
+}
+
+function handleKnowledgeCardInsertTable() {
+  if (!knowledgeCardBodyEditor) {
+    return;
+  }
+  const tableHtml = `
+    <table>
+      <thead>
+        <tr>
+          <th>要点</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>示例 1</td>
+          <td>在此填写对应的知识点说明。</td>
+        </tr>
+        <tr>
+          <td>示例 2</td>
+          <td>可在知识卡内展示对比、步骤或参数。</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+  knowledgeCardBodyEditor.insertAdjacentHTML("beforeend", tableHtml);
+}
+
+function handleKnowledgeCardClearBody() {
+  if (!knowledgeCardBodyEditor) {
+    return;
+  }
+  knowledgeCardBodyEditor.innerHTML = "";
+}
+
+function readKnowledgeCardForm() {
+  const basePayload = knowledgeCardModalState.editingNode
+    ? readKnowledgeCardNodePayload(knowledgeCardModalState.editingNode)
+    : null;
+  const selectedRecord = knowledgeCardModalState.selectedKnowledge;
+  const name = knowledgeCardNameInput ? knowledgeCardNameInput.value.trim() : "";
+  const summary = knowledgeCardSummaryInput ? knowledgeCardSummaryInput.value.trim() : "";
+  const tagsInput = knowledgeCardTagsInput ? knowledgeCardTagsInput.value : "";
+  const tags = tagsInput
+    ? tagsInput
+        .split(/[，,]/)
+        .map((tag) => tag.trim())
+        .filter((tag) => tag)
+    : [];
+  const bodyHtml = knowledgeCardBodyEditor ? sanitizeKnowledgeCardHtml(knowledgeCardBodyEditor.innerHTML) : "";
+  const fallbackImage = basePayload && basePayload.imageUrl ? basePayload.imageUrl : "";
+  const selectedImage = selectedRecord && selectedRecord.imageUrl ? selectedRecord.imageUrl : "";
+  const imageUrl = knowledgeCardModalState.imageDataUrl || selectedImage || fallbackImage;
+  const payload = normalizeKnowledgeCardPayload({
+    ...selectedRecord,
+    ...basePayload,
+    name,
+    summary,
+    tags,
+    bodyHtml,
+    imageUrl,
+    knowledgeId: selectedRecord && selectedRecord.knowledgeId ? selectedRecord.knowledgeId : basePayload && basePayload.knowledgeId,
+  });
+  if (knowledgeCardModalState.imageDataUrl) {
+    payload.imageUrl = knowledgeCardModalState.imageDataUrl;
+  }
+  return payload;
+}
+
+function insertKnowledgeCardIntoEditor(payload, { replaceNode = null } = {}) {
+  const normalized = normalizeKnowledgeCardPayload(payload);
+  if (adminTheoryLessonEditor) {
+    const quill = adminTheoryLessonEditor;
+    const source = window.Quill ? window.Quill.sources.USER : undefined;
+    if (replaceNode) {
+      const blot = window.Quill ? window.Quill.find(replaceNode) : null;
+      if (blot) {
+        const index = quill.getIndex(blot);
+        quill.deleteText(index, 1, source);
+        quill.insertEmbed(index, "knowledgePointCard", normalized, source);
+        quill.insertText(index + 1, "\n", source);
+        quill.setSelection(index + 2, 0, window.Quill ? window.Quill.sources.SILENT : undefined);
+      } else {
+        updateKnowledgeCardNode(replaceNode, normalized);
+      }
+    } else {
+      const range = quill.getSelection(true);
+      const index = range && typeof range.index === "number" ? range.index : quill.getLength();
+      quill.insertEmbed(index, "knowledgePointCard", normalized, source);
+      quill.insertText(index + 1, "\n", source);
+      quill.setSelection(index + 2, 0, window.Quill ? window.Quill.sources.SILENT : undefined);
+    }
+    syncKnowledgePointsFromEditor();
+    return;
+  }
+  if (adminTheoryLessonContent) {
+    const existing = adminTheoryLessonContent.value || "";
+    adminTheoryLessonContent.value = `${existing}${buildKnowledgeCardMarkup(normalized)}`;
+  }
+}
+
+function refreshKnowledgeCardNodesFromPayloads(payloads) {
+  if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
+    return;
+  }
+  const normalized = normalizeKnowledgePayloadList(payloads || []);
+  if (normalized.length === 0) {
+    return;
+  }
+  const byAnchor = new Map();
+  const byName = new Map();
+  normalized.forEach((payload) => {
+    const anchorId = payload.anchorId || "";
+    if (anchorId) {
+      byAnchor.set(anchorId, payload);
+    }
+    if (payload.name) {
+      byName.set(payload.name, payload);
+    }
+  });
+  const nodes = adminTheoryLessonEditor.root.querySelectorAll(".ql-knowledge-point-card");
+  nodes.forEach((node) => {
+    const current = readKnowledgeCardNodePayload(node);
+    const anchorId = current && current.anchorId ? current.anchorId : "";
+    let payload = null;
+    if (anchorId && byAnchor.has(anchorId)) {
+      payload = mergeKnowledgePayload({ ...current }, byAnchor.get(anchorId));
+    } else if (current && current.name && byName.has(current.name)) {
+      payload = mergeKnowledgePayload({ ...current }, byName.get(current.name));
+    }
+    if (payload) {
+      updateKnowledgeCardNode(node, payload);
+    }
+  });
+}
+
+function handleKnowledgeCardConfirm() {
+  if (knowledgeCardStatus) {
+    knowledgeCardStatus.textContent = "";
+  }
+  const payload = readKnowledgeCardForm();
+  const name = extractKnowledgeName(payload);
+  if (!name) {
+    if (knowledgeCardStatus) {
+      knowledgeCardStatus.textContent = "请填写知识点名称";
+    }
+    return;
+  }
+  insertKnowledgeCardIntoEditor(payload, { replaceNode: knowledgeCardModalState.editingNode });
+  closeKnowledgeCardModal();
 }
 
 function renderAdminStudentList() {
@@ -239,7 +929,12 @@ function writeKnowledgeToTextarea(element, points) {
   if (!element) {
     return;
   }
-  element.value = joinLines(points || []);
+  const names = Array.isArray(points)
+    ? points
+        .map((point) => extractKnowledgeName(point))
+        .filter((name) => name && name.trim())
+    : [];
+  element.value = joinLines(names);
 }
 
 function clearPracticeKnowledgeCache(targetIds = null) {
@@ -361,7 +1056,7 @@ async function fetchLessonKnowledge(lessonId, { forceRefresh = false } = {}) {
       throw new Error("无法加载理论知识点");
     }
     const data = await response.json();
-    const knowledge = (data.lesson && data.lesson.knowledgePoints) || [];
+    const knowledge = normalizeKnowledgePayloadList((data.lesson && data.lesson.knowledgePoints) || []);
     if (cache && cache.set) {
       cache.set(lessonId, knowledge);
     }
@@ -377,10 +1072,11 @@ async function persistLessonKnowledge(lessonId, knowledgePoints) {
     return [];
   }
   try {
+    const normalizedPayloads = normalizeKnowledgePayloadList(knowledgePoints);
     const response = await fetchWithAuth(`/api/graph/theory-lessons/${lessonId}/knowledge`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ knowledgePoints }),
+      body: JSON.stringify({ knowledgePoints: normalizedPayloads }),
     });
     if (!response.ok) {
       if (response.status === 503) {
@@ -390,7 +1086,9 @@ async function persistLessonKnowledge(lessonId, knowledgePoints) {
       throw new Error(errorData.error || "更新理论知识点失败");
     }
     const data = await response.json();
-    const updated = (data.lesson && data.lesson.knowledgePoints) || knowledgePoints;
+    const updated = normalizeKnowledgePayloadList(
+      (data.lesson && data.lesson.knowledgePoints) || normalizedPayloads,
+    );
     const cache = state.admin.graph.lessonKnowledge;
     if (cache && cache.set) {
       cache.set(lessonId, updated);
@@ -430,6 +1128,7 @@ async function hydrateLessonKnowledge(lessonId) {
     return;
   }
   writeKnowledgeToTextarea(adminTheoryLessonKnowledge, knowledge);
+  refreshKnowledgeCardNodesFromPayloads(knowledge);
 }
 
 function describeGraphNodeKey(key) {
@@ -444,9 +1143,17 @@ function renderAdminGraphKnowledgeList() {
   if (!adminGraphKnowledgeList) {
     return;
   }
-  const list = Array.isArray(state.admin.graph.knowledgePoints)
+  const rawList = Array.isArray(state.admin.graph.knowledgePoints)
     ? state.admin.graph.knowledgePoints
     : [];
+  const list = rawList
+    .map((item) => ({
+      name: extractKnowledgeName(item),
+      summary: item.summary || "",
+      practiceCount: typeof item.practiceCount === "number" ? item.practiceCount : 0,
+      lessonCount: typeof item.lessonCount === "number" ? item.lessonCount : 0,
+    }))
+    .filter((record) => record.name);
   adminGraphKnowledgeList.innerHTML = "";
   if (list.length === 0) {
     const empty = document.createElement("li");
@@ -458,10 +1165,11 @@ function renderAdminGraphKnowledgeList() {
   list.forEach((item) => {
     const li = document.createElement("li");
     li.className = "rounded-xl border border-slate-800/70 bg-slate-950/60 p-3";
-    const practiceCount = typeof item.practiceCount === "number" ? item.practiceCount : 0;
-    const lessonCount = typeof item.lessonCount === "number" ? item.lessonCount : 0;
+    const practiceCount = item.practiceCount || 0;
+    const lessonCount = item.lessonCount || 0;
     li.innerHTML = `
       <p class="text-sm text-slate-200">${escapeHtmlText(item.name || "知识点")}</p>
+      ${item.summary ? `<p class="mt-1 text-xs text-slate-400">${escapeHtmlText(item.summary)}</p>` : ""}
       <p class="text-xs text-slate-500">实战关卡：${practiceCount} · 理论课程：${lessonCount}</p>
     `;
     adminGraphKnowledgeList.appendChild(li);
@@ -500,15 +1208,48 @@ function renderAdminGraphSelection(detail) {
     });
     adminGraphSelection.appendChild(list);
   }
-  const knowledge = Array.isArray(detail.knowledge) ? detail.knowledge.filter(Boolean) : [];
-  if (knowledge.length > 0) {
+  const knowledgeEntries = normalizeKnowledgePayloadList(detail.knowledge || []);
+  if (knowledgeEntries.length > 0) {
     const wrap = document.createElement("div");
-    wrap.className = "mt-3 flex flex-wrap gap-2";
-    knowledge.forEach((kp) => {
-      const pill = document.createElement("span");
-      pill.className = "knowledge-pill";
-      pill.textContent = kp;
-      wrap.appendChild(pill);
+    wrap.className = "mt-3 space-y-2";
+    knowledgeEntries.forEach((kp) => {
+      const card = document.createElement("div");
+      card.className = "graph-knowledge-card";
+      const title = document.createElement("p");
+      title.className = "graph-knowledge-card__title";
+      title.textContent = kp.name || "知识点";
+      card.appendChild(title);
+      const summaryText = kp.summary || "";
+      let bodyPreview = "";
+      if (!summaryText && kp.bodyHtml) {
+        const temp = document.createElement("div");
+        temp.innerHTML = sanitizeKnowledgeCardHtml(kp.bodyHtml);
+        bodyPreview = (temp.textContent || "").trim();
+      }
+      if (summaryText || bodyPreview) {
+        const summaryEl = document.createElement("p");
+        summaryEl.className = "graph-knowledge-card__summary";
+        summaryEl.textContent = summaryText || bodyPreview.slice(0, 120);
+        card.appendChild(summaryEl);
+      }
+      if (Array.isArray(kp.tags) && kp.tags.length > 0) {
+        const tagsLine = document.createElement("p");
+        tagsLine.className = "graph-knowledge-card__summary";
+        tagsLine.textContent = `标签：${kp.tags.join("、")}`;
+        card.appendChild(tagsLine);
+      }
+      if (kp.anchorId) {
+        const actions = document.createElement("div");
+        actions.className = "graph-knowledge-card__actions";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "graph-knowledge-card__button";
+        button.dataset.knowledgeAnchor = kp.anchorId;
+        button.textContent = "定位到正文";
+        actions.appendChild(button);
+        card.appendChild(actions);
+      }
+      wrap.appendChild(card);
     });
     adminGraphSelection.appendChild(wrap);
   }
@@ -563,7 +1304,7 @@ async function loadPracticeGraphDetail(practiceId) {
         typeof practice.orderIndex === "number" ? `排序权重：${practice.orderIndex}` : "",
         practice.expectsBargaining ? "博弈回合：开启" : "",
       ],
-      knowledge: practice.knowledgePoints || [],
+      knowledge: normalizeKnowledgePayloadList(practice.knowledgePoints || []),
       relatedLessons: lessons.map((lesson) => ({
         id: lesson.id,
         title: lesson.title || lesson.id,
@@ -592,7 +1333,7 @@ async function loadLessonGraphDetail(lessonId) {
       title: lesson.title || lesson.id || "理论课程",
       subtitle: lesson.code ? `课程编号：${lesson.code}` : "",
       meta: [lesson.topicId ? `所属主题：${lesson.topicId}` : ""],
-      knowledge: lesson.knowledgePoints || [],
+      knowledge: normalizeKnowledgePayloadList(lesson.knowledgePoints || []),
       relatedPractices: practices.map((practice) => ({
         id: practice.id,
         title: practice.title || practice.id,
@@ -610,8 +1351,10 @@ function buildKnowledgePointDetail(name) {
     : null;
   const practiceCount = record && typeof record.practiceCount === "number" ? record.practiceCount : 0;
   const lessonCount = record && typeof record.lessonCount === "number" ? record.lessonCount : 0;
+  const summary = record && record.summary ? record.summary : "";
   return {
     title: name,
+    subtitle: summary,
     meta: [`关联实战：${practiceCount}`, `关联理论：${lessonCount}`],
   };
 }
@@ -2450,6 +3193,7 @@ function initAdminTheoryLessonEditor() {
     return;
   }
   registerChallengeBubbleBlot();
+  registerKnowledgePointCardBlot();
   adminTheoryLessonEditor = new window.Quill(adminTheoryLessonEditorHost, {
     theme: "snow",
     placeholder: "请在此编写理论学习的富文本内容…",
@@ -2465,8 +3209,27 @@ function initAdminTheoryLessonEditor() {
       }
       return new Delta().insert({ challengeBubble: { chapterId, sectionId, label } }).insert(" ");
     });
+    adminTheoryLessonEditor.clipboard.addMatcher("div.ql-knowledge-point-card", (node) => {
+      const payload = readKnowledgeCardNodePayload(node);
+      if (!payload || !extractKnowledgeName(payload)) {
+        return new Delta().insert("");
+      }
+      return new Delta().insert({ knowledgePointCard: payload }).insert("\n");
+    });
   } catch (error) {
     console.warn("未能注册理论挑战气泡剪贴板解析器", error);
+  }
+  adminTheoryLessonEditor.on("text-change", () => {
+    syncKnowledgePointsFromEditor({ updateCache: false });
+  });
+  if (adminTheoryLessonEditor.root) {
+    adminTheoryLessonEditor.root.addEventListener("dblclick", (event) => {
+      const cardNode = event.target.closest(".ql-knowledge-point-card");
+      if (cardNode) {
+        const payload = readKnowledgeCardNodePayload(cardNode);
+        openKnowledgeCardModal(payload, cardNode);
+      }
+    });
   }
 }
 
@@ -2474,6 +3237,7 @@ function setAdminTheoryEditorContent(html) {
   const content = typeof html === "string" ? html : "";
   if (adminTheoryLessonEditor) {
     adminTheoryLessonEditor.clipboard.dangerouslyPasteHTML(content || "<p><br></p>");
+    syncKnowledgePointsFromEditor({ updateCache: false });
   } else if (adminTheoryLessonContent) {
     adminTheoryLessonContent.value = content;
   }
@@ -2950,7 +3714,12 @@ async function saveAdminTheoryLesson(event) {
   const payload = {
     contentHtml: getAdminTheoryEditorContent(),
   };
-  const knowledgePoints = readKnowledgeFromTextarea(adminTheoryLessonKnowledge);
+  let knowledgePoints = [];
+  if (adminTheoryLessonEditor) {
+    knowledgePoints = syncKnowledgePointsFromEditor({ updateCache: false });
+  } else {
+    knowledgePoints = readKnowledgeFromTextarea(adminTheoryLessonKnowledge).map((name) => ({ name }));
+  }
   if (adminTheoryLessonSection) {
     payload.sectionId = adminTheoryLessonSection.value;
   }
@@ -2972,6 +3741,7 @@ async function saveAdminTheoryLesson(event) {
     await loadAdminTheory({ focusTopicId: targetTopicId, focusLessonId: lessonId, keepSelection: true });
     try {
       const updated = await persistLessonKnowledge(lessonId, knowledgePoints);
+      refreshKnowledgeCardNodesFromPayloads(updated);
       writeKnowledgeToTextarea(adminTheoryLessonKnowledge, updated);
       refreshAdminGraph();
     } catch (graphError) {

@@ -544,21 +544,25 @@ def _ensure_practice_knowledge(tx, practice_id: str, points: List[str]) -> None:
     _set_practice_knowledge_tx(tx, practice_id, points)
 
 
-def _ensure_lesson_knowledge(tx, lesson_id: str, points: List[str]) -> None:
+def _ensure_lesson_knowledge(tx, lesson_id: str, points: List[object]) -> None:
     existing = tx.run(
         "MATCH (:TheoryLesson {id: $id})-[:EXPLAINS]->(k:KnowledgePoint) RETURN collect(k.name) AS names",
         {"id": lesson_id},
     ).single()
     if existing and existing["names"]:
         return
-    _set_lesson_knowledge_tx(tx, lesson_id, points)
+    normalized = _normalize_knowledge_point_payloads(points)
+    if not normalized:
+        return
+    _set_lesson_knowledge_tx(tx, lesson_id, normalized)
 
 
-def set_practice_knowledge_points(practice_id: str, points: Sequence[str]) -> None:
+def set_practice_knowledge_points(practice_id: str, points: Sequence[object]) -> None:
     driver = _get_driver()
-    normalized = _normalize_knowledge_points(points)
+    normalized_payloads = _normalize_knowledge_point_payloads(points)
+    names = [payload["name"] for payload in normalized_payloads if payload.get("name")]
     with driver.session() as session:
-        session.execute_write(_set_practice_knowledge_tx, practice_id, normalized)
+        session.execute_write(_set_practice_knowledge_tx, practice_id, names)
 
 
 def _set_practice_knowledge_tx(tx, practice_id: str, points: Sequence[str]) -> None:
@@ -581,14 +585,14 @@ def _set_practice_knowledge_tx(tx, practice_id: str, points: Sequence[str]) -> N
         )
 
 
-def set_lesson_knowledge_points(lesson_id: str, points: Sequence[str]) -> None:
+def set_lesson_knowledge_points(lesson_id: str, points: Sequence[object]) -> None:
     driver = _get_driver()
-    normalized = _normalize_knowledge_points(points)
+    normalized = _normalize_knowledge_point_payloads(points)
     with driver.session() as session:
         session.execute_write(_set_lesson_knowledge_tx, lesson_id, normalized)
 
 
-def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[str]) -> None:
+def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, object]]) -> None:
     record = tx.run(
         "MATCH (l:TheoryLesson {id: $id}) RETURN l", {"id": lesson_id}
     ).single()
@@ -599,28 +603,176 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[str]) -> None:
         "MATCH (:TheoryLesson {id: $id})-[rel:EXPLAINS]->(:KnowledgePoint) DELETE rel",
         {"id": lesson_id},
     )
-    for name in points:
+    for payload in points:
+        name = payload.get("name") if isinstance(payload, dict) else None
+        if not name:
+            continue
+        summary_value = payload.get("summary", "")
+        if summary_value is None:
+            summary_value = ""
+        elif not isinstance(summary_value, str):
+            summary_value = str(summary_value)
+        body_html_value = payload.get("bodyHtml", "")
+        if body_html_value is None:
+            body_html_value = ""
+        image_url_value = payload.get("imageUrl", "")
+        if image_url_value is None:
+            image_url_value = ""
+        elif not isinstance(image_url_value, str):
+            image_url_value = str(image_url_value)
+        image_alt_value = payload.get("imageAlt", "")
+        if image_alt_value is None:
+            image_alt_value = ""
+        elif not isinstance(image_alt_value, str):
+            image_alt_value = str(image_alt_value)
+        anchor_value = payload.get("anchorId", "")
+        if anchor_value is None:
+            anchor_value = ""
+        elif not isinstance(anchor_value, str):
+            anchor_value = str(anchor_value)
+        tags_value = payload.get("tags", [])
+        if isinstance(tags_value, (list, tuple)):
+            cleaned_tags = []
+            for tag in tags_value:
+                if tag is None:
+                    continue
+                tag_str = str(tag).strip()
+                if tag_str and tag_str not in cleaned_tags:
+                    cleaned_tags.append(tag_str)
+            tags_value = cleaned_tags
+        else:
+            tags_value = []
+        knowledge_id_value = payload.get("knowledgeId", "")
+        if knowledge_id_value is None:
+            knowledge_id_value = ""
+        elif not isinstance(knowledge_id_value, str):
+            knowledge_id_value = str(knowledge_id_value)
         tx.run(
             "MATCH (l:TheoryLesson {id: $id}) "
             "MERGE (k:KnowledgePoint {name: $name}) "
-            "MERGE (l)-[:EXPLAINS]->(k)",
-            {"id": lesson_id, "name": name},
+            "SET k.summary = CASE WHEN $summary = '' THEN k.summary ELSE $summary END "
+            "SET k.imageUrl = CASE WHEN $imageUrl = '' THEN k.imageUrl ELSE $imageUrl END "
+            "SET k.imageAlt = CASE WHEN $imageAlt = '' THEN k.imageAlt ELSE $imageAlt END "
+            "SET k.bodyHtml = CASE WHEN $bodyHtml = '' THEN k.bodyHtml ELSE $bodyHtml END "
+            "SET k.sourceId = CASE WHEN $knowledgeId = '' THEN k.sourceId ELSE $knowledgeId END "
+            "SET k.tags = CASE WHEN size($tags) = 0 THEN k.tags ELSE $tags END "
+            "MERGE (l)-[rel:EXPLAINS]->(k) "
+            "SET rel.anchorId = CASE WHEN $anchorId = '' THEN rel.anchorId ELSE $anchorId END "
+            "SET rel.summary = CASE WHEN $summary = '' THEN rel.summary ELSE $summary END "
+            "SET rel.bodyHtml = CASE WHEN $bodyHtml = '' THEN rel.bodyHtml ELSE $bodyHtml END "
+            "SET rel.imageUrl = CASE WHEN $imageUrl = '' THEN rel.imageUrl ELSE $imageUrl END "
+            "SET rel.imageAlt = CASE WHEN $imageAlt = '' THEN rel.imageAlt ELSE $imageAlt END "
+            "SET rel.tags = CASE WHEN size($tags) = 0 THEN rel.tags ELSE $tags END",
+            {
+                "id": lesson_id,
+                "name": name,
+                "summary": summary_value,
+                "bodyHtml": body_html_value,
+                "imageUrl": image_url_value,
+                "imageAlt": image_alt_value,
+                "anchorId": anchor_value,
+                "tags": tags_value,
+                "knowledgeId": knowledge_id_value,
+            },
         )
 
 
-def _normalize_knowledge_points(points: Sequence[str]) -> List[str]:
-    normalized: List[str] = []
-    seen = set()
-    for point in points:
-        if not isinstance(point, str):
+def _normalize_knowledge_point_payloads(points: Sequence[object]) -> List[Dict[str, object]]:
+    """Normalize arbitrary knowledge point payloads into consistent objects."""
+
+    normalized: List[Dict[str, object]] = []
+    by_name: Dict[str, Dict[str, object]] = {}
+
+    def _clean_string(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    def _merge_payload(target: Dict[str, object], source: Dict[str, object]) -> None:
+        for key, raw_value in source.items():
+            if key == "name":
+                continue
+            if raw_value is None:
+                continue
+            if key == "tags":
+                existing = target.get("tags")
+                merged: List[str] = []
+                if isinstance(existing, list):
+                    merged.extend(str(tag) for tag in existing if str(tag))
+                for tag in raw_value:
+                    tag_value = _clean_string(tag)
+                    if not tag_value:
+                        continue
+                    if tag_value not in merged:
+                        merged.append(tag_value)
+                if merged:
+                    target["tags"] = merged
+                continue
+            cleaned_value = raw_value
+            if isinstance(raw_value, str):
+                cleaned_value = raw_value.strip()
+            target[key] = cleaned_value
+
+    for entry in points:
+        if isinstance(entry, str):
+            name = entry.strip()
+            payload: Dict[str, object] = {"name": name}
+        elif isinstance(entry, dict):
+            candidate = (
+                entry.get("name")
+                or entry.get("title")
+                or entry.get("label")
+                or entry.get("id")
+            )
+            name = _clean_string(candidate)
+            payload = {"name": name}
+            summary = _clean_string(entry.get("summary") or entry.get("description"))
+            if summary:
+                payload["summary"] = summary
+            body_html = entry.get("bodyHtml") or entry.get("html") or entry.get("body")
+            if isinstance(body_html, str) and body_html.strip():
+                payload["bodyHtml"] = body_html
+            image_url = _clean_string(entry.get("imageUrl") or entry.get("image") or entry.get("coverUrl"))
+            if image_url:
+                payload["imageUrl"] = image_url
+            image_alt = _clean_string(entry.get("imageAlt") or entry.get("alt"))
+            if image_alt:
+                payload["imageAlt"] = image_alt
+            anchor_id = _clean_string(entry.get("anchorId") or entry.get("anchor"))
+            if anchor_id:
+                payload["anchorId"] = anchor_id
+            source_id = _clean_string(entry.get("knowledgeId") or entry.get("sourceId"))
+            if source_id:
+                payload["knowledgeId"] = source_id
+            tags_field = entry.get("tags")
+            tags: List[str] = []
+            if isinstance(tags_field, (list, tuple)):
+                tags = [_clean_string(tag) for tag in tags_field if _clean_string(tag)]
+            elif isinstance(tags_field, str):
+                tags = [tag.strip() for tag in tags_field.split(",") if tag.strip()]
+            if tags:
+                payload["tags"] = tags
+        else:
             continue
-        cleaned = point.strip()
-        if not cleaned:
+
+        name = payload.get("name", "")
+        if not isinstance(name, str):
+            name = str(name)
+        cleaned_name = name.strip()
+        if not cleaned_name:
             continue
-        if cleaned in seen:
+        payload["name"] = cleaned_name
+
+        existing = by_name.get(cleaned_name)
+        if existing:
+            _merge_payload(existing, payload)
             continue
-        seen.add(cleaned)
-        normalized.append(cleaned)
+
+        by_name[cleaned_name] = payload
+        normalized.append(payload)
+
     return normalized
 
 
@@ -660,9 +812,20 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
         records = _execute_read(
             """
             MATCH (l:TheoryLesson {id: $id})
-            OPTIONAL MATCH (l)-[:EXPLAINS]->(k:KnowledgePoint)
+            OPTIONAL MATCH (l)-[rel:EXPLAINS]->(k:KnowledgePoint)
             OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
-            RETURN l AS lesson, collect(DISTINCT k.name) AS knowledge, t.id AS topicId
+            RETURN l AS lesson,
+                   collect(DISTINCT {
+                     name: k.name,
+                     summary: coalesce(rel.summary, k.summary),
+                     bodyHtml: coalesce(rel.bodyHtml, k.bodyHtml),
+                     imageUrl: coalesce(rel.imageUrl, k.imageUrl),
+                     imageAlt: coalesce(rel.imageAlt, k.imageAlt),
+                     anchorId: rel.anchorId,
+                     tags: rel.tags,
+                     knowledgeId: k.sourceId
+                   }) AS knowledge,
+                   t.id AS topicId
             """,
             {"id": lesson_id},
         )
@@ -680,7 +843,7 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
         "title": lesson.get("title"),
         "code": lesson.get("code"),
         "topicId": record.get("topicId"),
-        "knowledgePoints": sorted(filter(None, record.get("knowledge") or [])),
+        "knowledgePoints": _normalize_knowledge_point_payloads(record.get("knowledge") or []),
     }
 
 
@@ -691,6 +854,12 @@ def list_knowledge_points() -> List[Dict[str, object]]:
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
         OPTIONAL MATCH (k)<-[:EXPLAINS]-(l:TheoryLesson)
         RETURN k.name AS name,
+               k.summary AS summary,
+               k.bodyHtml AS bodyHtml,
+               k.imageUrl AS imageUrl,
+               k.imageAlt AS imageAlt,
+               k.sourceId AS knowledgeId,
+               k.tags AS tags,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount
         ORDER BY name
