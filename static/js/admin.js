@@ -2514,6 +2514,8 @@ async function loadAdminLevels(options = {}) {
     updateSectionForm();
     populateAdminTheoryChapterOptions();
     populateAdminTheorySectionOptions();
+    populateAdminTheoryDocxChapterOptions();
+    renderAdminTheoryDocxPreview();
   } catch (error) {
     console.error(error);
     alert(error.message || "加载关卡数据失败");
@@ -2525,7 +2527,15 @@ function ensureAdminTheoryState() {
     state.admin = {};
   }
   if (!state.admin.theory || typeof state.admin.theory !== "object") {
-    state.admin.theory = { tree: [], selectedTopicId: null, selectedLessonId: null };
+    state.admin.theory = {
+      tree: [],
+      selectedTopicId: null,
+      selectedLessonId: null,
+      pendingImport: null,
+    };
+  }
+  if (!("pendingImport" in state.admin.theory)) {
+    state.admin.theory.pendingImport = null;
   }
 }
 
@@ -2572,6 +2582,259 @@ function populateAdminTheorySectionOptions() {
       adminTheoryLessonSection.appendChild(option);
     });
   });
+}
+
+function populateAdminTheoryDocxChapterOptions() {
+  if (!adminTheoryDocxChapter) {
+    return;
+  }
+  const chapters = Array.isArray(state.admin.levels) ? state.admin.levels : [];
+  adminTheoryDocxChapter.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "选择导入到的章节";
+  adminTheoryDocxChapter.appendChild(placeholder);
+  chapters.forEach((chapter) => {
+    const option = document.createElement("option");
+    option.value = chapter.id;
+    option.textContent = chapter.displayTitle || chapter.title || chapter.id;
+    adminTheoryDocxChapter.appendChild(option);
+  });
+}
+
+function summarizePreviewText(value, limit = 80) {
+  const text = typeof value === "string" ? value : value && value.toString ? value.toString() : "";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit - 1).trim()}…`;
+}
+
+function renderAdminTheoryDocxPreview(importData = null) {
+  if (!adminTheoryDocxPreview) {
+    return;
+  }
+  ensureAdminTheoryState();
+  const data = importData || state.admin.theory.pendingImport;
+  const topics = data && Array.isArray(data.topics) ? data.topics : [];
+  const warnings = data && Array.isArray(data.warnings) ? data.warnings : [];
+  if (!topics.length) {
+    adminTheoryDocxPreview.innerHTML =
+      '<p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>';
+    if (adminTheoryDocxApply) {
+      adminTheoryDocxApply.disabled = true;
+    }
+    return;
+  }
+  const fragments = [];
+  if (warnings.length) {
+    const warningItems = warnings
+      .map((warning) => `<li>${escapeHtmlText(warning)}</li>`)
+      .join("");
+    fragments.push(
+      `<div class="rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 text-[11px] text-amber-200">` +
+        `<p class="font-semibold text-amber-300">检测到以下提示：</p>` +
+        `<ul class="list-disc pl-4">${warningItems}</ul>` +
+        `</div>`,
+    );
+  }
+  topics.forEach((topic, topicIndex) => {
+    const lessonList = Array.isArray(topic.lessons) ? topic.lessons : [];
+    const lessonsHtml = lessonList
+      .map((lesson, lessonIndex) => {
+        const summary = summarizePreviewText(lesson.summary || lesson.contentHtml || "", 90);
+        return (
+          `<li class="space-y-0.5 rounded-md border border-slate-800/60 bg-slate-900/60 p-2">` +
+          `<div class="flex items-center justify-between text-[11px] text-slate-200">` +
+          `<span class="font-semibold">${lessonIndex + 1}. ${escapeHtmlText(lesson.title || "未命名知识点")}</span>` +
+          `</div>` +
+          (summary
+            ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(summary)}</p>`
+            : "") +
+          `</li>`
+        );
+      })
+      .join("");
+    const introSummary = summarizePreviewText(topic.summary || topic.introHtml || "", 100);
+    fragments.push(
+      `<div class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-900/50 p-3">` +
+        `<div class="flex items-center justify-between text-[12px]">` +
+        `<span class="font-semibold text-slate-100">${topicIndex + 1}. ${escapeHtmlText(topic.title || "未命名目录")}</span>` +
+        `<span class="text-[11px] text-slate-500">小节 ${lessonList.length} 个</span>` +
+        `</div>` +
+        (introSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(introSummary)}</p>` : "") +
+        (lessonsHtml
+          ? `<ol class="space-y-2 text-[11px] text-slate-200">${lessonsHtml}</ol>`
+          : `<p class="text-[11px] text-slate-500">该目录暂未检测到正文。</p>`) +
+        `</div>`,
+    );
+  });
+  adminTheoryDocxPreview.innerHTML = fragments.join("");
+  if (adminTheoryDocxApply) {
+    adminTheoryDocxApply.disabled = false;
+  }
+}
+
+function clearAdminTheoryDocxImport(options = {}) {
+  ensureAdminTheoryState();
+  state.admin.theory.pendingImport = null;
+  if (adminTheoryDocxInput) {
+    adminTheoryDocxInput.value = "";
+  }
+  renderAdminTheoryDocxPreview(null);
+  if (!options.silent) {
+    updateInlineStatus(adminTheoryDocxStatus, "已清除导入结果", "muted");
+  }
+}
+
+async function handleAdminTheoryDocxUpload() {
+  if (!adminTheoryDocxInput || adminTheoryDocxInput.files.length === 0) {
+    return;
+  }
+  const file = adminTheoryDocxInput.files[0];
+  const formData = new FormData();
+  formData.append("file", file);
+  updateInlineStatus(adminTheoryDocxStatus, `正在解析 ${file.name}...`, "muted");
+  if (adminTheoryDocxApply) {
+    adminTheoryDocxApply.disabled = true;
+  }
+  try {
+    const response = await fetchWithAuth("/api/admin/theory/import-docx", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "解析失败，请检查文档格式");
+    }
+    const data = await response.json();
+    const result = data.import || null;
+    ensureAdminTheoryState();
+    state.admin.theory.pendingImport = result;
+    renderAdminTheoryDocxPreview(result);
+    adminTheoryDocxInput.value = "";
+    const stats = result && result.stats ? result.stats : null;
+    if (stats) {
+      updateInlineStatus(
+        adminTheoryDocxStatus,
+        `解析完成：检测到 ${stats.topicCount || 0} 个目录、${stats.lessonCount || 0} 个知识点。`,
+        "success",
+      );
+    } else {
+      updateInlineStatus(adminTheoryDocxStatus, "解析完成，可选择章节后导入。", "success");
+    }
+  } catch (error) {
+    console.error(error);
+    state.admin.theory.pendingImport = null;
+    renderAdminTheoryDocxPreview(null);
+    updateInlineStatus(adminTheoryDocxStatus, error.message || "解析失败", "error");
+    if (adminTheoryDocxInput) {
+      adminTheoryDocxInput.value = "";
+    }
+  }
+}
+
+async function applyAdminTheoryDocxImport() {
+  ensureAdminTheoryState();
+  const importData = state.admin.theory.pendingImport;
+  if (!importData || !Array.isArray(importData.topics) || importData.topics.length === 0) {
+    updateInlineStatus(adminTheoryDocxStatus, "请先上传并解析 Word 文档", "error");
+    return;
+  }
+  const chapterId = adminTheoryDocxChapter ? adminTheoryDocxChapter.value : "";
+  if (!chapterId) {
+    updateInlineStatus(adminTheoryDocxStatus, "请选择导入到的章节", "error");
+    return;
+  }
+  const topics = importData.topics;
+  const totalLessons = topics.reduce(
+    (sum, topic) => sum + (Array.isArray(topic.lessons) ? topic.lessons.length : 0),
+    0,
+  );
+  updateInlineStatus(adminTheoryDocxStatus, "正在生成目录草稿...", "muted");
+  if (adminTheoryDocxApply) {
+    adminTheoryDocxApply.disabled = true;
+  }
+  try {
+    const createdTopicIds = [];
+    let firstLessonId = null;
+    for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
+      const topic = topics[topicIndex] || {};
+      const topicPayload = {
+        chapterId,
+        title: (topic.title || "").trim() || `导入目录 ${topicIndex + 1}`,
+        summary: (topic.summary || "").trim(),
+      };
+      if (typeof topic.orderIndex === "number") {
+        topicPayload.orderIndex = topic.orderIndex;
+      }
+      const topicResponse = await fetchWithAuth("/api/admin/theory/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(topicPayload),
+      });
+      if (!topicResponse.ok) {
+        const errorData = await topicResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `创建目录“${topicPayload.title}”失败`);
+      }
+      const topicData = await topicResponse.json();
+      const topicId = topicData.topic && topicData.topic.id;
+      if (!topicId) {
+        throw new Error("目录创建失败，请稍后再试");
+      }
+      createdTopicIds.push(topicId);
+      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+      for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex += 1) {
+        const lesson = lessons[lessonIndex] || {};
+        const lessonPayload = {
+          topicId,
+          title: (lesson.title || "").trim() || `导入知识点 ${lessonIndex + 1}`,
+          contentHtml: lesson.contentHtml || "<p><br></p>",
+          isPublished: false,
+        };
+        if (typeof lesson.orderIndex === "number") {
+          lessonPayload.orderIndex = lesson.orderIndex;
+        }
+        const lessonResponse = await fetchWithAuth("/api/admin/theory/lessons", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lessonPayload),
+        });
+        if (!lessonResponse.ok) {
+          const errorData = await lessonResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || `创建知识点“${lessonPayload.title}”失败`);
+        }
+        const lessonData = await lessonResponse.json();
+        if (!firstLessonId && lessonData.lesson && lessonData.lesson.id) {
+          firstLessonId = lessonData.lesson.id;
+        }
+      }
+    }
+    clearAdminTheoryDocxImport({ silent: true });
+    updateInlineStatus(
+      adminTheoryDocxStatus,
+      `已生成 ${topics.length} 个目录、${totalLessons} 个知识点草稿。`,
+      "success",
+    );
+    await loadAdminTheory({
+      focusTopicId: createdTopicIds[0] || null,
+      focusLessonId: firstLessonId || null,
+      keepSelection: false,
+    });
+    populateAdminTheoryDocxChapterOptions();
+    refreshAdminGraph();
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryDocxStatus, error.message || "导入失败", "error");
+  } finally {
+    if (adminTheoryDocxApply) {
+      adminTheoryDocxApply.disabled = false;
+    }
+  }
 }
 
 function collectAdminTheoryTopics() {
@@ -3197,6 +3460,28 @@ function initAdminTheoryLessonEditor() {
   adminTheoryLessonEditor = new window.Quill(adminTheoryLessonEditorHost, {
     theme: "snow",
     placeholder: "请在此编写理论学习的富文本内容…",
+    modules: {
+      table: true,
+      history: {
+        delay: 1500,
+        maxStack: 200,
+        userOnly: true,
+      },
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ color: [] }, { background: [] }],
+          [{ script: "sub" }, { script: "super" }],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ indent: "-1" }, { indent: "+1" }],
+          [{ align: [] }],
+          ["blockquote", "code-block"],
+          ["link", "image", "table"],
+          ["clean"],
+        ],
+      },
+    },
   });
   try {
     const Delta = window.Quill.import("delta");

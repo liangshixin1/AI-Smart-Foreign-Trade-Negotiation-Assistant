@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 
 import database
 from services import graph_service
+from services import docx_importer
 from services.auth_service import current_user, require_role
 from services.scenario_generator import ensure_level_hierarchy, inject_difficulty_metadata
 from utils.normalizers import normalize_text
@@ -91,6 +92,28 @@ def import_students():
     summary = database.bulk_import_students(records)
     summary["total"] = len(records)
     return jsonify({"result": summary})
+
+
+@bp.post("/api/admin/theory/import-docx")
+@require_role("teacher")
+def import_theory_from_docx():
+    """Parse a Word document and return a draft theory outline for preview."""
+
+    current_user()
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "file is required"}), 400
+    if not file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "仅支持 .docx 文档"}), 400
+    try:
+        outline = docx_importer.parse_docx_outline(file)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # pragma: no cover - defensive logging
+        current_app.logger.exception("Failed to parse Word document: %s", exc)
+        return jsonify({"error": "无法解析该 Word 文档，请检查格式后重试"}), 500
+
+    return jsonify({"import": outline})
 
 
 @bp.post("/api/admin/students/<int:student_id>/password")

@@ -40,6 +40,7 @@ function createInitialState() {
         tree: [],
         selectedTopicId: null,
         selectedLessonId: null,
+        pendingImport: null,
       },
       graph: {
         knowledgePoints: [],
