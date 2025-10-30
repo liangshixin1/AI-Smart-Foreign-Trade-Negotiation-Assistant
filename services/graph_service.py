@@ -564,7 +564,10 @@ def _ensure_practice_knowledge(tx, practice_id: str, points: List[str]) -> None:
 
 def _ensure_lesson_knowledge(tx, lesson_id: str, points: List[object]) -> None:
     existing = tx.run(
-        "MATCH (:TheoryLesson {id: $id})-[:EXPLAINS]->(k:KnowledgePoint) RETURN collect(k.name) AS names",
+        (
+            "MATCH (:TheoryLesson {id: $id})-[rel]->(k:KnowledgePoint) "
+            "WHERE type(rel) = 'EXPLAINS' RETURN collect(k.name) AS names"
+        ),
         {"id": lesson_id},
     ).single()
     if existing and existing["names"]:
@@ -618,7 +621,10 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, obje
         raise GraphEntityNotFoundError(f"Theory lesson {lesson_id} not found")
 
     tx.run(
-        "MATCH (:TheoryLesson {id: $id})-[rel:EXPLAINS]->(:KnowledgePoint) DELETE rel",
+        (
+            "MATCH (:TheoryLesson {id: $id})-[rel]->(:KnowledgePoint) "
+            "WHERE type(rel) = 'EXPLAINS' DELETE rel"
+        ),
         {"id": lesson_id},
     )
     for payload in points:
@@ -830,19 +836,24 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
         records = _execute_read(
             """
             MATCH (l:TheoryLesson {id: $id})
-            OPTIONAL MATCH (l)-[rel:EXPLAINS]->(k:KnowledgePoint)
+            OPTIONAL MATCH (l)-[rel]->(k:KnowledgePoint)
+            WHERE type(rel) = 'EXPLAINS'
             OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
+            WITH l,
+                 t,
+                 CASE WHEN rel IS NULL THEN {} ELSE properties(rel) END AS relProps,
+                 CASE WHEN k IS NULL THEN {} ELSE properties(k) END AS kProps
             RETURN l AS lesson,
-                   collect(DISTINCT {
-                     name: k.name,
-                     summary: coalesce(rel.summary, k.summary),
-                     bodyHtml: coalesce(rel.bodyHtml, k.bodyHtml),
-                     imageUrl: coalesce(rel.imageUrl, k.imageUrl),
-                     imageAlt: coalesce(rel.imageAlt, k.imageAlt),
-                     anchorId: rel.anchorId,
-                     tags: rel.tags,
-                     knowledgeId: k.sourceId
-                   }) AS knowledge,
+                   collect(DISTINCT CASE WHEN k IS NULL THEN NULL ELSE {
+                     name: kProps['name'],
+                     summary: coalesce(relProps['summary'], kProps['summary']),
+                     bodyHtml: coalesce(relProps['bodyHtml'], kProps['bodyHtml']),
+                     imageUrl: coalesce(relProps['imageUrl'], kProps['imageUrl']),
+                     imageAlt: coalesce(relProps['imageAlt'], kProps['imageAlt']),
+                     anchorId: relProps['anchorId'],
+                     tags: relProps['tags'],
+                     knowledgeId: kProps['sourceId']
+                   } END) AS knowledge,
                    t.id AS topicId
             """,
             {"id": lesson_id},
@@ -856,12 +867,13 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
 
     record = records[0]
     lesson = record["lesson"]
+    raw_knowledge = [item for item in (record.get("knowledge") or []) if item]
     return {
         "id": lesson.get("id"),
         "title": lesson.get("title"),
         "code": lesson.get("code"),
         "topicId": record.get("topicId"),
-        "knowledgePoints": _normalize_knowledge_point_payloads(record.get("knowledge") or []),
+        "knowledgePoints": _normalize_knowledge_point_payloads(raw_knowledge),
     }
 
 
@@ -870,7 +882,8 @@ def list_knowledge_points() -> List[Dict[str, object]]:
         """
         MATCH (k:KnowledgePoint)
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
-        OPTIONAL MATCH (k)<-[:EXPLAINS]-(l:TheoryLesson)
+        OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
+        WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
         RETURN k.name AS name,
                k.summary AS summary,
                k.bodyHtml AS bodyHtml,
@@ -889,7 +902,8 @@ def get_related_practices_for_lesson(lesson_id: str) -> List[Dict[str, object]]:
     try:
         return _execute_read(
             """
-            MATCH (l:TheoryLesson {id: $id})-[:EXPLAINS]->(k:KnowledgePoint)<-[:TESTS]-(p:Practice)
+            MATCH (l:TheoryLesson {id: $id})-[rel]->(k:KnowledgePoint)<-[:TESTS]-(p:Practice)
+            WHERE type(rel) = 'EXPLAINS'
             OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
             RETURN DISTINCT p.id AS id, p.title AS title, p.description AS description,
                    p.orderIndex AS orderIndex, c.id AS chapterId
@@ -911,7 +925,8 @@ def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]
     try:
         return _execute_read(
             """
-            MATCH (p:Practice {id: $id})-[:TESTS]->(k:KnowledgePoint)<-[:EXPLAINS]-(l:TheoryLesson)
+            MATCH (p:Practice {id: $id})-[:TESTS]->(k:KnowledgePoint)<-[rel]-(l:TheoryLesson)
+            WHERE type(rel) = 'EXPLAINS'
             OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
             RETURN DISTINCT l.id AS id, l.title AS title, l.code AS code, l.orderIndex AS orderIndex,
                    l.isPublished AS isPublished, t.id AS topicId
