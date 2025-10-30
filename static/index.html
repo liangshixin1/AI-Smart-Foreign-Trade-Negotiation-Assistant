@@ -10,9 +10,9 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css"
+      href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css"
     />
-    <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -3115,6 +3115,54 @@
                           >
                             ➕ 插入关卡挑战
                           </button>
+                        </div>
+                      </div>
+                      <div
+                        class="space-y-3 rounded-xl border border-slate-800/70 bg-slate-950/50 p-3 text-xs text-slate-300"
+                      >
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                          <span class="font-semibold text-white">Word 导入实验（Beta）</span>
+                          <button
+                            type="button"
+                            id="admin-theory-docx-reset"
+                            class="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white"
+                          >
+                            清除预览
+                          </button>
+                        </div>
+                        <p class="text-[11px] text-slate-400">
+                          上传包含一级/二级/三级标题的 Word 文档（.docx），系统会自动生成理论目录与正文草稿，帮助快速搭建知识结构。
+                        </p>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <input id="admin-theory-docx-input" type="file" accept=".docx" class="hidden" />
+                          <button
+                            type="button"
+                            id="admin-theory-docx-trigger"
+                            class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-emerald-400 hover:text-white"
+                          >
+                            📄 选择 Word 文档
+                          </button>
+                          <select
+                            id="admin-theory-docx-chapter"
+                            class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
+                          >
+                            <option value="">选择导入到的章节</option>
+                          </select>
+                          <button
+                            type="button"
+                            id="admin-theory-docx-apply"
+                            class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                            disabled
+                          >
+                            ⚙️ 生成目录草稿
+                          </button>
+                        </div>
+                        <p id="admin-theory-docx-status" class="text-[11px] text-slate-500"></p>
+                        <div
+                          id="admin-theory-docx-preview"
+                          class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-950/40 p-3 text-[11px] text-slate-300"
+                        >
+                          <p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>
                         </div>
                       </div>
                       <div

@@ -258,6 +258,30 @@ if (insertChallengeBtn) {
   });
 }
 
+if (adminTheoryDocxTrigger && adminTheoryDocxInput) {
+  adminTheoryDocxTrigger.addEventListener("click", () => {
+    adminTheoryDocxInput.click();
+  });
+}
+
+if (adminTheoryDocxInput) {
+  adminTheoryDocxInput.addEventListener("change", () => {
+    handleAdminTheoryDocxUpload();
+  });
+}
+
+if (adminTheoryDocxApply) {
+  adminTheoryDocxApply.addEventListener("click", () => {
+    applyAdminTheoryDocxImport();
+  });
+}
+
+if (adminTheoryDocxReset) {
+  adminTheoryDocxReset.addEventListener("click", () => {
+    clearAdminTheoryDocxImport();
+  });
+}
+
 if (challengeSelectorClose) {
   challengeSelectorClose.addEventListener("click", () => {
     closeChallengeSelectorModal();

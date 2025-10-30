@@ -3,3 +3,4 @@ openai
 openpyxl
 python-dotenv
 neo4j
+python-docx
