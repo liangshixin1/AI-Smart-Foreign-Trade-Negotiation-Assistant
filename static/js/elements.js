@@ -187,7 +187,6 @@ const adminTheoryDocxInput = document.getElementById("admin-theory-docx-input");
 const adminTheoryDocxStatus = document.getElementById("admin-theory-docx-status");
 const adminTheoryDocxPreview = document.getElementById("admin-theory-docx-preview");
 const adminTheoryDocxApply = document.getElementById("admin-theory-docx-apply");
-const adminTheoryDocxChapter = document.getElementById("admin-theory-docx-chapter");
 const adminTheoryDocxReset = document.getElementById("admin-theory-docx-reset");
 const knowledgeCardModal = document.getElementById("knowledge-card-modal");
 const knowledgeCardClose = document.getElementById("knowledge-card-close");

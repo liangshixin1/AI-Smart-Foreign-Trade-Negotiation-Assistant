@@ -32,6 +32,17 @@ class TopicDraft:
     order_index: int
 
 
+@dataclass
+class ChapterDraft:
+    """Lightweight representation of a theory chapter parsed from Word."""
+
+    title: str
+    summary: str
+    intro_html: str
+    topics: List[TopicDraft]
+    order_index: int
+
+
 def _normalize_style_name(style_name: Optional[str]) -> str:
     if not style_name:
         return ""
@@ -64,6 +75,20 @@ def _detect_heading_level(style_name: Optional[str]) -> int:
         "标题 3": 3,
     }
     return fallback_map.get(normalized, 0)
+
+
+_NUMBER_PREFIX_RE = re.compile(
+    r"^\s*(?:\d+(?:[.．]\d+)*|[一二三四五六七八九十百千零〇]+)\s*(?:[.)、．）])?\s*"
+)
+
+
+def _clean_heading_text(text: str) -> str:
+    if not text:
+        return ""
+    stripped = text.strip()
+    stripped = _NUMBER_PREFIX_RE.sub("", stripped, count=1)
+    stripped = re.sub(r"^第[一二三四五六七八九十百零〇0-9]+[章节篇部分]\s*", "", stripped)
+    return stripped.strip()
 
 
 def _paragraph_runs_to_html(paragraph) -> str:
@@ -120,19 +145,32 @@ def _finalize_lesson(
 def _finalize_topic(
     current_topic: Optional[TopicDraft],
     intro_fragments: List[str],
-    topics: List[TopicDraft],
+    current_chapter: Optional[ChapterDraft],
 ) -> None:
-    if current_topic is None:
+    if current_topic is None or current_chapter is None:
         return
     intro_html = "".join(intro_fragments).strip()
     current_topic.intro_html = intro_html
     current_topic.summary = _summarize_html(intro_html)
-    topics.append(current_topic)
+    current_chapter.topics.append(current_topic)
 
 
-def _ensure_topic(topics: List[TopicDraft]) -> TopicDraft:
-    title = f"自动生成目录 {len(topics) + 1}"
-    return TopicDraft(title=title, summary="", intro_html="", lessons=[], order_index=len(topics))
+def _finalize_chapter(
+    current_chapter: Optional[ChapterDraft],
+    intro_fragments: List[str],
+    chapters: List[ChapterDraft],
+) -> None:
+    if current_chapter is None:
+        return
+    intro_html = "".join(intro_fragments).strip()
+    current_chapter.intro_html = intro_html
+    current_chapter.summary = _summarize_html(intro_html)
+    chapters.append(current_chapter)
+
+
+def _ensure_chapter(chapters: List[ChapterDraft]) -> ChapterDraft:
+    title = f"自动生成章节 {len(chapters) + 1}"
+    return ChapterDraft(title=title, summary="", intro_html="", topics=[], order_index=len(chapters))
 
 
 def parse_docx_outline(file_storage) -> dict:
@@ -156,42 +194,70 @@ def parse_docx_outline(file_storage) -> dict:
     else:
         document = Document(raw)
 
-    topics: List[TopicDraft] = []
+    chapters: List[ChapterDraft] = []
     warnings: List[str] = []
 
+    current_chapter: Optional[ChapterDraft] = None
     current_topic: Optional[TopicDraft] = None
     current_lesson: Optional[LessonDraft] = None
+    chapter_intro_fragments: List[str] = []
     topic_intro_fragments: List[str] = []
     lesson_body: List[str] = []
 
     for paragraph in document.paragraphs:
         style_name = paragraph.style.name if paragraph.style else ""
         level = _detect_heading_level(style_name)
-        text = paragraph.text.strip()
+        raw_text = paragraph.text.strip()
+        heading_text = _clean_heading_text(raw_text)
 
         if level == 1:
             if current_topic is not None:
                 _finalize_lesson(current_lesson, lesson_body, current_topic.lessons)
-                _finalize_topic(current_topic, topic_intro_fragments, topics)
-            current_topic = TopicDraft(
-                title=text or f"未命名目录 {len(topics) + 1}",
-                summary="",
-                intro_html="",
-                lessons=[],
-                order_index=len(topics),
-            )
-            topic_intro_fragments = []
             current_lesson = None
             lesson_body = []
+            _finalize_topic(current_topic, topic_intro_fragments, current_chapter)
+            current_topic = None
+            topic_intro_fragments = []
+            _finalize_chapter(current_chapter, chapter_intro_fragments, chapters)
+            chapter_title = heading_text or raw_text or f"未命名章节 {len(chapters) + 1}"
+            current_chapter = ChapterDraft(
+                title=chapter_title,
+                summary="",
+                intro_html="",
+                topics=[],
+                order_index=len(chapters),
+            )
+            chapter_intro_fragments = []
             continue
 
         if level == 2:
-            if current_topic is None:
-                warnings.append("检测到二级标题前没有一级标题，已为其创建默认目录。")
-                current_topic = _ensure_topic(topics)
+            if current_chapter is None:
+                warnings.append("检测到二级标题前没有一级标题，已为其创建默认章节。")
+                current_chapter = _ensure_chapter(chapters)
+                chapter_intro_fragments = []
+            if current_topic is not None:
+                _finalize_lesson(current_lesson, lesson_body, current_topic.lessons)
+                current_lesson = None
+                lesson_body = []
+                _finalize_topic(current_topic, topic_intro_fragments, current_chapter)
                 topic_intro_fragments = []
+            topic_title = heading_text or raw_text or f"未命名目录 {len(current_chapter.topics) + 1}"
+            current_topic = TopicDraft(
+                title=topic_title,
+                summary="",
+                intro_html="",
+                lessons=[],
+                order_index=len(current_chapter.topics),
+            )
+            topic_intro_fragments = []
+            continue
+
+        if level == 3:
+            if current_topic is None:
+                warnings.append("检测到三级标题前没有二级标题，将忽略该标题。")
+                continue
             _finalize_lesson(current_lesson, lesson_body, current_topic.lessons)
-            lesson_title = text or f"未命名知识点 {len(current_topic.lessons) + 1}"
+            lesson_title = heading_text or raw_text or f"未命名知识点 {len(current_topic.lessons) + 1}"
             current_lesson = LessonDraft(
                 title=lesson_title,
                 content_html="",
@@ -201,14 +267,6 @@ def parse_docx_outline(file_storage) -> dict:
             lesson_body = []
             continue
 
-        if level == 3:
-            if current_lesson is None:
-                warnings.append("检测到三级标题前没有对应的知识点，将忽略该标题。")
-                continue
-            heading_html = f"<h3>{escape(text or '子标题')}</h3>"
-            lesson_body.append(heading_html)
-            continue
-
         html = _paragraph_runs_to_html(paragraph)
         if not html:
             continue
@@ -216,47 +274,64 @@ def parse_docx_outline(file_storage) -> dict:
             lesson_body.append(html)
         elif current_topic is not None:
             topic_intro_fragments.append(html)
+        elif current_chapter is not None:
+            chapter_intro_fragments.append(html)
         else:
-            # Paragraphs before any heading are attached to an implicit topic.
-            if not topics and current_topic is None:
-                warnings.append("文档开始部分缺少一级标题，已创建默认目录以承载正文。")
-                current_topic = _ensure_topic(topics)
-                topic_intro_fragments = []
-            if current_topic:
-                topic_intro_fragments.append(html)
+            warnings.append("文档开始部分缺少一级标题，已创建默认章节以承载正文。")
+            current_chapter = _ensure_chapter(chapters)
+            chapter_intro_fragments = [html]
 
     if current_topic is not None:
         _finalize_lesson(current_lesson, lesson_body, current_topic.lessons)
-        _finalize_topic(current_topic, topic_intro_fragments, topics)
+        _finalize_topic(current_topic, topic_intro_fragments, current_chapter)
 
-    topic_dicts = []
+    if current_chapter is not None:
+        _finalize_chapter(current_chapter, chapter_intro_fragments, chapters)
+
+    chapter_dicts = []
+    topic_count = 0
     lesson_count = 0
-    for topic in topics:
-        lesson_dicts = []
-        for lesson in topic.lessons:
-            lesson_dicts.append(
+    for chapter in chapters:
+        topic_dicts = []
+        for topic in chapter.topics:
+            lesson_dicts = []
+            for lesson in topic.lessons:
+                lesson_dicts.append(
+                    {
+                        "title": lesson.title,
+                        "contentHtml": lesson.content_html,
+                        "summary": lesson.summary,
+                        "orderIndex": lesson.order_index,
+                    }
+                )
+            lesson_count += len(lesson_dicts)
+            topic_dicts.append(
                 {
-                    "title": lesson.title,
-                    "contentHtml": lesson.content_html,
-                    "summary": lesson.summary,
-                    "orderIndex": lesson.order_index,
+                    "title": topic.title,
+                    "summary": topic.summary,
+                    "introHtml": topic.intro_html,
+                    "lessons": lesson_dicts,
+                    "orderIndex": topic.order_index,
                 }
             )
-        lesson_count += len(lesson_dicts)
-        topic_dicts.append(
+        topic_count += len(topic_dicts)
+        chapter_dicts.append(
             {
-                "title": topic.title,
-                "summary": topic.summary,
-                "introHtml": topic.intro_html,
-                "lessons": lesson_dicts,
-                "orderIndex": topic.order_index,
+                "title": chapter.title,
+                "summary": chapter.summary,
+                "introHtml": chapter.intro_html,
+                "topics": topic_dicts,
+                "orderIndex": chapter.order_index,
             }
         )
 
     return {
         "fileName": getattr(file_storage, "filename", ""),
-        "topics": topic_dicts,
+        "chapters": chapter_dicts,
         "warnings": warnings,
-        "stats": {"topicCount": len(topic_dicts), "lessonCount": lesson_count},
+        "stats": {
+            "chapterCount": len(chapter_dicts),
+            "topicCount": topic_count,
+            "lessonCount": lesson_count,
+        },
     }
-

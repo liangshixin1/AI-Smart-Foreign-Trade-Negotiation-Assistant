@@ -3102,7 +3102,7 @@
                         </button>
                       </div>
                       <p class="text-[11px] text-slate-400">
-                        上传包含一级/二级/三级标题的 Word 文档（.docx），系统会自动生成理论目录与正文草稿，帮助快速搭建知识结构。
+                        上传包含一级/二级/三级标题的 Word 文档（.docx），系统将按照“章节 → 目录 → 知识点”结构自动生成草稿，无需手动选择导入位置。
                       </p>
                       <div class="flex flex-wrap items-center gap-2">
                         <input id="admin-theory-docx-input" type="file" accept=".docx" class="hidden" />
@@ -3113,19 +3113,13 @@
                         >
                           📄 选择 Word 文档
                         </button>
-                        <select
-                          id="admin-theory-docx-chapter"
-                          class="rounded-xl border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
-                        >
-                          <option value="">选择导入到的章节</option>
-                        </select>
                         <button
                           type="button"
                           id="admin-theory-docx-apply"
                           class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
                           disabled
                         >
-                          ⚙️ 生成目录草稿
+                          ⚙️ 生成章节草稿
                         </button>
                       </div>
                       <p id="admin-theory-docx-status" class="text-[11px] text-slate-500"></p>
