@@ -2514,7 +2514,6 @@ async function loadAdminLevels(options = {}) {
     updateSectionForm();
     populateAdminTheoryChapterOptions();
     populateAdminTheorySectionOptions();
-    populateAdminTheoryDocxChapterOptions();
     renderAdminTheoryDocxPreview();
   } catch (error) {
     console.error(error);
@@ -2584,24 +2583,6 @@ function populateAdminTheorySectionOptions() {
   });
 }
 
-function populateAdminTheoryDocxChapterOptions() {
-  if (!adminTheoryDocxChapter) {
-    return;
-  }
-  const chapters = Array.isArray(state.admin.levels) ? state.admin.levels : [];
-  adminTheoryDocxChapter.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "选择导入到的章节";
-  adminTheoryDocxChapter.appendChild(placeholder);
-  chapters.forEach((chapter) => {
-    const option = document.createElement("option");
-    option.value = chapter.id;
-    option.textContent = chapter.displayTitle || chapter.title || chapter.id;
-    adminTheoryDocxChapter.appendChild(option);
-  });
-}
-
 function summarizePreviewText(value, limit = 80) {
   const text = typeof value === "string" ? value : value && value.toString ? value.toString() : "";
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -2620,9 +2601,9 @@ function renderAdminTheoryDocxPreview(importData = null) {
   }
   ensureAdminTheoryState();
   const data = importData || state.admin.theory.pendingImport;
-  const topics = data && Array.isArray(data.topics) ? data.topics : [];
+  const chapters = data && Array.isArray(data.chapters) ? data.chapters : [];
   const warnings = data && Array.isArray(data.warnings) ? data.warnings : [];
-  if (!topics.length) {
+  if (!chapters.length) {
     adminTheoryDocxPreview.innerHTML =
       '<p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>';
     if (adminTheoryDocxApply) {
@@ -2642,35 +2623,51 @@ function renderAdminTheoryDocxPreview(importData = null) {
         `</div>`,
     );
   }
-  topics.forEach((topic, topicIndex) => {
-    const lessonList = Array.isArray(topic.lessons) ? topic.lessons : [];
-    const lessonsHtml = lessonList
-      .map((lesson, lessonIndex) => {
-        const summary = summarizePreviewText(lesson.summary || lesson.contentHtml || "", 90);
+  chapters.forEach((chapter, chapterIndex) => {
+    const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+    const chapterSummary = summarizePreviewText(chapter.summary || chapter.introHtml || "", 110);
+    const topicsHtml = topics
+      .map((topic, topicIndex) => {
+        const lessonList = Array.isArray(topic.lessons) ? topic.lessons : [];
+        const topicSummary = summarizePreviewText(topic.summary || topic.introHtml || "", 90);
+        const lessonsHtml = lessonList
+          .map((lesson, lessonIndex) => {
+            const summary = summarizePreviewText(lesson.summary || lesson.contentHtml || "", 90);
+            return (
+              `<li class="rounded-md border border-slate-800/60 bg-slate-900/60 p-2">` +
+              `<div class="flex items-center justify-between text-[11px] text-slate-200">` +
+              `<span class="font-semibold">${lessonIndex + 1}. ${escapeHtmlText(lesson.title || "未命名知识点")}</span>` +
+              `</div>` +
+              (summary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(summary)}</p>` : "") +
+              `</li>`
+            );
+          })
+          .join("");
         return (
-          `<li class="space-y-0.5 rounded-md border border-slate-800/60 bg-slate-900/60 p-2">` +
+          `<li class="space-y-1 rounded-lg border border-slate-800/60 bg-slate-900/50 p-2">` +
           `<div class="flex items-center justify-between text-[11px] text-slate-200">` +
-          `<span class="font-semibold">${lessonIndex + 1}. ${escapeHtmlText(lesson.title || "未命名知识点")}</span>` +
+          `<span class="font-semibold">${chapterIndex + 1}.${topicIndex + 1} ${escapeHtmlText(topic.title || "未命名目录")}</span>` +
+          `<span class="text-[11px] text-slate-500">知识点 ${lessonList.length} 个</span>` +
           `</div>` +
-          (summary
-            ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(summary)}</p>`
-            : "") +
+          (topicSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(topicSummary)}</p>` : "") +
+          (lessonsHtml
+            ? `<ol class="space-y-2 text-[11px] text-slate-200">${lessonsHtml}</ol>`
+            : `<p class="text-[11px] text-slate-500">该目录暂未检测到三级标题内容。</p>`) +
           `</li>`
         );
       })
       .join("");
-    const introSummary = summarizePreviewText(topic.summary || topic.introHtml || "", 100);
     fragments.push(
-      `<div class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-900/50 p-3">` +
+      `<div class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-900/40 p-3">` +
         `<div class="flex items-center justify-between text-[12px]">` +
-        `<span class="font-semibold text-slate-100">${topicIndex + 1}. ${escapeHtmlText(topic.title || "未命名目录")}</span>` +
-        `<span class="text-[11px] text-slate-500">小节 ${lessonList.length} 个</span>` +
+        `<span class="font-semibold text-slate-100">${chapterIndex + 1}. ${escapeHtmlText(chapter.title || "未命名章节")}</span>` +
+        `<span class="text-[11px] text-slate-500">目录 ${topics.length} 个</span>` +
         `</div>` +
-        (introSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(introSummary)}</p>` : "") +
-        (lessonsHtml
-          ? `<ol class="space-y-2 text-[11px] text-slate-200">${lessonsHtml}</ol>`
-          : `<p class="text-[11px] text-slate-500">该目录暂未检测到正文。</p>`) +
-        `</div>`,
+        (chapterSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(chapterSummary)}</p>` : "") +
+        (topicsHtml
+          ? `<ol class="space-y-2 text-[11px] text-slate-200">${topicsHtml}</ol>`
+          : `<p class="text-[11px] text-slate-500">该章节尚未检测到二级标题。</p>`) +
+        `</div>`
     );
   });
   adminTheoryDocxPreview.innerHTML = fragments.join("");
@@ -2721,11 +2718,11 @@ async function handleAdminTheoryDocxUpload() {
     if (stats) {
       updateInlineStatus(
         adminTheoryDocxStatus,
-        `解析完成：检测到 ${stats.topicCount || 0} 个目录、${stats.lessonCount || 0} 个知识点。`,
+        `解析完成：检测到 ${stats.chapterCount || 0} 个章节、${stats.topicCount || 0} 个目录、${stats.lessonCount || 0} 个知识点。`,
         "success",
       );
     } else {
-      updateInlineStatus(adminTheoryDocxStatus, "解析完成，可选择章节后导入。", "success");
+      updateInlineStatus(adminTheoryDocxStatus, "解析完成，可直接导入生成章节。", "success");
     }
   } catch (error) {
     console.error(error);
@@ -2741,91 +2738,131 @@ async function handleAdminTheoryDocxUpload() {
 async function applyAdminTheoryDocxImport() {
   ensureAdminTheoryState();
   const importData = state.admin.theory.pendingImport;
-  if (!importData || !Array.isArray(importData.topics) || importData.topics.length === 0) {
+  if (!importData || !Array.isArray(importData.chapters) || importData.chapters.length === 0) {
     updateInlineStatus(adminTheoryDocxStatus, "请先上传并解析 Word 文档", "error");
     return;
   }
-  const chapterId = adminTheoryDocxChapter ? adminTheoryDocxChapter.value : "";
-  if (!chapterId) {
-    updateInlineStatus(adminTheoryDocxStatus, "请选择导入到的章节", "error");
-    return;
-  }
-  const topics = importData.topics;
-  const totalLessons = topics.reduce(
-    (sum, topic) => sum + (Array.isArray(topic.lessons) ? topic.lessons.length : 0),
+  const chapters = importData.chapters;
+  const totalTopics = chapters.reduce(
+    (sum, chapter) => sum + (Array.isArray(chapter.topics) ? chapter.topics.length : 0),
     0,
   );
-  updateInlineStatus(adminTheoryDocxStatus, "正在生成目录草稿...", "muted");
+  const totalLessons = chapters.reduce(
+    (sum, chapter) =>
+      sum +
+      (Array.isArray(chapter.topics)
+        ? chapter.topics.reduce(
+            (topicSum, topic) => topicSum + (Array.isArray(topic.lessons) ? topic.lessons.length : 0),
+            0,
+          )
+        : 0),
+    0,
+  );
+  updateInlineStatus(adminTheoryDocxStatus, "正在生成章节与目录草稿...", "muted");
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = true;
   }
   try {
+    const createdChapterIds = [];
     const createdTopicIds = [];
+    let firstTopicId = null;
     let firstLessonId = null;
-    for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
-      const topic = topics[topicIndex] || {};
-      const topicPayload = {
-        chapterId,
-        title: (topic.title || "").trim() || `导入目录 ${topicIndex + 1}`,
-        summary: (topic.summary || "").trim(),
+
+    for (let chapterIndex = 0; chapterIndex < chapters.length; chapterIndex += 1) {
+      const chapter = chapters[chapterIndex] || {};
+      const chapterPayload = {
+        title: (chapter.title || "").trim() || `导入章节 ${chapterIndex + 1}`,
+        description: (chapter.summary || "").trim(),
       };
-      if (typeof topic.orderIndex === "number") {
-        topicPayload.orderIndex = topic.orderIndex;
+      if (typeof chapter.orderIndex === "number") {
+        chapterPayload.orderIndex = chapter.orderIndex;
       }
-      const topicResponse = await fetchWithAuth("/api/admin/theory/topics", {
+      const chapterResponse = await fetchWithAuth("/api/admin/chapters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(topicPayload),
+        body: JSON.stringify(chapterPayload),
       });
-      if (!topicResponse.ok) {
-        const errorData = await topicResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `创建目录“${topicPayload.title}”失败`);
+      if (!chapterResponse.ok) {
+        const errorData = await chapterResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `创建章节“${chapterPayload.title}”失败`);
       }
-      const topicData = await topicResponse.json();
-      const topicId = topicData.topic && topicData.topic.id;
-      if (!topicId) {
-        throw new Error("目录创建失败，请稍后再试");
+      const chapterData = await chapterResponse.json();
+      const chapterId = chapterData.chapter && chapterData.chapter.id;
+      if (!chapterId) {
+        throw new Error("章节创建失败，请稍后再试");
       }
-      createdTopicIds.push(topicId);
-      const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
-      for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex += 1) {
-        const lesson = lessons[lessonIndex] || {};
-        const lessonPayload = {
-          topicId,
-          title: (lesson.title || "").trim() || `导入知识点 ${lessonIndex + 1}`,
-          contentHtml: lesson.contentHtml || "<p><br></p>",
-          isPublished: false,
+      createdChapterIds.push(chapterId);
+
+      const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
+      for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
+        const topic = topics[topicIndex] || {};
+        const topicPayload = {
+          chapterId,
+          title: (topic.title || "").trim() || `导入目录 ${topicIndex + 1}`,
+          summary: (topic.summary || "").trim(),
         };
-        if (typeof lesson.orderIndex === "number") {
-          lessonPayload.orderIndex = lesson.orderIndex;
+        if (typeof topic.orderIndex === "number") {
+          topicPayload.orderIndex = topic.orderIndex;
         }
-        const lessonResponse = await fetchWithAuth("/api/admin/theory/lessons", {
+        const topicResponse = await fetchWithAuth("/api/admin/theory/topics", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(lessonPayload),
+          body: JSON.stringify(topicPayload),
         });
-        if (!lessonResponse.ok) {
-          const errorData = await lessonResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || `创建知识点“${lessonPayload.title}”失败`);
+        if (!topicResponse.ok) {
+          const errorData = await topicResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || `创建目录“${topicPayload.title}”失败`);
         }
-        const lessonData = await lessonResponse.json();
-        if (!firstLessonId && lessonData.lesson && lessonData.lesson.id) {
-          firstLessonId = lessonData.lesson.id;
+        const topicData = await topicResponse.json();
+        const topicId = topicData.topic && topicData.topic.id;
+        if (!topicId) {
+          throw new Error("目录创建失败，请稍后再试");
+        }
+        createdTopicIds.push(topicId);
+        if (!firstTopicId) {
+          firstTopicId = topicId;
+        }
+
+        const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
+        for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex += 1) {
+          const lesson = lessons[lessonIndex] || {};
+          const lessonPayload = {
+            topicId,
+            title: (lesson.title || "").trim() || `导入知识点 ${lessonIndex + 1}`,
+            contentHtml: lesson.contentHtml || "<p><br></p>",
+            isPublished: false,
+          };
+          if (typeof lesson.orderIndex === "number") {
+            lessonPayload.orderIndex = lesson.orderIndex;
+          }
+          const lessonResponse = await fetchWithAuth("/api/admin/theory/lessons", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(lessonPayload),
+          });
+          if (!lessonResponse.ok) {
+            const errorData = await lessonResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `创建知识点“${lessonPayload.title}”失败`);
+          }
+          const lessonData = await lessonResponse.json();
+          if (!firstLessonId && lessonData.lesson && lessonData.lesson.id) {
+            firstLessonId = lessonData.lesson.id;
+          }
         }
       }
     }
     clearAdminTheoryDocxImport({ silent: true });
     updateInlineStatus(
       adminTheoryDocxStatus,
-      `已生成 ${topics.length} 个目录、${totalLessons} 个知识点草稿。`,
+      `已生成 ${chapters.length} 个章节、${totalTopics} 个目录、${totalLessons} 个知识点草稿。`,
       "success",
     );
+    await loadAdminLevels({ chapterId: createdChapterIds[0] || null });
     await loadAdminTheory({
-      focusTopicId: createdTopicIds[0] || null,
+      focusTopicId: firstTopicId || createdTopicIds[0] || null,
       focusLessonId: firstLessonId || null,
       keepSelection: false,
     });
-    populateAdminTheoryDocxChapterOptions();
     refreshAdminGraph();
   } catch (error) {
     console.error(error);
