@@ -555,6 +555,13 @@ if (adminTabButtons) {
         await loadAdminLevels();
         await loadAdminTheory();
       }
+      if (target === "graph") {
+        // 初始化知识点管理功能
+        if (typeof initGraphKnowledgeManagement === 'function' && !window._graphKnowledgeInitialized) {
+          initGraphKnowledgeManagement();
+          window._graphKnowledgeInitialized = true;
+        }
+      }
     });
   });
 }
