@@ -2605,7 +2605,7 @@ function renderAdminTheoryDocxPreview(importData = null) {
   const warnings = data && Array.isArray(data.warnings) ? data.warnings : [];
   if (!chapters.length) {
     adminTheoryDocxPreview.innerHTML =
-      '<p class="text-[11px] text-slate-500">尚未导入 Word 文档。</p>';
+      '<p class="text-[12px] text-slate-500">尚未导入 Word 文档。</p>';
     if (adminTheoryDocxApply) {
       adminTheoryDocxApply.disabled = true;
     }
@@ -2617,9 +2617,9 @@ function renderAdminTheoryDocxPreview(importData = null) {
       .map((warning) => `<li>${escapeHtmlText(warning)}</li>`)
       .join("");
     fragments.push(
-      `<div class="rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 text-[11px] text-amber-200">` +
-        `<p class="font-semibold text-amber-300">检测到以下提示：</p>` +
-        `<ul class="list-disc pl-4">${warningItems}</ul>` +
+      `<div class="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-700">` +
+        `<p class="font-semibold text-amber-800">检测到以下提示：</p>` +
+        `<ul class="list-disc space-y-1 pl-4">${warningItems}</ul>` +
         `</div>`,
     );
   }
@@ -2634,39 +2634,39 @@ function renderAdminTheoryDocxPreview(importData = null) {
           .map((lesson, lessonIndex) => {
             const summary = summarizePreviewText(lesson.summary || lesson.contentHtml || "", 90);
             return (
-              `<li class="rounded-md border border-slate-800/60 bg-slate-900/60 p-2">` +
-              `<div class="flex items-center justify-between text-[11px] text-slate-200">` +
-              `<span class="font-semibold">${lessonIndex + 1}. ${escapeHtmlText(lesson.title || "未命名知识点")}</span>` +
+              `<li class="rounded-md border border-slate-200 bg-white p-3 shadow-sm">` +
+              `<div class="flex items-center justify-between text-[12px] text-slate-700">` +
+              `<span class="font-semibold text-slate-900">${lessonIndex + 1}. ${escapeHtmlText(lesson.title || "未命名知识点")}</span>` +
               `</div>` +
-              (summary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(summary)}</p>` : "") +
+              (summary ? `<p class="text-[12px] text-slate-600">${escapeHtmlText(summary)}</p>` : "") +
               `</li>`
             );
           })
           .join("");
         return (
-          `<li class="space-y-1 rounded-lg border border-slate-800/60 bg-slate-900/50 p-2">` +
-          `<div class="flex items-center justify-between text-[11px] text-slate-200">` +
-          `<span class="font-semibold">${chapterIndex + 1}.${topicIndex + 1} ${escapeHtmlText(topic.title || "未命名目录")}</span>` +
-          `<span class="text-[11px] text-slate-500">知识点 ${lessonList.length} 个</span>` +
+          `<li class="space-y-2 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-sm">` +
+          `<div class="flex items-center justify-between text-[12px] text-slate-700">` +
+          `<span class="font-semibold text-slate-900">${chapterIndex + 1}.${topicIndex + 1} ${escapeHtmlText(topic.title || "未命名目录")}</span>` +
+          `<span class="text-[12px] text-slate-500">知识点 ${lessonList.length} 个</span>` +
           `</div>` +
-          (topicSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(topicSummary)}</p>` : "") +
+          (topicSummary ? `<p class="text-[12px] text-slate-600">${escapeHtmlText(topicSummary)}</p>` : "") +
           (lessonsHtml
-            ? `<ol class="space-y-2 text-[11px] text-slate-200">${lessonsHtml}</ol>`
-            : `<p class="text-[11px] text-slate-500">该目录暂未检测到三级标题内容。</p>`) +
+            ? `<ol class="space-y-2 text-[12px] text-slate-700">${lessonsHtml}</ol>`
+            : `<p class="text-[12px] text-slate-500">该目录暂未检测到三级标题内容。</p>`) +
           `</li>`
         );
       })
       .join("");
     fragments.push(
-      `<div class="space-y-2 rounded-lg border border-slate-800/60 bg-slate-900/40 p-3">` +
-        `<div class="flex items-center justify-between text-[12px]">` +
-        `<span class="font-semibold text-slate-100">${chapterIndex + 1}. ${escapeHtmlText(chapter.title || "未命名章节")}</span>` +
-        `<span class="text-[11px] text-slate-500">目录 ${topics.length} 个</span>` +
+      `<div class="space-y-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">` +
+        `<div class="flex items-center justify-between text-[13px] text-slate-700">` +
+        `<span class="font-semibold text-slate-900">${chapterIndex + 1}. ${escapeHtmlText(chapter.title || "未命名章节")}</span>` +
+        `<span class="text-[12px] text-slate-500">目录 ${topics.length} 个</span>` +
         `</div>` +
-        (chapterSummary ? `<p class="text-[11px] text-slate-400">${escapeHtmlText(chapterSummary)}</p>` : "") +
+        (chapterSummary ? `<p class="text-[12px] text-slate-600">${escapeHtmlText(chapterSummary)}</p>` : "") +
         (topicsHtml
-          ? `<ol class="space-y-2 text-[11px] text-slate-200">${topicsHtml}</ol>`
-          : `<p class="text-[11px] text-slate-500">该章节尚未检测到二级标题。</p>`) +
+          ? `<ol class="space-y-2 text-[12px] text-slate-700">${topicsHtml}</ol>`
+          : `<p class="text-[12px] text-slate-500">该章节尚未检测到二级标题。</p>`) +
         `</div>`
     );
   });
