@@ -1,0 +1,73 @@
+# Neo4j Local Deployment for Foreign Trade Negotiation Knowledge Graph
+# 外贸谈判知识图谱本地Neo4j部署配置
+
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: foreign-trade-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"  # HTTP Browser访问端口
+      - "7687:7687"  # Bolt协议端口
+    environment:
+      # 认证配置
+      - NEO4J_AUTH=neo4j/foreign-trade-2024
+
+      # 内存配置（根据机器配置调整）
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=512m
+
+      # APOC插件配置
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+
+      # 性能优化
+      - NEO4J_dbms_transaction_timeout=30s
+      - NEO4J_dbms_locks_acquisition_timeout=10s
+
+      # 日志级别
+      - NEO4J_server_logs_debug_level=INFO
+
+    volumes:
+      # 数据持久化
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - neo4j-import:/var/lib/neo4j/import
+      - neo4j-plugins:/plugins
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - neo4j-network
+
+volumes:
+  neo4j-data:
+    driver: local
+  neo4j-logs:
+    driver: local
+  neo4j-import:
+    driver: local
+  neo4j-plugins:
+    driver: local
+
+networks:
+  neo4j-network:
+    driver: bridge
+
+# 使用说明：
+# 1. 启动Neo4j: docker-compose -f docker-compose.neo4j.yml up -d
+# 2. 停止Neo4j: docker-compose -f docker-compose.neo4j.yml down
+# 3. 查看日志: docker-compose -f docker-compose.neo4j.yml logs -f neo4j
+# 4. 访问浏览器界面: http://localhost:7474
+#    用户名: neo4j
+#    密码: foreign-trade-2024
+# 5. 连接URI: neo4j://localhost:7687
