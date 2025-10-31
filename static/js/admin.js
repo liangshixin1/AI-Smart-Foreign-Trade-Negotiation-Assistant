@@ -2743,6 +2743,20 @@ async function applyAdminTheoryDocxImport() {
     return;
   }
   const chapters = importData.chapters;
+  const levelChapters = Array.isArray(state.admin.levels) ? state.admin.levels : [];
+  const availableChapters = levelChapters.filter((chapter) => chapter && chapter.id);
+  if (!availableChapters.length) {
+    updateInlineStatus(adminTheoryDocxStatus, "当前尚未创建任何章节，请先在关卡地图中配置章节。", "error");
+    return;
+  }
+  if (chapters.length > availableChapters.length) {
+    updateInlineStatus(
+      adminTheoryDocxStatus,
+      `Word 文档包含 ${chapters.length} 个一级标题，但系统仅配置 ${availableChapters.length} 个章节，请先补充章节或调整文档结构。`,
+      "error",
+    );
+    return;
+  }
   const totalTopics = chapters.reduce(
     (sum, chapter) => sum + (Array.isArray(chapter.topics) ? chapter.topics.length : 0),
     0,
@@ -2763,35 +2777,50 @@ async function applyAdminTheoryDocxImport() {
     adminTheoryDocxApply.disabled = true;
   }
   try {
-    const createdChapterIds = [];
+    const assignedChapterIds = [];
     const createdTopicIds = [];
     let firstTopicId = null;
     let firstLessonId = null;
 
     for (let chapterIndex = 0; chapterIndex < chapters.length; chapterIndex += 1) {
       const chapter = chapters[chapterIndex] || {};
-      const chapterPayload = {
-        title: (chapter.title || "").trim() || `导入章节 ${chapterIndex + 1}`,
-        description: (chapter.summary || "").trim(),
-      };
-      if (typeof chapter.orderIndex === "number") {
-        chapterPayload.orderIndex = chapter.orderIndex;
-      }
-      const chapterResponse = await fetchWithAuth("/api/admin/chapters", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chapterPayload),
-      });
-      if (!chapterResponse.ok) {
-        const errorData = await chapterResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `创建章节“${chapterPayload.title}”失败`);
-      }
-      const chapterData = await chapterResponse.json();
-      const chapterId = chapterData.chapter && chapterData.chapter.id;
+      const targetChapter = availableChapters[chapterIndex];
+      const chapterId = targetChapter && targetChapter.id;
       if (!chapterId) {
-        throw new Error("章节创建失败，请稍后再试");
+        throw new Error("未找到可用的章节用于导入");
       }
-      createdChapterIds.push(chapterId);
+      assignedChapterIds.push(chapterId);
+
+      const existingTheoryChapters = Array.isArray(state.admin.theory.tree)
+        ? state.admin.theory.tree
+        : [];
+      const existingTheoryEntry = existingTheoryChapters.find((item) => {
+        const itemChapterId = item && (item.chapterId || item.chapter_id || item.id);
+        return itemChapterId === chapterId;
+      });
+      if (existingTheoryEntry && Array.isArray(existingTheoryEntry.topics)) {
+        for (let existingIndex = 0; existingIndex < existingTheoryEntry.topics.length; existingIndex += 1) {
+          const existingTopic = existingTheoryEntry.topics[existingIndex];
+          if (!existingTopic || !existingTopic.id) {
+            continue;
+          }
+          const lessonIds = Array.isArray(existingTopic.lessons)
+            ? existingTopic.lessons
+                .map((lesson) => (lesson && lesson.id ? lesson.id : null))
+                .filter((id) => id)
+            : [];
+          if (lessonIds.length) {
+            clearLessonKnowledgeCache(lessonIds);
+          }
+          const deleteResponse = await fetchWithAuth(`/api/admin/theory/topics/${existingTopic.id}`, {
+            method: "DELETE",
+          });
+          if (!deleteResponse.ok) {
+            const errorData = await deleteResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `清空章节“${targetChapter.displayTitle || targetChapter.title || chapterId}”失败`);
+          }
+        }
+      }
 
       const topics = Array.isArray(chapter.topics) ? chapter.topics : [];
       for (let topicIndex = 0; topicIndex < topics.length; topicIndex += 1) {
@@ -2854,10 +2883,10 @@ async function applyAdminTheoryDocxImport() {
     clearAdminTheoryDocxImport({ silent: true });
     updateInlineStatus(
       adminTheoryDocxStatus,
-      `已生成 ${chapters.length} 个章节、${totalTopics} 个目录、${totalLessons} 个知识点草稿。`,
+      `已将 Word 内容同步到 ${assignedChapterIds.length} 个章节，生成 ${totalTopics} 个目录、${totalLessons} 个知识点草稿。`,
       "success",
     );
-    await loadAdminLevels({ chapterId: createdChapterIds[0] || null });
+    await loadAdminLevels({ chapterId: assignedChapterIds[0] || null });
     await loadAdminTheory({
       focusTopicId: firstTopicId || createdTopicIds[0] || null,
       focusLessonId: firstLessonId || null,
