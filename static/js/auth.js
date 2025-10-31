@@ -143,32 +143,7 @@ async function handleLogin(event) {
 
 
 function handleLogout() {
-  state.auth = { token: null, user: null };
-  state.chapters = [];
-  state.sessions = [];
-  state.sessionId = null;
-  state.messages = [];
-  state.activeLevel = { chapterId: null, sectionId: null, difficulty: "balanced" };
-  state.selectedLevel = { chapterId: null, sectionId: null };
-  state.studentActiveView = "home";
-  state.admin = {
-    students: [],
-    selectedStudentId: null,
-    selectedSessionId: null,
-    studentDetail: null,
-    analytics: null,
-    levels: [],
-    selectedEditorChapterId: null,
-    selectedEditorSectionId: null,
-    blueprints: [],
-    assignments: [],
-    selectedBlueprintId: null,
-    selectedAssignmentId: null,
-  };
-  state.studentInsights = null;
-  state.studentAssignments = [];
-  state.levelVictories = new Set();
-  state.expandedChapters = new Set();
+  resetState();
   sessionHistoryList.innerHTML = "";
   adminStudentList.innerHTML = "";
   adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -185,6 +160,9 @@ function handleLogout() {
   if (adminAssignmentStatus) {
     adminAssignmentStatus.textContent = "";
   }
+  if (adminTheoryStatus) {
+    adminTheoryStatus.textContent = "";
+  }
   if (adminBlueprintStatus) {
     adminBlueprintStatus.textContent = "";
   }
@@ -196,6 +174,9 @@ function handleLogout() {
   }
   if (studentPasswordStatus) {
     studentPasswordStatus.textContent = "";
+  }
+  if (adminTheoryDocxStatus) {
+    adminTheoryDocxStatus.textContent = "";
   }
   updateInlineStatus(adminProfileStatus, "");
   updateInlineStatus(adminPasswordStatus, "");
@@ -229,6 +210,9 @@ function handleLogout() {
   renderAdminLevelList();
   updateChapterForm();
   updateSectionForm();
+  renderAdminTheoryTree();
+  updateAdminTheoryForms();
+  renderAdminTheoryDocxPreview();
   goToLevelSelection({ clearSelection: true });
   renderLevelMap();
   if (startAssignmentBtn) {
