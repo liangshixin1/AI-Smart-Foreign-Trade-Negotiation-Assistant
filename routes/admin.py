@@ -65,10 +65,20 @@ def _parse_student_records(file_storage) -> List[Dict[str, str]]:
 
 
 def _sync_graph_background() -> None:
+    """Synchronize content to Neo4j knowledge graph in background.
+
+    This function is fail-safe and will not raise exceptions that could
+    break the main business logic.
+    """
+    if not graph_service.is_configured():
+        current_app.logger.debug("Knowledge graph not configured, skipping sync")
+        return
+
     try:
         graph_service.sync_static_content()
+        current_app.logger.debug("Knowledge graph sync completed successfully")
     except graph_service.GraphUnavailableError as exc:
-        current_app.logger.warning("Skipping graph sync: %s", exc)
+        current_app.logger.warning("Skipping graph sync (service unavailable): %s", exc)
     except Exception as exc:  # pragma: no cover - logging safeguard
         current_app.logger.exception("Failed to sync knowledge graph: %s", exc)
 
@@ -334,33 +344,43 @@ def list_admin_theory():
 @bp.post("/api/admin/theory/topics")
 @require_role("teacher")
 def create_admin_theory_topic():
-    data = request.get_json(force=True) or {}
-    chapter_id = normalize_text(data.get("chapterId"))
-    if not chapter_id:
-        return jsonify({"error": "chapterId is required"}), 400
+    """创建理论主题（二级目录）。"""
+    try:
+        data = request.get_json(force=True) or {}
+        chapter_id = normalize_text(data.get("chapterId"))
+        if not chapter_id:
+            current_app.logger.warning("Create theory topic failed: chapterId is required")
+            return jsonify({"error": "chapterId is required"}), 400
 
-    title = normalize_text(data.get("title")) or "未命名理论单元"
-    code = normalize_text(data.get("code")) or ""
-    summary = normalize_text(data.get("summary"))
-    order_index_raw = data.get("orderIndex")
-    order_index: Optional[int] = None
-    if order_index_raw not in (None, ""):
-        try:
-            order_index = int(order_index_raw)
-        except (TypeError, ValueError):
-            return jsonify({"error": "orderIndex must be an integer"}), 400
+        title = normalize_text(data.get("title")) or "未命名理论单元"
+        code = normalize_text(data.get("code")) or ""
+        summary = normalize_text(data.get("summary"))
+        order_index_raw = data.get("orderIndex")
+        order_index: Optional[int] = None
+        if order_index_raw not in (None, ""):
+            try:
+                order_index = int(order_index_raw)
+            except (TypeError, ValueError):
+                current_app.logger.warning("Create theory topic failed: invalid orderIndex")
+                return jsonify({"error": "orderIndex must be an integer"}), 400
 
-    record = database.create_theory_topic(
-        chapter_id=chapter_id,
-        title=title,
-        code=code,
-        summary=summary,
-        order_index=order_index,
-    )
-    if not record:
-        return jsonify({"error": "Chapter not found"}), 404
-    _sync_graph_background()
-    return jsonify({"topic": record}), 201
+        record = database.create_theory_topic(
+            chapter_id=chapter_id,
+            title=title,
+            code=code,
+            summary=summary,
+            order_index=order_index,
+        )
+        if not record:
+            current_app.logger.warning(f"Create theory topic failed: chapter {chapter_id} not found")
+            return jsonify({"error": "Chapter not found"}), 404
+
+        current_app.logger.info(f"Theory topic created successfully: {record.get('id')} - {title}")
+        _sync_graph_background()
+        return jsonify({"topic": record}), 201
+    except Exception as exc:
+        current_app.logger.exception(f"Unexpected error creating theory topic: {exc}")
+        return jsonify({"error": "Internal server error", "detail": str(exc)}), 500
 
 
 @bp.put("/api/admin/theory/topics/<topic_id>")
@@ -411,38 +431,48 @@ def delete_admin_theory_topic(topic_id: str):
 @bp.post("/api/admin/theory/lessons")
 @require_role("teacher")
 def create_admin_theory_lesson():
-    data = request.get_json(force=True) or {}
-    topic_id = normalize_text(data.get("topicId"))
-    if not topic_id:
-        return jsonify({"error": "topicId is required"}), 400
+    """创建理论课时（三级内容）。"""
+    try:
+        data = request.get_json(force=True) or {}
+        topic_id = normalize_text(data.get("topicId"))
+        if not topic_id:
+            current_app.logger.warning("Create theory lesson failed: topicId is required")
+            return jsonify({"error": "topicId is required"}), 400
 
-    title = normalize_text(data.get("title")) or "未命名知识点"
-    code = normalize_text(data.get("code")) or ""
-    content_html = data.get("contentHtml") or ""
-    order_index_raw = data.get("orderIndex")
-    order_index: Optional[int] = None
-    if order_index_raw not in (None, ""):
-        try:
-            order_index = int(order_index_raw)
-        except (TypeError, ValueError):
-            return jsonify({"error": "orderIndex must be an integer"}), 400
+        title = normalize_text(data.get("title")) or "未命名知识点"
+        code = normalize_text(data.get("code")) or ""
+        content_html = data.get("contentHtml") or ""
+        order_index_raw = data.get("orderIndex")
+        order_index: Optional[int] = None
+        if order_index_raw not in (None, ""):
+            try:
+                order_index = int(order_index_raw)
+            except (TypeError, ValueError):
+                current_app.logger.warning("Create theory lesson failed: invalid orderIndex")
+                return jsonify({"error": "orderIndex must be an integer"}), 400
 
-    section_id = normalize_text(data.get("sectionId")) or None
-    is_published = as_bool(data.get("isPublished"), default=False)
+        section_id = normalize_text(data.get("sectionId")) or None
+        is_published = as_bool(data.get("isPublished"), default=False)
 
-    lesson = database.create_theory_lesson(
-        topic_id=topic_id,
-        title=title,
-        code=code,
-        content_html=content_html,
-        order_index=order_index,
-        section_id=section_id,
-        is_published=is_published,
-    )
-    if not lesson:
-        return jsonify({"error": "Unable to create lesson"}), 400
-    _sync_graph_background()
-    return jsonify({"lesson": lesson}), 201
+        lesson = database.create_theory_lesson(
+            topic_id=topic_id,
+            title=title,
+            code=code,
+            content_html=content_html,
+            order_index=order_index,
+            section_id=section_id,
+            is_published=is_published,
+        )
+        if not lesson:
+            current_app.logger.warning(f"Create theory lesson failed: topic {topic_id} not found or creation failed")
+            return jsonify({"error": "Unable to create lesson"}), 400
+
+        current_app.logger.info(f"Theory lesson created successfully: {lesson.get('id')} - {title}")
+        _sync_graph_background()
+        return jsonify({"lesson": lesson}), 201
+    except Exception as exc:
+        current_app.logger.exception(f"Unexpected error creating theory lesson: {exc}")
+        return jsonify({"error": "Internal server error", "detail": str(exc)}), 500
 
 
 @bp.put("/api/admin/theory/lessons/<lesson_id>")
