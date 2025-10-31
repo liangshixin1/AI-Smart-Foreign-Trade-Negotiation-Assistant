@@ -133,6 +133,8 @@ async function handleLogin(event) {
       await loadAdminLevels();
       await loadAdminBlueprints();
       await loadAdminAssignments();
+      refreshKnowledgeManagement({ silent: true });
+      refreshAdminGraph();
     }
   } catch (error) {
     console.error(error);

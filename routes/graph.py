@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from typing import Callable, Tuple
+from urllib.parse import unquote
 
 from flask import Blueprint, jsonify, request
 
 from services import graph_service
+from services import knowledge_importer
 from services.auth_service import require_role
 
 
@@ -25,6 +27,10 @@ def _graph_operation(fn: Callable[[], Tuple[dict, int]]):
         return jsonify(response), 503
     except graph_service.GraphEntityNotFoundError as exc:
         return jsonify({"error": str(exc)}), 404
+    except graph_service.GraphValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except graph_service.GraphConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
     return jsonify(payload), status
 
 
@@ -34,6 +40,86 @@ def list_knowledge_points():
     def _handler() -> Tuple[dict, int]:
         points = graph_service.list_knowledge_points()
         return {"knowledgePoints": points}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/knowledge-categories")
+@require_role("teacher")
+def list_knowledge_categories():
+    def _handler() -> Tuple[dict, int]:
+        categories = graph_service.list_knowledge_categories()
+        return {"categories": categories}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/knowledge-categories")
+@require_role("teacher")
+def create_knowledge_category():
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    parent_id = (data.get("parentId") or "").strip() or None
+    description = (data.get("description") or "").strip()
+    order_index_raw = data.get("orderIndex")
+    order_index = None
+    if order_index_raw not in (None, ""):
+        try:
+            order_index = int(order_index_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        category = graph_service.create_knowledge_category(
+            name,
+            parent_id=parent_id,
+            description=description,
+            order_index=order_index,
+        )
+        return {"category": category}, 201
+
+    return _graph_operation(_handler)
+
+
+@bp.put("/api/graph/knowledge-categories/<category_id>")
+@require_role("teacher")
+def update_knowledge_category(category_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get("name")
+    description = data.get("description") if "description" in data else None
+    order_index_raw = data.get("orderIndex") if "orderIndex" in data else None
+    include_parent = "parentId" in data
+    parent_value = (data.get("parentId") or "").strip() if include_parent else None
+
+    order_index = None
+    if order_index_raw not in (None, ""):
+        try:
+            order_index = int(order_index_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "orderIndex must be an integer"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        kwargs = {
+            "name": name,
+            "description": description,
+            "order_index": order_index,
+        }
+        if include_parent:
+            kwargs["parent_id"] = parent_value or None
+        category = graph_service.update_knowledge_category(category_id, **kwargs)
+        return {"category": category}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.delete("/api/graph/knowledge-categories/<category_id>")
+@require_role("teacher")
+def delete_knowledge_category(category_id: str):
+    fallback_id = request.args.get("fallbackId") or None
+
+    def _handler() -> Tuple[dict, int]:
+        graph_service.delete_knowledge_category(category_id, fallback_id=fallback_id)
+        return {"status": "deleted"}, 200
 
     return _graph_operation(_handler)
 
@@ -125,6 +211,77 @@ def fetch_graph_network():
     def _handler() -> Tuple[dict, int]:
         snapshot = graph_service.fetch_graph_snapshot(limit=limit)
         return snapshot, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/knowledge-points/<path:name>")
+@require_role("teacher")
+def fetch_knowledge_point(name: str):
+    decoded_name = unquote(name or "")
+
+    def _handler() -> Tuple[dict, int]:
+        point = graph_service.get_knowledge_point(decoded_name)
+        return {"knowledgePoint": point}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/knowledge-points")
+@require_role("teacher")
+def create_knowledge_point():
+    data = request.get_json(force=True, silent=True) or {}
+
+    def _handler() -> Tuple[dict, int]:
+        point = graph_service.save_knowledge_point(data)
+        return {"knowledgePoint": point}, 201
+
+    return _graph_operation(_handler)
+
+
+@bp.put("/api/graph/knowledge-points/<path:name>")
+@require_role("teacher")
+def update_knowledge_point(name: str):
+    data = request.get_json(force=True, silent=True) or {}
+    decoded_name = unquote(name or "")
+
+    def _handler() -> Tuple[dict, int]:
+        point = graph_service.save_knowledge_point(data, previous_name=decoded_name)
+        return {"knowledgePoint": point}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/knowledge-import/excel")
+@require_role("teacher")
+def import_knowledge_from_excel():
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "file is required"}), 400
+    if not file.filename.lower().endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+        return jsonify({"error": "仅支持 Excel 工作簿"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        records = knowledge_importer.parse_excel(file)
+        summary = graph_service.bulk_import_knowledge_points(records)
+        return {"summary": summary, "items": records}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/knowledge-import/docx")
+@require_role("teacher")
+def import_knowledge_from_docx():
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "file is required"}), 400
+    if not file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "仅支持 .docx 文档"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        records = knowledge_importer.parse_docx(file)
+        summary = graph_service.bulk_import_knowledge_points(records)
+        return {"summary": summary, "items": records}, 200
 
     return _graph_operation(_handler)
 

@@ -86,23 +86,29 @@ si-fdc89e4a-8858.production-orch-0067.neo4j.io
 
 #### 2.3 使用本地Neo4j（推荐用于开发）
 
-**使用Docker快速启动**：
+**使用Docker快速启动**：项目代码默认假设账号为 `neo4j/neo4j`，因此可以直接运行：
 
 ```bash
 docker run -d \
-  --name neo4j \
+  --name trade-neo4j \
   -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/testpassword \
-  neo4j:latest
+  -e NEO4J_AUTH=neo4j/neo4j \
+  neo4j:5
 ```
 
-然后配置 `.env`：
+如果需要更安全的密码，可以修改 `NEO4J_AUTH`，并在 `.env` 中覆盖默认值：
 
 ```bash
-NEO4J_URI=neo4j://127.0.0.1:7687
+NEO4J_URI=bolt://127.0.0.1:7687
 NEO4J_USER=neo4j
-NEO4J_PASSWORD=testpassword
+NEO4J_PASSWORD=your-strong-password
 ```
+
+首次启动 Flask 应用时会自动：
+
+- 创建知识点、分类、章节等所需的唯一约束
+- 导入外贸谈判知识分类树、默认知识点元数据字段
+- 确保 Excel/Word 批量导入所需的索引存在
 
 **访问Neo4j Browser**：
 打开 http://localhost:7474 验证连接
@@ -174,6 +180,7 @@ WARNING - Knowledge graph unavailable; disabling graph features
 - 🔗 自动发现相关内容
 - 🎯 基于知识点的智能推荐
 - 📈 知识点统计和分析
+- 🗂️ 教师端知识分类树、元数据管理与 Excel/Word 批量导入
 
 ## 常见问题
 

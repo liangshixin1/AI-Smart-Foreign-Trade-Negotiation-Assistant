@@ -3441,6 +3441,199 @@
                   </div>
                   <ul id="admin-graph-knowledge-list" class="space-y-2 text-sm text-slate-200"></ul>
                 </section>
+                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-lg font-semibold text-white">知识点分类管理</h3>
+                      <p class="text-xs text-slate-400">调整知识分类、批量导入并编辑知识元数据。</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-xs">
+                      <button
+                        id="knowledge-category-new"
+                        type="button"
+                        class="rounded-xl border border-slate-700 px-3 py-2 text-slate-200 transition hover:border-sky-400 hover:text-white"
+                      >
+                        新建分类
+                      </button>
+                      <button
+                        id="knowledge-category-refresh"
+                        type="button"
+                        class="rounded-xl border border-slate-700 px-3 py-2 text-slate-200 transition hover:border-sky-400 hover:text-white"
+                      >
+                        刷新
+                      </button>
+                    </div>
+                  </div>
+                  <div class="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)]">
+                    <div class="space-y-4">
+                      <div
+                        id="knowledge-category-tree"
+                        class="min-h-[220px] rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-200"
+                      ></div>
+                      <form id="knowledge-category-form" class="space-y-3 text-sm text-slate-200">
+                        <input id="knowledge-category-id" type="hidden" />
+                        <label class="block space-y-1 text-xs text-slate-300">
+                          <span>分类名称 *</span>
+                          <input
+                            id="knowledge-category-name"
+                            type="text"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                            placeholder="例如：贸易术语"
+                          />
+                        </label>
+                        <label class="block space-y-1 text-xs text-slate-300">
+                          <span>父级分类</span>
+                          <select
+                            id="knowledge-category-parent"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                          ></select>
+                        </label>
+                        <label class="block space-y-1 text-xs text-slate-300">
+                          <span>分类描述</span>
+                          <textarea
+                            id="knowledge-category-description"
+                            rows="2"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                          ></textarea>
+                        </label>
+                        <div class="flex flex-wrap gap-2 text-xs">
+                          <button
+                            type="button"
+                            id="knowledge-category-save"
+                            class="rounded-xl bg-sky-500 px-4 py-2 font-semibold text-white transition hover:bg-sky-600"
+                          >
+                            保存分类
+                          </button>
+                          <button
+                            type="button"
+                            id="knowledge-category-reset"
+                            class="rounded-xl border border-slate-600 px-4 py-2 text-slate-200 transition hover:border-slate-400 hover:text-white"
+                          >
+                            重置
+                          </button>
+                          <button
+                            type="button"
+                            id="knowledge-category-delete"
+                            class="rounded-xl border border-rose-500/70 px-4 py-2 text-rose-200 transition hover:border-rose-400 hover:text-rose-50"
+                          >
+                            删除
+                          </button>
+                        </div>
+                        <p id="knowledge-category-status" class="text-xs text-slate-400"></p>
+                      </form>
+                    </div>
+                    <div class="space-y-4">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 class="text-base font-semibold text-white">知识点列表</h4>
+                          <p id="knowledge-list-status" class="text-xs text-slate-400">选择分类以筛选知识点。</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 text-xs">
+                          <label
+                            for="knowledge-import-excel-input"
+                            class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-slate-200 transition hover:border-sky-400 hover:text-white"
+                          >
+                            <span>导入 Excel</span>
+                          </label>
+                          <input id="knowledge-import-excel-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm" class="hidden" />
+                          <label
+                            for="knowledge-import-docx-input"
+                            class="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-slate-200 transition hover:border-sky-400 hover:text-white"
+                          >
+                            <span>导入 Word</span>
+                          </label>
+                          <input id="knowledge-import-docx-input" type="file" accept=".docx" class="hidden" />
+                        </div>
+                      </div>
+                      <input
+                        id="knowledge-search-input"
+                        type="search"
+                        placeholder="搜索知识点..."
+                        class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      />
+                      <p id="knowledge-import-status" class="text-xs text-slate-400"></p>
+                      <div
+                        id="knowledge-list"
+                        class="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-200"
+                      ></div>
+                      <form id="knowledge-detail-form" class="space-y-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-200">
+                        <input id="knowledge-detail-original-name" type="hidden" />
+                        <div class="grid gap-3 md:grid-cols-2">
+                          <label class="block space-y-1 text-xs text-slate-300">
+                            <span>知识点名称 *</span>
+                            <input
+                              id="knowledge-detail-name"
+                              type="text"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                              placeholder="例如：FOB 成本构成"
+                            />
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300">
+                            <span>知识分类 *</span>
+                            <select
+                              id="knowledge-detail-category"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                            ></select>
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300">
+                            <span>知识类型</span>
+                            <select
+                              id="knowledge-detail-type"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                            ></select>
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300">
+                            <span>难度等级</span>
+                            <select
+                              id="knowledge-detail-difficulty"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                            ></select>
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300">
+                            <span>重要程度</span>
+                            <select
+                              id="knowledge-detail-importance"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                            ></select>
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300 md:col-span-2">
+                            <span>标签（逗号分隔）</span>
+                            <input
+                              id="knowledge-detail-tags"
+                              type="text"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                              placeholder="价格,谈判,术语"
+                            />
+                          </label>
+                          <label class="block space-y-1 text-xs text-slate-300 md:col-span-2">
+                            <span>摘要</span>
+                            <textarea
+                              id="knowledge-detail-summary"
+                              rows="3"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                            ></textarea>
+                          </label>
+                        </div>
+                        <div class="flex flex-wrap gap-2 text-xs">
+                          <button
+                            type="button"
+                            id="knowledge-detail-save"
+                            class="rounded-xl bg-emerald-500 px-4 py-2 font-semibold text-white transition hover:bg-emerald-600"
+                          >
+                            保存知识点
+                          </button>
+                          <button
+                            type="button"
+                            id="knowledge-detail-new"
+                            class="rounded-xl border border-slate-600 px-4 py-2 text-slate-200 transition hover:border-slate-400 hover:text-white"
+                          >
+                            新建
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </section>
                 <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div>
                     <h3 class="text-lg font-semibold text-white">节点详情</h3>
@@ -3524,6 +3717,34 @@
                   placeholder="报价,谈判,术语"
                   class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
                 />
+              </label>
+              <label class="block space-y-1 text-xs text-slate-300">
+                <span>知识分类 *</span>
+                <select
+                  id="knowledge-card-category"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                ></select>
+              </label>
+              <label class="block space-y-1 text-xs text-slate-300">
+                <span>知识类型</span>
+                <select
+                  id="knowledge-card-type"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                ></select>
+              </label>
+              <label class="block space-y-1 text-xs text-slate-300">
+                <span>难度等级</span>
+                <select
+                  id="knowledge-card-difficulty"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                ></select>
+              </label>
+              <label class="block space-y-1 text-xs text-slate-300">
+                <span>重要程度</span>
+                <select
+                  id="knowledge-card-importance"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                ></select>
               </label>
             </div>
             <label class="block space-y-1 text-xs text-slate-300">

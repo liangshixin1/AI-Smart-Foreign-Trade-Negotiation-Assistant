@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from uuid import uuid4
 
 from neo4j import GraphDatabase, basic_auth
 from neo4j.exceptions import IncompleteCommit, Neo4jError, ServiceUnavailable
@@ -24,17 +26,177 @@ class GraphEntityNotFoundError(RuntimeError):
     """Raised when a requested graph entity cannot be located."""
 
 
+class GraphValidationError(RuntimeError):
+    """Raised when a request payload fails validation checks."""
+
+
+class GraphConflictError(RuntimeError):
+    """Raised when an operation would violate graph constraints."""
+
+
 _DRIVER = None
 _GRAPH_DISABLED = False
 _GRAPH_DISABLED_REASON = ""
 
 
+DEFAULT_NEO4J_URI = "bolt://localhost:7687"
+DEFAULT_NEO4J_USER = "neo4j"
+DEFAULT_NEO4J_PASSWORD = "neo4j"
+
+
+DEFAULT_KNOWLEDGE_TYPE = "concept"
+DEFAULT_KNOWLEDGE_DIFFICULTY = "intermediate"
+DEFAULT_KNOWLEDGE_IMPORTANCE = "core"
+DEFAULT_KNOWLEDGE_CATEGORY_ID = "cat-unassigned"
+
+
+_UNSPECIFIED = object()
+
+
+DEFAULT_KNOWLEDGE_CATEGORIES: Sequence[Dict[str, object]] = (
+    {
+        "id": "cat-unassigned",
+        "name": "未分类",
+        "slug": "uncategorized",
+        "order": 0,
+        "description": "临时占位分类，便于初次导入后统一整理。",
+        "children": [],
+    },
+    {
+        "id": "cat-trade-fundamentals",
+        "name": "贸易基础",
+        "slug": "trade-fundamentals",
+        "order": 1,
+        "children": (
+            {
+                "id": "cat-incoterms",
+                "name": "贸易术语",
+                "slug": "incoterms",
+                "order": 1,
+                "children": (
+                    {"id": "cat-incoterms-fob", "name": "FOB", "slug": "incoterms-fob", "order": 1},
+                    {"id": "cat-incoterms-cif", "name": "CIF", "slug": "incoterms-cif", "order": 2},
+                    {"id": "cat-incoterms-cfr", "name": "CFR", "slug": "incoterms-cfr", "order": 3},
+                    {"id": "cat-incoterms-exw", "name": "EXW", "slug": "incoterms-exw", "order": 4},
+                    {"id": "cat-incoterms-ddp", "name": "DDP", "slug": "incoterms-ddp", "order": 5},
+                ),
+            },
+            {
+                "id": "cat-payment-terms",
+                "name": "支付方式",
+                "slug": "payment-terms",
+                "order": 2,
+                "children": (
+                    {"id": "cat-payment-lc", "name": "信用证", "slug": "payment-lc", "order": 1},
+                    {"id": "cat-payment-tt", "name": "电汇", "slug": "payment-tt", "order": 2},
+                    {"id": "cat-payment-collection", "name": "托收", "slug": "payment-collection", "order": 3},
+                    {"id": "cat-payment-oa", "name": "赊销", "slug": "payment-oa", "order": 4},
+                ),
+            },
+            {
+                "id": "cat-trade-documents",
+                "name": "贸易文档",
+                "slug": "trade-documents",
+                "order": 3,
+                "children": (
+                    {"id": "cat-document-invoice", "name": "商业发票", "slug": "document-invoice", "order": 1},
+                    {"id": "cat-document-packing", "name": "装箱单", "slug": "document-packing", "order": 2},
+                    {"id": "cat-document-bill-of-lading", "name": "提单", "slug": "document-bill-of-lading", "order": 3},
+                    {"id": "cat-document-co", "name": "产地证", "slug": "document-co", "order": 4},
+                ),
+            },
+        ),
+    },
+    {
+        "id": "cat-negotiation-process",
+        "name": "谈判流程",
+        "slug": "negotiation-process",
+        "order": 2,
+        "children": (
+            {"id": "cat-process-inquiry", "name": "询盘阶段", "slug": "process-inquiry", "order": 1},
+            {"id": "cat-process-offer", "name": "报盘阶段", "slug": "process-offer", "order": 2},
+            {"id": "cat-process-counter", "name": "还盘阶段", "slug": "process-counter", "order": 3},
+            {"id": "cat-process-acceptance", "name": "成交阶段", "slug": "process-acceptance", "order": 4},
+        ),
+    },
+    {
+        "id": "cat-negotiation-skills",
+        "name": "谈判技巧",
+        "slug": "negotiation-skills",
+        "order": 3,
+        "children": (
+            {"id": "cat-skill-price", "name": "价格谈判", "slug": "skill-price", "order": 1},
+            {"id": "cat-skill-communication", "name": "沟通技巧", "slug": "skill-communication", "order": 2},
+            {"id": "cat-skill-risk", "name": "风险管理", "slug": "skill-risk", "order": 3},
+        ),
+    },
+    {
+        "id": "cat-case-studies",
+        "name": "实战案例",
+        "slug": "case-studies",
+        "order": 4,
+        "children": (
+            {"id": "cat-case-product", "name": "按产品分类", "slug": "case-product", "order": 1},
+            {"id": "cat-case-market", "name": "按市场分类", "slug": "case-market", "order": 2},
+            {"id": "cat-case-problem", "name": "按问题分类", "slug": "case-problem", "order": 3},
+        ),
+    },
+    {
+        "id": "cat-legal-compliance",
+        "name": "法律法规",
+        "slug": "legal-compliance",
+        "order": 5,
+        "children": (
+            {"id": "cat-legal-conventions", "name": "国际公约", "slug": "legal-conventions", "order": 1},
+            {"id": "cat-legal-customs", "name": "海关与物流", "slug": "legal-customs", "order": 2},
+            {"id": "cat-legal-ip", "name": "知识产权", "slug": "legal-ip", "order": 3},
+        ),
+    },
+)
+
+
+_SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(value: str) -> str:
+    text = (value or "").strip().lower()
+    text = _SLUG_PATTERN.sub("-", text)
+    text = text.strip("-")
+    return text or uuid4().hex[:8]
+
+
+def _node_to_dict(node) -> Dict[str, object]:
+    if node is None:
+        return {}
+    if isinstance(node, dict):
+        return dict(node)
+    if hasattr(node, "keys") and callable(node.keys):
+        return {key: node.get(key) for key in node.keys()}
+    return {}
+
+
 def _neo4j_credentials() -> Tuple[str, str, str]:
-    uri = os.getenv("NEO4J_URI")
+    """Return connection credentials, falling back to local Docker defaults."""
+
+    uri = os.getenv("NEO4J_URI", DEFAULT_NEO4J_URI)
+    auth = os.getenv("NEO4J_AUTH", "")
+    user = os.getenv("NEO4J_USER")
+    password = os.getenv("NEO4J_PASSWORD")
+
+    if auth and "/" in auth:
+        auth_user, auth_password = auth.split("/", 1)
+        user = user or auth_user
+        if not password:
+            password = auth_password
+
+    user = user or DEFAULT_NEO4J_USER
+    password = password or DEFAULT_NEO4J_PASSWORD
+
     if not uri:
-        raise GraphUnavailableError("NEO4J_URI environment variable is not configured")
-    user = os.getenv("NEO4J_USER", "neo4j")
-    password = os.getenv("NEO4J_PASSWORD", "")
+        raise GraphUnavailableError("Neo4j URI is not configured")
+    if not password:
+        raise GraphUnavailableError("Neo4j password is not configured")
+
     return uri, user, password
 
 
@@ -73,7 +235,10 @@ def _get_driver():
 def is_configured() -> bool:
     """Return True if Neo4j connection information is available."""
 
-    return bool(os.getenv("NEO4J_URI"))
+    disabled_flag = os.getenv("NEO4J_DISABLED", "").strip().lower()
+    if disabled_flag in {"1", "true", "yes", "on"}:
+        return False
+    return True
 
 
 def graph_status() -> Dict[str, object]:
@@ -148,11 +313,98 @@ def ensure_indexes() -> None:
         "CREATE CONSTRAINT lesson_id IF NOT EXISTS FOR (l:TheoryLesson) REQUIRE l.id IS UNIQUE",
         "CREATE CONSTRAINT knowledge_point_name IF NOT EXISTS FOR (k:KnowledgePoint) REQUIRE k.name IS UNIQUE",
         "CREATE CONSTRAINT process_step_id IF NOT EXISTS FOR (s:ProcessStep) REQUIRE s.id IS UNIQUE",
+        "CREATE CONSTRAINT knowledge_category_id IF NOT EXISTS FOR (c:KnowledgeCategory) REQUIRE c.id IS UNIQUE",
+        "CREATE CONSTRAINT knowledge_category_slug IF NOT EXISTS FOR (c:KnowledgeCategory) REQUIRE c.slug IS UNIQUE",
     ]
 
     with driver.session() as session:
         for statement in statements:
             session.run(statement)
+
+
+def apply_schema_migrations() -> None:
+    """Ensure categories exist and new knowledge attributes are backfilled."""
+
+    driver = _get_driver()
+    with driver.session() as session:
+        session.execute_write(_ensure_default_categories)
+        session.execute_write(_backfill_knowledge_point_defaults)
+
+
+def _ensure_default_categories(tx) -> None:
+    def _merge_category(entry: Dict[str, object], parent_id: Optional[str]) -> None:
+        category_id = str(entry.get("id"))
+        name = str(entry.get("name") or category_id)
+        slug = str(entry.get("slug") or name)
+        order_index = int(entry.get("order", 0))
+        description = str(entry.get("description") or "")
+
+        tx.run(
+            "MERGE (c:KnowledgeCategory {id: $id}) "
+            "SET c.name = $name, c.slug = $slug, c.orderIndex = $orderIndex, c.description = $description",
+            {
+                "id": category_id,
+                "name": name,
+                "slug": slug,
+                "orderIndex": order_index,
+                "description": description,
+            },
+        )
+        if parent_id:
+            tx.run(
+                "MATCH (parent:KnowledgeCategory {id: $parent}), (child:KnowledgeCategory {id: $child}) "
+                "MERGE (parent)-[:HAS_CHILD]->(child) "
+                "SET child.parentId = $parent",
+                {"parent": parent_id, "child": category_id},
+            )
+        else:
+            tx.run(
+                "MATCH (c:KnowledgeCategory {id: $id}) "
+                "REMOVE c.parentId",
+                {"id": category_id},
+            )
+
+        children = entry.get("children") if isinstance(entry, dict) else None
+        if isinstance(children, (list, tuple)):
+            for child in children:
+                if isinstance(child, dict):
+                    _merge_category(child, category_id)
+
+    for root_entry in DEFAULT_KNOWLEDGE_CATEGORIES:
+        if isinstance(root_entry, dict):
+            _merge_category(root_entry, None)
+
+
+def _backfill_knowledge_point_defaults(tx) -> None:
+    tx.run(
+        "MATCH (k:KnowledgePoint) WHERE k.type IS NULL OR k.type = '' "
+        "SET k.type = $type",
+        {"type": DEFAULT_KNOWLEDGE_TYPE},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint) WHERE k.difficulty IS NULL OR k.difficulty = '' "
+        "SET k.difficulty = $difficulty",
+        {"difficulty": DEFAULT_KNOWLEDGE_DIFFICULTY},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint) WHERE k.importance IS NULL OR k.importance = '' "
+        "SET k.importance = $importance",
+        {"importance": DEFAULT_KNOWLEDGE_IMPORTANCE},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint) WHERE k.categoryId IS NULL OR k.categoryId = '' "
+        "SET k.categoryId = $category",
+        {"category": DEFAULT_KNOWLEDGE_CATEGORY_ID},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint) "
+        "OPTIONAL MATCH (k)-[rel:BELONGS_TO]->(:KnowledgeCategory) "
+        "WITH k, collect(rel) AS rels "
+        "FOREACH (r IN rels | DELETE r) "
+        "WITH k "
+        "MATCH (target:KnowledgeCategory {id: k.categoryId}) "
+        "MERGE (k)-[:BELONGS_TO]->(target)",
+    )
 
 
 @dataclass(frozen=True)
@@ -380,6 +632,7 @@ def bootstrap_graph() -> None:
 
     try:
         ensure_indexes()
+        apply_schema_migrations()
         sync_static_content()
     except GraphUnavailableError as exc:  # pragma: no cover - depends on external service
         LOGGER.warning("Unable to bootstrap knowledge graph: %s", exc)
@@ -581,12 +834,15 @@ def _ensure_lesson_knowledge(tx, lesson_id: str, points: List[object]) -> None:
 def set_practice_knowledge_points(practice_id: str, points: Sequence[object]) -> None:
     driver = _get_driver()
     normalized_payloads = _normalize_knowledge_point_payloads(points)
-    names = [payload["name"] for payload in normalized_payloads if payload.get("name")]
     with driver.session() as session:
-        session.execute_write(_set_practice_knowledge_tx, practice_id, names)
+        session.execute_write(_set_practice_knowledge_tx, practice_id, normalized_payloads)
 
 
-def _set_practice_knowledge_tx(tx, practice_id: str, points: Sequence[str]) -> None:
+def _set_practice_knowledge_tx(
+    tx,
+    practice_id: str,
+    points: Sequence[Dict[str, object]],
+) -> None:
     record = tx.run(
         "MATCH (p:Practice {id: $id}) RETURN p", {"id": practice_id}
     ).single()
@@ -597,12 +853,36 @@ def _set_practice_knowledge_tx(tx, practice_id: str, points: Sequence[str]) -> N
         "MATCH (:Practice {id: $id})-[rel:TESTS]->(:KnowledgePoint) DELETE rel",
         {"id": practice_id},
     )
-    for name in points:
+    for payload in points:
+        if not isinstance(payload, dict):
+            continue
+        name = payload.get("name")
+        if not name:
+            continue
+        node_params, _ = _prepare_knowledge_parameters(payload)
+        params = {
+            "id": practice_id,
+            "name": name,
+            **node_params,
+        }
         tx.run(
             "MATCH (p:Practice {id: $id}) "
             "MERGE (k:KnowledgePoint {name: $name}) "
+            "SET k.summary = CASE WHEN $summary = '' THEN k.summary ELSE $summary END "
+            "SET k.bodyHtml = CASE WHEN $bodyHtml = '' THEN k.bodyHtml ELSE $bodyHtml END "
+            "SET k.imageUrl = CASE WHEN $imageUrl = '' THEN k.imageUrl ELSE $imageUrl END "
+            "SET k.imageAlt = CASE WHEN $imageAlt = '' THEN k.imageAlt ELSE $imageAlt END "
+            "SET k.sourceId = CASE WHEN $knowledgeId = '' THEN k.sourceId ELSE $knowledgeId END "
+            "SET k.tags = CASE WHEN size($tags) = 0 THEN k.tags ELSE $tags END "
+            "SET k.type = $type, k.difficulty = $difficulty, k.importance = $importance, k.categoryId = $categoryId "
+            "WITH p, k, $categoryId AS categoryId "
+            "OPTIONAL MATCH (k)-[existing:BELONGS_TO]->(:KnowledgeCategory) "
+            "DELETE existing "
+            "WITH p, k, categoryId "
+            "MATCH (cat:KnowledgeCategory {id: categoryId}) "
+            "MERGE (k)-[:BELONGS_TO]->(cat) "
             "MERGE (p)-[:TESTS]->(k)",
-            {"id": practice_id, "name": name},
+            params,
         )
 
 
@@ -628,76 +908,43 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, obje
         {"id": lesson_id},
     )
     for payload in points:
-        name = payload.get("name") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        name = payload.get("name")
         if not name:
             continue
-        summary_value = payload.get("summary", "")
-        if summary_value is None:
-            summary_value = ""
-        elif not isinstance(summary_value, str):
-            summary_value = str(summary_value)
-        body_html_value = payload.get("bodyHtml", "")
-        if body_html_value is None:
-            body_html_value = ""
-        image_url_value = payload.get("imageUrl", "")
-        if image_url_value is None:
-            image_url_value = ""
-        elif not isinstance(image_url_value, str):
-            image_url_value = str(image_url_value)
-        image_alt_value = payload.get("imageAlt", "")
-        if image_alt_value is None:
-            image_alt_value = ""
-        elif not isinstance(image_alt_value, str):
-            image_alt_value = str(image_alt_value)
-        anchor_value = payload.get("anchorId", "")
-        if anchor_value is None:
-            anchor_value = ""
-        elif not isinstance(anchor_value, str):
-            anchor_value = str(anchor_value)
-        tags_value = payload.get("tags", [])
-        if isinstance(tags_value, (list, tuple)):
-            cleaned_tags = []
-            for tag in tags_value:
-                if tag is None:
-                    continue
-                tag_str = str(tag).strip()
-                if tag_str and tag_str not in cleaned_tags:
-                    cleaned_tags.append(tag_str)
-            tags_value = cleaned_tags
-        else:
-            tags_value = []
-        knowledge_id_value = payload.get("knowledgeId", "")
-        if knowledge_id_value is None:
-            knowledge_id_value = ""
-        elif not isinstance(knowledge_id_value, str):
-            knowledge_id_value = str(knowledge_id_value)
+        node_params, rel_params = _prepare_knowledge_parameters(payload)
+        params = {
+            "id": lesson_id,
+            "name": name,
+            **node_params,
+            **rel_params,
+        }
         tx.run(
             "MATCH (l:TheoryLesson {id: $id}) "
             "MERGE (k:KnowledgePoint {name: $name}) "
             "SET k.summary = CASE WHEN $summary = '' THEN k.summary ELSE $summary END "
+            "SET k.bodyHtml = CASE WHEN $bodyHtml = '' THEN k.bodyHtml ELSE $bodyHtml END "
             "SET k.imageUrl = CASE WHEN $imageUrl = '' THEN k.imageUrl ELSE $imageUrl END "
             "SET k.imageAlt = CASE WHEN $imageAlt = '' THEN k.imageAlt ELSE $imageAlt END "
-            "SET k.bodyHtml = CASE WHEN $bodyHtml = '' THEN k.bodyHtml ELSE $bodyHtml END "
             "SET k.sourceId = CASE WHEN $knowledgeId = '' THEN k.sourceId ELSE $knowledgeId END "
             "SET k.tags = CASE WHEN size($tags) = 0 THEN k.tags ELSE $tags END "
+            "SET k.type = $type, k.difficulty = $difficulty, k.importance = $importance, k.categoryId = $categoryId "
+            "WITH l, k, $categoryId AS categoryId, $anchorId AS anchorId, $summary AS summary, "
+            "$bodyHtml AS bodyHtml, $imageUrl AS imageUrl, $imageAlt AS imageAlt, $tags AS tags "
+            "OPTIONAL MATCH (k)-[existing:BELONGS_TO]->(:KnowledgeCategory) "
+            "DELETE existing "
+            "WITH l, k, categoryId, anchorId, summary, bodyHtml, imageUrl, imageAlt, tags "
+            "MATCH (cat:KnowledgeCategory {id: categoryId}) "
+            "MERGE (k)-[:BELONGS_TO]->(cat) "
             "MERGE (l)-[rel:EXPLAINS]->(k) "
-            "SET rel.anchorId = CASE WHEN $anchorId = '' THEN rel.anchorId ELSE $anchorId END "
-            "SET rel.summary = CASE WHEN $summary = '' THEN rel.summary ELSE $summary END "
-            "SET rel.bodyHtml = CASE WHEN $bodyHtml = '' THEN rel.bodyHtml ELSE $bodyHtml END "
-            "SET rel.imageUrl = CASE WHEN $imageUrl = '' THEN rel.imageUrl ELSE $imageUrl END "
-            "SET rel.imageAlt = CASE WHEN $imageAlt = '' THEN rel.imageAlt ELSE $imageAlt END "
-            "SET rel.tags = CASE WHEN size($tags) = 0 THEN rel.tags ELSE $tags END",
-            {
-                "id": lesson_id,
-                "name": name,
-                "summary": summary_value,
-                "bodyHtml": body_html_value,
-                "imageUrl": image_url_value,
-                "imageAlt": image_alt_value,
-                "anchorId": anchor_value,
-                "tags": tags_value,
-                "knowledgeId": knowledge_id_value,
-            },
+            "SET rel.anchorId = CASE WHEN anchorId = '' THEN rel.anchorId ELSE anchorId END "
+            "SET rel.summary = CASE WHEN summary = '' THEN rel.summary ELSE summary END "
+            "SET rel.bodyHtml = CASE WHEN bodyHtml = '' THEN rel.bodyHtml ELSE bodyHtml END "
+            "SET rel.imageUrl = CASE WHEN imageUrl = '' THEN rel.imageUrl ELSE imageUrl END "
+            "SET rel.imageAlt = CASE WHEN imageAlt = '' THEN rel.imageAlt ELSE imageAlt END "
+            "SET rel.tags = CASE WHEN size(tags) = 0 THEN rel.tags ELSE tags END",
+            params,
         )
 
 
@@ -733,6 +980,11 @@ def _normalize_knowledge_point_payloads(points: Sequence[object]) -> List[Dict[s
                         merged.append(tag_value)
                 if merged:
                     target["tags"] = merged
+                continue
+            if key in {"categoryId", "categoryName", "type", "difficulty", "importance"}:
+                text = _clean_string(raw_value)
+                if text:
+                    target[key] = text
                 continue
             cleaned_value = raw_value
             if isinstance(raw_value, str):
@@ -778,6 +1030,28 @@ def _normalize_knowledge_point_payloads(points: Sequence[object]) -> List[Dict[s
                 tags = [tag.strip() for tag in tags_field.split(",") if tag.strip()]
             if tags:
                 payload["tags"] = tags
+            category_id = _clean_string(entry.get("categoryId"))
+            category_name = _clean_string(entry.get("categoryName"))
+            category_field = entry.get("category")
+            if isinstance(category_field, dict):
+                category_id = category_id or _clean_string(category_field.get("id"))
+                category_name = category_name or _clean_string(category_field.get("name"))
+            elif isinstance(category_field, str) and category_field.strip():
+                if not category_name:
+                    category_name = category_field.strip()
+            if category_id:
+                payload["categoryId"] = category_id
+            if category_name:
+                payload["categoryName"] = category_name
+            knowledge_type = _clean_string(entry.get("type") or entry.get("knowledgeType"))
+            if knowledge_type:
+                payload["type"] = knowledge_type
+            difficulty = _clean_string(entry.get("difficulty"))
+            if difficulty:
+                payload["difficulty"] = difficulty
+            importance = _clean_string(entry.get("importance"))
+            if importance:
+                payload["importance"] = importance
         else:
             continue
 
@@ -800,14 +1074,112 @@ def _normalize_knowledge_point_payloads(points: Sequence[object]) -> List[Dict[s
     return normalized
 
 
+def _prepare_knowledge_parameters(
+    payload: Dict[str, object],
+) -> Tuple[Dict[str, object], Dict[str, object]]:
+    def _as_text(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    summary = _as_text(payload.get("summary"))
+    body_html = payload.get("bodyHtml")
+    body_text = body_html if isinstance(body_html, str) else ""
+    image_url = _as_text(payload.get("imageUrl"))
+    image_alt = _as_text(payload.get("imageAlt"))
+    anchor_id = _as_text(payload.get("anchorId"))
+    knowledge_id = _as_text(payload.get("knowledgeId"))
+    knowledge_type = _as_text(payload.get("type")) or DEFAULT_KNOWLEDGE_TYPE
+    difficulty = _as_text(payload.get("difficulty")) or DEFAULT_KNOWLEDGE_DIFFICULTY
+    importance = _as_text(payload.get("importance")) or DEFAULT_KNOWLEDGE_IMPORTANCE
+    category_id = _as_text(payload.get("categoryId")) or "cat-unassigned"
+
+    tags_list: List[str] = []
+    tags_field = payload.get("tags")
+    if isinstance(tags_field, (list, tuple)):
+        for tag in tags_field:
+            value = _as_text(tag)
+            if value and value not in tags_list:
+                tags_list.append(value)
+    elif isinstance(tags_field, str):
+        for tag in tags_field.split(","):
+            value = tag.strip()
+            if value and value not in tags_list:
+                tags_list.append(value)
+
+    node_params = {
+        "summary": summary,
+        "bodyHtml": body_text,
+        "imageUrl": image_url,
+        "imageAlt": image_alt,
+        "knowledgeId": knowledge_id,
+        "tags": tags_list,
+        "type": knowledge_type,
+        "difficulty": difficulty,
+        "importance": importance,
+        "categoryId": category_id,
+    }
+    rel_params = {
+        "summary": summary,
+        "bodyHtml": body_text,
+        "imageUrl": image_url,
+        "imageAlt": image_alt,
+        "anchorId": anchor_id,
+        "tags": tags_list,
+    }
+    return node_params, rel_params
+
+
+def _build_knowledge_point_payload(record: Dict[str, object]) -> Optional[Dict[str, object]]:
+    base = {
+        "name": record.get("name"),
+        "summary": record.get("summary"),
+        "bodyHtml": record.get("bodyHtml"),
+        "imageUrl": record.get("imageUrl"),
+        "imageAlt": record.get("imageAlt"),
+        "knowledgeId": record.get("knowledgeId"),
+        "tags": record.get("tags") or [],
+        "type": record.get("type"),
+        "difficulty": record.get("difficulty"),
+        "importance": record.get("importance"),
+        "categoryId": record.get("categoryId"),
+        "categoryName": record.get("categoryName"),
+    }
+    normalized = _normalize_knowledge_point_payloads([base])
+    if not normalized:
+        return None
+    payload = normalized[0]
+    payload["practiceCount"] = int(record.get("practiceCount", 0) or 0)
+    payload["lessonCount"] = int(record.get("lessonCount", 0) or 0)
+    return payload
+
+
 def get_practice_detail(practice_id: str) -> Dict[str, object]:
     try:
         records = _execute_read(
             """
             MATCH (p:Practice {id: $id})
             OPTIONAL MATCH (p)-[:TESTS]->(k:KnowledgePoint)
+            OPTIONAL MATCH (k)-[:BELONGS_TO]->(cat:KnowledgeCategory)
             OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
-            RETURN p AS practice, collect(DISTINCT k.name) AS knowledge, c.id AS chapterId
+            RETURN p AS practice,
+                   collect(DISTINCT CASE WHEN k IS NULL THEN NULL ELSE {
+                     name: k.name,
+                     summary: k.summary,
+                     bodyHtml: k.bodyHtml,
+                     imageUrl: k.imageUrl,
+                     imageAlt: k.imageAlt,
+                     knowledgeId: k.sourceId,
+                     tags: k.tags,
+                     type: k.type,
+                     difficulty: k.difficulty,
+                     importance: k.importance,
+                     categoryId: k.categoryId,
+                     categoryName: cat.name
+                   } END) AS knowledge,
+                   c.id AS chapterId
             """,
             {"id": practice_id},
         )
@@ -826,7 +1198,7 @@ def get_practice_detail(practice_id: str) -> Dict[str, object]:
         "description": practice.get("description"),
         "orderIndex": practice.get("orderIndex"),
         "chapterId": record.get("chapterId"),
-        "knowledgePoints": sorted(filter(None, record.get("knowledge") or [])),
+        "knowledgePoints": _normalize_knowledge_point_payloads(record.get("knowledge") or []),
     }
     return payload
 
@@ -839,10 +1211,12 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
             OPTIONAL MATCH (l)-[rel]->(k:KnowledgePoint)
             WHERE type(rel) = 'EXPLAINS'
             OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
+            OPTIONAL MATCH (k)-[:BELONGS_TO]->(cat:KnowledgeCategory)
             WITH l,
                  t,
                  CASE WHEN rel IS NULL THEN {} ELSE properties(rel) END AS relProps,
-                 CASE WHEN k IS NULL THEN {} ELSE properties(k) END AS kProps
+                 CASE WHEN k IS NULL THEN {} ELSE properties(k) END AS kProps,
+                 cat
             RETURN l AS lesson,
                    collect(DISTINCT CASE WHEN k IS NULL THEN NULL ELSE {
                      name: kProps['name'],
@@ -852,7 +1226,12 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
                      imageAlt: coalesce(relProps['imageAlt'], kProps['imageAlt']),
                      anchorId: relProps['anchorId'],
                      tags: relProps['tags'],
-                     knowledgeId: kProps['sourceId']
+                     knowledgeId: kProps['sourceId'],
+                     type: kProps['type'],
+                     difficulty: kProps['difficulty'],
+                     importance: kProps['importance'],
+                     categoryId: kProps['categoryId'],
+                     categoryName: cat.name
                    } END) AS knowledge,
                    t.id AS topicId
             """,
@@ -878,12 +1257,13 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
 
 
 def list_knowledge_points() -> List[Dict[str, object]]:
-    return _execute_read(
+    records = _execute_read(
         """
         MATCH (k:KnowledgePoint)
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
+        OPTIONAL MATCH (k)-[:BELONGS_TO]->(cat:KnowledgeCategory)
         RETURN k.name AS name,
                k.summary AS summary,
                k.bodyHtml AS bodyHtml,
@@ -891,12 +1271,561 @@ def list_knowledge_points() -> List[Dict[str, object]]:
                k.imageAlt AS imageAlt,
                k.sourceId AS knowledgeId,
                k.tags AS tags,
+               k.type AS type,
+               k.difficulty AS difficulty,
+               k.importance AS importance,
+               k.categoryId AS categoryId,
+               cat.name AS categoryName,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount
         ORDER BY name
         """,
     )
+    payloads: List[Dict[str, object]] = []
+    for record in records:
+        payload = _build_knowledge_point_payload(record)
+        if payload:
+            payloads.append(payload)
+    return payloads
 
+
+def list_knowledge_categories() -> List[Dict[str, object]]:
+    records = _execute_read(
+        """
+        MATCH (c:KnowledgeCategory)
+        OPTIONAL MATCH (parent:KnowledgeCategory)-[:HAS_CHILD]->(c)
+        RETURN c AS category, parent.id AS parentId
+        ORDER BY c.orderIndex, c.name
+        """,
+    )
+
+    nodes: Dict[str, Dict[str, object]] = {}
+    order_pairs: List[Tuple[str, Optional[str]]] = []
+    for record in records:
+        raw = _node_to_dict(record.get("category"))
+        category_id = raw.get("id")
+        if not category_id:
+            continue
+        data = nodes.get(category_id)
+        if not data:
+            data = {
+                "id": category_id,
+                "name": raw.get("name"),
+                "slug": raw.get("slug"),
+                "description": raw.get("description"),
+                "orderIndex": raw.get("orderIndex", 0),
+                "parentId": record.get("parentId") or raw.get("parentId"),
+                "children": [],
+            }
+            nodes[category_id] = data
+        else:
+            data.update(
+                {
+                    "name": raw.get("name") or data.get("name"),
+                    "slug": raw.get("slug") or data.get("slug"),
+                    "description": raw.get("description") or data.get("description"),
+                    "orderIndex": raw.get("orderIndex", data.get("orderIndex", 0)),
+                    "parentId": record.get("parentId")
+                    or raw.get("parentId")
+                    or data.get("parentId"),
+                }
+            )
+        order_pairs.append((category_id, record.get("parentId") or raw.get("parentId")))
+
+    roots: List[Dict[str, object]] = []
+    for category_id, parent_id in order_pairs:
+        node = nodes.get(category_id)
+        if not node:
+            continue
+        node_parent_id = parent_id or node.get("parentId")
+        node["parentId"] = node_parent_id
+        if node_parent_id and node_parent_id in nodes:
+            parent = nodes[node_parent_id]
+            if node not in parent.setdefault("children", []):
+                parent["children"].append(node)
+        elif node not in roots:
+            roots.append(node)
+
+    def _sort_node(node: Dict[str, object]) -> None:
+        children = node.get("children") or []
+        children.sort(key=lambda item: ((item.get("orderIndex") or 0), item.get("name") or ""))
+        node["children"] = children
+        for child in children:
+            _sort_node(child)
+
+    def _assign_path(node: Dict[str, object], ancestors: List[str]) -> None:
+        path = ancestors + [node.get("name") or ""]
+        node["path"] = [segment for segment in path if segment]
+        for child in node.get("children", []):
+            _assign_path(child, node["path"])
+
+    roots.sort(key=lambda item: ((item.get("orderIndex") or 0), item.get("name") or ""))
+    for root in roots:
+        _sort_node(root)
+        _assign_path(root, [])
+
+    return roots
+
+
+def _ensure_unique_slug(tx, base_slug: str) -> str:
+    slug = base_slug or uuid4().hex[:8]
+    candidate = slug
+    index = 1
+    while True:
+        record = tx.run(
+            "MATCH (c:KnowledgeCategory {slug: $slug}) RETURN c", {"slug": candidate}
+        ).single()
+        if not record:
+            return candidate
+        candidate = f"{slug}-{index}"
+        index += 1
+
+
+def _fetch_category_by_id_tx(tx, category_id: str) -> Dict[str, object]:
+    record = tx.run(
+        """
+        MATCH (c:KnowledgeCategory {id: $id})
+        OPTIONAL MATCH (parent:KnowledgeCategory)-[:HAS_CHILD]->(c)
+        RETURN c AS category, parent.id AS parentId
+        """,
+        {"id": category_id},
+    ).single()
+    if not record:
+        raise GraphEntityNotFoundError(f"Knowledge category {category_id} not found")
+    raw = _node_to_dict(record.get("category"))
+    payload = {
+        "id": raw.get("id"),
+        "name": raw.get("name"),
+        "slug": raw.get("slug"),
+        "description": raw.get("description"),
+        "orderIndex": raw.get("orderIndex", 0),
+        "parentId": record.get("parentId") or raw.get("parentId"),
+        "children": [],
+    }
+    return payload
+
+
+def create_knowledge_category(
+    name: str,
+    *,
+    parent_id: Optional[str] = None,
+    description: str = "",
+    order_index: Optional[int] = None,
+) -> Dict[str, object]:
+    cleaned_name = (name or "").strip()
+    if not cleaned_name:
+        raise GraphValidationError("分类名称不能为空")
+
+    driver = _get_driver()
+    with driver.session() as session:
+        return session.execute_write(
+            _create_category_tx,
+            cleaned_name,
+            parent_id,
+            description or "",
+            order_index,
+        )
+
+
+def _create_category_tx(
+    tx,
+    name: str,
+    parent_id: Optional[str],
+    description: str,
+    order_index: Optional[int],
+) -> Dict[str, object]:
+    if parent_id:
+        parent = tx.run(
+            "MATCH (p:KnowledgeCategory {id: $id}) RETURN p", {"id": parent_id}
+        ).single()
+        if not parent:
+            raise GraphEntityNotFoundError(f"Knowledge category {parent_id} not found")
+
+    base_slug = _slugify(name)
+    slug = _ensure_unique_slug(tx, base_slug)
+
+    if order_index is None:
+        if parent_id:
+            result = tx.run(
+                """
+                MATCH (:KnowledgeCategory {id: $parent})-[:HAS_CHILD]->(child)
+                RETURN coalesce(max(child.orderIndex), 0) AS maxOrder
+                """,
+                {"parent": parent_id},
+            ).single()
+        else:
+            result = tx.run(
+                """
+                MATCH (child:KnowledgeCategory)
+                WHERE NOT (child)<-[:HAS_CHILD]-(:KnowledgeCategory)
+                RETURN coalesce(max(child.orderIndex), 0) AS maxOrder
+                """,
+            ).single()
+        order_index = int(result.get("maxOrder", 0) or 0) + 1
+    else:
+        order_index = int(order_index)
+
+    category_id = f"cat-{uuid4().hex}"
+    tx.run(
+        "CREATE (c:KnowledgeCategory {id: $id, name: $name, slug: $slug, description: $description, orderIndex: $orderIndex})",
+        {
+            "id": category_id,
+            "name": name,
+            "slug": slug,
+            "description": description,
+            "orderIndex": order_index,
+        },
+    )
+    if parent_id:
+        tx.run(
+            "MATCH (parent:KnowledgeCategory {id: $parent}), (c:KnowledgeCategory {id: $id}) "
+            "MERGE (parent)-[:HAS_CHILD]->(c) "
+            "SET c.parentId = $parent",
+            {"parent": parent_id, "id": category_id},
+        )
+    else:
+        tx.run("MATCH (c:KnowledgeCategory {id: $id}) REMOVE c.parentId", {"id": category_id})
+
+    return _fetch_category_by_id_tx(tx, category_id)
+
+
+def update_knowledge_category(
+    category_id: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    order_index: Optional[int] = None,
+    parent_id: object = _UNSPECIFIED,
+) -> Dict[str, object]:
+    cleaned_id = (category_id or "").strip()
+    if not cleaned_id:
+        raise GraphValidationError("分类ID不能为空")
+
+    driver = _get_driver()
+    with driver.session() as session:
+        return session.execute_write(
+            _update_category_tx,
+            cleaned_id,
+            name,
+            description,
+            order_index,
+            parent_id,
+        )
+
+
+def _update_category_tx(
+    tx,
+    category_id: str,
+    name: Optional[str],
+    description: Optional[str],
+    order_index: Optional[int],
+    parent_id: object,
+) -> Dict[str, object]:
+    record = tx.run(
+        "MATCH (c:KnowledgeCategory {id: $id}) RETURN c", {"id": category_id}
+    ).single()
+    if not record:
+        raise GraphEntityNotFoundError(f"Knowledge category {category_id} not found")
+
+    raw = _node_to_dict(record.get("c"))
+    updated_name = (name or raw.get("name") or "").strip()
+    if not updated_name:
+        raise GraphValidationError("分类名称不能为空")
+
+    slug = raw.get("slug") or _slugify(updated_name)
+    if name and name.strip() and name.strip() != raw.get("name"):
+        slug = _ensure_unique_slug(tx, _slugify(name))
+
+    updated_description = (
+        description if description is not None else raw.get("description") or ""
+    )
+    if order_index is None:
+        updated_order = int(raw.get("orderIndex", 0) or 0)
+    else:
+        updated_order = int(order_index)
+
+    tx.run(
+        "MATCH (c:KnowledgeCategory {id: $id}) "
+        "SET c.name = $name, c.slug = $slug, c.description = $description, c.orderIndex = $orderIndex",
+        {
+            "id": category_id,
+            "name": updated_name,
+            "slug": slug,
+            "description": updated_description,
+            "orderIndex": updated_order,
+        },
+    )
+
+    if parent_id is not _UNSPECIFIED:
+        if parent_id:
+            if parent_id == category_id:
+                raise GraphValidationError("父分类不能与自身相同")
+            parent = tx.run(
+                "MATCH (p:KnowledgeCategory {id: $id}) RETURN p", {"id": parent_id}
+            ).single()
+            if not parent:
+                raise GraphEntityNotFoundError(f"Knowledge category {parent_id} not found")
+        tx.run(
+            "MATCH (:KnowledgeCategory)-[rel:HAS_CHILD]->(c:KnowledgeCategory {id: $id}) DELETE rel",
+            {"id": category_id},
+        )
+        if parent_id:
+            tx.run(
+                "MATCH (parent:KnowledgeCategory {id: $parent}), (c:KnowledgeCategory {id: $id}) "
+                "MERGE (parent)-[:HAS_CHILD]->(c) "
+                "SET c.parentId = $parent",
+                {"parent": parent_id, "id": category_id},
+            )
+        else:
+            tx.run(
+                "MATCH (c:KnowledgeCategory {id: $id}) REMOVE c.parentId",
+                {"id": category_id},
+            )
+
+    return _fetch_category_by_id_tx(tx, category_id)
+
+
+def delete_knowledge_category(
+    category_id: str,
+    *,
+    fallback_id: Optional[str] = None,
+) -> None:
+    cleaned_id = (category_id or "").strip()
+    if not cleaned_id:
+        raise GraphValidationError("分类ID不能为空")
+    fallback = (fallback_id or DEFAULT_KNOWLEDGE_CATEGORY_ID).strip()
+
+    driver = _get_driver()
+    with driver.session() as session:
+        session.execute_write(_delete_category_tx, cleaned_id, fallback)
+
+
+def _delete_category_tx(tx, category_id: str, fallback_id: str) -> None:
+    if category_id == fallback_id:
+        raise GraphConflictError("无法删除默认分类")
+
+    record = tx.run(
+        "MATCH (c:KnowledgeCategory {id: $id}) RETURN c", {"id": category_id}
+    ).single()
+    if not record:
+        raise GraphEntityNotFoundError(f"Knowledge category {category_id} not found")
+
+    children = tx.run(
+        "MATCH (c:KnowledgeCategory {id: $id})-[:HAS_CHILD]->(child) RETURN count(child) AS childCount",
+        {"id": category_id},
+    ).single()
+    if children and int(children.get("childCount", 0) or 0) > 0:
+        raise GraphConflictError("请先移除或迁移该分类下的子分类")
+
+    fallback = tx.run(
+        "MATCH (f:KnowledgeCategory {id: $id}) RETURN f", {"id": fallback_id}
+    ).single()
+    if not fallback:
+        raise GraphEntityNotFoundError(f"Fallback category {fallback_id} not found")
+
+    tx.run(
+        """
+        MATCH (c:KnowledgeCategory {id: $id})<-[rel:BELONGS_TO]-(k:KnowledgePoint)
+        WITH c, collect(rel) AS rels, collect(k) AS knowledge
+        FOREACH (r IN rels | DELETE r)
+        WITH knowledge
+        MATCH (fallback:KnowledgeCategory {id: $fallback})
+        FOREACH (kp IN knowledge | MERGE (kp)-[:BELONGS_TO]->(fallback) SET kp.categoryId = $fallback)
+        """,
+        {"id": category_id, "fallback": fallback_id},
+    )
+    tx.run(
+        "MATCH (:KnowledgeCategory)-[rel:HAS_CHILD]->(c:KnowledgeCategory {id: $id}) DELETE rel",
+        {"id": category_id},
+    )
+    tx.run(
+        "MATCH (c:KnowledgeCategory {id: $id}) DETACH DELETE c",
+        {"id": category_id},
+    )
+
+
+def _fetch_knowledge_point_tx(tx, name: str) -> Dict[str, object]:
+    record = tx.run(
+        """
+        MATCH (k:KnowledgePoint {name: $name})
+        OPTIONAL MATCH (k)-[:BELONGS_TO]->(cat:KnowledgeCategory)
+        OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
+        OPTIONAL MATCH (k)<-[rel:EXPLAINS]-(l:TheoryLesson)
+        RETURN k AS node,
+               cat AS category,
+               count(DISTINCT p) AS practiceCount,
+               count(DISTINCT l) AS lessonCount
+        """,
+        {"name": name},
+    ).single()
+    if not record:
+        raise GraphEntityNotFoundError(f"Knowledge point {name} not found")
+
+    node = _node_to_dict(record.get("node"))
+    category = _node_to_dict(record.get("category"))
+    base_record = {
+        "name": node.get("name"),
+        "summary": node.get("summary"),
+        "bodyHtml": node.get("bodyHtml"),
+        "imageUrl": node.get("imageUrl"),
+        "imageAlt": node.get("imageAlt"),
+        "knowledgeId": node.get("sourceId"),
+        "tags": node.get("tags"),
+        "type": node.get("type"),
+        "difficulty": node.get("difficulty"),
+        "importance": node.get("importance"),
+        "categoryId": node.get("categoryId"),
+        "categoryName": category.get("name"),
+        "practiceCount": record.get("practiceCount", 0),
+        "lessonCount": record.get("lessonCount", 0),
+    }
+    payload = _build_knowledge_point_payload(base_record)
+    if not payload:
+        raise GraphEntityNotFoundError(f"Knowledge point {name} not found")
+    return payload
+
+
+def get_knowledge_point(name: str) -> Dict[str, object]:
+    cleaned_name = (name or "").strip()
+    if not cleaned_name:
+        raise GraphValidationError("知识点名称不能为空")
+
+    driver = _get_driver()
+    with driver.session() as session:
+        return session.execute_read(_fetch_knowledge_point_tx, cleaned_name)
+
+
+def save_knowledge_point(
+    payload: Dict[str, object],
+    *,
+    previous_name: Optional[str] = None,
+) -> Dict[str, object]:
+    normalized = _normalize_knowledge_point_payloads([payload])
+    if not normalized:
+        raise GraphValidationError("知识点名称不能为空")
+    data = normalized[0]
+    cleaned_prev = (
+        previous_name
+        or payload.get("previousName")
+        or payload.get("originalName")
+        or data.get("name")
+        or ""
+    )
+
+    driver = _get_driver()
+    with driver.session() as session:
+        return session.execute_write(_save_knowledge_point_tx, cleaned_prev, data)
+
+
+def _save_knowledge_point_tx(
+    tx,
+    previous_name: Optional[str],
+    data: Dict[str, object],
+) -> Dict[str, object]:
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise GraphValidationError("知识点名称不能为空")
+
+    prev_name = (previous_name or "").strip() or name
+
+    if prev_name != name:
+        existing_new = tx.run(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k", {"name": name}
+        ).single()
+        if existing_new:
+            raise GraphConflictError(f"知识点“{name}”已存在")
+        existing_prev = tx.run(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k", {"name": prev_name}
+        ).single()
+        if existing_prev:
+            tx.run(
+                "MATCH (k:KnowledgePoint {name: $prev}) SET k.name = $name",
+                {"prev": prev_name, "name": name},
+            )
+
+    node_params, _ = _prepare_knowledge_parameters(data)
+    tx.run(
+        "MERGE (k:KnowledgePoint {name: $name}) "
+        "SET k.summary = $summary, "
+        "    k.bodyHtml = $bodyHtml, "
+        "    k.imageUrl = $imageUrl, "
+        "    k.imageAlt = $imageAlt, "
+        "    k.sourceId = $knowledgeId, "
+        "    k.tags = $tags, "
+        "    k.type = $type, "
+        "    k.difficulty = $difficulty, "
+        "    k.importance = $importance, "
+        "    k.categoryId = $categoryId",
+        {"name": name, **node_params},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint {name: $name}) "
+        "OPTIONAL MATCH (k)-[rel:BELONGS_TO]->(:KnowledgeCategory) "
+        "DELETE rel",
+        {"name": name},
+    )
+    tx.run(
+        "MATCH (k:KnowledgePoint {name: $name}), (cat:KnowledgeCategory {id: $categoryId}) "
+        "MERGE (k)-[:BELONGS_TO]->(cat)",
+        {"name": name, "categoryId": node_params["categoryId"]},
+    )
+
+    return _fetch_knowledge_point_tx(tx, name)
+
+
+def bulk_import_knowledge_points(payloads: Sequence[object]) -> Dict[str, int]:
+    normalized = _normalize_knowledge_point_payloads(payloads)
+    if not normalized:
+        raise GraphValidationError("未检测到有效的知识点记录")
+
+    driver = _get_driver()
+    with driver.session() as session:
+        return session.execute_write(_bulk_import_knowledge_tx, normalized)
+
+
+def _bulk_import_knowledge_tx(tx, payloads: Sequence[Dict[str, object]]) -> Dict[str, int]:
+    summary = {"created": 0, "updated": 0, "skipped": 0}
+    for payload in payloads:
+        name = (payload.get("name") or "").strip()
+        if not name:
+            summary["skipped"] += 1
+            continue
+        node_params, _ = _prepare_knowledge_parameters(payload)
+        existing = tx.run(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k", {"name": name}
+        ).single()
+        created = existing is None
+        tx.run(
+            "MERGE (k:KnowledgePoint {name: $name}) "
+            "SET k.summary = $summary, "
+            "    k.bodyHtml = $bodyHtml, "
+            "    k.imageUrl = $imageUrl, "
+            "    k.imageAlt = $imageAlt, "
+            "    k.sourceId = $knowledgeId, "
+            "    k.tags = $tags, "
+            "    k.type = $type, "
+            "    k.difficulty = $difficulty, "
+            "    k.importance = $importance, "
+            "    k.categoryId = $categoryId",
+            {"name": name, **node_params},
+        )
+        tx.run(
+            "MATCH (k:KnowledgePoint {name: $name}) "
+            "OPTIONAL MATCH (k)-[rel:BELONGS_TO]->(:KnowledgeCategory) "
+            "DELETE rel",
+            {"name": name},
+        )
+        tx.run(
+            "MATCH (k:KnowledgePoint {name: $name}), (cat:KnowledgeCategory {id: $categoryId}) "
+            "MERGE (k)-[:BELONGS_TO]->(cat)",
+            {"name": name, "categoryId": node_params["categoryId"]},
+        )
+        if created:
+            summary["created"] += 1
+        else:
+            summary["updated"] += 1
+
+    return summary
 
 def get_related_practices_for_lesson(lesson_id: str) -> List[Dict[str, object]]:
     try:
@@ -951,6 +1880,7 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         "TheoryLesson",
         "KnowledgePoint",
         "ProcessStep",
+        "KnowledgeCategory",
     ]
     nodes = _execute_read(
         """
@@ -1024,6 +1954,7 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
         "TheoryLesson",
         "KnowledgePoint",
         "ProcessStep",
+        "KnowledgeCategory",
     ]
     for label in priority:
         if label in labels:
@@ -1036,6 +1967,8 @@ def _extract_node_identifier(label: Optional[str], node: Dict[str, object]) -> O
         return None
     if label == "KnowledgePoint":
         return node.get("name")
+    if label == "KnowledgeCategory":
+        return node.get("id") or node.get("slug") or node.get("name")
     return node.get("id") or node.get("code") or node.get("title")
 
 
@@ -1048,5 +1981,7 @@ def _build_node_subtitle(label: str, node: Dict[str, object]) -> Optional[str]:
         return None
     if label == "ProcessStep":
         return f"顺序：{node.get('orderIndex')}"
+    if label == "KnowledgeCategory":
+        return node.get("description")
     return node.get("description")
 

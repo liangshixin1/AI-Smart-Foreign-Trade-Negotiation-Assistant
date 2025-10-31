@@ -10,6 +10,35 @@ const knowledgeCardModalState = {
   indexRecords: [],
 };
 
+const DEFAULT_KNOWLEDGE_CATEGORY_ID = "cat-unassigned";
+const KNOWLEDGE_TYPE_OPTIONS = [
+  { value: "concept", label: "概念" },
+  { value: "skill", label: "技能" },
+  { value: "process", label: "流程" },
+  { value: "strategy", label: "策略" },
+  { value: "case", label: "案例" },
+  { value: "document", label: "文档" },
+];
+const KNOWLEDGE_DIFFICULTY_OPTIONS = [
+  { value: "beginner", label: "初级" },
+  { value: "intermediate", label: "中级" },
+  { value: "advanced", label: "高级" },
+];
+const KNOWLEDGE_IMPORTANCE_OPTIONS = [
+  { value: "core", label: "核心" },
+  { value: "supplement", label: "补充" },
+  { value: "optional", label: "拓展" },
+];
+const KNOWLEDGE_TYPE_LABELS = Object.fromEntries(
+  KNOWLEDGE_TYPE_OPTIONS.map((option) => [option.value, option.label]),
+);
+const KNOWLEDGE_DIFFICULTY_LABELS = Object.fromEntries(
+  KNOWLEDGE_DIFFICULTY_OPTIONS.map((option) => [option.value, option.label]),
+);
+const KNOWLEDGE_IMPORTANCE_LABELS = Object.fromEntries(
+  KNOWLEDGE_IMPORTANCE_OPTIONS.map((option) => [option.value, option.label]),
+);
+
 function sanitizeKnowledgeCardHtml(html) {
   const value = typeof html === "string" ? html : "";
   if (typeof window !== "undefined" && window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
@@ -63,6 +92,19 @@ function normalizeKnowledgeCardPayload(rawValue) {
     imageUrl: source.imageUrl || source.image || "",
     imageAlt: source.imageAlt || source.alt || "",
     anchorId: source.anchorId || source.anchor || "",
+    categoryId:
+      source.categoryId ||
+      source.category ||
+      (source.category && (source.category.id || source.category.value)) ||
+      DEFAULT_KNOWLEDGE_CATEGORY_ID,
+    categoryName:
+      source.categoryName ||
+      (source.category && (source.category.name || source.category.label)) ||
+      source.categoryLabel ||
+      "",
+    type: source.type || source.knowledgeType || DEFAULT_KNOWLEDGE_TYPE,
+    difficulty: source.difficulty || source.level || DEFAULT_KNOWLEDGE_DIFFICULTY,
+    importance: source.importance || source.priority || DEFAULT_KNOWLEDGE_IMPORTANCE,
     tags: Array.isArray(source.tags)
       ? source.tags
           .map((tag) => (tag && tag.toString ? tag.toString().trim() : ""))
@@ -76,6 +118,18 @@ function normalizeKnowledgeCardPayload(rawValue) {
     payload.anchorId = `kp-${window.crypto.randomUUID()}`;
   } else if (!payload.anchorId) {
     payload.anchorId = `kp-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  }
+  if (!payload.categoryId) {
+    payload.categoryId = DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  }
+  if (!payload.type) {
+    payload.type = DEFAULT_KNOWLEDGE_TYPE;
+  }
+  if (!payload.difficulty) {
+    payload.difficulty = DEFAULT_KNOWLEDGE_DIFFICULTY;
+  }
+  if (!payload.importance) {
+    payload.importance = DEFAULT_KNOWLEDGE_IMPORTANCE;
   }
   return payload;
 }
@@ -242,6 +296,21 @@ function mergeKnowledgePayload(target, source) {
   if (!target.knowledgeId && source.knowledgeId) {
     target.knowledgeId = source.knowledgeId;
   }
+  if (!target.categoryId && source.categoryId) {
+    target.categoryId = source.categoryId;
+  }
+  if (!target.categoryName && source.categoryName) {
+    target.categoryName = source.categoryName;
+  }
+  if (!target.type && source.type) {
+    target.type = source.type;
+  }
+  if (!target.difficulty && source.difficulty) {
+    target.difficulty = source.difficulty;
+  }
+  if (!target.importance && source.importance) {
+    target.importance = source.importance;
+  }
   const existingTags = Array.isArray(target.tags) ? target.tags : [];
   const incomingTags = Array.isArray(source.tags) ? source.tags : [];
   const combined = existingTags.slice();
@@ -400,6 +469,11 @@ function getAdminKnowledgeIndexRecords() {
       imageAlt: item.imageAlt || "",
       knowledgeId: item.knowledgeId || "",
       tags: Array.isArray(item.tags) ? item.tags : [],
+      categoryId: item.categoryId || DEFAULT_KNOWLEDGE_CATEGORY_ID,
+      categoryName: item.categoryName || "",
+      type: item.type || DEFAULT_KNOWLEDGE_TYPE,
+      difficulty: item.difficulty || DEFAULT_KNOWLEDGE_DIFFICULTY,
+      importance: item.importance || DEFAULT_KNOWLEDGE_IMPORTANCE,
       practiceCount: typeof item.practiceCount === "number" ? item.practiceCount : 0,
       lessonCount: typeof item.lessonCount === "number" ? item.lessonCount : 0,
     }))
@@ -447,6 +521,981 @@ function renderKnowledgeCardList({ keyword = "", selectedName = "" } = {}) {
   knowledgeCardList.appendChild(fragment);
 }
 
+function getKnowledgeCategoryTree() {
+  return state.admin && state.admin.graph && Array.isArray(state.admin.graph.categories)
+    ? state.admin.graph.categories
+    : [];
+}
+
+function traverseKnowledgeCategories(nodes, callback, depth = 0, ancestors = []) {
+  if (!Array.isArray(nodes)) {
+    return;
+  }
+  nodes.forEach((node) => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    const children = Array.isArray(node.children) ? node.children : [];
+    const path = Array.isArray(node.path)
+      ? node.path.filter(Boolean)
+      : [...ancestors, node.name || node.id || ""].filter((segment) => segment);
+    const entry = {
+      id: node.id || "",
+      name: node.name || "",
+      description: node.description || "",
+      orderIndex: typeof node.orderIndex === "number" ? node.orderIndex : 0,
+      parentId: node.parentId || "",
+      depth,
+      path,
+      children,
+    };
+    callback(entry, node);
+    if (children.length > 0) {
+      traverseKnowledgeCategories(children, callback, depth + 1, path);
+    }
+  });
+}
+
+function collectKnowledgeCategoryEntries() {
+  const entries = [];
+  traverseKnowledgeCategories(getKnowledgeCategoryTree(), (entry) => {
+    if (entry.id) {
+      entries.push(entry);
+    }
+  });
+  if (!entries.find((item) => item.id === DEFAULT_KNOWLEDGE_CATEGORY_ID)) {
+    entries.unshift({
+      id: DEFAULT_KNOWLEDGE_CATEGORY_ID,
+      name: "未分类",
+      description: "",
+      orderIndex: 0,
+      parentId: "",
+      depth: 0,
+      path: ["未分类"],
+      children: [],
+    });
+  }
+  return entries;
+}
+
+function findKnowledgeCategoryEntry(categoryId) {
+  const targetId = (categoryId || "").trim();
+  if (!targetId) {
+    return null;
+  }
+  return collectKnowledgeCategoryEntries().find((entry) => entry.id === targetId) || null;
+}
+
+function findKnowledgeCategoryNode(categoryId, nodes = getKnowledgeCategoryTree()) {
+  const targetId = (categoryId || "").trim();
+  if (!targetId) {
+    return null;
+  }
+  for (const node of nodes) {
+    if (!node || typeof node !== "object") {
+      continue;
+    }
+    if ((node.id || "").trim() === targetId) {
+      return node;
+    }
+    const match = findKnowledgeCategoryNode(targetId, Array.isArray(node.children) ? node.children : []);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+}
+
+function collectKnowledgeCategoryDescendantIds(categoryId) {
+  const result = new Set();
+  const node = findKnowledgeCategoryNode(categoryId);
+  if (!node || !node.id) {
+    return result;
+  }
+  function visit(target) {
+    if (!target || !target.id || result.has(target.id)) {
+      return;
+    }
+    result.add(target.id);
+    const children = Array.isArray(target.children) ? target.children : [];
+    children.forEach((child) => visit(child));
+  }
+  visit(node);
+  return result;
+}
+
+function formatKnowledgeCategoryLabel(entry) {
+  if (!entry) {
+    return "";
+  }
+  const indent = entry.depth > 0 ? `${"　".repeat(entry.depth)}› ` : "";
+  return `${indent}${entry.name || entry.id}`;
+}
+
+function populateKnowledgeCategorySelect(selectEl, { selected, allowEmpty = false, excludeIds = null } = {}) {
+  if (!selectEl) {
+    return;
+  }
+  const previousValue = selectEl.value;
+  const exclusion = excludeIds instanceof Set ? excludeIds : new Set();
+  selectEl.innerHTML = "";
+  if (allowEmpty) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "未指定分类";
+    selectEl.appendChild(placeholder);
+  }
+  const entries = collectKnowledgeCategoryEntries();
+  let hasSelected = false;
+  entries.forEach((entry) => {
+    if (!entry.id || exclusion.has(entry.id)) {
+      return;
+    }
+    const option = document.createElement("option");
+    option.value = entry.id;
+    option.textContent = formatKnowledgeCategoryLabel(entry);
+    if (selected && entry.id === selected) {
+      option.selected = true;
+      hasSelected = true;
+    }
+    selectEl.appendChild(option);
+  });
+  if (!hasSelected) {
+    const targetValue = selected || previousValue || DEFAULT_KNOWLEDGE_CATEGORY_ID;
+    selectEl.value = targetValue;
+  }
+  if (!selectEl.value) {
+    selectEl.value = DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  }
+}
+
+function populateKnowledgeCategoryParentOptions(currentId = "", selectedParent = "") {
+  if (!knowledgeCategoryParentSelect) {
+    return;
+  }
+  const exclusion = collectKnowledgeCategoryDescendantIds(currentId);
+  if (currentId) {
+    exclusion.add(currentId);
+  }
+  knowledgeCategoryParentSelect.innerHTML = "";
+  const rootOption = document.createElement("option");
+  rootOption.value = "";
+  rootOption.textContent = "作为一级分类";
+  knowledgeCategoryParentSelect.appendChild(rootOption);
+  populateKnowledgeCategorySelect(knowledgeCategoryParentSelect, {
+    selected: selectedParent,
+    allowEmpty: false,
+    excludeIds: exclusion,
+  });
+  if (!knowledgeCategoryParentSelect.value && selectedParent) {
+    knowledgeCategoryParentSelect.value = selectedParent;
+  }
+}
+
+function populateKnowledgeMetadataSelect(selectEl, options, selectedValue) {
+  if (!selectEl) {
+    return;
+  }
+  const target = selectedValue || selectEl.value;
+  selectEl.innerHTML = "";
+  options.forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    if (option.value === target) {
+      opt.selected = true;
+    }
+    selectEl.appendChild(opt);
+  });
+  if (!selectEl.value && options.length > 0) {
+    selectEl.value = options[0].value;
+  }
+}
+
+function populateKnowledgeCardSelects(payload = null) {
+  const effective = payload ? normalizeKnowledgeCardPayload(payload) : null;
+  populateKnowledgeCategorySelect(knowledgeCardCategorySelect, {
+    selected: effective ? effective.categoryId : DEFAULT_KNOWLEDGE_CATEGORY_ID,
+    allowEmpty: false,
+  });
+  populateKnowledgeMetadataSelect(
+    knowledgeCardTypeSelect,
+    KNOWLEDGE_TYPE_OPTIONS,
+    effective ? effective.type : DEFAULT_KNOWLEDGE_TYPE,
+  );
+  populateKnowledgeMetadataSelect(
+    knowledgeCardDifficultySelect,
+    KNOWLEDGE_DIFFICULTY_OPTIONS,
+    effective ? effective.difficulty : DEFAULT_KNOWLEDGE_DIFFICULTY,
+  );
+  populateKnowledgeMetadataSelect(
+    knowledgeCardImportanceSelect,
+    KNOWLEDGE_IMPORTANCE_OPTIONS,
+    effective ? effective.importance : DEFAULT_KNOWLEDGE_IMPORTANCE,
+  );
+}
+
+function resolveKnowledgeCategoryName(categoryId) {
+  const entry = findKnowledgeCategoryEntry(categoryId);
+  if (entry) {
+    return entry.name || entry.id;
+  }
+  if (!categoryId || categoryId === DEFAULT_KNOWLEDGE_CATEGORY_ID) {
+    return "未分类";
+  }
+  return categoryId;
+}
+
+function getKnowledgePointRecords() {
+  const rawList =
+    state.admin &&
+    state.admin.graph &&
+    Array.isArray(state.admin.graph.knowledgePoints)
+      ? state.admin.graph.knowledgePoints
+      : [];
+  return rawList
+    .map((item) => {
+      const payload = normalizeKnowledgeCardPayload(item);
+      payload.practiceCount = typeof item.practiceCount === "number" ? item.practiceCount : 0;
+      payload.lessonCount = typeof item.lessonCount === "number" ? item.lessonCount : 0;
+      payload.categoryName =
+        item.categoryName || payload.categoryName || resolveKnowledgeCategoryName(payload.categoryId);
+      return payload;
+    })
+    .filter((record) => record.name);
+}
+
+function updateKnowledgeListStatus({ total = null, filtered = null, categoryId = "", searchTerm = "", message = "" } = {}) {
+  if (!knowledgeListStatus) {
+    return;
+  }
+  if (message) {
+    knowledgeListStatus.textContent = message;
+    return;
+  }
+  if (typeof total === "number" && typeof filtered === "number") {
+    const categoryLabel = categoryId ? resolveKnowledgeCategoryName(categoryId) : "全部分类";
+    const searchLabel = searchTerm ? ` · 关键字“${searchTerm}”` : "";
+    knowledgeListStatus.textContent = `分类：${categoryLabel} · 显示 ${filtered}/${total} 条${searchLabel}`;
+    return;
+  }
+  if (typeof total === "number") {
+    knowledgeListStatus.textContent = `已载入 ${total} 条知识点`;
+    return;
+  }
+  knowledgeListStatus.textContent = "";
+}
+
+function renderKnowledgeCategoryTree() {
+  if (!knowledgeCategoryTree) {
+    return;
+  }
+  const categories = getKnowledgeCategoryTree();
+  const selectedId =
+    state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+      ? state.admin.graph.selectedCategoryId
+      : "";
+
+  const buildList = (nodes, depth = 0) => {
+    const list = document.createElement("ul");
+    list.className = depth === 0 ? "space-y-1" : "space-y-1 border-l border-slate-800/60 pl-3 ml-2";
+    nodes.forEach((node) => {
+      if (!node || typeof node !== "object" || !node.id) {
+        return;
+      }
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.categoryId = node.id;
+      const isActive = selectedId === node.id;
+      button.className = `flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition ${
+        isActive
+          ? "border-sky-400 bg-sky-500/10 text-white"
+          : "border-slate-800 bg-slate-950/60 text-slate-200 hover:border-sky-400/40 hover:text-white"
+      }`;
+      const label = escapeHtmlText(node.name || node.id);
+      button.innerHTML = `<span>${label}</span>`;
+      li.appendChild(button);
+      const children = Array.isArray(node.children) ? node.children : [];
+      if (children.length > 0) {
+        li.appendChild(buildList(children, depth + 1));
+      }
+      list.appendChild(li);
+    });
+    return list;
+  };
+
+  knowledgeCategoryTree.innerHTML = "";
+  const wrapper = document.createElement("div");
+  wrapper.className = "space-y-1";
+
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.dataset.categoryId = "";
+  const showAllActive = !selectedId;
+  allButton.className = `flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition ${
+    showAllActive
+      ? "border-sky-400 bg-sky-500/10 text-white"
+      : "border-slate-800 bg-slate-950/60 text-slate-200 hover:border-sky-400/40 hover:text-white"
+  }`;
+  allButton.innerHTML = "<span>全部知识点</span>";
+  wrapper.appendChild(allButton);
+
+  if (categories.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "text-xs text-slate-400";
+    empty.textContent = "尚未创建任何知识分类，可点击“新建分类”开始规划。";
+    wrapper.appendChild(empty);
+  } else {
+    wrapper.appendChild(buildList(categories, 0));
+  }
+
+  knowledgeCategoryTree.appendChild(wrapper);
+}
+
+function populateKnowledgeCategoryForm(category = null, { parentId } = {}) {
+  const target = category || null;
+  const categoryId = target && target.id ? target.id : "";
+  if (knowledgeCategoryIdInput) {
+    knowledgeCategoryIdInput.value = categoryId;
+  }
+  if (knowledgeCategoryNameInput) {
+    knowledgeCategoryNameInput.value = target && target.name ? target.name : "";
+  }
+  const resolvedParent =
+    parentId !== undefined
+      ? parentId || ""
+      : target && target.parentId
+      ? target.parentId
+      : "";
+  populateKnowledgeCategoryParentOptions(categoryId, resolvedParent);
+  if (knowledgeCategoryDescriptionInput) {
+    knowledgeCategoryDescriptionInput.value = target && target.description ? target.description : "";
+  }
+  if (knowledgeCategoryForm) {
+    knowledgeCategoryForm.dataset.mode = categoryId ? "edit" : "create";
+  }
+  if (knowledgeCategoryDeleteBtn) {
+    knowledgeCategoryDeleteBtn.disabled = !categoryId || categoryId === DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  }
+  if (knowledgeCategoryStatus) {
+    if (categoryId) {
+      knowledgeCategoryStatus.textContent = `正在编辑分类「${target.name || categoryId}」`;
+    } else {
+      knowledgeCategoryStatus.textContent = "填写名称与层级后保存即可创建新的知识分类。";
+    }
+  }
+}
+
+function resetKnowledgeCategoryForm({ parentId = "" } = {}) {
+  populateKnowledgeCategoryForm(null, { parentId });
+}
+
+function handleKnowledgeCategorySelection(categoryId) {
+  const normalized = (categoryId || "").trim();
+  if (!state.admin || !state.admin.graph) {
+    return;
+  }
+  state.admin.graph.selectedCategoryId = normalized || "";
+  renderKnowledgeCategoryTree();
+  const selectedEntry = normalized ? findKnowledgeCategoryEntry(normalized) : null;
+  if (selectedEntry) {
+    populateKnowledgeCategoryForm(selectedEntry);
+  } else if (!normalized) {
+    resetKnowledgeCategoryForm();
+  }
+  if (!state.admin.graph.selectedKnowledgeName) {
+    const defaultCategory = normalized || DEFAULT_KNOWLEDGE_CATEGORY_ID;
+    populateKnowledgeDetailSelects(null, { categoryId: defaultCategory });
+  }
+  renderKnowledgeList();
+}
+
+function populateKnowledgeDetailSelects(payload = null, { categoryId } = {}) {
+  const base = payload
+    ? normalizeKnowledgeCardPayload(payload)
+    : {
+        categoryId: DEFAULT_KNOWLEDGE_CATEGORY_ID,
+        type: DEFAULT_KNOWLEDGE_TYPE,
+        difficulty: DEFAULT_KNOWLEDGE_DIFFICULTY,
+        importance: DEFAULT_KNOWLEDGE_IMPORTANCE,
+      };
+  const resolvedCategory = categoryId !== undefined ? categoryId || DEFAULT_KNOWLEDGE_CATEGORY_ID : base.categoryId;
+  populateKnowledgeCategorySelect(knowledgeDetailCategorySelect, {
+    selected: resolvedCategory || DEFAULT_KNOWLEDGE_CATEGORY_ID,
+    allowEmpty: false,
+  });
+  populateKnowledgeMetadataSelect(knowledgeDetailTypeSelect, KNOWLEDGE_TYPE_OPTIONS, base.type || DEFAULT_KNOWLEDGE_TYPE);
+  populateKnowledgeMetadataSelect(
+    knowledgeDetailDifficultySelect,
+    KNOWLEDGE_DIFFICULTY_OPTIONS,
+    base.difficulty || DEFAULT_KNOWLEDGE_DIFFICULTY,
+  );
+  populateKnowledgeMetadataSelect(
+    knowledgeDetailImportanceSelect,
+    KNOWLEDGE_IMPORTANCE_OPTIONS,
+    base.importance || DEFAULT_KNOWLEDGE_IMPORTANCE,
+  );
+}
+
+function populateKnowledgeDetailForm(payload = null, { categoryId } = {}) {
+  const base = payload
+    ? normalizeKnowledgeCardPayload(payload)
+    : {
+        name: "",
+        summary: "",
+        tags: [],
+        categoryId: DEFAULT_KNOWLEDGE_CATEGORY_ID,
+        type: DEFAULT_KNOWLEDGE_TYPE,
+        difficulty: DEFAULT_KNOWLEDGE_DIFFICULTY,
+        importance: DEFAULT_KNOWLEDGE_IMPORTANCE,
+      };
+  const resolvedCategory = categoryId !== undefined ? categoryId || base.categoryId : base.categoryId;
+  if (knowledgeDetailOriginalName) {
+    knowledgeDetailOriginalName.value = base.name || "";
+  }
+  if (knowledgeDetailNameInput) {
+    knowledgeDetailNameInput.value = base.name || "";
+  }
+  if (knowledgeDetailSummaryInput) {
+    knowledgeDetailSummaryInput.value = base.summary || "";
+  }
+  if (knowledgeDetailTagsInput) {
+    knowledgeDetailTagsInput.value = Array.isArray(base.tags) ? base.tags.join(", ") : "";
+  }
+  populateKnowledgeDetailSelects(base, { categoryId: resolvedCategory });
+  if (state.admin && state.admin.graph) {
+    state.admin.graph.selectedKnowledgeName = base.name || "";
+  }
+}
+
+function readKnowledgeDetailForm() {
+  const name = knowledgeDetailNameInput ? knowledgeDetailNameInput.value.trim() : "";
+  const summary = knowledgeDetailSummaryInput ? knowledgeDetailSummaryInput.value.trim() : "";
+  const categoryId = knowledgeDetailCategorySelect
+    ? knowledgeDetailCategorySelect.value || DEFAULT_KNOWLEDGE_CATEGORY_ID
+    : DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  const typeValue = knowledgeDetailTypeSelect
+    ? knowledgeDetailTypeSelect.value || DEFAULT_KNOWLEDGE_TYPE
+    : DEFAULT_KNOWLEDGE_TYPE;
+  const difficultyValue = knowledgeDetailDifficultySelect
+    ? knowledgeDetailDifficultySelect.value || DEFAULT_KNOWLEDGE_DIFFICULTY
+    : DEFAULT_KNOWLEDGE_DIFFICULTY;
+  const importanceValue = knowledgeDetailImportanceSelect
+    ? knowledgeDetailImportanceSelect.value || DEFAULT_KNOWLEDGE_IMPORTANCE
+    : DEFAULT_KNOWLEDGE_IMPORTANCE;
+  const tagsInput = knowledgeDetailTagsInput ? knowledgeDetailTagsInput.value : "";
+  const tags = tagsInput
+    ? tagsInput
+        .split(/[，,]/)
+        .map((tag) => tag.trim())
+        .filter((tag) => tag)
+    : [];
+  return {
+    name,
+    summary,
+    tags,
+    categoryId,
+    type: typeValue,
+    difficulty: difficultyValue,
+    importance: importanceValue,
+  };
+}
+
+function renderKnowledgeList() {
+  if (!knowledgeListContainer) {
+    return;
+  }
+  const records = getKnowledgePointRecords();
+  const totalCount = records.length;
+  const searchTerm = knowledgeSearchInput ? knowledgeSearchInput.value.trim().toLowerCase() : "";
+  const selectedCategoryId =
+    state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+      ? state.admin.graph.selectedCategoryId
+      : "";
+  const allowedCategories = selectedCategoryId
+    ? (() => {
+        const ids = collectKnowledgeCategoryDescendantIds(selectedCategoryId);
+        ids.add(selectedCategoryId);
+        return ids;
+      })()
+    : null;
+  const filtered = records.filter((record) => {
+    const categoryId = record.categoryId || DEFAULT_KNOWLEDGE_CATEGORY_ID;
+    if (allowedCategories && !allowedCategories.has(categoryId)) {
+      return false;
+    }
+    if (!searchTerm) {
+      return true;
+    }
+    const haystack = [
+      record.name || "",
+      record.summary || "",
+      Array.isArray(record.tags) ? record.tags.join(" ") : "",
+      record.categoryName || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(searchTerm);
+  });
+
+  knowledgeListContainer.innerHTML = "";
+  if (filtered.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "text-xs text-slate-400";
+    empty.textContent = "当前筛选下暂无知识点，可点击“新建”添加。";
+    knowledgeListContainer.appendChild(empty);
+  } else {
+    const fragment = document.createDocumentFragment();
+    filtered.forEach((record) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.knowledgeName = record.name;
+      const isActive =
+        state.admin && state.admin.graph && state.admin.graph.selectedKnowledgeName === record.name;
+      button.className = `w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
+        isActive
+          ? "border-emerald-400 bg-emerald-500/10 text-white"
+          : "border-slate-800 bg-slate-950/60 text-slate-200 hover:border-emerald-400/60 hover:text-white"
+      }`;
+      const summaryHtml = record.summary
+        ? `<p class="mt-1 line-clamp-2 text-xs text-slate-400">${escapeHtmlText(record.summary)}</p>`
+        : "";
+      const tagsHtml =
+        Array.isArray(record.tags) && record.tags.length > 0
+          ? `<p class="mt-1 text-xs text-slate-500">标签：${record.tags
+              .map((tag) => escapeHtmlText(tag))
+              .join("、")}</p>`
+          : "";
+      const typeLabel = KNOWLEDGE_TYPE_LABELS[record.type] || record.type || "";
+      const difficultyLabel = KNOWLEDGE_DIFFICULTY_LABELS[record.difficulty] || record.difficulty || "";
+      const importanceLabel = KNOWLEDGE_IMPORTANCE_LABELS[record.importance] || record.importance || "";
+      const metaParts = [typeLabel, difficultyLabel, importanceLabel].filter(Boolean);
+      metaParts.push(`理论 ${record.lessonCount || 0}`);
+      metaParts.push(`实战 ${record.practiceCount || 0}`);
+      button.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium">${escapeHtmlText(record.name)}</span>
+          <span class="text-xs text-slate-400">${escapeHtmlText(record.categoryName)}</span>
+        </div>
+        ${summaryHtml}
+        <p class="mt-1 text-xs text-slate-500">${metaParts.map((part) => escapeHtmlText(part)).join(" · ")}</p>
+        ${tagsHtml}
+      `;
+      fragment.appendChild(button);
+    });
+    knowledgeListContainer.appendChild(fragment);
+  }
+  updateKnowledgeListStatus({
+    total: totalCount,
+    filtered: filtered.length,
+    categoryId: selectedCategoryId,
+    searchTerm,
+  });
+}
+
+async function loadKnowledgeDetail(name) {
+  if (!state.auth || !state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const targetName = (name || "").trim();
+  if (!targetName) {
+    const defaultCategory =
+      state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+        ? state.admin.graph.selectedCategoryId
+        : DEFAULT_KNOWLEDGE_CATEGORY_ID;
+    populateKnowledgeDetailForm(null, { categoryId: defaultCategory });
+    return;
+  }
+  try {
+    updateKnowledgeListStatus({ message: `正在加载知识点「${targetName}」...` });
+    const response = await fetchWithAuth(`/api/graph/knowledge-points/${encodeURIComponent(targetName)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "加载知识点失败");
+    }
+    const point = data.knowledgePoint || { name: targetName };
+    populateKnowledgeDetailForm(point);
+    renderKnowledgeList();
+    updateKnowledgeListStatus({
+      total: getKnowledgePointRecords().length,
+      filtered: getKnowledgePointRecords().length,
+      categoryId:
+        state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+          ? state.admin.graph.selectedCategoryId
+          : "",
+      searchTerm: knowledgeSearchInput ? knowledgeSearchInput.value.trim().toLowerCase() : "",
+    });
+  } catch (error) {
+    console.error(error);
+    updateKnowledgeListStatus({ message: error.message || "加载知识点失败" });
+  }
+}
+
+async function saveKnowledgeDetail(event) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  if (!state.auth || !state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  const payload = readKnowledgeDetailForm();
+  if (!payload.name) {
+    updateKnowledgeListStatus({ message: "请填写知识点名称后保存" });
+    return;
+  }
+  const originalName = knowledgeDetailOriginalName ? knowledgeDetailOriginalName.value.trim() : "";
+  const isUpdate = Boolean(originalName);
+  const url = isUpdate
+    ? `/api/graph/knowledge-points/${encodeURIComponent(originalName)}`
+    : "/api/graph/knowledge-points";
+  try {
+    updateKnowledgeListStatus({ message: isUpdate ? "正在保存知识点..." : "正在创建知识点..." });
+    const response = await fetchWithAuth(url, {
+      method: isUpdate ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "保存知识点失败");
+    }
+    const saved = data.knowledgePoint || payload;
+    populateKnowledgeDetailForm(saved);
+    await fetchKnowledgePoints({ silent: true });
+    renderKnowledgeList();
+    updateKnowledgeListStatus({ message: "知识点已保存，可继续编辑其他属性。" });
+  } catch (error) {
+    console.error(error);
+    updateKnowledgeListStatus({ message: error.message || "保存知识点失败" });
+  }
+}
+
+function handleKnowledgeDetailNew(event) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  if (knowledgeDetailOriginalName) {
+    knowledgeDetailOriginalName.value = "";
+  }
+  if (state.admin && state.admin.graph) {
+    state.admin.graph.selectedKnowledgeName = "";
+  }
+  const defaultCategory =
+    state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+      ? state.admin.graph.selectedCategoryId
+      : DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  populateKnowledgeDetailForm(null, { categoryId: defaultCategory });
+  renderKnowledgeList();
+  updateKnowledgeListStatus({ message: "已切换到新建模式，填写信息后点击保存。" });
+}
+
+function handleKnowledgeListClick(event) {
+  const button = event.target.closest("[data-knowledge-name]");
+  if (!button) {
+    return;
+  }
+  const name = button.dataset.knowledgeName || "";
+  if (!name) {
+    return;
+  }
+  if (state.admin && state.admin.graph) {
+    state.admin.graph.selectedKnowledgeName = name;
+  }
+  renderKnowledgeList();
+  loadKnowledgeDetail(name);
+}
+
+function handleKnowledgeSearchInput() {
+  renderKnowledgeList();
+}
+
+async function fetchKnowledgeCategories({ silent = false } = {}) {
+  if (!state.auth || !state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  try {
+    if (!silent) {
+      updateKnowledgeListStatus({ message: "正在同步知识分类..." });
+      if (knowledgeCategoryStatus) {
+        knowledgeCategoryStatus.textContent = "正在加载知识分类...";
+      }
+    }
+    const response = await fetchWithAuth("/api/graph/knowledge-categories");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "加载知识分类失败");
+    }
+    if (state.admin && state.admin.graph) {
+      state.admin.graph.categories = Array.isArray(data.categories) ? data.categories : [];
+    }
+    renderKnowledgeCategoryTree();
+    const currentCategoryId = knowledgeCategoryIdInput ? knowledgeCategoryIdInput.value : "";
+    const currentParentId = knowledgeCategoryParentSelect ? knowledgeCategoryParentSelect.value : "";
+    populateKnowledgeCategoryParentOptions(currentCategoryId, currentParentId);
+    if (knowledgeDetailCategorySelect) {
+      populateKnowledgeDetailSelects(null, {
+        categoryId: knowledgeDetailCategorySelect.value || DEFAULT_KNOWLEDGE_CATEGORY_ID,
+      });
+    }
+    if (!silent && knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = `已加载 ${collectKnowledgeCategoryEntries().length} 个分类`;
+    }
+  } catch (error) {
+    console.error(error);
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = error.message || "加载知识分类失败";
+    }
+    if (knowledgeCategoryTree) {
+      knowledgeCategoryTree.innerHTML = '<p class="text-xs text-rose-300">无法加载分类，请稍后再试。</p>';
+    }
+  }
+}
+
+async function fetchKnowledgePoints({ silent = false } = {}) {
+  if (!state.auth || !state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  try {
+    if (!silent) {
+      updateKnowledgeListStatus({ message: "正在同步知识点数据..." });
+    }
+    const response = await fetchWithAuth("/api/graph/knowledge-points");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "加载知识点失败");
+    }
+    if (state.admin && state.admin.graph) {
+      state.admin.graph.knowledgePoints = Array.isArray(data.knowledgePoints) ? data.knowledgePoints : [];
+    }
+    renderAdminGraphKnowledgeList();
+    renderKnowledgeList();
+    if (!silent) {
+      updateKnowledgeListStatus({ total: getKnowledgePointRecords().length, filtered: getKnowledgePointRecords().length });
+    }
+  } catch (error) {
+    console.error(error);
+    if (!silent) {
+      updateKnowledgeListStatus({ message: error.message || "加载知识点失败" });
+    }
+    if (knowledgeListContainer && knowledgeListContainer.childElementCount === 0) {
+      const empty = document.createElement("p");
+      empty.className = "text-xs text-rose-300";
+      empty.textContent = "知识点列表加载失败。";
+      knowledgeListContainer.appendChild(empty);
+    }
+  }
+}
+
+async function refreshKnowledgeManagement({ silent = false } = {}) {
+  if (!state.auth || !state.auth.user || state.auth.user.role !== "teacher") {
+    return;
+  }
+  if (!silent) {
+    updateKnowledgeListStatus({ message: "正在同步知识图谱数据..." });
+  }
+  await Promise.all([fetchKnowledgeCategories({ silent: true }), fetchKnowledgePoints({ silent: true })]);
+  if (!silent) {
+    updateKnowledgeListStatus({ message: "知识图谱数据已刷新。" });
+  }
+}
+
+async function handleKnowledgeImportUpload(file, type) {
+  if (!file || !type) {
+    return;
+  }
+  const label = type === "excel" ? "Excel" : "Word";
+  if (knowledgeImportStatus) {
+    knowledgeImportStatus.textContent = `正在导入 ${label} 文件...`;
+  }
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetchWithAuth(`/api/graph/knowledge-import/${type}`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `导入 ${label} 失败`);
+    }
+    const summary = data.summary || {};
+    if (knowledgeImportStatus) {
+      knowledgeImportStatus.textContent = `导入成功：新增 ${summary.created || 0} 条，更新 ${summary.updated || 0} 条，跳过 ${summary.skipped || 0} 条。`;
+    }
+    await fetchKnowledgePoints({ silent: true });
+    renderKnowledgeList();
+  } catch (error) {
+    console.error(error);
+    if (knowledgeImportStatus) {
+      knowledgeImportStatus.textContent = error.message || "导入失败";
+    }
+  } finally {
+    if (knowledgeImportExcelInput) {
+      knowledgeImportExcelInput.value = "";
+    }
+    if (knowledgeImportDocxInput) {
+      knowledgeImportDocxInput.value = "";
+    }
+  }
+}
+
+function handleKnowledgeImportChange(event) {
+  const input = event && event.target ? event.target : null;
+  if (!input || !input.files || input.files.length === 0) {
+    return;
+  }
+  const file = input.files[0];
+  if (!file) {
+    return;
+  }
+  if (input === knowledgeImportExcelInput) {
+    handleKnowledgeImportUpload(file, "excel");
+  } else if (input === knowledgeImportDocxInput) {
+    handleKnowledgeImportUpload(file, "docx");
+  }
+}
+
+async function saveKnowledgeCategory(event) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  const name = knowledgeCategoryNameInput ? knowledgeCategoryNameInput.value.trim() : "";
+  if (!name) {
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "请填写分类名称";
+    }
+    return;
+  }
+  const categoryId = knowledgeCategoryIdInput ? knowledgeCategoryIdInput.value.trim() : "";
+  const parentId = knowledgeCategoryParentSelect ? knowledgeCategoryParentSelect.value.trim() : "";
+  const description = knowledgeCategoryDescriptionInput ? knowledgeCategoryDescriptionInput.value.trim() : "";
+  const payload = {
+    name,
+    parentId: parentId || null,
+    description,
+  };
+  const isUpdate = Boolean(categoryId);
+  const url = isUpdate
+    ? `/api/graph/knowledge-categories/${encodeURIComponent(categoryId)}`
+    : "/api/graph/knowledge-categories";
+  try {
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = isUpdate ? "正在保存分类..." : "正在创建分类...";
+    }
+    const response = await fetchWithAuth(url, {
+      method: isUpdate ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "保存分类失败");
+    }
+    const saved = data.category || { ...payload, id: categoryId };
+    if (state.admin && state.admin.graph) {
+      state.admin.graph.selectedCategoryId = saved.id || categoryId || "";
+    }
+    await fetchKnowledgeCategories({ silent: true });
+    await fetchKnowledgePoints({ silent: true });
+    renderKnowledgeCategoryTree();
+    renderKnowledgeList();
+    populateKnowledgeCategoryForm(saved);
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "分类已保存";
+    }
+  } catch (error) {
+    console.error(error);
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = error.message || "保存分类失败";
+    }
+  }
+}
+
+function handleKnowledgeCategoryNew() {
+  const defaultParent =
+    state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+      ? state.admin.graph.selectedCategoryId
+      : "";
+  resetKnowledgeCategoryForm({ parentId: defaultParent });
+  if (knowledgeCategoryStatus) {
+    knowledgeCategoryStatus.textContent = "填写信息后点击保存即可创建新的分类";
+  }
+}
+
+function handleKnowledgeCategoryFormReset(event) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  const defaultParent =
+    state.admin && state.admin.graph && state.admin.graph.selectedCategoryId
+      ? state.admin.graph.selectedCategoryId
+      : "";
+  resetKnowledgeCategoryForm({ parentId: defaultParent });
+  if (knowledgeCategoryStatus) {
+    knowledgeCategoryStatus.textContent = "已重置分类表单";
+  }
+}
+
+async function deleteKnowledgeCategory() {
+  const categoryId = knowledgeCategoryIdInput ? knowledgeCategoryIdInput.value.trim() : "";
+  if (!categoryId) {
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "请选择要删除的分类";
+    }
+    return;
+  }
+  if (categoryId === DEFAULT_KNOWLEDGE_CATEGORY_ID) {
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "默认分类无法删除";
+    }
+    return;
+  }
+  if (!confirm("删除后该分类下的知识点将自动移动到“未分类”，确认继续？")) {
+    return;
+  }
+  try {
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "正在删除分类...";
+    }
+    const response = await fetchWithAuth(
+      `/api/graph/knowledge-categories/${encodeURIComponent(categoryId)}?fallbackId=${encodeURIComponent(
+        DEFAULT_KNOWLEDGE_CATEGORY_ID,
+      )}`,
+      { method: "DELETE" },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "删除分类失败");
+    }
+    if (state.admin && state.admin.graph) {
+      state.admin.graph.selectedCategoryId = DEFAULT_KNOWLEDGE_CATEGORY_ID;
+    }
+    await fetchKnowledgeCategories({ silent: true });
+    await fetchKnowledgePoints({ silent: true });
+    renderKnowledgeCategoryTree();
+    renderKnowledgeList();
+    resetKnowledgeCategoryForm();
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = "分类已删除，相关知识点已移动至未分类";
+    }
+  } catch (error) {
+    console.error(error);
+    if (knowledgeCategoryStatus) {
+      knowledgeCategoryStatus.textContent = error.message || "删除分类失败";
+    }
+  }
+}
+
+function handleKnowledgeCategoryTreeClick(event) {
+  const button = event.target.closest("[data-category-id]");
+  if (!button) {
+    return;
+  }
+  const categoryId = button.dataset.categoryId || "";
+  handleKnowledgeCategorySelection(categoryId);
+}
+
 function resetKnowledgeCardForm(payload = null) {
   const basePayload = payload ? normalizeKnowledgeCardPayload(payload) : null;
   const selectedPayload = knowledgeCardModalState.selectedKnowledge
@@ -455,29 +1504,40 @@ function resetKnowledgeCardForm(payload = null) {
   const normalized = selectedPayload
     ? mergeKnowledgePayload({ ...(basePayload || {}) }, selectedPayload)
     : basePayload;
+  const effective = normalized || {
+    name: "",
+    summary: "",
+    bodyHtml: "",
+    imageUrl: "",
+    imageAlt: "",
+    tags: [],
+    categoryId: DEFAULT_KNOWLEDGE_CATEGORY_ID,
+    type: DEFAULT_KNOWLEDGE_TYPE,
+    difficulty: DEFAULT_KNOWLEDGE_DIFFICULTY,
+    importance: DEFAULT_KNOWLEDGE_IMPORTANCE,
+  };
   if (knowledgeCardNameInput) {
-    knowledgeCardNameInput.value = normalized ? normalized.name || "" : "";
+    knowledgeCardNameInput.value = effective.name || "";
   }
   if (knowledgeCardSummaryInput) {
-    knowledgeCardSummaryInput.value = normalized ? normalized.summary || "" : "";
+    knowledgeCardSummaryInput.value = effective.summary || "";
   }
   if (knowledgeCardTagsInput) {
-    const tags = normalized && Array.isArray(normalized.tags) ? normalized.tags.join(", ") : "";
+    const tags = Array.isArray(effective.tags) ? effective.tags.join(", ") : "";
     knowledgeCardTagsInput.value = tags;
   }
   if (knowledgeCardBodyEditor) {
-    knowledgeCardBodyEditor.innerHTML = normalized ? sanitizeKnowledgeCardHtml(normalized.bodyHtml || "") : "";
+    knowledgeCardBodyEditor.innerHTML = sanitizeKnowledgeCardHtml(effective.bodyHtml || "");
   }
   const imageUrl = knowledgeCardModalState.imageDataUrl
     ? knowledgeCardModalState.imageDataUrl
-    : normalized && normalized.imageUrl
-    ? normalized.imageUrl
+    : effective.imageUrl
     : "";
   if (knowledgeCardImagePreview) {
     if (imageUrl) {
       const safeUrl = escapeHtmlAttribute(imageUrl);
       const safeAlt = escapeHtmlAttribute(
-        (normalized && (normalized.imageAlt || normalized.summary || normalized.name)) || "关键知识点配图",
+        effective.imageAlt || effective.summary || effective.name || "关键知识点配图",
       );
       knowledgeCardImagePreview.innerHTML = `<img src="${safeUrl}" alt="${safeAlt}" />`;
     } else {
@@ -487,6 +1547,7 @@ function resetKnowledgeCardForm(payload = null) {
   if (knowledgeCardImageInput) {
     knowledgeCardImageInput.value = "";
   }
+  populateKnowledgeCardSelects(effective);
 }
 
 function openKnowledgeCardModal(payload = null, node = null) {
@@ -658,6 +1719,26 @@ function readKnowledgeCardForm() {
   const fallbackImage = basePayload && basePayload.imageUrl ? basePayload.imageUrl : "";
   const selectedImage = selectedRecord && selectedRecord.imageUrl ? selectedRecord.imageUrl : "";
   const imageUrl = knowledgeCardModalState.imageDataUrl || selectedImage || fallbackImage;
+  const categoryId = knowledgeCardCategorySelect
+    ? knowledgeCardCategorySelect.value || DEFAULT_KNOWLEDGE_CATEGORY_ID
+    : basePayload && basePayload.categoryId
+    ? basePayload.categoryId
+    : DEFAULT_KNOWLEDGE_CATEGORY_ID;
+  const typeValue = knowledgeCardTypeSelect
+    ? knowledgeCardTypeSelect.value || DEFAULT_KNOWLEDGE_TYPE
+    : basePayload && basePayload.type
+    ? basePayload.type
+    : DEFAULT_KNOWLEDGE_TYPE;
+  const difficultyValue = knowledgeCardDifficultySelect
+    ? knowledgeCardDifficultySelect.value || DEFAULT_KNOWLEDGE_DIFFICULTY
+    : basePayload && basePayload.difficulty
+    ? basePayload.difficulty
+    : DEFAULT_KNOWLEDGE_DIFFICULTY;
+  const importanceValue = knowledgeCardImportanceSelect
+    ? knowledgeCardImportanceSelect.value || DEFAULT_KNOWLEDGE_IMPORTANCE
+    : basePayload && basePayload.importance
+    ? basePayload.importance
+    : DEFAULT_KNOWLEDGE_IMPORTANCE;
   const payload = normalizeKnowledgeCardPayload({
     ...selectedRecord,
     ...basePayload,
@@ -666,6 +1747,10 @@ function readKnowledgeCardForm() {
     tags,
     bodyHtml,
     imageUrl,
+    categoryId,
+    type: typeValue,
+    difficulty: difficultyValue,
+    importance: importanceValue,
     knowledgeId: selectedRecord && selectedRecord.knowledgeId ? selectedRecord.knowledgeId : basePayload && basePayload.knowledgeId,
   });
   if (knowledgeCardModalState.imageDataUrl) {
@@ -1493,10 +2578,7 @@ async function refreshAdminGraph() {
     adminGraphStatus.textContent = "加载知识图谱中...";
   }
   try {
-    const [networkResp, knowledgeResp] = await Promise.all([
-      fetchWithAuth("/api/graph/network?limit=400"),
-      fetchWithAuth("/api/graph/knowledge-points"),
-    ]);
+    const networkResp = await fetchWithAuth("/api/graph/network?limit=400");
     if (!networkResp.ok) {
       if (networkResp.status === 503) {
         throw new Error("知识图谱服务暂不可用");
@@ -1505,11 +2587,7 @@ async function refreshAdminGraph() {
     }
     const networkData = await networkResp.json();
     state.admin.graph.network = networkData || { nodes: [], edges: [] };
-    if (knowledgeResp.ok) {
-      const knowledgeData = await knowledgeResp.json();
-      state.admin.graph.knowledgePoints = knowledgeData.knowledgePoints || [];
-    }
-    renderAdminGraphKnowledgeList();
+    await Promise.all([fetchKnowledgePoints({ silent: true }), fetchKnowledgeCategories({ silent: true })]);
     renderAdminGraphNetwork();
     if (adminGraphStatus) {
       const nodeCount = (networkData.nodes || []).length;

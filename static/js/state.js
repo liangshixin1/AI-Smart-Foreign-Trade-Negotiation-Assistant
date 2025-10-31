@@ -44,6 +44,9 @@ function createInitialState() {
       },
       graph: {
         knowledgePoints: [],
+        categories: [],
+        selectedCategoryId: null,
+        selectedKnowledgeName: null,
         network: { nodes: [], edges: [] },
         practiceKnowledge: new Map(),
         lessonKnowledge: new Map(),

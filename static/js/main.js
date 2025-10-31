@@ -401,6 +401,60 @@ if (knowledgeCardClearBodyBtn) {
   knowledgeCardClearBodyBtn.addEventListener("click", handleKnowledgeCardClearBody);
 }
 
+if (knowledgeCategoryTree) {
+  knowledgeCategoryTree.addEventListener("click", handleKnowledgeCategoryTreeClick);
+}
+
+if (knowledgeCategoryNewBtn) {
+  knowledgeCategoryNewBtn.addEventListener("click", handleKnowledgeCategoryNew);
+}
+
+if (knowledgeCategoryRefreshBtn) {
+  knowledgeCategoryRefreshBtn.addEventListener("click", () => {
+    refreshKnowledgeManagement({ silent: true });
+  });
+}
+
+if (knowledgeCategorySaveBtn) {
+  knowledgeCategorySaveBtn.addEventListener("click", saveKnowledgeCategory);
+}
+
+if (knowledgeCategoryResetBtn) {
+  knowledgeCategoryResetBtn.addEventListener("click", handleKnowledgeCategoryFormReset);
+}
+
+if (knowledgeCategoryDeleteBtn) {
+  knowledgeCategoryDeleteBtn.addEventListener("click", deleteKnowledgeCategory);
+}
+
+if (knowledgeImportExcelInput) {
+  knowledgeImportExcelInput.addEventListener("change", handleKnowledgeImportChange);
+}
+
+if (knowledgeImportDocxInput) {
+  knowledgeImportDocxInput.addEventListener("change", handleKnowledgeImportChange);
+}
+
+if (knowledgeSearchInput) {
+  knowledgeSearchInput.addEventListener("input", handleKnowledgeSearchInput);
+}
+
+if (knowledgeListContainer) {
+  knowledgeListContainer.addEventListener("click", handleKnowledgeListClick);
+}
+
+if (knowledgeDetailForm) {
+  knowledgeDetailForm.addEventListener("submit", saveKnowledgeDetail);
+}
+
+if (knowledgeDetailSaveBtn) {
+  knowledgeDetailSaveBtn.addEventListener("click", saveKnowledgeDetail);
+}
+
+if (knowledgeDetailNewBtn) {
+  knowledgeDetailNewBtn.addEventListener("click", handleKnowledgeDetailNew);
+}
+
 if (adminGraphSelection) {
   adminGraphSelection.addEventListener("click", (event) => {
     const anchorButton = event.target.closest("[data-knowledge-anchor]");
@@ -554,6 +608,10 @@ if (adminTabButtons) {
       if (target === "theory") {
         await loadAdminLevels();
         await loadAdminTheory();
+      }
+      if (target === "graph") {
+        refreshAdminGraph();
+        refreshKnowledgeManagement({ silent: true });
       }
     });
   });
@@ -746,6 +804,14 @@ if (levelSaveSectionBtn) {
 
 if (levelDeleteSectionBtn) {
   levelDeleteSectionBtn.addEventListener("click", deleteAdminSection);
+}
+
+if (knowledgeDetailForm) {
+  populateKnowledgeDetailForm(null, { categoryId: DEFAULT_KNOWLEDGE_CATEGORY_ID });
+}
+
+if (knowledgeCategoryForm) {
+  resetKnowledgeCategoryForm();
 }
 
 if (adminGraphRefresh) {
