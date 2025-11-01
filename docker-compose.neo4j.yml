@@ -1,7 +1,7 @@
 # Neo4j Local Deployment for Foreign Trade Negotiation Knowledge Graph
 # 外贸谈判知识图谱本地Neo4j部署配置
 
-version: '3.8'
+# version字段已废弃，Docker Compose会自动检测版本
 
 services:
   neo4j:
@@ -25,12 +25,7 @@ services:
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
 
-      # 性能优化
-      - NEO4J_dbms_transaction_timeout=30s
-      - NEO4J_dbms_locks_acquisition_timeout=10s
-
-      # 日志级别
-      - NEO4J_server_logs_debug_level=INFO
+      # 性能优化配置 (Neo4j 5.x使用默认优化配置)
 
     volumes:
       # 数据持久化
