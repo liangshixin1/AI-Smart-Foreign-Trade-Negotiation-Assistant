@@ -75,6 +75,18 @@ def list_knowledge_points_enhanced():
     return _graph_operation(_handler)
 
 
+@bp.get("/api/graph/knowledge-points/overview")
+@require_role("teacher")
+def knowledge_points_overview():
+    """聚合知识点列表、分类树和知识卡索引。"""
+
+    def _handler() -> Tuple[dict, int]:
+        payload = graph_service.get_knowledge_management_overview()
+        return payload, 200
+
+    return _graph_operation(_handler)
+
+
 @bp.get("/api/graph/knowledge-points/<name>")
 @require_role("teacher")
 def get_knowledge_point(name: str):
@@ -119,6 +131,26 @@ def update_knowledge_point(name: str):
             return point, 200
         except ValueError as exc:
             return {"error": str(exc)}, 400
+
+    return _graph_operation(_handler)
+
+
+@bp.put("/api/graph/knowledge-points/<name>/category")
+@require_role("teacher")
+def update_knowledge_point_category(name: str):
+    """通过拖拽快速调整知识点分类。"""
+
+    body = request.get_json(force=True, silent=True) or {}
+    category_path = body.get("category_path") or body.get("categoryPath") or body.get("category")
+    order_index = body.get("order_index") or body.get("orderIndex")
+
+    def _handler() -> Tuple[dict, int]:
+        point = graph_service.update_knowledge_point_category(
+            name,
+            category_path,
+            order_index=order_index,
+        )
+        return point, 200
 
     return _graph_operation(_handler)
 

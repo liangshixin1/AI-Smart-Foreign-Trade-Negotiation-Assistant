@@ -6,7 +6,11 @@ const graphKnowledgeState = {
   allKnowledgePoints: [],
   filteredKnowledgePoints: [],
   categories: [],
+  categoryTree: [],
+  stats: { total: 0, categories: 0, difficulty: {} },
+  smartAssist: { uncategorized: [], metadataSuggestions: [] },
   currentEditingPoint: null,
+  activeCategoryKey: '',
   filters: {
     search: '',
     category: '',
@@ -14,29 +18,24 @@ const graphKnowledgeState = {
   }
 };
 
+let draggedKnowledgeName = null;
+
 // ========== API调用函数 ==========
 
 // 获取所有知识点列表（支持过滤）
-async function fetchKnowledgePoints(filters = {}) {
+async function fetchKnowledgePoints() {
   try {
-    const params = new URLSearchParams();
-    if (filters.category) params.append('category', filters.category);
-    if (filters.difficulty) params.append('difficulty', filters.difficulty);
-    if (filters.search) params.append('search', filters.search);
-
-    const url = `/api/graph/knowledge-points/enhanced${params.toString() ? '?' + params.toString() : ''}`;
-    const response = await fetchWithAuth(url);
+    const response = await fetchWithAuth('/api/graph/knowledge-points/overview');
 
     if (!response.ok) {
       throw new Error(`获取知识点失败: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.knowledge_points || [];
+    return await response.json();
   } catch (error) {
     console.error('获取知识点失败:', error);
-    showStatus('admin-graph-form-status', `获取知识点失败: ${error.message}`, 'error');
-    return [];
+    showStatus('admin-graph-category-status', `获取知识点失败: ${error.message}`, 'error');
+    return { knowledge_points: [], category_tree: [], category_paths: [], stats: {}, knowledge_cards: [] };
   }
 }
 
@@ -262,42 +261,65 @@ function renderKnowledgePointsList() {
 
   if (emptyEl) emptyEl.classList.add('hidden');
 
-  listEl.innerHTML = points.map(point => {
-    const isSelected = graphKnowledgeState.currentEditingPoint?.name === point.name;
-    const difficultyColors = {
-      beginner: 'text-green-400',
-      intermediate: 'text-yellow-400',
-      advanced: 'text-red-400'
-    };
-    const difficultyLabels = {
-      beginner: '初级',
-      intermediate: '中级',
-      advanced: '高级'
-    };
+  const difficultyColors = {
+    beginner: 'text-emerald-300',
+    intermediate: 'text-amber-300',
+    advanced: 'text-rose-300'
+  };
+  const difficultyLabels = {
+    beginner: '初级',
+    intermediate: '中级',
+    advanced: '高级'
+  };
 
-    return `
-      <li class="group cursor-pointer rounded-lg border ${isSelected ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 hover:border-slate-600'} p-3 transition"
+  listEl.innerHTML = points
+    .map((point) => {
+      const isSelected = graphKnowledgeState.currentEditingPoint?.name === point.name;
+      const categoryText = point.category_path_text || '未分类';
+      const tagChips = Array.isArray(point.tags)
+        ? point.tags.slice(0, 4).map((tag) => `<span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">${escapeHtml(tag)}</span>`).join('')
+        : '';
+      const remainingTags = Array.isArray(point.tags) && point.tags.length > 4 ? `<span class="text-[11px] px-2 py-0.5 text-slate-500">+${point.tags.length - 4}</span>` : '';
+
+      return `
+        <li
+          class="group relative cursor-pointer rounded-lg border ${isSelected ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 hover:border-slate-600'} p-3 transition"
           data-knowledge-name="${escapeHtml(point.name)}"
-          onclick="handleKnowledgePointClick('${escapeHtml(point.name)}')">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex-1 min-w-0">
-            <h4 class="font-medium text-white text-sm truncate">${escapeHtml(point.name)}</h4>
-            ${point.description ? `<p class="mt-1 text-xs text-slate-400 line-clamp-2">${escapeHtml(point.description)}</p>` : ''}
+          draggable="true"
+          onclick="handleKnowledgePointClick('${escapeHtml(point.name)}')"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <h4 class="truncate text-sm font-medium text-white">${escapeHtml(point.name)}</h4>
+              ${point.description ? `<p class="mt-1 text-xs text-slate-400 line-clamp-2">${escapeHtml(point.description)}</p>` : ''}
+            </div>
+            <div class="flex flex-col items-end gap-1">
+              ${point.difficulty ? `<span class="text-xs ${difficultyColors[point.difficulty] || 'text-slate-400'}">${difficultyLabels[point.difficulty] || point.difficulty}</span>` : ''}
+              <span class="text-[11px] text-slate-500">${escapeHtml(categoryText)}</span>
+            </div>
           </div>
-          <div class="flex flex-col gap-1 items-end">
-            ${point.difficulty ? `<span class="text-xs ${difficultyColors[point.difficulty] || 'text-slate-400'}">${difficultyLabels[point.difficulty] || point.difficulty}</span>` : ''}
-            ${point.category ? `<span class="text-xs text-slate-500">${escapeHtml(point.category)}</span>` : ''}
+          ${(tagChips || remainingTags)
+            ? `<div class="mt-2 flex flex-wrap gap-1">${tagChips}${remainingTags}</div>`
+            : ''}
+          <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span>关卡 ${point.practiceCount || 0} · 理论 ${point.lessonCount || 0}</span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-sky-400 hover:text-sky-200"
+                data-knowledge-insert="${escapeHtml(point.name)}"
+              >
+                插入理论
+              </button>
+              <span class="hidden text-slate-600 group-hover:block">拖拽调整分类</span>
+            </div>
           </div>
-        </div>
-        ${point.tags && point.tags.length > 0 ? `
-          <div class="mt-2 flex flex-wrap gap-1">
-            ${point.tags.slice(0, 3).map(tag => `<span class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">${escapeHtml(tag)}</span>`).join('')}
-            ${point.tags.length > 3 ? `<span class="text-xs px-2 py-0.5 text-slate-500">+${point.tags.length - 3}</span>` : ''}
-          </div>
-        ` : ''}
-      </li>
-    `;
-  }).join('');
+        </li>
+      `;
+    })
+    .join('');
+
+  attachKnowledgeListHandlers();
 }
 
 // 渲染分类下拉列表
@@ -306,20 +328,419 @@ function renderCategoryOptions() {
   const formSelect = document.getElementById('admin-graph-form-category');
 
   const categories = graphKnowledgeState.categories;
-  const optionsHTML = categories.map(cat =>
-    `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`
-  ).join('');
+  const optionsHTML = categories
+    .map((cat) => {
+      const label = cat === '未分类' ? '未分类' : cat.replace(/\//g, ' / ');
+      return `<option value="${escapeHtml(cat)}">${escapeHtml(label)}</option>`;
+    })
+    .join('');
 
   if (filterSelect) {
-    const currentValue = filterSelect.value;
+    const currentValue = graphKnowledgeState.filters.category || filterSelect.value;
     filterSelect.innerHTML = '<option value="">全部分类</option>' + optionsHTML;
     filterSelect.value = currentValue;
   }
 
   if (formSelect) {
-    const currentValue = formSelect.value;
+    const currentValue = graphKnowledgeState.activeCategoryKey || formSelect.value;
     formSelect.innerHTML = '<option value="">未分类</option>' + optionsHTML;
     formSelect.value = currentValue;
+  }
+}
+
+function buildCategoryTreeHtml(nodes, depth = 0) {
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    return '';
+  }
+
+  const difficultyBadges = {
+    beginner: 'bg-emerald-500/20 text-emerald-200',
+    intermediate: 'bg-amber-500/20 text-amber-200',
+    advanced: 'bg-rose-500/20 text-rose-200'
+  };
+
+  return nodes
+    .map((node) => {
+      const pathKey = Array.isArray(node.path) && node.path.length > 0 ? node.path.join('/') : '未分类';
+      const isActive = graphKnowledgeState.activeCategoryKey === pathKey;
+      const indent = depth * 12;
+      const knowledgePreview = Array.isArray(node.knowledge) ? node.knowledge.slice(0, 5) : [];
+      const knowledgeHtml = knowledgePreview.length
+        ? `<div class="mt-2 flex flex-wrap gap-1">${knowledgePreview
+            .map((item) => {
+              const diffClass = difficultyBadges[item.difficulty] || 'bg-slate-800 text-slate-300';
+              return `<span class="inline-flex items-center gap-1 rounded-full ${diffClass} px-2 py-0.5 text-[10px]">${escapeHtml(item.name)}</span>`;
+            })
+            .join('')}${node.knowledge && node.knowledge.length > knowledgePreview.length ? `<span class="text-[10px] text-slate-500">+${node.knowledge.length - knowledgePreview.length}</span>` : ''}</div>`
+        : '';
+      const childHtml = buildCategoryTreeHtml(node.children || [], depth + 1);
+      const baseClasses = isActive
+        ? 'border-sky-500/70 bg-sky-500/10 text-sky-200'
+        : 'border-slate-800 bg-slate-900/60 text-slate-200 hover:border-slate-600';
+
+      return `
+        <div class="space-y-2" style="margin-left:${indent}px">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${baseClasses}"
+            data-category-path="${escapeHtml(pathKey)}"
+            data-drop-target="category"
+          >
+            <span class="flex items-center gap-2">
+              <span class="inline-flex h-5 min-w-[22px] items-center justify-center rounded bg-slate-800 text-[10px] text-slate-400">${Array.isArray(node.path) ? node.path.length : 0}</span>
+              ${escapeHtml(node.name || '未分类')}
+            </span>
+            <span class="rounded-full bg-slate-800 px-2 text-[10px] text-slate-300">${node.count || 0}</span>
+          </button>
+          ${knowledgeHtml}
+        </div>
+        ${childHtml}
+      `;
+    })
+    .join('');
+}
+
+function renderCategoryTree() {
+  const container = document.getElementById('admin-graph-category-tree');
+  if (!container) return;
+
+  const tree = graphKnowledgeState.categoryTree;
+  if (!Array.isArray(tree) || tree.length === 0) {
+    container.innerHTML = '<p class="text-[11px] text-slate-500">暂无分类结构，可通过创建知识点后再拖拽整理。</p>';
+    return;
+  }
+
+  container.innerHTML = buildCategoryTreeHtml(tree);
+
+  const nodes = container.querySelectorAll('[data-category-path]');
+  nodes.forEach((button) => {
+    button.addEventListener('click', handleCategoryNodeClick);
+    button.addEventListener('dragover', handleCategoryDragOver);
+    button.addEventListener('dragleave', handleCategoryDragLeave);
+    button.addEventListener('drop', handleCategoryDrop);
+  });
+}
+
+function renderKnowledgeStats() {
+  const stats = graphKnowledgeState.stats || {};
+  const totalEl = document.getElementById('admin-graph-stats-total');
+  const categoriesEl = document.getElementById('admin-graph-stats-categories');
+  const difficultyEl = document.getElementById('admin-graph-stats-difficulty');
+  const uncategorizedEl = document.getElementById('admin-graph-stats-uncategorized');
+  const unlinkedEl = document.getElementById('admin-graph-stats-unlinked');
+
+  if (totalEl) {
+    totalEl.textContent = String(stats.total ?? 0);
+  }
+  if (categoriesEl) {
+    categoriesEl.textContent = String(stats.categories ?? 0);
+  }
+  if (uncategorizedEl) {
+    uncategorizedEl.textContent = String(stats.uncategorized ?? 0);
+  }
+  if (unlinkedEl) {
+    unlinkedEl.textContent = String(stats.unlinked ?? 0);
+  }
+  if (difficultyEl) {
+    const diffStats = stats.difficulty || {};
+    const labels = { beginner: '初级', intermediate: '中级', advanced: '高级' };
+    const order = ['beginner', 'intermediate', 'advanced'];
+    const html = order
+      .map((key) => {
+        const count = diffStats[key] || 0;
+        return `<div class="flex items-center justify-between text-[11px]"><span>${labels[key]}</span><span>${count}</span></div>`;
+      })
+      .join('');
+    difficultyEl.innerHTML = html || '<p class="text-[11px] text-slate-500">暂无数据</p>';
+  }
+}
+
+function renderSmartAssist() {
+  const container = document.getElementById('admin-graph-smart-assist-list');
+  const emptyState = document.getElementById('admin-graph-smart-assist-empty');
+  if (!container) return;
+
+  const assist = graphKnowledgeState.smartAssist || {};
+  const uncategorized = Array.isArray(assist.uncategorized) ? assist.uncategorized : [];
+  const metadataSuggestions = Array.isArray(assist.metadataSuggestions) ? assist.metadataSuggestions : [];
+
+  const sections = [];
+
+  if (uncategorized.length > 0) {
+    const chips = uncategorized
+      .slice(0, 6)
+      .map((item) => {
+        const usage = (item.practiceCount || 0) + (item.lessonCount || 0);
+        const usageLabel = usage > 0 ? `${usage} 个引用` : '尚未引用';
+        return `
+          <span class="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+            ${escapeHtml(item.name)}
+            <span class="text-amber-200/80">${escapeHtml(usageLabel)}</span>
+          </span>
+        `;
+      })
+      .join('');
+    sections.push(`
+      <div class="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h4 class="text-xs font-semibold text-amber-200">待分类知识点</h4>
+            <p class="text-[11px] text-amber-100/80">拖拽或使用快捷筛选，快速整理知识树。</p>
+          </div>
+          <button type="button" class="rounded-lg border border-amber-400/60 px-2 py-0.5 text-[11px] text-amber-100 hover:border-amber-200" data-assist-filter="uncategorized">
+            筛选查看
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-2">${chips}</div>
+      </div>
+    `);
+  }
+
+  if (metadataSuggestions.length > 0) {
+    const cards = metadataSuggestions
+      .map((item) => {
+        const tags = Array.isArray(item.preview?.tags)
+          ? item.preview.tags
+              .map(
+                (tag) => `<span class="rounded-full bg-sky-500/20 px-2 py-0.5 text-[11px] text-sky-200">${escapeHtml(tag)}</span>`
+              )
+              .join('')
+          : '';
+        const summary = item.preview?.description
+          ? `<p class="text-[11px] text-slate-300/80 line-clamp-2">${escapeHtml(item.preview.description)}</p>`
+          : '';
+        return `
+          <div class="space-y-2 rounded-xl border border-sky-500/40 bg-sky-500/10 p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h4 class="text-xs font-semibold text-sky-200">${escapeHtml(item.name)}</h4>
+                <p class="text-[11px] text-slate-300/70">${escapeHtml(item.reason || '自动补全')}</p>
+              </div>
+              <button type="button" class="rounded-lg border border-sky-400 px-2 py-0.5 text-[11px] text-sky-100 hover:border-sky-200" data-assist-metadata="${escapeHtml(item.name)}">
+                一键补全
+              </button>
+            </div>
+            ${summary}
+            ${tags ? `<div class="flex flex-wrap gap-1">${tags}</div>` : ''}
+          </div>
+        `;
+      })
+      .join('');
+    sections.push(cards);
+  }
+
+  if (sections.length === 0) {
+    container.innerHTML = '';
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  }
+
+  if (emptyState) emptyState.classList.add('hidden');
+  container.innerHTML = sections.join('');
+
+  container.querySelectorAll('[data-assist-filter="uncategorized"]').forEach((button) => {
+    button.addEventListener('click', handleAssistFilterUncategorized);
+  });
+  container.querySelectorAll('[data-assist-metadata]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const name = button.dataset.assistMetadata;
+      if (name) {
+        handleAssistMetadataApply(name);
+      }
+    });
+  });
+}
+
+function attachKnowledgeListHandlers() {
+  const listEl = document.getElementById('admin-graph-points-list');
+  if (!listEl) return;
+
+  listEl.querySelectorAll('[data-knowledge-insert]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const name = button.dataset.knowledgeInsert;
+      handleKnowledgeInsertFromList(name);
+    });
+  });
+
+  listEl.querySelectorAll('li[data-knowledge-name]').forEach((item) => {
+    item.addEventListener('dragstart', handleKnowledgeDragStart);
+    item.addEventListener('dragend', handleKnowledgeDragEnd);
+  });
+}
+
+function handleKnowledgeDragStart(event) {
+  const item = event.currentTarget;
+  if (!item) return;
+  draggedKnowledgeName = item.dataset.knowledgeName || '';
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', draggedKnowledgeName);
+  }
+  item.classList.add('opacity-70');
+}
+
+function handleKnowledgeDragEnd(event) {
+  const item = event.currentTarget;
+  if (item) {
+    item.classList.remove('opacity-70');
+  }
+  draggedKnowledgeName = null;
+  clearCategoryDropHighlight();
+}
+
+function clearCategoryDropHighlight() {
+  document.querySelectorAll('[data-drop-target="category"]').forEach((node) => {
+    node.classList.remove('border-sky-400', 'text-sky-200');
+  });
+}
+
+function handleCategoryDragOver(event) {
+  if (!draggedKnowledgeName) return;
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  event.currentTarget.classList.add('border-sky-400', 'text-sky-200');
+}
+
+function handleCategoryDragLeave(event) {
+  event.currentTarget.classList.remove('border-sky-400', 'text-sky-200');
+}
+
+function handleCategoryDrop(event) {
+  if (!draggedKnowledgeName) return;
+  event.preventDefault();
+  const target = event.currentTarget;
+  target.classList.remove('border-sky-400', 'text-sky-200');
+  const pathKey = target.dataset.categoryPath || '';
+  const knowledgeName = draggedKnowledgeName;
+  draggedKnowledgeName = null;
+  moveKnowledgeToCategory(knowledgeName, pathKey);
+}
+
+function handleCategoryNodeClick(event) {
+  event.preventDefault();
+  const button = event.currentTarget;
+  const pathKey = button.dataset.categoryPath || '';
+
+  if (graphKnowledgeState.activeCategoryKey === pathKey) {
+    graphKnowledgeState.activeCategoryKey = '';
+    graphKnowledgeState.filters.category = '';
+  } else {
+    graphKnowledgeState.activeCategoryKey = pathKey;
+    graphKnowledgeState.filters.category = pathKey;
+  }
+
+  const filterSelect = document.getElementById('admin-graph-filter-category');
+  if (filterSelect) {
+    filterSelect.value = graphKnowledgeState.filters.category;
+  }
+
+  applyKnowledgeFilters();
+  renderCategoryTree();
+}
+
+function handleKnowledgeInsertFromList(name) {
+  if (!name || typeof window === 'undefined' || typeof window.openKnowledgeCardModal !== 'function') {
+    return;
+  }
+  const records =
+    state.admin &&
+    state.admin.graph &&
+    Array.isArray(state.admin.graph.knowledgePoints)
+      ? state.admin.graph.knowledgePoints
+      : [];
+  const matched = records.find((item) => item.name === name);
+  const payload = matched
+    ? {
+        name: matched.name,
+        summary: matched.summary || '',
+        bodyHtml: matched.bodyHtml || '',
+        imageUrl: matched.imageUrl || '',
+        imageAlt: matched.imageAlt || '',
+        knowledgeId: matched.knowledgeId || '',
+        tags: matched.tags || []
+      }
+    : { name };
+  window.openKnowledgeCardModal(payload, null);
+}
+
+function applyKnowledgeFilters() {
+  const searchValue = (graphKnowledgeState.filters.search || '').trim().toLowerCase();
+  const difficultyValue = graphKnowledgeState.filters.difficulty || '';
+  const categoryKey = graphKnowledgeState.activeCategoryKey || graphKnowledgeState.filters.category || '';
+
+  graphKnowledgeState.filteredKnowledgePoints = graphKnowledgeState.allKnowledgePoints.filter((point) => {
+    const name = point.name || '';
+    const description = point.description || '';
+    const tags = Array.isArray(point.tags) ? point.tags : [];
+
+    if (searchValue) {
+      const matchesSearch =
+        name.toLowerCase().includes(searchValue) ||
+        description.toLowerCase().includes(searchValue) ||
+        tags.some((tag) => tag.toLowerCase().includes(searchValue));
+      if (!matchesSearch) {
+        return false;
+      }
+    }
+
+    if (difficultyValue && point.difficulty !== difficultyValue) {
+      return false;
+    }
+
+    if (categoryKey) {
+      if (categoryKey === '未分类') {
+        if (point.category_path_key && point.category_path_key !== '未分类') {
+          return false;
+        }
+      } else if (point.category_path_key !== categoryKey) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  renderKnowledgePointsList();
+}
+
+async function moveKnowledgeToCategory(name, categoryPathKey, options = {}) {
+  if (!name) return;
+
+  const statusId = options.statusElementId || 'admin-graph-category-status';
+  try {
+    showStatus(statusId, `正在调整「${name}」的分类...`, 'info');
+
+    const payload = {};
+    if (categoryPathKey && categoryPathKey !== '未分类') {
+      payload.category_path = categoryPathKey
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment);
+    } else {
+      payload.category_path = [];
+    }
+
+    const response = await fetchWithAuth(`/api/graph/knowledge-points/${encodeURIComponent(name)}/category`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `更新分类失败: ${response.status}`);
+    }
+
+    showStatus(statusId, '分类已更新', 'success');
+    await loadKnowledgePoints();
+  } catch (error) {
+    console.error('更新分类失败:', error);
+    showStatus(statusId, `分类更新失败: ${error.message}`, 'error');
   }
 }
 
@@ -354,7 +775,13 @@ function showForm(mode = 'create', point = null) {
   if (point) {
     if (originalNameInput) originalNameInput.value = point.name;
     document.getElementById('admin-graph-form-name').value = point.name || '';
-    document.getElementById('admin-graph-form-category').value = point.category || '';
+    const categorySelect = document.getElementById('admin-graph-form-category');
+    if (categorySelect) {
+      const pathKey = Array.isArray(point.category_path) && point.category_path.length > 0
+        ? point.category_path.join('/')
+        : point.category_path_key || point.category || '';
+      categorySelect.value = pathKey || '';
+    }
     document.getElementById('admin-graph-form-description').value = point.description || '';
     document.getElementById('admin-graph-form-difficulty').value = point.difficulty || 'beginner';
     document.getElementById('admin-graph-form-importance').value = point.importance || 'medium';
@@ -368,6 +795,10 @@ function showForm(mode = 'create', point = null) {
   } else {
     // 重置表单
     resetForm();
+    const categorySelect = document.getElementById('admin-graph-form-category');
+    if (categorySelect) {
+      categorySelect.value = graphKnowledgeState.activeCategoryKey || '';
+    }
   }
 
   graphKnowledgeState.currentEditingPoint = point;
@@ -398,6 +829,11 @@ function resetForm() {
 
   renderPrerequisites([]);
   renderRelations([]);
+
+  const categorySelect = document.getElementById('admin-graph-form-category');
+  if (categorySelect) {
+    categorySelect.value = graphKnowledgeState.activeCategoryKey || '';
+  }
 }
 
 // 渲染前置依赖
@@ -467,9 +903,17 @@ async function handleFormSubmit(event) {
   const mode = document.getElementById('admin-graph-form-mode').value;
   const originalName = document.getElementById('admin-graph-form-original-name').value;
 
+  const categoryRawValue = document.getElementById('admin-graph-form-category').value || '';
+  const normalizedCategoryRaw = categoryRawValue === '未分类' ? '' : categoryRawValue;
+  const categoryPath = normalizedCategoryRaw
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(segment => segment);
+
   const data = {
     name: document.getElementById('admin-graph-form-name').value.trim(),
-    category: document.getElementById('admin-graph-form-category').value || null,
+    category: categoryPath.length > 0 ? categoryPath[categoryPath.length - 1] : null,
+    category_path: categoryPath,
     description: document.getElementById('admin-graph-form-description').value.trim() || null,
     difficulty: document.getElementById('admin-graph-form-difficulty').value,
     importance: document.getElementById('admin-graph-form-importance').value,
@@ -540,32 +984,71 @@ function handleCancelClick() {
 }
 
 // 搜索和过滤
-function handleSearchAndFilter() {
-  const searchValue = document.getElementById('admin-graph-search')?.value.toLowerCase() || '';
-  const categoryValue = document.getElementById('admin-graph-filter-category')?.value || '';
-  const difficultyValue = document.getElementById('admin-graph-filter-difficulty')?.value || '';
+function handleSearchAndFilter({ preserveActiveCategory = false } = {}) {
+  const searchInput = document.getElementById('admin-graph-search');
+  const categorySelect = document.getElementById('admin-graph-filter-category');
+  const difficultySelect = document.getElementById('admin-graph-filter-difficulty');
 
-  graphKnowledgeState.filters = {
-    search: searchValue,
-    category: categoryValue,
-    difficulty: difficultyValue
-  };
+  graphKnowledgeState.filters.search = searchInput ? searchInput.value : '';
+  graphKnowledgeState.filters.category = categorySelect ? categorySelect.value : '';
+  graphKnowledgeState.filters.difficulty = difficultySelect ? difficultySelect.value : '';
 
-  // 客户端过滤
-  graphKnowledgeState.filteredKnowledgePoints = graphKnowledgeState.allKnowledgePoints.filter(point => {
-    if (searchValue && !point.name.toLowerCase().includes(searchValue)) {
-      return false;
-    }
-    if (categoryValue && point.category !== categoryValue) {
-      return false;
-    }
-    if (difficultyValue && point.difficulty !== difficultyValue) {
-      return false;
-    }
-    return true;
-  });
+  if (!preserveActiveCategory) {
+    graphKnowledgeState.activeCategoryKey = graphKnowledgeState.filters.category;
+  }
 
+  applyKnowledgeFilters();
+  renderCategoryTree();
+}
+
+function handleAssistFilterUncategorized() {
+  graphKnowledgeState.activeCategoryKey = '未分类';
+  graphKnowledgeState.filters.category = '未分类';
+
+  const categorySelect = document.getElementById('admin-graph-filter-category');
+  if (categorySelect) {
+    categorySelect.value = '未分类';
+  }
+
+  applyKnowledgeFilters();
+  renderCategoryTree();
   renderKnowledgePointsList();
+  showStatus('admin-graph-assist-status', '已筛选未分类知识点', 'info');
+}
+
+async function handleAssistMetadataApply(name) {
+  if (!name) return;
+
+  const assist = graphKnowledgeState.smartAssist || {};
+  const suggestions = Array.isArray(assist.metadataSuggestions) ? assist.metadataSuggestions : [];
+  const suggestion = suggestions.find((item) => item.name === name);
+  if (!suggestion) {
+    showStatus('admin-graph-assist-status', '未找到可用的智能补全建议', 'error');
+    return;
+  }
+
+  const payload = { ...suggestion.fields };
+
+  if (Array.isArray(payload.tags)) {
+    payload.tags = payload.tags.slice();
+  }
+
+  try {
+    showStatus('admin-graph-assist-status', `正在补全「${name}」...`, 'info');
+    await updateKnowledgePoint(name, payload);
+    showStatus('admin-graph-assist-status', '已根据知识卡片补全信息', 'success');
+    await loadKnowledgePoints();
+
+    if (graphKnowledgeState.currentEditingPoint?.name === name) {
+      const refreshed = await fetchKnowledgePoint(name);
+      if (refreshed) {
+        showForm('edit', refreshed);
+      }
+    }
+  } catch (error) {
+    console.error('智能补全失败:', error);
+    showStatus('admin-graph-assist-status', `补全失败: ${error.message}`, 'error');
+  }
 }
 
 // Excel导入
@@ -700,16 +1183,46 @@ function removeRelation(name) {
 
 // 加载知识点列表
 async function loadKnowledgePoints() {
-  const points = await fetchKnowledgePoints();
+  const overview = await fetchKnowledgePoints();
+
+  const points = overview.knowledge_points || [];
   graphKnowledgeState.allKnowledgePoints = points;
-  graphKnowledgeState.filteredKnowledgePoints = points;
-  renderKnowledgePointsList();
+
+  graphKnowledgeState.categoryTree = Array.isArray(overview.category_tree) ? overview.category_tree : [];
+  graphKnowledgeState.stats = overview.stats || { total: points.length, categories: 0, difficulty: {} };
+  graphKnowledgeState.smartAssist = overview.assist || { uncategorized: [], metadataSuggestions: [] };
+
+  const categoryPaths = Array.isArray(overview.category_paths) ? overview.category_paths : [];
+  const categorySet = new Set(categoryPaths);
+  categorySet.add('未分类');
+  graphKnowledgeState.categories = Array.from(categorySet);
+
+  if (graphKnowledgeState.activeCategoryKey && !categorySet.has(graphKnowledgeState.activeCategoryKey)) {
+    graphKnowledgeState.activeCategoryKey = '';
+  }
+  if (graphKnowledgeState.filters.category && !categorySet.has(graphKnowledgeState.filters.category)) {
+    graphKnowledgeState.filters.category = '';
+  }
+
+  if (state.admin && state.admin.graph) {
+    state.admin.graph.knowledgePoints = overview.knowledge_cards || [];
+  }
+
+  renderCategoryOptions();
+  renderKnowledgeStats();
+  applyKnowledgeFilters();
+  renderCategoryTree();
+  renderSmartAssist();
 }
 
 // 加载分类列表
 async function loadCategories() {
   const categories = await fetchCategories();
-  graphKnowledgeState.categories = categories;
+  if (categories.length === 0) {
+    return;
+  }
+  const merged = new Set([...(graphKnowledgeState.categories || []), ...categories]);
+  graphKnowledgeState.categories = Array.from(merged);
   renderCategoryOptions();
 }
 
@@ -749,6 +1262,23 @@ function initGraphKnowledgeManagement() {
   const difficultyFilter = document.getElementById('admin-graph-filter-difficulty');
   if (difficultyFilter) {
     difficultyFilter.addEventListener('change', handleSearchAndFilter);
+  }
+
+  const resetButton = document.getElementById('admin-graph-category-reset');
+  if (resetButton) {
+    resetButton.addEventListener('click', () => {
+      graphKnowledgeState.activeCategoryKey = '';
+      graphKnowledgeState.filters.category = '';
+      const filterSelect = document.getElementById('admin-graph-filter-category');
+      if (filterSelect) {
+        filterSelect.value = '';
+      }
+      applyKnowledgeFilters();
+      renderCategoryTree();
+    });
+    resetButton.addEventListener('dragover', handleCategoryDragOver);
+    resetButton.addEventListener('dragleave', handleCategoryDragLeave);
+    resetButton.addEventListener('drop', handleCategoryDrop);
   }
 
   const importBtn = document.getElementById('admin-graph-import-excel');
