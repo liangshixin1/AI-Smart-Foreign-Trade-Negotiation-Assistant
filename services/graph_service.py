@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import os
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from neo4j import GraphDatabase, basic_auth
 from neo4j.exceptions import IncompleteCommit, Neo4jError, ServiceUnavailable
+from openpyxl import Workbook, load_workbook
 
 import database
 
@@ -1049,4 +1052,680 @@ def _build_node_subtitle(label: str, node: Dict[str, object]) -> Optional[str]:
     if label == "ProcessStep":
         return f"顺序：{node.get('orderIndex')}"
     return node.get("description")
+
+
+# ========== 知识点管理增强功能 ==========
+
+
+def list_knowledge_points_enhanced(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    difficulty: Optional[str] = None,
+) -> List[Dict[str, object]]:
+    """获取知识点列表，支持过滤搜索。"""
+
+    # 构建查询条件
+    where_clauses = []
+    params = {}
+
+    if search:
+        where_clauses.append("(k.name CONTAINS $search OR k.description CONTAINS $search)")
+        params["search"] = search
+
+    if category:
+        where_clauses.append("k.category = $category")
+        params["category"] = category
+
+    if difficulty:
+        where_clauses.append("k.difficulty = $difficulty")
+        params["difficulty"] = difficulty
+
+    where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+    query = f"""
+        MATCH (k:KnowledgePoint)
+        {where_clause}
+        OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
+        OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
+        WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
+        OPTIONAL MATCH (k)<-[:REQUIRES]-(dependent:KnowledgePoint)
+        OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
+        OPTIONAL MATCH (k)-[r:RELATED_TO]-(related:KnowledgePoint)
+        RETURN k.name AS name,
+               k.description AS description,
+               k.category AS category,
+               k.difficulty AS difficulty,
+               k.importance AS importance,
+               k.estimatedDuration AS estimated_duration,
+               k.content AS content,
+               k.tags AS tags,
+               count(DISTINCT p) AS practiceCount,
+               count(DISTINCT l) AS lessonCount,
+               collect(DISTINCT prereq.name) AS prerequisites,
+               collect(DISTINCT related.name) AS relations
+        ORDER BY name
+    """
+
+    return _execute_read(query, params)
+
+
+def get_knowledge_point(name: str) -> Dict[str, object]:
+    """获取单个知识点的详细信息。"""
+
+    records = _execute_read(
+        """
+        MATCH (k:KnowledgePoint {name: $name})
+        OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
+        OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
+        WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
+        OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
+        OPTIONAL MATCH (k)-[:RELATED_TO]-(related:KnowledgePoint)
+        RETURN k.name AS name,
+               k.description AS description,
+               k.category AS category,
+               k.difficulty AS difficulty,
+               k.importance AS importance,
+               k.estimatedDuration AS estimated_duration,
+               k.content AS content,
+               k.tags AS tags,
+               collect(DISTINCT p.id) AS practices,
+               collect(DISTINCT l.id) AS lessons,
+               collect(DISTINCT prereq.name) AS prerequisites,
+               collect(DISTINCT related.name) AS relations
+        """,
+        {"name": name},
+    )
+
+    if not records:
+        raise GraphEntityNotFoundError(f"Knowledge point '{name}' not found")
+
+    record = records[0]
+    return {
+        "name": record.get("name"),
+        "description": record.get("description"),
+        "category": record.get("category"),
+        "difficulty": record.get("difficulty"),
+        "importance": record.get("importance"),
+        "estimated_duration": record.get("estimated_duration"),
+        "content": record.get("content"),
+        "tags": [tag for tag in (record.get("tags") or []) if tag],
+        "practices": [p for p in (record.get("practices") or []) if p],
+        "lessons": [l for l in (record.get("lessons") or []) if l],
+        "prerequisites": [p for p in (record.get("prerequisites") or []) if p],
+        "relations": [r for r in (record.get("relations") or []) if r],
+    }
+
+
+def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
+    """创建新的知识点。"""
+
+    name = data.get("name", "").strip()
+    if not name:
+        raise ValueError("Knowledge point name is required")
+
+    # 检查是否已存在
+    existing = _execute_read(
+        "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+        {"name": name},
+    )
+    if existing:
+        raise ValueError(f"Knowledge point '{name}' already exists")
+
+    # 创建节点
+    _execute_write(
+        """
+        CREATE (k:KnowledgePoint {
+            name: $name,
+            description: $description,
+            category: $category,
+            difficulty: $difficulty,
+            importance: $importance,
+            estimatedDuration: $estimated_duration,
+            content: $content,
+            tags: $tags
+        })
+        """,
+        {
+            "name": name,
+            "description": data.get("description"),
+            "category": data.get("category"),
+            "difficulty": data.get("difficulty", "beginner"),
+            "importance": data.get("importance", "medium"),
+            "estimated_duration": data.get("estimated_duration"),
+            "content": data.get("content"),
+            "tags": data.get("tags", []),
+        },
+    )
+
+    return get_knowledge_point(name)
+
+
+def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, object]:
+    """更新知识点信息。"""
+
+    # 检查是否存在
+    existing = _execute_read(
+        "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+        {"name": name},
+    )
+    if not existing:
+        raise GraphEntityNotFoundError(f"Knowledge point '{name}' not found")
+
+    new_name = data.get("name", name).strip()
+
+    # 如果改名，检查新名称是否冲突
+    if new_name != name:
+        conflict = _execute_read(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+            {"name": new_name},
+        )
+        if conflict:
+            raise ValueError(f"Knowledge point '{new_name}' already exists")
+
+    # 更新节点
+    _execute_write(
+        """
+        MATCH (k:KnowledgePoint {name: $old_name})
+        SET k.name = $name,
+            k.description = $description,
+            k.category = $category,
+            k.difficulty = $difficulty,
+            k.importance = $importance,
+            k.estimatedDuration = $estimated_duration,
+            k.content = $content,
+            k.tags = $tags
+        """,
+        {
+            "old_name": name,
+            "name": new_name,
+            "description": data.get("description"),
+            "category": data.get("category"),
+            "difficulty": data.get("difficulty", "beginner"),
+            "importance": data.get("importance", "medium"),
+            "estimated_duration": data.get("estimated_duration"),
+            "content": data.get("content"),
+            "tags": data.get("tags", []),
+        },
+    )
+
+    return get_knowledge_point(new_name)
+
+
+def delete_knowledge_point(name: str) -> None:
+    """删除知识点及其所有关系。"""
+
+    # 检查是否存在
+    existing = _execute_read(
+        "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+        {"name": name},
+    )
+    if not existing:
+        raise GraphEntityNotFoundError(f"Knowledge point '{name}' not found")
+
+    # 删除节点及所有关系
+    _execute_write(
+        """
+        MATCH (k:KnowledgePoint {name: $name})
+        DETACH DELETE k
+        """,
+        {"name": name},
+    )
+
+
+def add_knowledge_prerequisite(name: str, prerequisite_name: str) -> Dict[str, object]:
+    """为知识点添加前置依赖关系。"""
+
+    # 检查两个知识点是否存在
+    for point_name in [name, prerequisite_name]:
+        existing = _execute_read(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+            {"name": point_name},
+        )
+        if not existing:
+            raise GraphEntityNotFoundError(f"Knowledge point '{point_name}' not found")
+
+    # 不能依赖自己
+    if name == prerequisite_name:
+        raise ValueError("A knowledge point cannot be a prerequisite of itself")
+
+    # 创建REQUIRES关系
+    _execute_write(
+        """
+        MATCH (k:KnowledgePoint {name: $name})
+        MATCH (prereq:KnowledgePoint {name: $prerequisite})
+        MERGE (k)-[:REQUIRES]->(prereq)
+        """,
+        {"name": name, "prerequisite": prerequisite_name},
+    )
+
+    return get_knowledge_point(name)
+
+
+def remove_knowledge_prerequisite(name: str, prerequisite_name: str) -> Dict[str, object]:
+    """移除知识点的前置依赖关系。"""
+
+    _execute_write(
+        """
+        MATCH (k:KnowledgePoint {name: $name})-[r:REQUIRES]->(prereq:KnowledgePoint {name: $prerequisite})
+        DELETE r
+        """,
+        {"name": name, "prerequisite": prerequisite_name},
+    )
+
+    return get_knowledge_point(name)
+
+
+def add_knowledge_relation(
+    name: str, related_name: str, relation_type: str = "RELATED_TO"
+) -> Dict[str, object]:
+    """为知识点添加关联关系。"""
+
+    # 检查两个知识点是否存在
+    for point_name in [name, related_name]:
+        existing = _execute_read(
+            "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+            {"name": point_name},
+        )
+        if not existing:
+            raise GraphEntityNotFoundError(f"Knowledge point '{point_name}' not found")
+
+    # 不能关联自己
+    if name == related_name:
+        raise ValueError("A knowledge point cannot be related to itself")
+
+    # 创建关联关系（双向）
+    _execute_write(
+        """
+        MATCH (k1:KnowledgePoint {name: $name})
+        MATCH (k2:KnowledgePoint {name: $related})
+        MERGE (k1)-[:RELATED_TO]-(k2)
+        """,
+        {"name": name, "related": related_name},
+    )
+
+    return get_knowledge_point(name)
+
+
+def remove_knowledge_relation(name: str, related_name: str) -> Dict[str, object]:
+    """移除知识点的关联关系。"""
+
+    _execute_write(
+        """
+        MATCH (k1:KnowledgePoint {name: $name})-[r:RELATED_TO]-(k2:KnowledgePoint {name: $related})
+        DELETE r
+        """,
+        {"name": name, "related": related_name},
+    )
+
+    return get_knowledge_point(name)
+
+
+def list_knowledge_categories() -> List[str]:
+    """获取所有知识点分类列表。"""
+
+    records = _execute_read(
+        """
+        MATCH (k:KnowledgePoint)
+        WHERE k.category IS NOT NULL AND k.category <> ''
+        RETURN DISTINCT k.category AS category
+        ORDER BY category
+        """
+    )
+
+    return [record["category"] for record in records if record.get("category")]
+
+
+def get_knowledge_categories_tree() -> List[Dict[str, object]]:
+    """获取知识点分类树形结构（包含每个分类的知识点数量）。"""
+
+    records = _execute_read(
+        """
+        MATCH (k:KnowledgePoint)
+        WHERE k.category IS NOT NULL AND k.category <> ''
+        WITH k.category AS category, count(k) AS count
+        RETURN category, count
+        ORDER BY category
+        """
+    )
+
+    return [
+        {"name": record["category"], "count": record["count"]}
+        for record in records
+    ]
+
+
+# ========== Excel/CSV 导入导出功能 ==========
+
+
+def export_knowledge_points_to_excel() -> io.BytesIO:
+    """将所有知识点导出为Excel文件。"""
+
+    points = list_knowledge_points_enhanced()
+
+    # 创建工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "知识点"
+
+    # 写入表头
+    headers = [
+        "名称",
+        "描述",
+        "分类",
+        "难度",
+        "重要性",
+        "预计学习时长(分钟)",
+        "标签(逗号分隔)",
+        "内容",
+        "前置依赖(逗号分隔)",
+        "关联知识点(逗号分隔)",
+    ]
+    ws.append(headers)
+
+    # 写入数据
+    for point in points:
+        tags = ", ".join(point.get("tags") or [])
+        prerequisites = ", ".join(point.get("prerequisites") or [])
+        relations = ", ".join(point.get("relations") or [])
+
+        row = [
+            point.get("name", ""),
+            point.get("description", ""),
+            point.get("category", ""),
+            point.get("difficulty", ""),
+            point.get("importance", ""),
+            point.get("estimated_duration", ""),
+            tags,
+            point.get("content", ""),
+            prerequisites,
+            relations,
+        ]
+        ws.append(row)
+
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 保存到字节流
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+def export_knowledge_points_to_csv() -> str:
+    """将所有知识点导出为CSV字符串。"""
+
+    points = list_knowledge_points_enhanced()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # 写入表头
+    headers = [
+        "名称",
+        "描述",
+        "分类",
+        "难度",
+        "重要性",
+        "预计学习时长(分钟)",
+        "标签(逗号分隔)",
+        "内容",
+        "前置依赖(逗号分隔)",
+        "关联知识点(逗号分隔)",
+    ]
+    writer.writerow(headers)
+
+    # 写入数据
+    for point in points:
+        tags = ", ".join(point.get("tags") or [])
+        prerequisites = ", ".join(point.get("prerequisites") or [])
+        relations = ", ".join(point.get("relations") or [])
+
+        row = [
+            point.get("name", ""),
+            point.get("description", ""),
+            point.get("category", ""),
+            point.get("difficulty", ""),
+            point.get("importance", ""),
+            point.get("estimated_duration", ""),
+            tags,
+            point.get("content", ""),
+            prerequisites,
+            relations,
+        ]
+        writer.writerow(row)
+
+    return output.getvalue()
+
+
+def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
+    """
+    从Excel文件导入知识点。
+    返回导入统计：{"created": 数量, "updated": 数量, "failed": 数量, "errors": [错误列表]}
+    """
+
+    stats = {"created": 0, "updated": 0, "failed": 0, "errors": []}
+
+    try:
+        wb = load_workbook(io.BytesIO(file_content))
+        ws = wb.active
+
+        # 读取表头
+        headers = [cell.value for cell in ws[1]]
+
+        # 查找列索引
+        col_indices = {}
+        for idx, header in enumerate(headers):
+            if header == "名称":
+                col_indices["name"] = idx
+            elif header == "描述":
+                col_indices["description"] = idx
+            elif header == "分类":
+                col_indices["category"] = idx
+            elif header == "难度":
+                col_indices["difficulty"] = idx
+            elif header == "重要性":
+                col_indices["importance"] = idx
+            elif header == "预计学习时长(分钟)":
+                col_indices["estimated_duration"] = idx
+            elif header == "标签(逗号分隔)":
+                col_indices["tags"] = idx
+            elif header == "内容":
+                col_indices["content"] = idx
+            elif header == "前置依赖(逗号分隔)":
+                col_indices["prerequisites"] = idx
+            elif header == "关联知识点(逗号分隔)":
+                col_indices["relations"] = idx
+
+        # 检查必需字段
+        if "name" not in col_indices:
+            stats["errors"].append("Excel文件缺少'名称'列")
+            return stats
+
+        # 处理每一行
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            try:
+                name = row[col_indices["name"]]
+                if not name or not str(name).strip():
+                    continue
+
+                # 构建数据对象
+                data = {
+                    "name": str(name).strip(),
+                    "description": str(row[col_indices.get("description")] or "").strip() or None,
+                    "category": str(row[col_indices.get("category")] or "").strip() or None,
+                    "difficulty": str(row[col_indices.get("difficulty")] or "beginner").strip() or "beginner",
+                    "importance": str(row[col_indices.get("importance")] or "medium").strip() or "medium",
+                    "content": str(row[col_indices.get("content")] or "").strip() or None,
+                }
+
+                # 处理预计学习时长
+                duration_value = row[col_indices.get("estimated_duration")]
+                if duration_value:
+                    try:
+                        data["estimated_duration"] = int(duration_value)
+                    except (ValueError, TypeError):
+                        data["estimated_duration"] = None
+                else:
+                    data["estimated_duration"] = None
+
+                # 处理标签
+                tags_value = row[col_indices.get("tags")]
+                if tags_value:
+                    tags = [tag.strip() for tag in str(tags_value).split(",") if tag.strip()]
+                    data["tags"] = tags
+                else:
+                    data["tags"] = []
+
+                # 检查是否已存在
+                existing = _execute_read(
+                    "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+                    {"name": data["name"]},
+                )
+
+                if existing:
+                    # 更新
+                    update_knowledge_point(data["name"], data)
+                    stats["updated"] += 1
+                else:
+                    # 创建
+                    create_knowledge_point(data)
+                    stats["created"] += 1
+
+                # 处理前置依赖
+                prerequisites_value = row[col_indices.get("prerequisites")]
+                if prerequisites_value:
+                    prereqs = [p.strip() for p in str(prerequisites_value).split(",") if p.strip()]
+                    for prereq in prereqs:
+                        try:
+                            add_knowledge_prerequisite(data["name"], prereq)
+                        except Exception as e:
+                            stats["errors"].append(
+                                f"行{row_idx}: 添加前置依赖'{prereq}'失败: {str(e)}"
+                            )
+
+                # 处理关联关系
+                relations_value = row[col_indices.get("relations")]
+                if relations_value:
+                    relations = [r.strip() for r in str(relations_value).split(",") if r.strip()]
+                    for relation in relations:
+                        try:
+                            add_knowledge_relation(data["name"], relation)
+                        except Exception as e:
+                            stats["errors"].append(
+                                f"行{row_idx}: 添加关联'{relation}'失败: {str(e)}"
+                            )
+
+            except Exception as e:
+                stats["failed"] += 1
+                stats["errors"].append(f"行{row_idx}: {str(e)}")
+
+    except Exception as e:
+        stats["errors"].append(f"读取Excel文件失败: {str(e)}")
+
+    return stats
+
+
+def import_knowledge_points_from_csv(file_content: str) -> Dict[str, int]:
+    """
+    从CSV文件导入知识点。
+    返回导入统计：{"created": 数量, "updated": 数量, "failed": 数量, "errors": [错误列表]}
+    """
+
+    stats = {"created": 0, "updated": 0, "failed": 0, "errors": []}
+
+    try:
+        reader = csv.DictReader(io.StringIO(file_content))
+
+        for row_idx, row in enumerate(reader, start=2):
+            try:
+                name = row.get("名称", "").strip()
+                if not name:
+                    continue
+
+                # 构建数据对象
+                data = {
+                    "name": name,
+                    "description": row.get("描述", "").strip() or None,
+                    "category": row.get("分类", "").strip() or None,
+                    "difficulty": row.get("难度", "beginner").strip() or "beginner",
+                    "importance": row.get("重要性", "medium").strip() or "medium",
+                    "content": row.get("内容", "").strip() or None,
+                }
+
+                # 处理预计学习时长
+                duration_value = row.get("预计学习时长(分钟)", "").strip()
+                if duration_value:
+                    try:
+                        data["estimated_duration"] = int(duration_value)
+                    except (ValueError, TypeError):
+                        data["estimated_duration"] = None
+                else:
+                    data["estimated_duration"] = None
+
+                # 处理标签
+                tags_value = row.get("标签(逗号分隔)", "").strip()
+                if tags_value:
+                    tags = [tag.strip() for tag in tags_value.split(",") if tag.strip()]
+                    data["tags"] = tags
+                else:
+                    data["tags"] = []
+
+                # 检查是否已存在
+                existing = _execute_read(
+                    "MATCH (k:KnowledgePoint {name: $name}) RETURN k",
+                    {"name": data["name"]},
+                )
+
+                if existing:
+                    # 更新
+                    update_knowledge_point(data["name"], data)
+                    stats["updated"] += 1
+                else:
+                    # 创建
+                    create_knowledge_point(data)
+                    stats["created"] += 1
+
+                # 处理前置依赖
+                prerequisites_value = row.get("前置依赖(逗号分隔)", "").strip()
+                if prerequisites_value:
+                    prereqs = [p.strip() for p in prerequisites_value.split(",") if p.strip()]
+                    for prereq in prereqs:
+                        try:
+                            add_knowledge_prerequisite(data["name"], prereq)
+                        except Exception as e:
+                            stats["errors"].append(
+                                f"行{row_idx}: 添加前置依赖'{prereq}'失败: {str(e)}"
+                            )
+
+                # 处理关联关系
+                relations_value = row.get("关联知识点(逗号分隔)", "").strip()
+                if relations_value:
+                    relations = [r.strip() for r in relations_value.split(",") if r.strip()]
+                    for relation in relations:
+                        try:
+                            add_knowledge_relation(data["name"], relation)
+                        except Exception as e:
+                            stats["errors"].append(
+                                f"行{row_idx}: 添加关联'{relation}'失败: {str(e)}"
+                            )
+
+            except Exception as e:
+                stats["failed"] += 1
+                stats["errors"].append(f"行{row_idx}: {str(e)}")
+
+    except Exception as e:
+        stats["errors"].append(f"读取CSV文件失败: {str(e)}")
+
+    return stats
 
