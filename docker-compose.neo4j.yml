@@ -25,11 +25,7 @@ services:
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
 
-      # 性能优化
-      - NEO4J_dbms_transaction_timeout=30s
-      - NEO4J_dbms_locks_acquisition_timeout=10s
-
-      # 日志级别 (Neo4j 5.x使用默认配置即可)
+      # 性能优化配置 (Neo4j 5.x使用默认优化配置)
 
     volumes:
       # 数据持久化
