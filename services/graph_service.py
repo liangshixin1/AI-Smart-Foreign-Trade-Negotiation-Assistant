@@ -6,6 +6,7 @@ import csv
 import io
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -803,6 +804,27 @@ def _normalize_knowledge_point_payloads(points: Sequence[object]) -> List[Dict[s
     return normalized
 
 
+def _normalize_category_path_input(value: Optional[object]) -> List[str]:
+    """Normalize category path inputs from APIs or imports into a list of segments."""
+
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        result = [str(item).strip() for item in value if str(item).strip()]
+        return [segment for segment in result if segment]
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return []
+        separators = re.compile(r"[>/\\|]")
+        return [segment.strip() for segment in separators.split(cleaned) if segment.strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _category_path_to_string(path: Sequence[str]) -> str:
+    return "/".join(segment.strip() for segment in path if segment)
+
+
 def get_practice_detail(practice_id: str) -> Dict[str, object]:
     try:
         records = _execute_read(
@@ -892,6 +914,9 @@ def list_knowledge_points() -> List[Dict[str, object]]:
                k.bodyHtml AS bodyHtml,
                k.imageUrl AS imageUrl,
                k.imageAlt AS imageAlt,
+               k.category AS category,
+               k.categoryPath AS categoryPath,
+               k.orderIndex AS orderIndex,
                k.sourceId AS knowledgeId,
                k.tags AS tags,
                count(DISTINCT p) AS practiceCount,
@@ -1094,10 +1119,12 @@ def list_knowledge_points_enhanced(
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
+               k.categoryPath AS category_path,
                k.difficulty AS difficulty,
                k.importance AS importance,
                k.estimatedDuration AS estimated_duration,
                k.content AS content,
+               k.orderIndex AS order_index,
                k.tags AS tags,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount,
@@ -1123,10 +1150,12 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
+               k.categoryPath AS category_path,
                k.difficulty AS difficulty,
                k.importance AS importance,
                k.estimatedDuration AS estimated_duration,
                k.content AS content,
+               k.orderIndex AS order_index,
                k.tags AS tags,
                collect(DISTINCT p.id) AS practices,
                collect(DISTINCT l.id) AS lessons,
@@ -1144,10 +1173,12 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         "name": record.get("name"),
         "description": record.get("description"),
         "category": record.get("category"),
+        "category_path": [segment for segment in (record.get("category_path") or []) if segment],
         "difficulty": record.get("difficulty"),
         "importance": record.get("importance"),
         "estimated_duration": record.get("estimated_duration"),
         "content": record.get("content"),
+        "order_index": record.get("order_index"),
         "tags": [tag for tag in (record.get("tags") or []) if tag],
         "practices": [p for p in (record.get("practices") or []) if p],
         "lessons": [l for l in (record.get("lessons") or []) if l],
@@ -1171,6 +1202,15 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
     if existing:
         raise ValueError(f"Knowledge point '{name}' already exists")
 
+    category_path = _normalize_category_path_input(
+        data.get("category_path") or data.get("categoryPath") or data.get("category")
+    )
+    category_value = data.get("category") or (category_path[-1] if category_path else None)
+    try:
+        order_index = int(data.get("order_index") or data.get("orderIndex") or 0)
+    except (ValueError, TypeError):
+        order_index = 0
+
     # 创建节点
     _execute_write(
         """
@@ -1178,9 +1218,11 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
             name: $name,
             description: $description,
             category: $category,
+            categoryPath: $category_path,
             difficulty: $difficulty,
             importance: $importance,
             estimatedDuration: $estimated_duration,
+            orderIndex: $order_index,
             content: $content,
             tags: $tags
         })
@@ -1188,10 +1230,12 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
         {
             "name": name,
             "description": data.get("description"),
-            "category": data.get("category"),
+            "category": category_value,
+            "category_path": category_path,
             "difficulty": data.get("difficulty", "beginner"),
             "importance": data.get("importance", "medium"),
             "estimated_duration": data.get("estimated_duration"),
+            "order_index": order_index,
             "content": data.get("content"),
             "tags": data.get("tags", []),
         },
@@ -1201,7 +1245,7 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
 
 
 def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, object]:
-    """更新知识点信息。"""
+    """更新知识点信息，支持部分字段更新。"""
 
     # 检查是否存在
     existing = _execute_read(
@@ -1211,7 +1255,8 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
     if not existing:
         raise GraphEntityNotFoundError(f"Knowledge point '{name}' not found")
 
-    new_name = data.get("name", name).strip()
+    node = existing[0]["k"]
+    new_name = (data.get("name") or name).strip()
 
     # 如果改名，检查新名称是否冲突
     if new_name != name:
@@ -1222,6 +1267,51 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
         if conflict:
             raise ValueError(f"Knowledge point '{new_name}' already exists")
 
+    category_field_provided = any(
+        key in data for key in ("category_path", "categoryPath", "category")
+    )
+    if category_field_provided:
+        category_path = _normalize_category_path_input(
+            data.get("category_path") or data.get("categoryPath") or data.get("category")
+        )
+        category_value = data.get("category") or (category_path[-1] if category_path else None)
+    else:
+        category_path = [segment for segment in (node.get("categoryPath") or []) if segment]
+        category_value = node.get("category")
+
+    if "order_index" in data or "orderIndex" in data:
+        try:
+            order_index = int(data.get("order_index") or data.get("orderIndex") or 0)
+        except (ValueError, TypeError):
+            order_index = node.get("orderIndex") or 0
+    else:
+        order_index = node.get("orderIndex") or 0
+
+    description = data.get("description") if "description" in data else node.get("description")
+    difficulty = data.get("difficulty") if "difficulty" in data else node.get("difficulty")
+    if difficulty is None:
+        difficulty = "beginner"
+
+    importance = data.get("importance") if "importance" in data else node.get("importance")
+    if importance is None:
+        importance = "medium"
+
+    estimated_duration = (
+        data.get("estimated_duration") if "estimated_duration" in data else node.get("estimatedDuration")
+    )
+    content = data.get("content") if "content" in data else node.get("content")
+
+    if "tags" in data:
+        tags_field = data.get("tags")
+        if isinstance(tags_field, str):
+            tags = [tag.strip() for tag in tags_field.split(",") if tag.strip()]
+        elif isinstance(tags_field, (list, tuple)):
+            tags = [str(tag).strip() for tag in tags_field if str(tag).strip()]
+        else:
+            tags = []
+    else:
+        tags = [tag for tag in (node.get("tags") or []) if tag]
+
     # 更新节点
     _execute_write(
         """
@@ -1229,28 +1319,296 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
         SET k.name = $name,
             k.description = $description,
             k.category = $category,
+            k.categoryPath = $category_path,
             k.difficulty = $difficulty,
             k.importance = $importance,
             k.estimatedDuration = $estimated_duration,
+            k.orderIndex = $order_index,
             k.content = $content,
             k.tags = $tags
         """,
         {
             "old_name": name,
             "name": new_name,
-            "description": data.get("description"),
-            "category": data.get("category"),
-            "difficulty": data.get("difficulty", "beginner"),
-            "importance": data.get("importance", "medium"),
-            "estimated_duration": data.get("estimated_duration"),
-            "content": data.get("content"),
-            "tags": data.get("tags", []),
+            "description": description,
+            "category": category_value,
+            "category_path": category_path,
+            "difficulty": difficulty,
+            "importance": importance,
+            "estimated_duration": estimated_duration,
+            "order_index": order_index,
+            "content": content,
+            "tags": tags,
         },
     )
 
     return get_knowledge_point(new_name)
 
 
+def update_knowledge_point_category(
+    name: str,
+    category_path_value: Optional[object],
+    *,
+    order_index: Optional[object] = None,
+) -> Dict[str, object]:
+    """快速更新知识点的分类与排序信息。"""
+
+    # 确保知识点存在
+    existing = _execute_read("MATCH (k:KnowledgePoint {name: $name}) RETURN k", {"name": name})
+    if not existing:
+        raise GraphEntityNotFoundError(f"Knowledge point '{name}' not found")
+
+    category_path = _normalize_category_path_input(category_path_value)
+    category_value = category_path[-1] if category_path else None
+    resolved_order: Optional[int]
+    if order_index is None:
+        resolved_order = None
+    else:
+        try:
+            resolved_order = int(order_index)
+        except (TypeError, ValueError):
+            resolved_order = None
+
+    _execute_write(
+        """
+        MATCH (k:KnowledgePoint {name: $name})
+        SET k.category = $category,
+            k.categoryPath = $category_path,
+            k.orderIndex = COALESCE($order_index, k.orderIndex)
+        """,
+        {
+            "name": name,
+            "category": category_value,
+            "category_path": category_path,
+            "order_index": resolved_order,
+        },
+    )
+
+    return get_knowledge_point(name)
+
+
+def get_knowledge_management_overview() -> Dict[str, object]:
+    """聚合知识点、分类树和知识卡索引，供前端统一加载。"""
+
+    raw_points = list_knowledge_points_enhanced()
+    card_payloads = list_knowledge_points()
+    card_by_name = {card.get("name"): card for card in card_payloads if card.get("name")}
+
+    overview_points: List[Dict[str, object]] = []
+    category_paths: Dict[str, None] = {}
+    difficulty_breakdown: Dict[str, int] = {}
+    uncategorized_points: List[Dict[str, object]] = []
+    metadata_suggestions: List[Dict[str, object]] = []
+    uncategorized_count = 0
+    unlinked_count = 0
+
+    tree_root: Dict[str, object] = {
+        "id": "__root__",
+        "name": "全部",
+        "path": [],
+        "count": 0,
+        "children": {},
+        "knowledge": [],
+    }
+
+    def _ensure_child(parent: Dict[str, object], segment: str, path: Sequence[str]) -> Dict[str, object]:
+        children = parent.setdefault("children", {})
+        if segment not in children:
+            key = _category_path_to_string(path)
+            children[segment] = {
+                "id": key or "未分类",
+                "name": segment,
+                "path": list(path),
+                "count": 0,
+                "children": {},
+                "knowledge": [],
+                "_order": len(children),
+            }
+        return children[segment]
+
+    def _append_to_tree(path: Sequence[str], payload: Dict[str, object]) -> None:
+        effective_path = list(path) if path else ["未分类"]
+        current = tree_root
+        current["count"] = current.get("count", 0) + 1
+        for index, segment in enumerate(effective_path, start=1):
+            sub_path = effective_path[:index]
+            current = _ensure_child(current, segment, sub_path)
+            current["count"] = current.get("count", 0) + 1
+        current.setdefault("knowledge", []).append(payload)
+
+    for point in raw_points:
+        name = point.get("name")
+        if not name:
+            continue
+        raw_category_path = point.get("category_path")
+        category_path = _normalize_category_path_input(
+            raw_category_path if raw_category_path is not None else point.get("category")
+        )
+        category_path_key = _category_path_to_string(category_path) or "未分类"
+        category_paths[category_path_key] = None
+
+        order_index = point.get("order_index")
+        try:
+            order_index_value = int(order_index) if order_index is not None else 0
+        except (TypeError, ValueError):
+            order_index_value = 0
+
+        difficulty = point.get("difficulty") or "beginner"
+        difficulty_breakdown[difficulty] = difficulty_breakdown.get(difficulty, 0) + 1
+
+        tags = [tag for tag in (point.get("tags") or []) if tag]
+        prerequisites = sorted({p for p in (point.get("prerequisites") or []) if p})
+        relations = sorted({r for r in (point.get("relations") or []) if r})
+
+        category_label = " / ".join(category_path) if category_path else "未分类"
+
+        if not category_path:
+            uncategorized_count += 1
+            uncategorized_points.append(
+                {
+                    "name": name,
+                    "practiceCount": point.get("practiceCount", 0),
+                    "lessonCount": point.get("lessonCount", 0),
+                }
+            )
+
+        overview = {
+            "name": name,
+            "description": point.get("description") or "",
+            "category": category_path[-1] if category_path else None,
+            "category_path": category_path,
+            "category_path_key": category_path_key,
+            "category_path_text": category_label,
+            "difficulty": difficulty,
+            "importance": point.get("importance"),
+            "estimated_duration": point.get("estimated_duration"),
+            "content": point.get("content") or "",
+            "order_index": order_index_value,
+            "tags": tags,
+            "prerequisites": prerequisites,
+            "relations": relations,
+            "practiceCount": point.get("practiceCount", 0),
+            "lessonCount": point.get("lessonCount", 0),
+        }
+        overview_points.append(overview)
+
+        if not overview["practiceCount"] and not overview["lessonCount"]:
+            unlinked_count += 1
+
+        tree_payload = {
+            "name": name,
+            "difficulty": difficulty,
+            "order_index": order_index_value,
+            "tags": tags,
+            "category_path_key": category_path_key,
+        }
+        _append_to_tree(category_path, tree_payload)
+
+        card = card_by_name.get(name) or {}
+        metadata_fields: Dict[str, object] = {}
+        metadata_preview: Dict[str, object] = {}
+        summary = card.get("summary")
+        if not overview.get("description") and summary:
+            metadata_fields["description"] = summary
+            metadata_preview["description"] = summary
+        card_tags = [tag for tag in (card.get("tags") or []) if tag]
+        if not tags and card_tags:
+            metadata_fields["tags"] = card_tags
+            metadata_preview["tags"] = card_tags
+        if metadata_fields:
+            metadata_suggestions.append(
+                {
+                    "name": name,
+                    "fields": metadata_fields,
+                    "preview": metadata_preview,
+                    "reason": "根据已存在的理论知识卡片信息自动补全",
+                }
+            )
+
+    def _serialize_tree(node: Dict[str, object]) -> Dict[str, object]:
+        children_map = node.get("children") or {}
+        serialized_children = []
+        for _, child in sorted(children_map.items(), key=lambda item: item[1].get("_order", 0)):
+            child_payload = {
+                "id": child.get("id"),
+                "name": child.get("name"),
+                "path": child.get("path", []),
+                "count": child.get("count", 0),
+                "knowledge": sorted(
+                    child.get("knowledge", []),
+                    key=lambda payload: (payload.get("order_index", 0), payload.get("name", "")),
+                ),
+                "children": [],
+            }
+            child_payload["children"] = _serialize_tree(child).get("children", [])
+            serialized_children.append(child_payload)
+        return {"children": serialized_children}
+
+    tree_children = _serialize_tree(tree_root).get("children", [])
+
+    category_options = sorted(path for path in category_paths.keys() if path)
+    for card in card_payloads:
+        card_path = _normalize_category_path_input(
+            card.get("categoryPath") if card.get("categoryPath") is not None else card.get("category")
+        )
+        path_key = _category_path_to_string(card_path)
+        if path_key:
+            category_options.append(path_key)
+    category_options = sorted({path for path in category_options if path})
+    if "未分类" not in category_options:
+        category_options.append("未分类")
+
+    stats = {
+        "total": len(overview_points),
+        "categories": len(category_options),
+        "difficulty": difficulty_breakdown,
+        "uncategorized": uncategorized_count,
+        "unlinked": unlinked_count,
+    }
+
+    knowledge_cards: List[Dict[str, object]] = []
+    for name, card in card_by_name.items():
+        if not name:
+            continue
+        card_category_path = _normalize_category_path_input(
+            card.get("categoryPath") if card.get("categoryPath") is not None else card.get("category")
+        )
+        knowledge_cards.append(
+            {
+                "name": name,
+                "summary": card.get("summary") or "",
+                "bodyHtml": card.get("bodyHtml") or "",
+                "imageUrl": card.get("imageUrl") or "",
+                "imageAlt": card.get("imageAlt") or "",
+                "knowledgeId": card.get("knowledgeId") or "",
+                "tags": [tag for tag in (card.get("tags") or []) if tag],
+                "practiceCount": card.get("practiceCount", 0),
+                "lessonCount": card.get("lessonCount", 0),
+                "category_path": card_category_path,
+            }
+        )
+
+    knowledge_cards.sort(key=lambda item: item.get("name", ""))
+
+    overview_points.sort(key=lambda item: (item.get("order_index", 0), item.get("name", "")))
+
+    smart_assist = {
+        "uncategorized": sorted(
+            uncategorized_points,
+            key=lambda item: (item.get("practiceCount", 0) + item.get("lessonCount", 0), item.get("name", "")),
+            reverse=True,
+        ),
+        "metadata_suggestions": metadata_suggestions,
+    }
+
+    return {
+        "knowledge_points": overview_points,
+        "category_tree": tree_children,
+        "category_paths": category_options,
+        "stats": stats,
+        "knowledge_cards": knowledge_cards,
+        "assist": smart_assist,
+    }
 def delete_knowledge_point(name: str) -> None:
     """删除知识点及其所有关系。"""
 
@@ -1412,6 +1770,7 @@ def export_knowledge_points_to_excel() -> io.BytesIO:
         "名称",
         "描述",
         "分类",
+        "分类路径",
         "难度",
         "重要性",
         "预计学习时长(分钟)",
@@ -1432,6 +1791,7 @@ def export_knowledge_points_to_excel() -> io.BytesIO:
             point.get("name", ""),
             point.get("description", ""),
             point.get("category", ""),
+            " / ".join(point.get("category_path") or []) if point.get("category_path") else "",
             point.get("difficulty", ""),
             point.get("importance", ""),
             point.get("estimated_duration", ""),
@@ -1475,6 +1835,7 @@ def export_knowledge_points_to_csv() -> str:
         "名称",
         "描述",
         "分类",
+        "分类路径",
         "难度",
         "重要性",
         "预计学习时长(分钟)",
@@ -1495,6 +1856,7 @@ def export_knowledge_points_to_csv() -> str:
             point.get("name", ""),
             point.get("description", ""),
             point.get("category", ""),
+            " / ".join(point.get("category_path") or []) if point.get("category_path") else "",
             point.get("difficulty", ""),
             point.get("importance", ""),
             point.get("estimated_duration", ""),
@@ -1532,6 +1894,8 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                 col_indices["description"] = idx
             elif header == "分类":
                 col_indices["category"] = idx
+            elif header == "分类路径":
+                col_indices["category_path"] = idx
             elif header == "难度":
                 col_indices["difficulty"] = idx
             elif header == "重要性":
@@ -1563,11 +1927,21 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                 data = {
                     "name": str(name).strip(),
                     "description": str(row[col_indices.get("description")] or "").strip() or None,
-                    "category": str(row[col_indices.get("category")] or "").strip() or None,
                     "difficulty": str(row[col_indices.get("difficulty")] or "beginner").strip() or "beginner",
                     "importance": str(row[col_indices.get("importance")] or "medium").strip() or "medium",
                     "content": str(row[col_indices.get("content")] or "").strip() or None,
                 }
+
+                raw_category_value = row[col_indices.get("category")] if col_indices.get("category") is not None else None
+                category_value = str(raw_category_value).strip() if raw_category_value else None
+                raw_category_path = row[col_indices.get("category_path")] if col_indices.get("category_path") is not None else None
+                category_path = _normalize_category_path_input(raw_category_path or category_value)
+                if category_path:
+                    data["category_path"] = category_path
+                    data["category"] = category_value or category_path[-1]
+                else:
+                    data["category_path"] = []
+                    data["category"] = category_value
 
                 # 处理预计学习时长
                 duration_value = row[col_indices.get("estimated_duration")]
@@ -1657,11 +2031,19 @@ def import_knowledge_points_from_csv(file_content: str) -> Dict[str, int]:
                 data = {
                     "name": name,
                     "description": row.get("描述", "").strip() or None,
-                    "category": row.get("分类", "").strip() or None,
                     "difficulty": row.get("难度", "beginner").strip() or "beginner",
                     "importance": row.get("重要性", "medium").strip() or "medium",
                     "content": row.get("内容", "").strip() or None,
                 }
+
+                category_value = row.get("分类", "").strip() or None
+                category_path = _normalize_category_path_input(row.get("分类路径", "").strip() or category_value)
+                if category_path:
+                    data["category_path"] = category_path
+                    data["category"] = category_value or category_path[-1]
+                else:
+                    data["category_path"] = []
+                    data["category"] = category_value
 
                 # 处理预计学习时长
                 duration_value = row.get("预计学习时长(分钟)", "").strip()

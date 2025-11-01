@@ -3507,8 +3507,67 @@
               </section>
 
               <!-- 知识点列表和编辑 -->
-              <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                <!-- 左侧：知识点列表 -->
+              <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,2fr)]">
+                <!-- 分类树 -->
+                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 class="text-lg font-semibold text-white">知识分类树</h3>
+                      <p class="text-xs text-slate-400">拖拽知识点到分类分支，快速调整知识体系。</p>
+                    </div>
+                    <button
+                      id="admin-graph-category-reset"
+                      type="button"
+                      data-category-path=""
+                      class="rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200"
+                    >
+                      全部知识
+                    </button>
+                  </div>
+                  <div id="admin-graph-knowledge-stats" class="grid gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                    <div class="flex items-center justify-between">
+                      <span>知识点总数</span>
+                      <span id="admin-graph-stats-total" class="font-semibold text-sky-300">-</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>分类数量</span>
+                      <span id="admin-graph-stats-categories" class="font-semibold text-emerald-300">-</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>待分类</span>
+                      <span id="admin-graph-stats-uncategorized" class="font-semibold text-amber-300">-</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>未关联课程/关卡</span>
+                      <span id="admin-graph-stats-unlinked" class="font-semibold text-rose-300">-</span>
+                    </div>
+                    <div class="space-y-1">
+                      <p class="text-[11px] text-slate-500">难度分布</p>
+                      <div id="admin-graph-stats-difficulty" class="space-y-1"></div>
+                    </div>
+                  </div>
+                  <div class="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-200">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <h4 class="text-sm font-semibold text-white">智能辅助</h4>
+                        <p class="text-[11px] text-slate-400">自动识别待整理的知识点与可用内容补全。</p>
+                      </div>
+                      <svg class="h-5 w-5 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l3 3" />
+                      </svg>
+                    </div>
+                    <p id="admin-graph-assist-status" class="text-[11px] text-slate-500"></p>
+                    <div id="admin-graph-smart-assist-list" class="space-y-3"></div>
+                    <p id="admin-graph-smart-assist-empty" class="text-[11px] text-slate-500">
+                      当前暂无智能建议，可通过导入知识卡或完善知识点后刷新查看。
+                    </p>
+                  </div>
+                  <p id="admin-graph-category-status" class="text-[11px] text-slate-500"></p>
+                  <div id="admin-graph-category-tree" class="max-h-[600px] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-200"></div>
+                  <p class="text-[11px] text-slate-500">提示：列表中的知识点可以拖拽到任意分类节点，也可以拖拽到“全部知识”按钮快速归类为未分类。</p>
+                </section>
+
+                <!-- 中间：知识点列表 -->
                 <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div class="flex items-center justify-between gap-3">
                     <h3 class="text-lg font-semibold text-white">知识点列表</h3>
@@ -3521,12 +3580,11 @@
                     </button>
                   </div>
 
-                  <!-- 搜索和过滤 -->
                   <div class="space-y-2">
                     <input
                       id="admin-graph-search"
                       type="search"
-                      placeholder="搜索知识点名称..."
+                      placeholder="搜索知识点名称、描述或标签..."
                       class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
                     />
                     <div class="flex flex-wrap gap-2">
@@ -3548,11 +3606,10 @@
                     </div>
                   </div>
 
-                  <!-- 知识点列表 -->
                   <div class="max-h-[600px] space-y-2 overflow-y-auto">
                     <ul id="admin-graph-points-list" class="space-y-2"></ul>
-                    <p id="admin-graph-points-empty" class="hidden text-center text-xs text-slate-500 py-8">
-                      暂无知识点，点击"新增"创建
+                    <p id="admin-graph-points-empty" class="hidden py-8 text-center text-xs text-slate-500">
+                      暂无知识点，点击“新增”创建
                     </p>
                   </div>
                 </section>
