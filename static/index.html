@@ -19,6 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="/static/css/knowledge-tree.css" />
         <style>
       :root {
         --primary-color: #ff4040;
@@ -3408,7 +3409,18 @@
           </div>
           <div class="tab-panel" data-admin-panel="graph">
             <!-- 知识图谱可视化 -->
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <!-- 视图切换按钮 -->
+            <div class="flex gap-3 mb-4">
+              <button id="graph-view-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg" onclick="switchGraphView('network')">
+                📊 网络图谱视图
+              </button>
+              <button id="tree-view-btn" class="px-4 py-2 bg-gray-700 text-white rounded-lg" onclick="switchGraphView('tree')">
+                🌳 知识分类树视图
+              </button>
+            </div>
+
+            <!-- 网络图谱视图 -->
+            <div id="graph-network-view" class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -3452,6 +3464,13 @@
                   </div>
                 </section>
               </div>
+            </div>
+
+            <!-- 知识分类树视图 -->
+            <div id="graph-tree-view" class="hidden">
+              <section class="admin-panel-card rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+                <div id="knowledge-tree-container"></div>
+              </section>
             </div>
 
             <!-- 知识点管理面板 -->
@@ -4102,8 +4121,40 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/student.js"></script>
     <script src="/static/js/graph-knowledge.js"></script>
+    <script src="/static/js/knowledge-tree.js"></script>
     <script src="/static/js/admin.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/main.js"></script>
+    <script>
+      // 知识图谱视图切换功能
+      function switchGraphView(view) {
+        const networkView = document.getElementById('graph-network-view');
+        const treeView = document.getElementById('graph-tree-view');
+        const graphViewBtn = document.getElementById('graph-view-btn');
+        const treeViewBtn = document.getElementById('tree-view-btn');
+
+        if (view === 'network') {
+          networkView.classList.remove('hidden');
+          treeView.classList.add('hidden');
+          graphViewBtn.classList.remove('bg-gray-700');
+          graphViewBtn.classList.add('bg-blue-600');
+          treeViewBtn.classList.remove('bg-blue-600');
+          treeViewBtn.classList.add('bg-gray-700');
+        } else if (view === 'tree') {
+          networkView.classList.add('hidden');
+          treeView.classList.remove('hidden');
+          graphViewBtn.classList.remove('bg-blue-600');
+          graphViewBtn.classList.add('bg-gray-700');
+          treeViewBtn.classList.remove('bg-gray-700');
+          treeViewBtn.classList.add('bg-blue-600');
+
+          // 初始化树形视图
+          if (typeof initKnowledgeTreeView === 'function') {
+            initKnowledgeTreeView();
+          }
+        }
+      }
+      window.switchGraphView = switchGraphView;
+    </script>
   </body>
 </html>
