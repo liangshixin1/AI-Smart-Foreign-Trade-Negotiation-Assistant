@@ -6,7 +6,7 @@ from typing import Callable, Tuple
 
 from flask import Blueprint, jsonify, request, send_file
 
-from services import graph_service, knowledge_service
+from services import graph_service
 from services.auth_service import require_role
 
 
@@ -211,20 +211,9 @@ def list_categories():
 @bp.get("/api/graph/categories/tree")
 @require_role("teacher")
 def get_categories_tree():
-    """获取知识点分类树形结构（不含知识点）"""
+    """获取知识点分类树形结构"""
     def _handler() -> Tuple[dict, int]:
-        tree = knowledge_service.get_category_tree()
-        return {"categories": tree}, 200
-
-    return _graph_operation(_handler)
-
-
-@bp.get("/api/graph/categories/tree/with-knowledge")
-@require_role("teacher")
-def get_categories_tree_with_knowledge():
-    """获取知识点分类树形结构（包含知识点）"""
-    def _handler() -> Tuple[dict, int]:
-        tree = knowledge_service.get_category_tree_with_knowledge_points()
+        tree = graph_service.get_knowledge_categories_tree()
         return {"categories": tree}, 200
 
     return _graph_operation(_handler)
@@ -457,179 +446,3 @@ def export_csv():
         response["graphStatus"] = status_payload
         return jsonify(response), 503
 
-
-# ========== 知识分类管理端点 ==========
-
-
-@bp.post("/api/graph/categories")
-@require_role("teacher")
-def create_category():
-    """创建知识分类"""
-    body = request.get_json(force=True, silent=True) or {}
-
-    required_fields = ["id", "name"]
-    for field in required_fields:
-        if not body.get(field):
-            return jsonify({"error": f"Missing required field: {field}"}), 400
-
-    def _handler() -> Tuple[dict, int]:
-        category = knowledge_service.create_knowledge_category(
-            id=body["id"],
-            name=body["name"],
-            code=body.get("code", ""),
-            level=body.get("level", 1),
-            order_index=body.get("orderIndex", 0),
-            icon=body.get("icon", "📁"),
-            color=body.get("color", "#6B7280"),
-            description=body.get("description", ""),
-            parent_id=body.get("parentId"),
-        )
-        return category, 201
-
-    return _graph_operation(_handler)
-
-
-@bp.put("/api/graph/categories/<category_id>")
-@require_role("teacher")
-def update_category(category_id: str):
-    """更新知识分类"""
-    body = request.get_json(force=True, silent=True) or {}
-
-    def _handler() -> Tuple[dict, int]:
-        category = knowledge_service.update_category(category_id, **body)
-        if not category:
-            return {"error": f"Category {category_id} not found"}, 404
-        return category, 200
-
-    return _graph_operation(_handler)
-
-
-@bp.delete("/api/graph/categories/<category_id>")
-@require_role("teacher")
-def delete_category(category_id: str):
-    """删除知识分类（软删除）"""
-    def _handler() -> Tuple[dict, int]:
-        success = knowledge_service.delete_category(category_id)
-        if not success:
-            return {"error": f"Category {category_id} not found"}, 404
-        return {"message": f"Category '{category_id}' deleted successfully"}, 200
-
-    return _graph_operation(_handler)
-
-
-@bp.post("/api/graph/categories/reorder")
-@require_role("teacher")
-def reorder_categories():
-    """批量更新分类排序
-
-    请求体示例:
-    {
-        "orders": [
-            {"id": "category1", "orderIndex": 0},
-            {"id": "category2", "orderIndex": 1}
-        ]
-    }
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    orders = body.get("orders", [])
-
-    if not isinstance(orders, list):
-        return jsonify({"error": "orders must be a list"}), 400
-
-    def _handler() -> Tuple[dict, int]:
-        success = knowledge_service.reorder_categories(orders)
-        return {"message": "Categories reordered successfully", "count": len(orders)}, 200
-
-    return _graph_operation(_handler)
-
-
-@bp.post("/api/graph/categories/<category_id>/move")
-@require_role("teacher")
-def move_category(category_id: str):
-    """移动分类到新的父分类下
-
-    请求体示例:
-    {
-        "newParentId": "parent_category_id",  // null表示移动到根级别
-        "orderIndex": 0
-    }
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    new_parent_id = body.get("newParentId")
-    order_index = body.get("orderIndex", 0)
-
-    def _handler() -> Tuple[dict, int]:
-        success = knowledge_service.move_category(
-            category_id=category_id,
-            new_parent_id=new_parent_id,
-            new_order_index=order_index
-        )
-        return {"message": f"Category '{category_id}' moved successfully"}, 200
-
-    return _graph_operation(_handler)
-
-
-# ========== 知识点拖拽排序端点 ==========
-
-
-@bp.post("/api/graph/knowledge-points/reorder")
-@require_role("teacher")
-def reorder_knowledge_points():
-    """批量更新知识点在某个分类下的排序
-
-    请求体示例:
-    {
-        "categoryId": "category1",
-        "orders": [
-            {"name": "FOB", "orderIndex": 0},
-            {"name": "CIF", "orderIndex": 1}
-        ]
-    }
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    category_id = body.get("categoryId")
-    orders = body.get("orders", [])
-
-    if not category_id:
-        return jsonify({"error": "categoryId is required"}), 400
-    if not isinstance(orders, list):
-        return jsonify({"error": "orders must be a list"}), 400
-
-    def _handler() -> Tuple[dict, int]:
-        success = knowledge_service.reorder_knowledge_points_in_category(
-            category_id=category_id,
-            knowledge_point_orders=orders
-        )
-        return {"message": "Knowledge points reordered successfully", "count": len(orders)}, 200
-
-    return _graph_operation(_handler)
-
-
-@bp.post("/api/graph/knowledge-points/<name>/move")
-@require_role("teacher")
-def move_knowledge_point(name: str):
-    """将知识点移动到新的分类
-
-    请求体示例:
-    {
-        "newCategoryId": "category2",
-        "orderIndex": 0
-    }
-    """
-    body = request.get_json(force=True, silent=True) or {}
-    new_category_id = body.get("newCategoryId")
-    order_index = body.get("orderIndex", 0)
-
-    if not new_category_id:
-        return jsonify({"error": "newCategoryId is required"}), 400
-
-    def _handler() -> Tuple[dict, int]:
-        success = knowledge_service.move_knowledge_point_to_category(
-            knowledge_name=name,
-            new_category_id=new_category_id,
-            order_index=order_index,
-            updated_by="teacher"
-        )
-        return {"message": f"Knowledge point '{name}' moved successfully"}, 200
-
-    return _graph_operation(_handler)
