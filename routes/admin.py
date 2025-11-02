@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import chain
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from flask import Blueprint, jsonify, request, current_app
 from openpyxl import load_workbook
@@ -81,6 +81,36 @@ def _sync_graph_background() -> None:
         current_app.logger.warning("Skipping graph sync (service unavailable): %s", exc)
     except Exception as exc:  # pragma: no cover - logging safeguard
         current_app.logger.exception("Failed to sync knowledge graph: %s", exc)
+
+
+def _set_lesson_knowledge_points(
+    lesson_id: str, points: Sequence[object], *, allow_empty: bool = False
+) -> None:
+    """Attach knowledge points to a lesson in the graph, if configured."""
+
+    if not points and not allow_empty:
+        return
+    if not graph_service.is_configured():
+        current_app.logger.debug(
+            "Knowledge graph not configured, skipping lesson knowledge sync"
+        )
+        return
+
+    try:
+        graph_service.set_lesson_knowledge_points(lesson_id, points)
+        current_app.logger.debug(
+            "Synchronized %s knowledge points for lesson %s",
+            len(points),
+            lesson_id,
+        )
+    except graph_service.GraphUnavailableError as exc:
+        current_app.logger.warning(
+            "Skipping lesson knowledge sync (service unavailable): %s", exc
+        )
+    except Exception as exc:  # pragma: no cover - logging safeguard
+        current_app.logger.exception(
+            "Failed to synchronize lesson knowledge points: %s", exc
+        )
 
 
 @bp.post("/api/admin/students/import")
@@ -453,6 +483,12 @@ def create_admin_theory_lesson():
 
         section_id = normalize_text(data.get("sectionId")) or None
         is_published = as_bool(data.get("isPublished"), default=False)
+        knowledge_points = data.get("knowledgePoints") or []
+        if knowledge_points and not isinstance(knowledge_points, list):
+            current_app.logger.warning(
+                "Create theory lesson failed: knowledgePoints must be a list"
+            )
+            return jsonify({"error": "knowledgePoints must be a list"}), 400
 
         lesson = database.create_theory_lesson(
             topic_id=topic_id,
@@ -468,6 +504,8 @@ def create_admin_theory_lesson():
             return jsonify({"error": "Unable to create lesson"}), 400
 
         current_app.logger.info(f"Theory lesson created successfully: {lesson.get('id')} - {title}")
+        if knowledge_points:
+            _set_lesson_knowledge_points(lesson.get("id"), knowledge_points)
         _sync_graph_background()
         return jsonify({"lesson": lesson}), 201
     except Exception as exc:
@@ -480,6 +518,8 @@ def create_admin_theory_lesson():
 def update_admin_theory_lesson(lesson_id: str):
     data = request.get_json(force=True) or {}
     updates: Dict[str, object] = {}
+    knowledge_points_payload: Sequence[object] = []
+    knowledge_points_provided = False
 
     if "topicId" in data:
         updates["topic_id"] = normalize_text(data.get("topicId"))
@@ -506,10 +546,20 @@ def update_admin_theory_lesson(lesson_id: str):
         updates["section_id"] = section_value or None
     if "isPublished" in data:
         updates["is_published"] = as_bool(data.get("isPublished"))
+    if "knowledgePoints" in data:
+        raw_points = data.get("knowledgePoints") or []
+        if raw_points and not isinstance(raw_points, list):
+            return jsonify({"error": "knowledgePoints must be a list"}), 400
+        knowledge_points_provided = True
+        knowledge_points_payload = raw_points if isinstance(raw_points, list) else []
 
     lesson = database.update_theory_lesson(lesson_id, **updates)
     if not lesson:
         return jsonify({"error": "Lesson not found"}), 404
+    if knowledge_points_provided:
+        _set_lesson_knowledge_points(
+            lesson_id, knowledge_points_payload, allow_empty=True
+        )
     _sync_graph_background()
     return jsonify({"lesson": lesson})
 
