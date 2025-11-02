@@ -2609,6 +2609,9 @@ function renderAdminTheoryDocxPreview(importData = null) {
     if (adminTheoryDocxApply) {
       adminTheoryDocxApply.disabled = true;
     }
+    if (adminTheoryDocxPublish) {
+      adminTheoryDocxPublish.disabled = true;
+    }
     return;
   }
   const fragments = [];
@@ -2674,6 +2677,9 @@ function renderAdminTheoryDocxPreview(importData = null) {
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = false;
   }
+  if (adminTheoryDocxPublish) {
+    adminTheoryDocxPublish.disabled = false;
+  }
 }
 
 function clearAdminTheoryDocxImport(options = {}) {
@@ -2683,6 +2689,12 @@ function clearAdminTheoryDocxImport(options = {}) {
     adminTheoryDocxInput.value = "";
   }
   renderAdminTheoryDocxPreview(null);
+  if (adminTheoryDocxApply) {
+    adminTheoryDocxApply.disabled = true;
+  }
+  if (adminTheoryDocxPublish) {
+    adminTheoryDocxPublish.disabled = true;
+  }
   if (!options.silent) {
     updateInlineStatus(adminTheoryDocxStatus, "已清除导入结果", "muted");
   }
@@ -2698,6 +2710,9 @@ async function handleAdminTheoryDocxUpload() {
   updateInlineStatus(adminTheoryDocxStatus, `正在解析 ${file.name}...`, "muted");
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = true;
+  }
+  if (adminTheoryDocxPublish) {
+    adminTheoryDocxPublish.disabled = true;
   }
   try {
     const response = await fetchWithAuth("/api/admin/theory/import-docx", {
@@ -2735,7 +2750,7 @@ async function handleAdminTheoryDocxUpload() {
   }
 }
 
-async function applyAdminTheoryDocxImport() {
+async function applyAdminTheoryDocxImport({ publish = false } = {}) {
   ensureAdminTheoryState();
   const importData = state.admin.theory.pendingImport;
   if (!importData || !Array.isArray(importData.chapters) || importData.chapters.length === 0) {
@@ -2772,9 +2787,13 @@ async function applyAdminTheoryDocxImport() {
         : 0),
     0,
   );
-  updateInlineStatus(adminTheoryDocxStatus, "正在生成章节与目录草稿...", "muted");
+  const actionLabel = publish ? "正在生成并发布理论内容..." : "正在生成章节与目录草稿...";
+  updateInlineStatus(adminTheoryDocxStatus, actionLabel, "muted");
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = true;
+  }
+  if (adminTheoryDocxPublish) {
+    adminTheoryDocxPublish.disabled = true;
   }
   try {
     const assignedChapterIds = [];
@@ -2859,7 +2878,7 @@ async function applyAdminTheoryDocxImport() {
             topicId,
             title: (lesson.title || "").trim() || `导入知识点 ${lessonIndex + 1}`,
             contentHtml: lesson.contentHtml || "<p><br></p>",
-            isPublished: false,
+            isPublished: publish,
           };
           if (typeof lesson.orderIndex === "number") {
             lessonPayload.orderIndex = lesson.orderIndex;
@@ -2881,11 +2900,10 @@ async function applyAdminTheoryDocxImport() {
       }
     }
     clearAdminTheoryDocxImport({ silent: true });
-    updateInlineStatus(
-      adminTheoryDocxStatus,
-      `已将 Word 内容同步到 ${assignedChapterIds.length} 个章节，生成 ${totalTopics} 个目录、${totalLessons} 个知识点草稿。`,
-      "success",
-    );
+    const successMessage = publish
+      ? `已导入并发布 ${totalLessons} 个知识点，覆盖 ${assignedChapterIds.length} 个章节、${totalTopics} 个目录。`
+      : `已将 Word 内容同步到 ${assignedChapterIds.length} 个章节，生成 ${totalTopics} 个目录、${totalLessons} 个知识点草稿。`;
+    updateInlineStatus(adminTheoryDocxStatus, successMessage, "success");
     await loadAdminLevels({ chapterId: assignedChapterIds[0] || null });
     await loadAdminTheory({
       focusTopicId: firstTopicId || createdTopicIds[0] || null,
@@ -2897,8 +2915,17 @@ async function applyAdminTheoryDocxImport() {
     console.error(error);
     updateInlineStatus(adminTheoryDocxStatus, error.message || "导入失败", "error");
   } finally {
+    const hasPendingImport =
+      state.admin &&
+      state.admin.theory &&
+      state.admin.theory.pendingImport &&
+      Array.isArray(state.admin.theory.pendingImport.chapters) &&
+      state.admin.theory.pendingImport.chapters.length > 0;
     if (adminTheoryDocxApply) {
-      adminTheoryDocxApply.disabled = false;
+      adminTheoryDocxApply.disabled = !hasPendingImport;
+    }
+    if (adminTheoryDocxPublish) {
+      adminTheoryDocxPublish.disabled = !hasPendingImport;
     }
   }
 }
