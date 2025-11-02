@@ -866,6 +866,7 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
             OPTIONAL MATCH (t:TheoryTopic)-[:HAS_LESSON]->(l)
             WITH l,
                  t,
+                 k,
                  CASE WHEN rel IS NULL THEN {} ELSE properties(rel) END AS relProps,
                  CASE WHEN k IS NULL THEN {} ELSE properties(k) END AS kProps
             RETURN l AS lesson,
