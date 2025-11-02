@@ -2595,6 +2595,33 @@ function summarizePreviewText(value, limit = 80) {
   return `${normalized.slice(0, limit - 1).trim()}…`;
 }
 
+function setAdminTheoryDocxProgress({ total = 0, completed = 0, actionVerb = "已完成" } = {}) {
+  if (!adminTheoryDocxProgress || !adminTheoryDocxProgressBar) {
+    return;
+  }
+  const numericTotal = Number(total);
+  const safeTotal = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 0;
+  const numericCompleted = Number(completed);
+  const safeCompleted = Number.isFinite(numericCompleted)
+    ? Math.max(0, Math.min(numericCompleted, safeTotal))
+    : 0;
+  if (safeTotal <= 0) {
+    adminTheoryDocxProgress.classList.add("hidden");
+    adminTheoryDocxProgressBar.style.width = "0%";
+    if (adminTheoryDocxProgressLabel) {
+      adminTheoryDocxProgressLabel.textContent = "";
+    }
+    return;
+  }
+  const percent = Math.round((safeCompleted / safeTotal) * 100);
+  adminTheoryDocxProgressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  adminTheoryDocxProgress.classList.remove("hidden");
+  if (adminTheoryDocxProgressLabel) {
+    const verb = typeof actionVerb === "string" && actionVerb.trim() !== "" ? actionVerb.trim() : "已完成";
+    adminTheoryDocxProgressLabel.textContent = `${verb} ${safeCompleted}/${safeTotal}`;
+  }
+}
+
 function renderAdminTheoryDocxPreview(importData = null) {
   if (!adminTheoryDocxPreview) {
     return;
@@ -2612,6 +2639,7 @@ function renderAdminTheoryDocxPreview(importData = null) {
     if (adminTheoryDocxPublish) {
       adminTheoryDocxPublish.disabled = true;
     }
+    setAdminTheoryDocxProgress();
     return;
   }
   const fragments = [];
@@ -2695,6 +2723,7 @@ function clearAdminTheoryDocxImport(options = {}) {
   if (adminTheoryDocxPublish) {
     adminTheoryDocxPublish.disabled = true;
   }
+  setAdminTheoryDocxProgress();
   if (!options.silent) {
     updateInlineStatus(adminTheoryDocxStatus, "已清除导入结果", "muted");
   }
@@ -2707,6 +2736,7 @@ async function handleAdminTheoryDocxUpload() {
   const file = adminTheoryDocxInput.files[0];
   const formData = new FormData();
   formData.append("file", file);
+  setAdminTheoryDocxProgress();
   updateInlineStatus(adminTheoryDocxStatus, `正在解析 ${file.name}...`, "muted");
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = true;
@@ -2787,8 +2817,30 @@ async function applyAdminTheoryDocxImport({ publish = false } = {}) {
         : 0),
     0,
   );
-  const actionLabel = publish ? "正在生成并发布理论内容..." : "正在生成章节与目录草稿...";
-  updateInlineStatus(adminTheoryDocxStatus, actionLabel, "muted");
+  const progressTotal = totalLessons || totalTopics;
+  const trackLessonsOnly = totalLessons > 0;
+  const actionVerb = publish
+    ? trackLessonsOnly
+      ? "已发布"
+      : "已生成"
+    : trackLessonsOnly
+      ? "已生成"
+      : "已同步";
+  const baseProgressLabel = publish ? "正在生成并发布理论内容" : "正在生成章节与目录草稿";
+  let processedUnits = 0;
+  const updateProgressStatus = () => {
+    if (progressTotal > 0) {
+      updateInlineStatus(
+        adminTheoryDocxStatus,
+        `${baseProgressLabel}（${actionVerb} ${processedUnits}/${progressTotal}）`,
+        "muted",
+      );
+    } else {
+      updateInlineStatus(adminTheoryDocxStatus, `${baseProgressLabel}...`, "muted");
+    }
+  };
+  updateProgressStatus();
+  setAdminTheoryDocxProgress({ total: progressTotal, completed: processedUnits, actionVerb });
   if (adminTheoryDocxApply) {
     adminTheoryDocxApply.disabled = true;
   }
@@ -2870,6 +2922,11 @@ async function applyAdminTheoryDocxImport({ publish = false } = {}) {
         if (!firstTopicId) {
           firstTopicId = topicId;
         }
+        if (!trackLessonsOnly && progressTotal > 0) {
+          processedUnits += 1;
+          setAdminTheoryDocxProgress({ total: progressTotal, completed: processedUnits, actionVerb });
+          updateProgressStatus();
+        }
 
         const lessons = Array.isArray(topic.lessons) ? topic.lessons : [];
         for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex += 1) {
@@ -2896,8 +2953,17 @@ async function applyAdminTheoryDocxImport({ publish = false } = {}) {
           if (!firstLessonId && lessonData.lesson && lessonData.lesson.id) {
             firstLessonId = lessonData.lesson.id;
           }
+          if (trackLessonsOnly && progressTotal > 0) {
+            processedUnits += 1;
+            setAdminTheoryDocxProgress({ total: progressTotal, completed: processedUnits, actionVerb });
+            updateProgressStatus();
+          }
         }
       }
+    }
+    if (progressTotal > 0) {
+      setAdminTheoryDocxProgress({ total: progressTotal, completed: processedUnits, actionVerb });
+      updateProgressStatus();
     }
     clearAdminTheoryDocxImport({ silent: true });
     const successMessage = publish
@@ -2914,6 +2980,7 @@ async function applyAdminTheoryDocxImport({ publish = false } = {}) {
   } catch (error) {
     console.error(error);
     updateInlineStatus(adminTheoryDocxStatus, error.message || "导入失败", "error");
+    setAdminTheoryDocxProgress();
   } finally {
     const hasPendingImport =
       state.admin &&
