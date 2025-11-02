@@ -282,6 +282,12 @@ if (adminTheoryDocxApply) {
   });
 }
 
+if (adminTheoryDocxPublish) {
+  adminTheoryDocxPublish.addEventListener("click", () => {
+    applyAdminTheoryDocxImport({ publish: true });
+  });
+}
+
 if (adminTheoryDocxReset) {
   adminTheoryDocxReset.addEventListener("click", () => {
     clearAdminTheoryDocxImport();
