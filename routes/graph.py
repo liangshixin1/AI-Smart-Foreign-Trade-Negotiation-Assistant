@@ -251,6 +251,81 @@ def get_categories_tree():
     return _graph_operation(_handler)
 
 
+@bp.get("/api/graph/categories/flat")
+@require_role("teacher")
+def list_categories_flat():
+    """获取所有分类的扁平列表（含路径）"""
+    def _handler() -> Tuple[dict, int]:
+        categories = graph_service.list_all_categories_flat()
+        return {"categories": categories}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/categories/<category_id>")
+@require_role("teacher")
+def get_category_detail(category_id: str):
+    """获取单个分类的详细信息"""
+    def _handler() -> Tuple[dict, int]:
+        category = graph_service.get_knowledge_category(category_id)
+        return category, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/categories")
+@require_role("teacher")
+def create_category():
+    """创建新的知识分类"""
+    body = request.get_json(force=True, silent=True) or {}
+
+    required_fields = ["id", "name"]
+    for field in required_fields:
+        if not body.get(field):
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            category = graph_service.create_knowledge_category(body)
+            return category, 201
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+
+    return _graph_operation(_handler)
+
+
+@bp.put("/api/graph/categories/<category_id>")
+@require_role("teacher")
+def update_category(category_id: str):
+    """更新分类信息"""
+    body = request.get_json(force=True, silent=True) or {}
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            category = graph_service.update_knowledge_category(category_id, body)
+            return category, 200
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+
+    return _graph_operation(_handler)
+
+
+@bp.delete("/api/graph/categories/<category_id>")
+@require_role("teacher")
+def delete_category(category_id: str):
+    """删除分类"""
+    move_to = request.args.get("move_to")  # 可选：将知识点移动到指定分类
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            graph_service.delete_knowledge_category(category_id, move_knowledge_to=move_to)
+            return {"message": f"Category '{category_id}' deleted successfully"}, 200
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+
+    return _graph_operation(_handler)
+
+
 @bp.get("/api/graph/practices/<practice_id>")
 @require_role("teacher")
 def get_practice_graph_detail(practice_id: str):

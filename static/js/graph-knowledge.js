@@ -192,6 +192,108 @@ async function fetchCategories() {
   }
 }
 
+// 获取扁平分类列表
+async function fetchCategoriesFlat() {
+  try {
+    const response = await fetchWithAuth('/api/graph/categories/flat');
+
+    if (!response.ok) {
+      throw new Error(`获取分类失败: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.categories || [];
+  } catch (error) {
+    console.error('获取扁平分类列表失败:', error);
+    return [];
+  }
+}
+
+// 获取单个分类详情
+async function fetchCategory(categoryId) {
+  try {
+    const response = await fetchWithAuth(`/api/graph/categories/${encodeURIComponent(categoryId)}`);
+
+    if (!response.ok) {
+      throw new Error(`获取分类详情失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取分类详情失败:', error);
+    return null;
+  }
+}
+
+// 创建新分类
+async function createCategory(data) {
+  try {
+    const response = await fetchWithAuth('/api/graph/categories', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `创建分类失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('创建分类失败:', error);
+    throw error;
+  }
+}
+
+// 更新分类
+async function updateCategory(categoryId, data) {
+  try {
+    const response = await fetchWithAuth(`/api/graph/categories/${encodeURIComponent(categoryId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `更新分类失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('更新分类失败:', error);
+    throw error;
+  }
+}
+
+// 删除分类
+async function deleteCategory(categoryId, moveToId = null) {
+  try {
+    const url = moveToId
+      ? `/api/graph/categories/${encodeURIComponent(categoryId)}?move_to=${encodeURIComponent(moveToId)}`
+      : `/api/graph/categories/${encodeURIComponent(categoryId)}`;
+
+    const response = await fetchWithAuth(url, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `删除分类失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('删除分类失败:', error);
+    throw error;
+  }
+}
+
 // Excel导入
 async function importExcelFile(file) {
   try {
@@ -406,7 +508,20 @@ function renderCategoryTree() {
 
   const tree = graphKnowledgeState.categoryTree;
   if (!Array.isArray(tree) || tree.length === 0) {
-    container.innerHTML = '<p class="text-[11px] text-slate-500">暂无分类结构，可通过创建知识点后再拖拽整理。</p>';
+    container.innerHTML = `
+      <div class="space-y-2">
+        <p class="text-[11px] text-slate-500">暂无分类结构</p>
+        <button type="button" id="create-root-category-btn"
+                class="rounded-lg border border-sky-500/50 bg-sky-500/10 px-3 py-2 text-sm text-sky-300 hover:bg-sky-500/20">
+          ➕ 创建一级分类
+        </button>
+      </div>
+    `;
+
+    const createBtn = container.querySelector('#create-root-category-btn');
+    if (createBtn) {
+      createBtn.addEventListener('click', () => showCategoryEditDialog('create'));
+    }
     return;
   }
 
@@ -415,6 +530,10 @@ function renderCategoryTree() {
   const nodes = container.querySelectorAll('[data-category-path]');
   nodes.forEach((button) => {
     button.addEventListener('click', handleCategoryNodeClick);
+    button.addEventListener('contextmenu', (e) => {
+      const categoryPath = button.dataset.categoryPath || '';
+      showCategoryContextMenu(e, categoryPath);
+    });
     button.addEventListener('dragover', handleCategoryDragOver);
     button.addEventListener('dragleave', handleCategoryDragLeave);
     button.addEventListener('drop', handleCategoryDrop);
@@ -1309,6 +1428,281 @@ function initGraphKnowledgeManagement() {
   // 加载初始数据
   loadKnowledgePoints();
   loadCategories();
+}
+
+// ========== 分类管理功能 ==========
+
+// 显示分类编辑对话框
+async function showCategoryEditDialog(mode = 'create', categoryId = null) {
+  const parentCategories = await fetchCategoriesFlat();
+
+  let category = null;
+  if (mode === 'edit' && categoryId) {
+    category = await fetchCategory(categoryId);
+    if (!category) {
+      alert('获取分类信息失败');
+      return;
+    }
+  }
+
+  const parentOptions = parentCategories
+    .filter(c => c.id !== categoryId) // 不能选择自己作为父分类
+    .map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.path_text)}</option>`)
+    .join('');
+
+  const title = mode === 'create' ? '创建新分类' : '编辑分类';
+  const confirmText = mode === 'create' ? '创建' : '保存';
+
+  const dialogHTML = `
+    <div id="category-edit-dialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div class="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl">
+        <h3 class="mb-4 text-lg font-semibold text-white">${title}</h3>
+
+        <form id="category-edit-form" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-300">分类ID <span class="text-rose-400">*</span></label>
+            <input type="text" id="category-id-input" value="${category?.id || ''}" ${mode === 'edit' ? 'readonly' : ''}
+                   class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white ${mode === 'edit' ? 'opacity-60' : ''}"
+                   placeholder="如: my-category" required>
+            <p class="mt-1 text-xs text-slate-500">唯一标识符，只能包含字母、数字、连字符</p>
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300">分类名称 <span class="text-rose-400">*</span></label>
+            <input type="text" id="category-name-input" value="${category?.name || ''}"
+                   class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+                   placeholder="如: 我的分类" required>
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300">父分类</label>
+            <select id="category-parent-input" class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+              <option value="">无（一级分类）</option>
+              ${parentOptions}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-slate-300">图标</label>
+              <input type="text" id="category-icon-input" value="${category?.icon || '📁'}"
+                     class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-2xl">
+            </div>
+            <div>
+              <label class="block text-sm text-slate-300">颜色</label>
+              <input type="color" id="category-color-input" value="${category?.color || '#6B7280'}"
+                     class="mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-800">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300">描述</label>
+            <textarea id="category-description-input" rows="2"
+                      class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+                      placeholder="分类描述（可选）">${category?.description || ''}</textarea>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" id="category-dialog-cancel"
+                    class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">
+              取消
+            </button>
+            <button type="submit"
+                    class="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-500">
+              ${confirmText}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', dialogHTML);
+
+  // 如果是编辑模式，设置父分类
+  if (mode === 'edit' && category?.parent_id) {
+    document.getElementById('category-parent-input').value = category.parent_id;
+  }
+
+  // 绑定事件
+  document.getElementById('category-dialog-cancel').addEventListener('click', () => {
+    document.getElementById('category-edit-dialog').remove();
+  });
+
+  document.getElementById('category-edit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+      id: document.getElementById('category-id-input').value.trim(),
+      name: document.getElementById('category-name-input').value.trim(),
+      parent_id: document.getElementById('category-parent-input').value || null,
+      icon: document.getElementById('category-icon-input').value.trim() || '📁',
+      color: document.getElementById('category-color-input').value,
+      description: document.getElementById('category-description-input').value.trim(),
+    };
+
+    try {
+      if (mode === 'create') {
+        await createCategory(data);
+        showStatus('admin-graph-category-status', '分类创建成功！', 'success');
+      } else {
+        await updateCategory(categoryId, data);
+        showStatus('admin-graph-category-status', '分类更新成功！', 'success');
+      }
+
+      document.getElementById('category-edit-dialog').remove();
+      await loadKnowledgePoints();
+    } catch (error) {
+      alert(`操作失败: ${error.message}`);
+    }
+  });
+}
+
+// 显示分类删除确认对话框
+async function showCategoryDeleteDialog(categoryId) {
+  const category = await fetchCategory(categoryId);
+  if (!category) {
+    alert('获取分类信息失败');
+    return;
+  }
+
+  if (category.children_count > 0) {
+    alert(`该分类包含 ${category.children_count} 个子分类，请先删除或移动子分类。`);
+    return;
+  }
+
+  const knowledgeCount = category.knowledge_count || 0;
+  let moveToOptions = '';
+
+  if (knowledgeCount > 0) {
+    const categories = await fetchCategoriesFlat();
+    moveToOptions = categories
+      .filter(c => c.id !== categoryId)
+      .map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.path_text)}</option>`)
+      .join('');
+  }
+
+  const dialogHTML = `
+    <div id="category-delete-dialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div class="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl">
+        <h3 class="mb-4 text-lg font-semibold text-rose-400">删除分类</h3>
+
+        <div class="space-y-4">
+          <p class="text-sm text-slate-300">
+            确定要删除分类 <strong class="text-white">${escapeHtml(category.name)}</strong> 吗？
+          </p>
+
+          ${knowledgeCount > 0 ? `
+            <div class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+              <p class="text-sm text-amber-200">
+                该分类包含 <strong>${knowledgeCount}</strong> 个知识点
+              </p>
+              <div class="mt-3">
+                <label class="block text-sm text-amber-200">将知识点移动到：</label>
+                <select id="move-knowledge-to-select" class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+                  <option value="">不移动（标记为未分类）</option>
+                  ${moveToOptions}
+                </select>
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" id="delete-dialog-cancel"
+                    class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">
+              取消
+            </button>
+            <button type="button" id="delete-dialog-confirm"
+                    class="rounded-lg bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-500">
+              确认删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', dialogHTML);
+
+  // 绑定事件
+  document.getElementById('delete-dialog-cancel').addEventListener('click', () => {
+    document.getElementById('category-delete-dialog').remove();
+  });
+
+  document.getElementById('delete-dialog-confirm').addEventListener('click', async () => {
+    const moveToId = knowledgeCount > 0
+      ? document.getElementById('move-knowledge-to-select').value || null
+      : null;
+
+    try {
+      await deleteCategory(categoryId, moveToId);
+      showStatus('admin-graph-category-status', '分类删除成功！', 'success');
+      document.getElementById('category-delete-dialog').remove();
+      await loadKnowledgePoints();
+    } catch (error) {
+      alert(`删除失败: ${error.message}`);
+    }
+  });
+}
+
+// 显示分类右键菜单
+function showCategoryContextMenu(event, categoryPathKey) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  // 移除已有菜单
+  const existingMenu = document.getElementById('category-context-menu');
+  if (existingMenu) {
+    existingMenu.remove();
+  }
+
+  const menuHTML = `
+    <div id="category-context-menu" class="fixed z-50 min-w-[180px] rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-xl"
+         style="left: ${event.clientX}px; top: ${event.clientY}px;">
+      <button type="button" data-action="create-sub" class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
+        ➕ 创建子分类
+      </button>
+      <button type="button" data-action="edit" class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
+        ✏️ 编辑分类
+      </button>
+      <div class="my-1 border-t border-slate-700"></div>
+      <button type="button" data-action="delete" class="w-full px-4 py-2 text-left text-sm text-rose-400 hover:bg-rose-500/10 hover:text-rose-300">
+        🗑️ 删除分类
+      </button>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', menuHTML);
+
+  const menu = document.getElementById('category-context-menu');
+
+  // 绑定菜单项点击事件
+  menu.querySelector('[data-action="create-sub"]').addEventListener('click', () => {
+    menu.remove();
+    showCategoryEditDialog('create', categoryPathKey);
+  });
+
+  menu.querySelector('[data-action="edit"]').addEventListener('click', () => {
+    menu.remove();
+    showCategoryEditDialog('edit', categoryPathKey);
+  });
+
+  menu.querySelector('[data-action="delete"]').addEventListener('click', () => {
+    menu.remove();
+    showCategoryDeleteDialog(categoryPathKey);
+  });
+
+  // 点击其他地方关闭菜单
+  const closeMenu = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu);
+  }, 0);
 }
 
 // ========== 工具函数 ==========

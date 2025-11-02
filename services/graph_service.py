@@ -1752,6 +1752,335 @@ def get_knowledge_categories_tree() -> List[Dict[str, object]]:
     ]
 
 
+# ========== 分类管理增强功能 ==========
+
+
+def create_knowledge_category(data: Dict[str, object]) -> Dict[str, object]:
+    """创建新的知识分类。"""
+
+    category_id = data.get("id", "").strip()
+    name = data.get("name", "").strip()
+
+    if not category_id or not name:
+        raise ValueError("Category id and name are required")
+
+    # 检查是否已存在
+    existing = _execute_read(
+        "MATCH (c:KnowledgeCategory {id: $id}) RETURN c",
+        {"id": category_id},
+    )
+    if existing:
+        raise ValueError(f"Category '{category_id}' already exists")
+
+    parent_path = _normalize_category_path_input(data.get("parent_path") or data.get("parentPath"))
+    parent_id = parent_path[-1] if parent_path else data.get("parent_id")
+
+    try:
+        level = int(data.get("level") or (len(parent_path) + 1 if parent_path else 1))
+    except (ValueError, TypeError):
+        level = 1
+
+    try:
+        order_index = int(data.get("order_index") or data.get("orderIndex") or 0)
+    except (ValueError, TypeError):
+        order_index = 0
+
+    # 创建分类节点
+    _execute_write(
+        """
+        CREATE (c:KnowledgeCategory {
+            id: $id,
+            name: $name,
+            code: $code,
+            level: $level,
+            orderIndex: $order_index,
+            icon: $icon,
+            color: $color,
+            description: $description,
+            isActive: true,
+            createdAt: datetime(),
+            updatedAt: datetime()
+        })
+        """,
+        {
+            "id": category_id,
+            "name": name,
+            "code": data.get("code", ""),
+            "level": level,
+            "order_index": order_index,
+            "icon": data.get("icon", "📁"),
+            "color": data.get("color", "#6B7280"),
+            "description": data.get("description", ""),
+        },
+    )
+
+    # 如果有父分类，创建父子关系
+    if parent_id:
+        try:
+            _execute_write(
+                """
+                MATCH (parent:KnowledgeCategory {id: $parent_id})
+                MATCH (child:KnowledgeCategory {id: $child_id})
+                MERGE (parent)-[r:PARENT_OF]->(child)
+                SET r.orderIndex = $order_index
+                """,
+                {
+                    "parent_id": parent_id,
+                    "child_id": category_id,
+                    "order_index": order_index,
+                },
+            )
+        except Exception as e:
+            LOGGER.warning(f"Failed to link parent category: {e}")
+
+    return get_knowledge_category(category_id)
+
+
+def get_knowledge_category(category_id: str) -> Dict[str, object]:
+    """获取单个分类的详细信息。"""
+
+    records = _execute_read(
+        """
+        MATCH (c:KnowledgeCategory {id: $id})
+        OPTIONAL MATCH (parent:KnowledgeCategory)-[:PARENT_OF]->(c)
+        OPTIONAL MATCH (c)-[:PARENT_OF]->(child:KnowledgeCategory)
+        OPTIONAL MATCH (k:KnowledgePoint)-[:BELONGS_TO]->(c)
+        RETURN c,
+               parent.id AS parent_id,
+               parent.name AS parent_name,
+               collect(DISTINCT child.id) AS children_ids,
+               count(DISTINCT k) AS knowledge_count
+        """,
+        {"id": category_id},
+    )
+
+    if not records:
+        raise GraphEntityNotFoundError(f"Category '{category_id}' not found")
+
+    record = records[0]
+    category = record["c"]
+
+    return {
+        "id": category.get("id"),
+        "name": category.get("name"),
+        "code": category.get("code"),
+        "level": category.get("level"),
+        "order_index": category.get("orderIndex"),
+        "icon": category.get("icon"),
+        "color": category.get("color"),
+        "description": category.get("description", ""),
+        "is_active": category.get("isActive", True),
+        "parent_id": record.get("parent_id"),
+        "parent_name": record.get("parent_name"),
+        "children_count": len([c for c in (record.get("children_ids") or []) if c]),
+        "knowledge_count": record.get("knowledge_count", 0),
+        "created_at": category.get("createdAt"),
+        "updated_at": category.get("updatedAt"),
+    }
+
+
+def update_knowledge_category(category_id: str, data: Dict[str, object]) -> Dict[str, object]:
+    """更新分类信息。"""
+
+    # 检查是否存在
+    existing = _execute_read(
+        "MATCH (c:KnowledgeCategory {id: $id}) RETURN c",
+        {"id": category_id},
+    )
+    if not existing:
+        raise GraphEntityNotFoundError(f"Category '{category_id}' not found")
+
+    node = existing[0]["c"]
+    new_id = (data.get("id") or category_id).strip()
+
+    # 如果改ID，检查新ID是否冲突
+    if new_id != category_id:
+        conflict = _execute_read(
+            "MATCH (c:KnowledgeCategory {id: $id}) RETURN c",
+            {"id": new_id},
+        )
+        if conflict:
+            raise ValueError(f"Category '{new_id}' already exists")
+
+    # 准备更新字段
+    name = data.get("name") if "name" in data else node.get("name")
+    code = data.get("code") if "code" in data else node.get("code")
+
+    if "level" in data:
+        try:
+            level = int(data.get("level"))
+        except (ValueError, TypeError):
+            level = node.get("level") or 1
+    else:
+        level = node.get("level") or 1
+
+    if "order_index" in data or "orderIndex" in data:
+        try:
+            order_index = int(data.get("order_index") or data.get("orderIndex") or 0)
+        except (ValueError, TypeError):
+            order_index = node.get("orderIndex") or 0
+    else:
+        order_index = node.get("orderIndex") or 0
+
+    icon = data.get("icon") if "icon" in data else node.get("icon") or "📁"
+    color = data.get("color") if "color" in data else node.get("color") or "#6B7280"
+    description = data.get("description") if "description" in data else node.get("description") or ""
+
+    if "is_active" in data or "isActive" in data:
+        is_active = bool(data.get("is_active") or data.get("isActive"))
+    else:
+        is_active = node.get("isActive", True)
+
+    # 更新节点
+    _execute_write(
+        """
+        MATCH (c:KnowledgeCategory {id: $old_id})
+        SET c.id = $id,
+            c.name = $name,
+            c.code = $code,
+            c.level = $level,
+            c.orderIndex = $order_index,
+            c.icon = $icon,
+            c.color = $color,
+            c.description = $description,
+            c.isActive = $is_active,
+            c.updatedAt = datetime()
+        """,
+        {
+            "old_id": category_id,
+            "id": new_id,
+            "name": name,
+            "code": code,
+            "level": level,
+            "order_index": order_index,
+            "icon": icon,
+            "color": color,
+            "description": description,
+            "is_active": is_active,
+        },
+    )
+
+    return get_knowledge_category(new_id)
+
+
+def delete_knowledge_category(category_id: str, *, move_knowledge_to: Optional[str] = None) -> None:
+    """删除分类。
+
+    Args:
+        category_id: 要删除的分类ID
+        move_knowledge_to: 将该分类下的知识点移动到指定分类（可选）
+    """
+
+    # 检查是否存在
+    existing = _execute_read(
+        "MATCH (c:KnowledgeCategory {id: $id}) RETURN c",
+        {"id": category_id},
+    )
+    if not existing:
+        raise GraphEntityNotFoundError(f"Category '{category_id}' not found")
+
+    # 检查是否有子分类
+    children = _execute_read(
+        """
+        MATCH (c:KnowledgeCategory {id: $id})-[:PARENT_OF]->(child:KnowledgeCategory)
+        RETURN count(child) AS count
+        """,
+        {"id": category_id},
+    )
+    if children and children[0]["count"] > 0:
+        raise ValueError(f"Cannot delete category with {children[0]['count']} child categories. Please delete or move child categories first.")
+
+    # 如果指定了移动目标，移动知识点
+    if move_knowledge_to:
+        _execute_write(
+            """
+            MATCH (k:KnowledgePoint)-[r:BELONGS_TO]->(old:KnowledgeCategory {id: $old_id})
+            MATCH (new:KnowledgeCategory {id: $new_id})
+            DELETE r
+            CREATE (k)-[:BELONGS_TO]->(new)
+            SET k.category = new.id
+            """,
+            {"old_id": category_id, "new_id": move_knowledge_to},
+        )
+    else:
+        # 否则，将知识点标记为未分类
+        _execute_write(
+            """
+            MATCH (k:KnowledgePoint)-[r:BELONGS_TO]->(c:KnowledgeCategory {id: $id})
+            DELETE r
+            SET k.category = NULL,
+                k.categoryPath = []
+            """,
+            {"id": category_id},
+        )
+
+    # 删除分类节点及所有关系
+    _execute_write(
+        """
+        MATCH (c:KnowledgeCategory {id: $id})
+        DETACH DELETE c
+        """,
+        {"id": category_id},
+    )
+
+
+def list_all_categories_flat() -> List[Dict[str, object]]:
+    """获取所有分类的扁平列表（包含路径信息）。"""
+
+    records = _execute_read(
+        """
+        MATCH (c:KnowledgeCategory)
+        WHERE c.isActive = true
+        OPTIONAL MATCH path = (root:KnowledgeCategory)-[:PARENT_OF*]->(c)
+        WHERE NOT (root)<-[:PARENT_OF]-()
+        WITH c,
+             CASE
+               WHEN path IS NULL THEN [c.name]
+               ELSE [node in nodes(path) | node.name]
+             END AS path_names,
+             CASE
+               WHEN path IS NULL THEN [c.id]
+               ELSE [node in nodes(path) | node.id]
+             END AS path_ids
+        OPTIONAL MATCH (k:KnowledgePoint)-[:BELONGS_TO]->(c)
+        RETURN c.id AS id,
+               c.name AS name,
+               c.code AS code,
+               c.level AS level,
+               c.orderIndex AS order_index,
+               c.icon AS icon,
+               c.color AS color,
+               c.description AS description,
+               path_names,
+               path_ids,
+               count(DISTINCT k) AS knowledge_count
+        ORDER BY c.level, c.orderIndex, c.name
+        """
+    )
+
+    categories = []
+    for record in records:
+        path_names = record.get("path_names") or []
+        path_ids = record.get("path_ids") or []
+
+        categories.append({
+            "id": record.get("id"),
+            "name": record.get("name"),
+            "code": record.get("code"),
+            "level": record.get("level"),
+            "order_index": record.get("order_index"),
+            "icon": record.get("icon"),
+            "color": record.get("color"),
+            "description": record.get("description", ""),
+            "path_names": path_names,
+            "path_ids": path_ids,
+            "path_text": " / ".join(path_names) if path_names else "",
+            "knowledge_count": record.get("knowledge_count", 0),
+        })
+
+    return categories
+
+
 # ========== Excel/CSV 导入导出功能 ==========
 
 
