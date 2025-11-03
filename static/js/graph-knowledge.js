@@ -1099,6 +1099,295 @@ async function handleExportExcel() {
   }
 }
 
+// ========== 智能批量导入功能（新）==========
+
+// 下载批量导入模板
+async function downloadBatchTemplate() {
+  try {
+    showStatus('batch-import-status', '正在生成模板...', 'info');
+
+    const response = await fetchWithAuth('/api/graph/import/batch/template?include_existing=true');
+    if (!response.ok) {
+      throw new Error(`下载模板失败: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '知识图谱批量导入模板.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    showStatus('batch-import-status', '模板下载成功！请打开Excel填写数据', 'success');
+    setTimeout(() => showStatus('batch-import-status', '', ''), 3000);
+  } catch (error) {
+    console.error('下载模板失败:', error);
+    showStatus('batch-import-status', `下载模板失败: ${error.message}`, 'error');
+  }
+}
+
+// 批量导入
+async function handleBatchImport() {
+  const pointsFileInput = document.getElementById('batch-import-points-file');
+  const examplesFileInput = document.getElementById('batch-import-examples-file');
+
+  if (!pointsFileInput) return;
+
+  const pointsFile = pointsFileInput.files[0];
+  if (!pointsFile) {
+    showStatus('batch-import-status', '请选择知识点主表文件', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('points_file', pointsFile);
+
+  // 案例库表是可选的
+  const examplesFile = examplesFileInput?.files[0];
+  if (examplesFile) {
+    formData.append('examples_file', examplesFile);
+  }
+
+  formData.append('mode', 'merge');
+
+  try {
+    showStatus('batch-import-status', '正在导入，请稍候...', 'info');
+    showBatchImportProgress('开始解析Excel文件...');
+
+    const response = await fetchWithAuth('/api/graph/import/batch', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `导入失败: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    // 显示详细结果
+    displayBatchImportResult(result);
+
+    // 如果成功，刷新列表
+    if (result.success) {
+      await loadKnowledgePoints();
+      // 清空文件选择
+      pointsFileInput.value = '';
+      if (examplesFileInput) examplesFileInput.value = '';
+    }
+
+  } catch (error) {
+    console.error('批量导入失败:', error);
+    showStatus('batch-import-status', `导入失败: ${error.message}`, 'error');
+    hideBatchImportProgress();
+  }
+}
+
+// 预校验批量导入数据
+async function validateBatchImport() {
+  const pointsFileInput = document.getElementById('batch-import-points-file');
+  const examplesFileInput = document.getElementById('batch-import-examples-file');
+
+  if (!pointsFileInput) return;
+
+  const pointsFile = pointsFileInput.files[0];
+  if (!pointsFile) {
+    showStatus('batch-import-status', '请选择知识点主表文件', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('points_file', pointsFile);
+
+  const examplesFile = examplesFileInput?.files[0];
+  if (examplesFile) {
+    formData.append('examples_file', examplesFile);
+  }
+
+  try {
+    showStatus('batch-import-status', '正在检查数据...', 'info');
+
+    const response = await fetchWithAuth('/api/graph/import/batch/validate', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `检查失败: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    // 显示校验结果
+    displayValidationResult(result);
+
+  } catch (error) {
+    console.error('数据校验失败:', error);
+    showStatus('batch-import-status', `数据校验失败: ${error.message}`, 'error');
+  }
+}
+
+// 显示校验结果
+function displayValidationResult(result) {
+  const { valid, errors, warnings, preview } = result;
+
+  const resultDiv = document.getElementById('batch-import-validation-result');
+  if (!resultDiv) return;
+
+  let html = '<div class="validation-result">';
+
+  // 预览统计
+  html += '<div class="validation-preview">';
+  html += '<h4>📊 数据预览</h4>';
+  html += `<p>知识点: ${preview.points_count} 个</p>`;
+  html += `<p>关系: ${preview.relations_count} 条</p>`;
+  html += `<p>案例: ${preview.examples_count} 个</p>`;
+  html += '</div>';
+
+  // 错误列表
+  if (errors && errors.length > 0) {
+    html += '<div class="validation-errors">';
+    html += '<h4 style="color: #dc3545;">❌ 错误 (' + errors.length + ')</h4>';
+    html += '<div class="error-list">';
+    errors.forEach(err => {
+      html += '<div class="error-item">';
+      html += `<strong>${err.table} - 第${err.row}行</strong>`;
+      if (err.field) html += ` - ${err.field}`;
+      html += `<br>${err.message}`;
+      if (err.suggestion) {
+        html += `<br><span style="color: #0066cc;">💡 建议: ${err.suggestion}</span>`;
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+  }
+
+  // 警告列表
+  if (warnings && warnings.length > 0) {
+    html += '<div class="validation-warnings">';
+    html += '<h4 style="color: #ffc107;">⚠️ 警告 (' + warnings.length + ')</h4>';
+    html += '<div class="warning-list">';
+    warnings.forEach(warn => {
+      html += '<div class="warning-item">';
+      html += `<strong>${warn.table} - 第${warn.row}行</strong>`;
+      if (warn.field) html += ` - ${warn.field}`;
+      html += `<br>${warn.message}`;
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+  }
+
+  // 总结
+  if (valid) {
+    html += '<div class="validation-summary success">';
+    html += '<h4 style="color: #28a745;">✅ 数据校验通过，可以导入！</h4>';
+    html += '</div>';
+    showStatus('batch-import-status', '数据校验通过！', 'success');
+  } else {
+    html += '<div class="validation-summary error">';
+    html += '<h4 style="color: #dc3545;">❌ 数据校验失败，请修正错误后重试</h4>';
+    html += '</div>';
+    showStatus('batch-import-status', '数据校验失败，请查看错误详情', 'error');
+  }
+
+  html += '</div>';
+
+  resultDiv.innerHTML = html;
+  resultDiv.style.display = 'block';
+}
+
+// 显示批量导入结果
+function displayBatchImportResult(result) {
+  const { success, statistics, errors, warnings, execution_time } = result;
+
+  const resultDiv = document.getElementById('batch-import-result');
+  if (!resultDiv) {
+    // 如果没有专门的结果div，使用状态消息
+    if (success) {
+      const msg = `✅ 导入成功！\n` +
+        `知识点: ${statistics.points.created}创建/${statistics.points.updated}更新\n` +
+        `关系: ${statistics.relations.created}创建\n` +
+        `案例: ${statistics.examples.created}创建\n` +
+        `用时: ${execution_time}`;
+      showStatus('batch-import-status', msg.replace(/\n/g, '<br>'), 'success');
+    } else {
+      showStatus('batch-import-status', '导入失败，请查看错误详情', 'error');
+    }
+    return;
+  }
+
+  let html = '<div class="import-result">';
+
+  // 统计信息
+  html += '<div class="import-stats">';
+  html += '<h4>📊 导入统计</h4>';
+  html += '<table class="stats-table">';
+  html += '<tr><th></th><th>总数</th><th>创建</th><th>更新</th><th>失败</th><th>成功率</th></tr>';
+  html += `<tr><td>知识点</td><td>${statistics.points.total}</td><td>${statistics.points.created}</td><td>${statistics.points.updated}</td><td>${statistics.points.failed}</td><td>${statistics.points.success_rate}</td></tr>`;
+  html += `<tr><td>关系</td><td>${statistics.relations.total}</td><td>${statistics.relations.created}</td><td>-</td><td>${statistics.relations.failed}</td><td>${statistics.relations.success_rate}</td></tr>`;
+  html += `<tr><td>案例</td><td>${statistics.examples.total}</td><td>${statistics.examples.created}</td><td>-</td><td>${statistics.examples.failed}</td><td>${statistics.examples.success_rate}</td></tr>`;
+  html += '</table>';
+  html += `<p>用时: ${execution_time}</p>`;
+  html += '</div>';
+
+  // 错误信息
+  if (errors && errors.length > 0) {
+    html += '<div class="import-errors">';
+    html += '<h4 style="color: #dc3545;">错误详情</h4>';
+    errors.forEach(err => {
+      html += `<div class="error-item">${err.message}</div>`;
+    });
+    html += '</div>';
+  }
+
+  // 警告信息
+  if (warnings && warnings.length > 0) {
+    html += '<div class="import-warnings">';
+    html += '<h4 style="color: #ffc107;">警告信息</h4>';
+    warnings.forEach(warn => {
+      html += `<div class="warning-item">${warn.message}</div>`;
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+
+  resultDiv.innerHTML = html;
+  resultDiv.style.display = 'block';
+
+  if (success) {
+    showStatus('batch-import-status', '导入成功！详见下方统计', 'success');
+  } else {
+    showStatus('batch-import-status', '导入完成，但有部分失败', 'warning');
+  }
+
+  hideBatchImportProgress();
+}
+
+// 显示导入进度
+function showBatchImportProgress(message) {
+  const progressDiv = document.getElementById('batch-import-progress');
+  if (progressDiv) {
+    progressDiv.innerHTML = `<div class="progress-message">${message}</div>`;
+    progressDiv.style.display = 'block';
+  }
+}
+
+// 隐藏导入进度
+function hideBatchImportProgress() {
+  const progressDiv = document.getElementById('batch-import-progress');
+  if (progressDiv) {
+    progressDiv.style.display = 'none';
+  }
+}
+
 // 添加前置依赖对话框
 async function handleAddPrerequisite() {
   const currentName = document.getElementById('admin-graph-form-name').value;

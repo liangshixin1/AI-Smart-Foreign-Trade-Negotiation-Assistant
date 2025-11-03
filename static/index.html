@@ -3525,6 +3525,174 @@
                 <p id="admin-graph-import-status" class="mt-3 text-xs text-slate-400"></p>
               </section>
 
+              <!-- 智能批量导入（新功能） -->
+              <section class="admin-panel-card rounded-2xl border border-emerald-800/50 bg-gradient-to-br from-emerald-900/20 to-slate-900/70 p-6">
+                <div class="mb-4 flex items-start gap-3">
+                  <div class="rounded-lg bg-emerald-500/10 p-2">
+                    <svg class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div class="flex-1">
+                    <h3 class="text-lg font-semibold text-white">✨ 智能批量导入（推荐）</h3>
+                    <p class="mt-1 text-sm text-emerald-300/80">一次性导入知识点、关系和案例。自动验证、智能提示，非技术人员友好！</p>
+                  </div>
+                </div>
+
+                <!-- 特点说明 -->
+                <div class="mb-5 grid gap-2 rounded-xl border border-emerald-700/30 bg-emerald-950/30 p-4 text-xs text-slate-300">
+                  <div class="flex items-center gap-2">
+                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>不需要手动填写ID，系统自动生成</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>关系用自然语言表达（必须先学、建议同时学）</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Excel内置下拉菜单，防止输入错误</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>智能错误检测，自动推荐相似名称</span>
+                  </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="space-y-4">
+                  <!-- 第一步：下载模板 -->
+                  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+                    <div class="mb-3 flex items-center gap-2">
+                      <span class="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">1</span>
+                      <h4 class="font-semibold text-white">下载智能模板</h4>
+                    </div>
+                    <p class="mb-3 text-xs text-slate-400">下载包含数据验证和使用说明的Excel模板</p>
+                    <button
+                      onclick="downloadBatchTemplate()"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-lg border border-sky-500/70 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-300 transition hover:border-sky-300 hover:bg-sky-500/20"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      下载智能模板
+                    </button>
+                  </div>
+
+                  <!-- 第二步：上传文件 -->
+                  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+                    <div class="mb-3 flex items-center gap-2">
+                      <span class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">2</span>
+                      <h4 class="font-semibold text-white">上传填好的表格</h4>
+                    </div>
+
+                    <div class="space-y-3">
+                      <!-- 知识点主表 -->
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-300">
+                          知识点主表 <span class="text-red-400">*</span>
+                        </label>
+                        <input
+                          id="batch-import-points-file"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          class="block w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-emerald-500/20 file:px-3 file:py-1 file:text-xs file:text-emerald-300 hover:border-slate-600"
+                        />
+                        <p class="mt-1 text-xs text-slate-500">包含知识点和关系的Excel文件</p>
+                      </div>
+
+                      <!-- 案例库表（可选） -->
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-300">
+                          案例库表（可选）
+                        </label>
+                        <input
+                          id="batch-import-examples-file"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          class="block w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-xs file:text-sky-300 hover:border-slate-600"
+                        />
+                        <p class="mt-1 text-xs text-slate-500">包含案例数据的Excel文件（如无案例可不上传）</p>
+                      </div>
+
+                      <!-- 操作按钮 -->
+                      <div class="flex flex-wrap gap-2 pt-2">
+                        <button
+                          onclick="validateBatchImport()"
+                          type="button"
+                          class="inline-flex items-center gap-2 rounded-lg border border-yellow-500/70 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-300 transition hover:border-yellow-300 hover:bg-yellow-500/20"
+                        >
+                          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          先检查数据
+                        </button>
+                        <button
+                          onclick="handleBatchImport()"
+                          type="button"
+                          class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/70 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:border-emerald-300 hover:bg-emerald-500/20"
+                        >
+                          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                          </svg>
+                          开始导入
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 导入进度 -->
+                  <div id="batch-import-progress" class="hidden rounded-lg border border-blue-500/50 bg-blue-500/10 p-3">
+                    <div class="flex items-center gap-3">
+                      <div class="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+                      <span class="text-sm text-blue-300">正在处理...</span>
+                    </div>
+                  </div>
+
+                  <!-- 状态消息 -->
+                  <p id="batch-import-status" class="text-sm"></p>
+                </div>
+
+                <!-- 校验结果显示区 -->
+                <div id="batch-import-validation-result" class="mt-4 hidden rounded-lg border border-slate-700 bg-slate-900/70 p-4 text-sm">
+                  <!-- 动态填充 -->
+                </div>
+
+                <!-- 导入结果显示区 -->
+                <div id="batch-import-result" class="mt-4 hidden rounded-lg border border-slate-700 bg-slate-900/70 p-4 text-sm">
+                  <!-- 动态填充 -->
+                </div>
+
+                <!-- 使用提示 -->
+                <details class="mt-4">
+                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
+                    💡 使用提示
+                  </summary>
+                  <div class="mt-2 space-y-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-400">
+                    <p><strong class="text-slate-300">Q: 和上面的Excel导入有什么区别？</strong></p>
+                    <p>A: 上面的Excel导入只能导入知识点节点，无法定义关系。智能批量导入可以一次性导入知识点、关系和案例，更适合批量构建知识图谱。</p>
+
+                    <p class="pt-2"><strong class="text-slate-300">Q: 如果我填错了知识点名称怎么办？</strong></p>
+                    <p>A: 系统会自动检测并推荐相似的名称。例如你写了"CIF术语"，系统会提示"你是不是想写：CIF价格术语"。</p>
+
+                    <p class="pt-2"><strong class="text-slate-300">Q: 案例库表必须填吗？</strong></p>
+                    <p>A: 不是必须的！如果暂时没有案例数据，只上传知识点主表即可。</p>
+
+                    <p class="pt-2"><strong class="text-slate-300">Q: 建议先检查还是直接导入？</strong></p>
+                    <p>A: 建议先点击"先检查数据"按钮，系统会告诉你有没有错误。确认无误后再点"开始导入"。</p>
+                  </div>
+                </details>
+              </section>
+
               <!-- 知识点列表和编辑 -->
               <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,2fr)]">
                 <!-- 分类树 -->
