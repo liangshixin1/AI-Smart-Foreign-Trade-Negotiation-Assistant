@@ -123,6 +123,12 @@ def init_database() -> None:
                 FOREIGN KEY(blueprint_id) REFERENCES scenario_blueprints(id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS assignment_students (
                 assignment_id TEXT NOT NULL,
                 student_id INTEGER NOT NULL,
@@ -194,6 +200,48 @@ def init_database() -> None:
 
     ensure_schema()
     ensure_default_users()
+
+def get_app_setting(key: str, default: object = None) -> object:
+    """Return an application level setting from SQLite."""
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if not row:
+            return default
+        raw_value = row["value"]
+        try:
+            return json.loads(raw_value)
+        except (TypeError, json.JSONDecodeError):
+            return raw_value if raw_value is not None else default
+
+
+def set_app_setting(key: str, value: object) -> None:
+    """Persist an application setting value as JSON."""
+
+    serialized = json.dumps(value, ensure_ascii=False)
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, serialized),
+        )
+        conn.commit()
+
+
+def delete_app_setting(key: str) -> None:
+    """Remove an application level setting entry."""
+
+    with get_connection() as conn:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        conn.commit()
 
 
 def ensure_default_users() -> None:

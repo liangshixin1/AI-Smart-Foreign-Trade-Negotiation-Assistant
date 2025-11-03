@@ -134,14 +134,14 @@ def generate_excel_template() -> bytes:
         ("   - 导入时，如果知识点名称已存在，将更新该知识点信息", False),
         ("", False),
         ("7. 示例数据", True),
-        ("   请参考"知识点导入模板"sheet中的第2行示例", False),
+        ('   请参考"知识点导入模板"sheet中的第2行示例', False),
         ("", False),
         ("8. 导入步骤", True),
         ("   1) 下载本模板", False),
         ("   2) 删除第2行的示例数据", False),
         ("   3) 填写您的知识点数据", False),
         ("   4) 保存文件", False),
-        ("   5) 在系统中选择"导入Excel"并上传文件", False),
+        ('   5) 在系统中选择"导入Excel"并上传文件', False),
     ]
 
     for row_idx, (text, is_header) in enumerate(guide_content, start=1):

@@ -7,7 +7,7 @@ from typing import Callable, Tuple
 from flask import Blueprint, jsonify, request, send_file
 
 from services import graph_service
-from services.auth_service import require_role
+from services.auth_service import current_user, require_role
 
 
 bp = Blueprint("graph", __name__)
@@ -26,6 +26,59 @@ def _graph_operation(fn: Callable[[], Tuple[dict, int]]):
     except graph_service.GraphEntityNotFoundError as exc:
         return jsonify({"error": str(exc)}), 404
     return jsonify(payload), status
+
+
+@bp.get("/api/graph/initialization")
+@require_role("teacher")
+def get_initialization_status():
+    """Return the knowledge graph initialization state."""
+
+    def _handler() -> Tuple[dict, int]:
+        status = graph_service.get_initialization_status()
+        if not status.get("initialized"):
+            status["defaults"] = graph_service.get_initialization_defaults_preview()
+        return {"status": status}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/initialization")
+@require_role("teacher")
+def initialize_graph():
+    """Allow teachers to choose how to bootstrap the knowledge graph."""
+
+    body = request.get_json(force=True, silent=True) or {}
+    option = (body.get("option") or "").strip().lower()
+    force = bool(body.get("force"))
+
+    if option not in {"default", "blank", "import"}:
+        return jsonify({"error": "option must be one of: default, blank, import"}), 400
+
+    actor = current_user() or {}
+    initiated_by = actor.get("username") or actor.get("display_name") or "teacher"
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            status = graph_service.initialize_graph(
+                option, initiated_by=initiated_by, force=force
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+        return {"status": status}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/categories/reset")
+@require_role("teacher")
+def reset_categories():
+    """Reset the category tree to the recommended defaults."""
+
+    def _handler() -> Tuple[dict, int]:
+        summary = graph_service.reset_knowledge_categories_to_default()
+        return {"reset": summary}, 200
+
+    return _graph_operation(_handler)
 
 
 @bp.get("/api/graph/knowledge-points")
@@ -166,6 +219,36 @@ def delete_knowledge_point(name: str):
     return _graph_operation(_handler)
 
 
+@bp.get("/api/graph/knowledge-points/orphans")
+@require_role("teacher")
+def list_orphan_knowledge_points():
+    """List knowledge points that are not linked to practices or lessons."""
+
+    def _handler() -> Tuple[dict, int]:
+        orphans = graph_service.list_orphan_knowledge_points()
+        return {"orphans": orphans}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/knowledge-points/orphans/cleanup")
+@require_role("teacher")
+def cleanup_orphan_knowledge_points():
+    """Archive or delete orphaned knowledge points."""
+
+    body = request.get_json(force=True, silent=True) or {}
+    names = body.get("names") or []
+    if not isinstance(names, list):
+        return jsonify({"error": "names must be a list"}), 400
+    archive = bool(body.get("archive"))
+
+    def _handler() -> Tuple[dict, int]:
+        summary = graph_service.cleanup_orphan_knowledge_points(names, archive=archive)
+        return {"cleanup": summary}, 200
+
+    return _graph_operation(_handler)
+
+
 @bp.post("/api/graph/knowledge-points/<name>/prerequisites")
 @require_role("teacher")
 def add_prerequisite(name: str):
@@ -257,6 +340,18 @@ def get_practice_graph_detail(practice_id: str):
     def _handler() -> Tuple[dict, int]:
         detail = graph_service.get_practice_detail(practice_id)
         return {"practice": detail}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/practices/<practice_id>/knowledge/recommendations")
+@require_role("teacher")
+def get_practice_recommendations(practice_id: str):
+    """Expose preset knowledge suggestions for a practice."""
+
+    def _handler() -> Tuple[dict, int]:
+        payload = graph_service.get_practice_knowledge_recommendations(practice_id)
+        return payload, 200
 
     return _graph_operation(_handler)
 

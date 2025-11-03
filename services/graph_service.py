@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import csv
+import importlib.util
 import io
 import logging
 import os
 import re
+from datetime import datetime
+from pathlib import Path
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from neo4j import GraphDatabase, basic_auth
 from neo4j.exceptions import IncompleteCommit, Neo4jError, ServiceUnavailable
@@ -31,6 +35,40 @@ class GraphEntityNotFoundError(RuntimeError):
 _DRIVER = None
 _GRAPH_DISABLED = False
 _GRAPH_DISABLED_REASON = ""
+_DEFAULT_CATEGORIES_CACHE: Optional[Sequence[Dict[str, object]]] = None
+
+
+INITIALIZATION_SETTING_KEY = "knowledge_graph.initialization"
+
+
+def _default_categories() -> Sequence[Dict[str, object]]:
+    """Load the recommended category hierarchy from the migration preset."""
+
+    global _DEFAULT_CATEGORIES_CACHE
+    if _DEFAULT_CATEGORIES_CACHE is not None:
+        return _DEFAULT_CATEGORIES_CACHE
+
+    module_path = (
+        Path(__file__).resolve().parent.parent / "migrations" / "001_enhance_knowledge_graph.py"
+    )
+    categories: Sequence[Dict[str, object]] = ()
+    if module_path.exists():
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "migrations.enhance_knowledge_graph", str(module_path)
+            )
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                categories = getattr(module, "DEFAULT_CATEGORIES", ())
+        except Exception as exc:  # pragma: no cover - defensive logging
+            LOGGER.warning("Failed to load default categories: %s", exc)
+            categories = ()
+    else:
+        LOGGER.debug("Default category preset file not found at %s", module_path)
+
+    _DEFAULT_CATEGORIES_CACHE = tuple(categories)
+    return _DEFAULT_CATEGORIES_CACHE
 
 
 def _neo4j_credentials() -> Tuple[str, str, str]:
@@ -87,6 +125,61 @@ def graph_status() -> Dict[str, object]:
         "configured": is_configured(),
         "available": is_configured() and not _GRAPH_DISABLED,
         "message": _GRAPH_DISABLED_REASON,
+    }
+
+
+def get_initialization_status() -> Dict[str, object]:
+    """Return the persisted initialization state for the knowledge graph."""
+
+    record = database.get_app_setting(INITIALIZATION_SETTING_KEY, {})
+    initialized = bool(record.get("initialized")) if isinstance(record, dict) else False
+    option = record.get("option") if isinstance(record, dict) else None
+    completed_at = record.get("completedAt") if isinstance(record, dict) else None
+    return {
+        "initialized": initialized,
+        "option": option,
+        "completedAt": completed_at,
+        "graph": graph_status(),
+    }
+
+
+def _set_initialization_status(option: str) -> Dict[str, object]:
+    payload = {
+        "initialized": True,
+        "option": option,
+        "completedAt": datetime.utcnow().isoformat() + "Z",
+    }
+    database.set_app_setting(INITIALIZATION_SETTING_KEY, payload)
+    payload["graph"] = graph_status()
+    return payload
+
+
+def reset_initialization_status() -> None:
+    """Clear the initialization status flag."""
+
+    database.delete_app_setting(INITIALIZATION_SETTING_KEY)
+
+
+def get_initialization_defaults_preview() -> Dict[str, object]:
+    """Return the recommended category tree and practice suggestions."""
+
+    categories = copy.deepcopy(list(_default_categories()))
+    knowledge_presets: List[Dict[str, object]] = []
+    for practice_id, names in SECTION_KNOWLEDGE_PRESETS.items():
+        section = database.get_section(practice_id)
+        knowledge_presets.append(
+            {
+                "practiceId": practice_id,
+                "practiceTitle": section.get("title") if section else "",
+                "chapterId": section.get("chapter_id") if section else "",
+                "count": len(names),
+                "names": list(names),
+            }
+        )
+
+    return {
+        "categories": categories,
+        "knowledgePresets": knowledge_presets,
     }
 
 
@@ -384,7 +477,13 @@ def bootstrap_graph() -> None:
 
     try:
         ensure_indexes()
-        sync_static_content()
+        status = get_initialization_status()
+        if status.get("initialized"):
+            sync_static_content()
+        else:
+            LOGGER.info(
+                "Knowledge graph initialization deferred; waiting for teacher confirmation"
+            )
     except GraphUnavailableError as exc:  # pragma: no cover - depends on external service
         LOGGER.warning("Unable to bootstrap knowledge graph: %s", exc)
     except (Neo4jError, ServiceUnavailable, IncompleteCommit, OSError, TimeoutError) as exc:
@@ -392,7 +491,7 @@ def bootstrap_graph() -> None:
         _disable_graph(f"Knowledge graph bootstrap failed: {exc}")
 
 
-def sync_static_content() -> None:
+def sync_static_content(*, include_recommendations: bool = False) -> None:
     """Mirror the SQLite content hierarchy into Neo4j."""
 
     driver = _get_driver()
@@ -410,11 +509,6 @@ def sync_static_content() -> None:
                 session.execute_write(_link_chapter_process, chapter["id"])
                 for section in chapter.get("sections", []):
                     session.execute_write(_merge_practice, chapter, section)
-                    preset = SECTION_KNOWLEDGE_PRESETS.get(section["id"], ())
-                    if preset:
-                        session.execute_write(
-                            _ensure_practice_knowledge, section["id"], list(preset)
-                        )
 
             for theory_chapter in theory_hierarchy:
                 for topic in theory_chapter.get("topics", []):
@@ -433,15 +527,145 @@ def sync_static_content() -> None:
                             )
                             continue
                         session.execute_write(_merge_theory_lesson, topic, lesson)
-                        preset = LESSON_KNOWLEDGE_PRESETS.get(lesson["id"], ())
-                        if preset:
-                            session.execute_write(
-                                _ensure_lesson_knowledge, lesson["id"], list(preset)
-                            )
     except (Neo4jError, ServiceUnavailable, IncompleteCommit, OSError, TimeoutError) as exc:
         LOGGER.error("Failed to synchronise static content with Neo4j: %s", exc)
         _disable_graph(f"Failed to synchronise static content: {exc}")
         raise GraphUnavailableError("Failed to synchronise static content") from exc
+
+
+def _merge_default_categories_tx(tx, categories: Sequence[Dict[str, object]]) -> int:
+    created = 0
+    stack: List[Tuple[Optional[str], Dict[str, object]]] = [
+        (None, copy.deepcopy(category)) for category in categories
+    ]
+    while stack:
+        parent_id, node = stack.pop()
+        node_id = node.get("id")
+        if not node_id:
+            continue
+        properties = {
+            "id": node_id,
+            "name": node.get("name"),
+            "code": node.get("code"),
+            "level": node.get("level", 1),
+            "orderIndex": node.get("orderIndex", 0),
+            "icon": node.get("icon"),
+            "color": node.get("color"),
+            "description": node.get("description"),
+            "isActive": bool(node.get("isActive", True)),
+            "isSystemRecommended": True,
+        }
+        tx.run(
+            "MERGE (c:KnowledgeCategory {id: $id}) "
+            "SET c.name = $name, c.code = $code, c.level = $level, "
+            "    c.orderIndex = $orderIndex, c.icon = $icon, c.color = $color, "
+            "    c.description = $description, c.isActive = $isActive, "
+            "    c.isSystemRecommended = $isSystemRecommended, "
+            "    c.updatedAt = datetime(), "
+            "    c.createdAt = coalesce(c.createdAt, datetime())",
+            properties,
+        )
+        if parent_id:
+            tx.run(
+                "MATCH (parent:KnowledgeCategory {id: $parent_id}), "
+                "      (child:KnowledgeCategory {id: $child_id}) "
+                "MERGE (parent)-[:PARENT_OF]->(child)",
+                {"parent_id": parent_id, "child_id": node_id},
+            )
+        children = node.get("children") or []
+        for child in children:
+            stack.append((node_id, child))
+        created += 1
+    return created
+
+
+def _merge_default_knowledge_points_tx(tx, names: Sequence[str]) -> int:
+    created = 0
+    for name in names:
+        if not name:
+            continue
+        result = tx.run(
+            """
+            MERGE (k:KnowledgePoint {name: $name})
+            ON CREATE SET k.createdAt = datetime(),
+                          k.practiceCount = coalesce(k.practiceCount, 0),
+                          k.lessonCount = coalesce(k.lessonCount, 0),
+                          k.category = coalesce(k.category, 'uncategorized')
+            SET k.isSystemRecommended = true,
+                k.source = coalesce(k.source, 'preset'),
+                k.updatedAt = datetime()
+            """,
+            {"name": name},
+        )
+        summary = result.consume()
+        if summary.counters.nodes_created:
+            created += 1
+    return created
+
+
+def apply_default_recommendations() -> Dict[str, int]:
+    """Create the recommended categories and knowledge point shells."""
+
+    categories = list(_default_categories())
+    driver = _get_driver()
+    knowledge_names = sorted(
+        {name for names in SECTION_KNOWLEDGE_PRESETS.values() for name in names}
+    )
+
+    with driver.session() as session:
+        created_categories = session.execute_write(_merge_default_categories_tx, categories)
+        created_knowledge = 0
+        if knowledge_names:
+            created_knowledge = session.execute_write(
+                _merge_default_knowledge_points_tx, knowledge_names
+            )
+
+    return {"categories": created_categories, "knowledgePoints": created_knowledge}
+
+
+def reset_knowledge_categories_to_default() -> Dict[str, int]:
+    """Remove existing categories and rebuild the default recommended tree."""
+
+    driver = _get_driver()
+    categories = list(_default_categories())
+
+    with driver.session() as session:
+        session.run("MATCH (c:KnowledgeCategory) DETACH DELETE c")
+        created_categories = session.execute_write(_merge_default_categories_tx, categories)
+
+    return {"categories": created_categories}
+
+
+def initialize_graph(
+    option: str,
+    *,
+    initiated_by: str = "system",
+    force: bool = False,
+) -> Dict[str, object]:
+    """Execute the teacher-driven initialization workflow."""
+
+    normalized = (option or "").strip().lower()
+    if normalized not in {"default", "blank", "import"}:
+        raise ValueError("Unsupported initialization option")
+
+    current = get_initialization_status()
+    if current.get("initialized") and not force:
+        raise ValueError("Knowledge graph has already been initialized")
+
+    if not is_configured():
+        raise GraphUnavailableError("Knowledge graph backend is not configured")
+
+    ensure_indexes()
+    sync_static_content(include_recommendations=False)
+
+    summary = {"categories": 0, "knowledgePoints": 0}
+    if normalized == "default":
+        summary = apply_default_recommendations()
+
+    status = _set_initialization_status(normalized)
+    status["initiatedBy"] = initiated_by
+    status["summary"] = summary
+    return status
 
 
 def _merge_process_steps(tx) -> None:
@@ -514,6 +738,47 @@ def _merge_practice(tx, chapter: Dict[str, object], section: Dict[str, object]) 
     )
 
 
+def ensure_practice_node(practice_id: str) -> Dict[str, object]:
+    """Ensure a Practice node exists for the given section identifier."""
+
+    section = database.get_section(practice_id)
+    if not section:
+        raise GraphEntityNotFoundError(f"Practice {practice_id} not found")
+    chapter = database.get_chapter(section["chapter_id"])
+    if not chapter:
+        raise GraphEntityNotFoundError(
+            f"Chapter {section['chapter_id']} for practice {practice_id} not found"
+        )
+
+    chapter_payload = {
+        "id": chapter.get("id"),
+        "title": chapter.get("title"),
+        "description": chapter.get("description"),
+        "orderIndex": chapter.get("orderIndex", 0),
+        "isDefault": bool(chapter.get("isDefault")),
+    }
+    section_payload = {
+        "id": section.get("id"),
+        "chapterId": section.get("chapter_id"),
+        "title": section.get("title"),
+        "description": section.get("description"),
+        "environmentPromptTemplate": section.get("environment_prompt_template"),
+        "environmentUserMessage": section.get("environment_user_message"),
+        "conversationPromptTemplate": section.get("conversation_prompt_template"),
+        "evaluationPromptTemplate": section.get("evaluation_prompt_template"),
+        "expectsBargaining": bool(section.get("expects_bargaining")),
+        "orderIndex": section.get("order_index", 0),
+    }
+
+    driver = _get_driver()
+    with driver.session() as session:
+        session.execute_write(_merge_chapter, chapter_payload)
+        session.execute_write(_link_chapter_process, chapter_payload["id"])
+        session.execute_write(_merge_practice, chapter_payload, section_payload)
+
+    return {"chapter": chapter_payload, "practice": section_payload}
+
+
 def _merge_theory_topic(tx, topic: Dict[str, object]) -> None:
     tx.run(
         "MERGE (t:TheoryTopic {id: $id}) "
@@ -583,6 +848,7 @@ def _ensure_lesson_knowledge(tx, lesson_id: str, points: List[object]) -> None:
 
 
 def set_practice_knowledge_points(practice_id: str, points: Sequence[object]) -> None:
+    ensure_practice_node(practice_id)
     driver = _get_driver()
     normalized_payloads = _normalize_knowledge_point_payloads(points)
     names = [payload["name"] for payload in normalized_payloads if payload.get("name")]
@@ -608,6 +874,31 @@ def _set_practice_knowledge_tx(tx, practice_id: str, points: Sequence[str]) -> N
             "MERGE (p)-[:TESTS]->(k)",
             {"id": practice_id, "name": name},
         )
+
+
+def get_practice_knowledge_recommendations(practice_id: str) -> Dict[str, object]:
+    """Return existing and recommended knowledge points for a practice."""
+
+    details = ensure_practice_node(practice_id)
+    recommended = list(SECTION_KNOWLEDGE_PRESETS.get(practice_id, ()))
+    existing_records = _execute_read(
+        "MATCH (:Practice {id: $id})-[:TESTS]->(k:KnowledgePoint) "
+        "RETURN collect(k.name) AS names",
+        {"id": practice_id},
+    )
+    existing = []
+    if existing_records:
+        existing = sorted({name for name in existing_records[0].get("names", []) if name})
+
+    return {
+        "practice": {
+            "id": practice_id,
+            "title": details["practice"].get("title"),
+            "chapterId": details["practice"].get("chapterId"),
+        },
+        "existing": existing,
+        "recommended": recommended,
+    }
 
 
 def set_lesson_knowledge_points(lesson_id: str, points: Sequence[object]) -> None:
@@ -1127,6 +1418,8 @@ def list_knowledge_points_enhanced(
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               k.isSystemRecommended AS isSystemRecommended,
+               k.isArchived AS isArchived,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount,
                collect(DISTINCT prereq.name) AS prerequisites,
@@ -1391,6 +1684,14 @@ def update_knowledge_point_category(
 def get_knowledge_management_overview() -> Dict[str, object]:
     """聚合知识点、分类树和知识卡索引，供前端统一加载。"""
 
+    status = get_initialization_status()
+    if not status.get("initialized"):
+        return {
+            "initialized": False,
+            "initialization": status,
+            "defaults": get_initialization_defaults_preview(),
+        }
+
     raw_points = list_knowledge_points_enhanced()
     card_payloads = list_knowledge_points()
     card_by_name = {card.get("name"): card for card in card_payloads if card.get("name")}
@@ -1470,6 +1771,7 @@ def get_knowledge_management_overview() -> Dict[str, object]:
                     "name": name,
                     "practiceCount": point.get("practiceCount", 0),
                     "lessonCount": point.get("lessonCount", 0),
+                    "isSystemRecommended": bool(point.get("isSystemRecommended")),
                 }
             )
 
@@ -1490,6 +1792,8 @@ def get_knowledge_management_overview() -> Dict[str, object]:
             "relations": relations,
             "practiceCount": point.get("practiceCount", 0),
             "lessonCount": point.get("lessonCount", 0),
+            "isSystemRecommended": bool(point.get("isSystemRecommended")),
+            "isArchived": bool(point.get("isArchived")),
         }
         overview_points.append(overview)
 
@@ -1603,9 +1907,13 @@ def get_knowledge_management_overview() -> Dict[str, object]:
     }
 
     return {
+        "initialized": True,
+        "initialization": status,
         "knowledge_points": overview_points,
-        "category_tree": tree_children,
-        "category_paths": category_options,
+        "tree": tree_children,
+        "uncategorized": uncategorized_points,
+        "categoryOptions": category_options,
+        "metadata": metadata_suggestions,
         "stats": stats,
         "knowledge_cards": knowledge_cards,
         "assist": smart_assist,
@@ -1629,6 +1937,68 @@ def delete_knowledge_point(name: str) -> None:
         """,
         {"name": name},
     )
+
+
+def list_orphan_knowledge_points() -> List[Dict[str, object]]:
+    """Return knowledge points that are not linked to practices or lessons."""
+
+    records = _execute_read(
+        """
+        MATCH (k:KnowledgePoint)
+        WHERE NOT (k)<-[:TESTS]-(:Practice)
+          AND NOT (k)<-[:EXPLAINS]-(:TheoryLesson)
+        RETURN k.name AS name,
+               k.description AS description,
+               k.category AS category,
+               k.updatedAt AS updatedAt,
+               k.isSystemRecommended AS isSystemRecommended,
+               k.source AS source,
+               k.createdAt AS createdAt
+        ORDER BY coalesce(k.updatedAt, k.createdAt) DESC, k.name
+        """
+    )
+    return records
+
+
+def cleanup_orphan_knowledge_points(
+    names: Sequence[str], *, archive: bool = False
+) -> Dict[str, object]:
+    """Delete or archive orphaned knowledge points by name."""
+
+    normalized = sorted({name for name in names if isinstance(name, str) and name.strip()})
+    if not normalized:
+        return {"affected": 0, "archived": archive}
+
+    driver = _get_driver()
+    with driver.session() as session:
+        if archive:
+            result = session.run(
+                """
+                MATCH (k:KnowledgePoint)
+                WHERE k.name IN $names
+                  AND NOT (k)<-[:TESTS]-(:Practice)
+                  AND NOT (k)<-[:EXPLAINS]-(:TheoryLesson)
+                SET k.isArchived = true,
+                    k.archivedAt = datetime(),
+                    k.updatedAt = datetime()
+                RETURN count(k) AS count
+                """,
+                {"names": normalized},
+            ).single()
+        else:
+            result = session.run(
+                """
+                MATCH (k:KnowledgePoint)
+                WHERE k.name IN $names
+                  AND NOT (k)<-[:TESTS]-(:Practice)
+                  AND NOT (k)<-[:EXPLAINS]-(:TheoryLesson)
+                DETACH DELETE k
+                RETURN count(k) AS count
+                """,
+                {"names": normalized},
+            ).single()
+    affected = int(result["count"]) if result and result.get("count") is not None else 0
+    return {"affected": affected, "archived": archive}
 
 
 def add_knowledge_prerequisite(name: str, prerequisite_name: str) -> Dict[str, object]:
