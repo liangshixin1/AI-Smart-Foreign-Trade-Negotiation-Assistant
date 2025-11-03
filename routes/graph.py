@@ -515,6 +515,263 @@ def import_csv():
     return _graph_operation(_handler)
 
 
+# ========== 智能批量导入端点（新） ==========
+
+
+@bp.get("/api/graph/import/batch/template")
+@require_role("teacher")
+def download_batch_import_template():
+    """
+    下载智能批量导入模板（包含数据验证的Excel文件）
+
+    可选参数：
+    - include_existing: 是否在关系列下拉菜单中包含现有知识点（true/false）
+    """
+    include_existing = request.args.get('include_existing', 'true').lower() == 'true'
+
+    try:
+        from services.knowledge_graph_batch_importer import generate_smart_templates
+        from services import knowledge_service
+
+        # 获取现有知识点列表（用于下拉菜单）
+        existing_points = None
+        if include_existing:
+            try:
+                points = knowledge_service.list_knowledge_points(limit=1000)
+                existing_points = [p.get('name') for p in points if p.get('name')]
+            except Exception as e:
+                # 如果获取失败，不影响模板生成
+                import logging
+                logging.warning(f"无法获取现有知识点列表: {e}")
+
+        # 生成模板
+        excel_content = generate_smart_templates(existing_points)
+
+        # 返回Excel文件
+        import io
+        return send_file(
+            io.BytesIO(excel_content),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="知识图谱批量导入模板.xlsx"
+        )
+    except Exception as e:
+        import logging
+        logging.exception("生成批量导入模板失败")
+        return jsonify({"error": f"生成模板失败: {str(e)}"}), 500
+
+
+@bp.post("/api/graph/import/batch")
+@require_role("teacher")
+def import_batch():
+    """
+    智能批量导入知识图谱（两表法）
+
+    请求格式: multipart/form-data
+    - points_file: 知识点主表Excel文件（必填）
+    - examples_file: 案例库表Excel文件（可选）
+    - mode: 导入模式，merge（合并）或replace（替换），默认为merge
+
+    响应格式:
+    {
+      "success": true,
+      "statistics": {
+        "points": {"total": 50, "created": 45, "updated": 5, "failed": 0, "success_rate": "100%"},
+        "relations": {"total": 80, "created": 80, "failed": 0, "success_rate": "100%"},
+        "examples": {"total": 30, "created": 30, "failed": 0, "success_rate": "100%"}
+      },
+      "errors": [...],
+      "warnings": [...],
+      "execution_time": "2.5s"
+    }
+    """
+    # 检查必填文件
+    if 'points_file' not in request.files:
+        return jsonify({"error": "缺少必填文件：知识点主表（points_file）"}), 400
+
+    points_file = request.files['points_file']
+    if points_file.filename == '':
+        return jsonify({"error": "未选择知识点主表文件"}), 400
+
+    if not points_file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({"error": "知识点主表必须是Excel文件（.xlsx或.xls）"}), 400
+
+    # 案例库表（可选）
+    examples_file = request.files.get('examples_file')
+    if examples_file and examples_file.filename:
+        if not examples_file.filename.endswith(('.xlsx', '.xls')):
+            return jsonify({"error": "案例库表必须是Excel文件（.xlsx或.xls）"}), 400
+    else:
+        examples_file = None
+
+    # 导入模式
+    mode = request.form.get('mode', 'merge').lower()
+    if mode not in ['merge', 'replace']:
+        return jsonify({"error": "mode参数必须是merge或replace"}), 400
+
+    # 获取当前用户
+    actor = current_user() or {}
+    created_by = actor.get("username") or actor.get("display_name") or "teacher"
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
+            from services.graph_service import GraphService
+
+            # 创建导入器
+            importer = KnowledgeGraphBatchImporter(GraphService())
+
+            # 执行导入
+            result = importer.import_from_two_tables(
+                points_file=points_file.stream,
+                examples_file=examples_file.stream if examples_file else None,
+                mode=mode,
+                created_by=created_by,
+            )
+
+            # 返回结果
+            return result.to_dict(), 200
+
+        except Exception as e:
+            import logging
+            logging.exception("批量导入失败")
+            return {
+                "success": False,
+                "error": f"导入失败: {str(e)}",
+                "statistics": {
+                    "points": {"total": 0, "created": 0, "updated": 0, "failed": 0, "success_rate": "0%"},
+                    "relations": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
+                    "examples": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
+                },
+                "errors": [],
+                "warnings": [],
+                "execution_time": "0s",
+            }, 500
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/import/batch/validate")
+@require_role("teacher")
+def validate_batch_import():
+    """
+    预校验批量导入数据（不执行实际导入）
+
+    用于用户在正式导入前检查数据质量
+
+    请求格式: multipart/form-data
+    - points_file: 知识点主表Excel文件（必填）
+    - examples_file: 案例库表Excel文件（可选）
+
+    响应格式:
+    {
+      "valid": true,
+      "errors": [...],
+      "warnings": [...],
+      "preview": {
+        "points_count": 50,
+        "relations_count": 80,
+        "examples_count": 30
+      }
+    }
+    """
+    # 检查必填文件
+    if 'points_file' not in request.files:
+        return jsonify({"error": "缺少必填文件：知识点主表（points_file）"}), 400
+
+    points_file = request.files['points_file']
+    if points_file.filename == '':
+        return jsonify({"error": "未选择知识点主表文件"}), 400
+
+    # 案例库表（可选）
+    examples_file = request.files.get('examples_file')
+    if examples_file and not examples_file.filename:
+        examples_file = None
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
+            from services.graph_service import GraphService
+
+            importer = KnowledgeGraphBatchImporter(GraphService())
+
+            # Phase 1: 解析数据
+            points_data, parse_errors = importer._parse_points_table(points_file.stream)
+            errors = parse_errors
+            warnings = []
+
+            examples_data = []
+            if examples_file:
+                examples_data, example_errors = importer._parse_examples_table(examples_file.stream)
+                errors.extend(example_errors)
+
+            # 建立知识点名称列表
+            importer.known_point_names = [p["name"] for p in points_data]
+
+            # Phase 2: 验证数据
+            if points_data:
+                validation_errors, validation_warnings = importer._validate_all_data(
+                    points_data, examples_data
+                )
+                errors.extend(validation_errors)
+                warnings.extend(validation_warnings)
+
+            # 统计关系数量
+            relations_count = sum(
+                len(relations)
+                for point in points_data
+                if "_relations" in point
+                for relations in point["_relations"].values()
+            )
+
+            # 返回验证结果
+            return {
+                "valid": not any(e.severity == "ERROR" for e in errors),
+                "errors": [
+                    {
+                        "severity": e.severity,
+                        "table": e.table,
+                        "row": e.row,
+                        "field": e.field,
+                        "value": e.value,
+                        "message": e.message,
+                        "suggestion": e.suggestion,
+                    }
+                    for e in errors
+                ],
+                "warnings": [
+                    {
+                        "severity": w.severity,
+                        "table": w.table,
+                        "row": w.row,
+                        "field": w.field,
+                        "value": w.value,
+                        "message": w.message,
+                        "suggestion": w.suggestion,
+                    }
+                    for w in warnings
+                ],
+                "preview": {
+                    "points_count": len(points_data),
+                    "relations_count": relations_count,
+                    "examples_count": len(examples_data),
+                }
+            }, 200
+
+        except Exception as e:
+            import logging
+            logging.exception("验证失败")
+            return {
+                "valid": False,
+                "error": f"验证失败: {str(e)}",
+                "errors": [],
+                "warnings": [],
+                "preview": {"points_count": 0, "relations_count": 0, "examples_count": 0}
+            }, 500
+
+    return _graph_operation(_handler)
+
+
 @bp.get("/api/graph/export/excel")
 @require_role("teacher")
 def export_excel():
