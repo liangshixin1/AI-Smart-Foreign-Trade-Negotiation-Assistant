@@ -194,6 +194,15 @@ def close_driver() -> None:
     _GRAPH_DISABLED_REASON = ""
 
 
+class GraphService:
+    """Wrapper class for Neo4j graph service operations."""
+
+    @property
+    def driver(self):
+        """Get the Neo4j driver instance."""
+        return _get_driver()
+
+
 def _fallback_practice_detail(practice_id: str) -> Dict[str, object]:
     practice = database.get_section(practice_id)
     if not practice:
