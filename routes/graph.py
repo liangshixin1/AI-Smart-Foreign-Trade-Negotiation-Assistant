@@ -531,7 +531,7 @@ def download_batch_import_template():
 
     try:
         from services.knowledge_graph_batch_importer import generate_smart_templates
-        from services import knowledge_service
+        from services import knowledge_service, graph_service
 
         # 获取现有知识点列表（用于下拉菜单）
         existing_points = None
@@ -544,8 +544,18 @@ def download_batch_import_template():
                 import logging
                 logging.warning(f"无法获取现有知识点列表: {e}")
 
+        # 获取现有阶段列表（用于"所属阶段"下拉菜单）
+        existing_stages = None
+        try:
+            stages = graph_service.list_stages()
+            existing_stages = [s.get('name') for s in stages if s.get('name')]
+        except Exception as e:
+            # 如果获取失败，使用默认阶段列表
+            import logging
+            logging.warning(f"无法获取现有阶段列表: {e}")
+
         # 生成模板
-        excel_content = generate_smart_templates(existing_points)
+        excel_content = generate_smart_templates(existing_points, existing_stages)
 
         # 返回Excel文件
         import io
@@ -988,5 +998,89 @@ def get_enhanced_graph_visualization():
             max_nodes=max_nodes,
         )
         return data, 200
+
+    return _graph_operation(_handler)
+
+@bp.post("/api/graph/import/three-sheets")
+@require_role("teacher")
+def import_three_sheets():
+    """
+    三表联动导入知识图谱（新版，支持多节点类型）
+
+    请求格式: multipart/form-data
+    - excel_file: 包含三个sheet的Excel文件（必填）
+        - Sheet 1: 谈判流程
+        - Sheet 2: 知识点主表（支持"所属阶段"）
+        - Sheet 3: 案例库（可选）
+    - mode: 导入模式，merge（合并）或replace（替换），默认为merge
+
+    响应格式:
+    {
+      "success": true,
+      "statistics": {
+        "stages": {"total": 10, "created": 10, "updated": 0, "failed": 0},
+        "points": {"total": 50, "created": 45, "updated": 5, "failed": 0},
+        "relations": {"total": 80, "created": 80, "failed": 0},
+        "examples": {"total": 30, "created": 30, "failed": 0}
+      },
+      "errors": [...],
+      "warnings": [...],
+      "execution_time": "3.5s"
+    }
+    """
+    # 检查必填文件
+    if 'excel_file' not in request.files:
+        return jsonify({"error": "缺少必填文件：excel_file"}), 400
+
+    excel_file = request.files['excel_file']
+    if excel_file.filename == '':
+        return jsonify({"error": "未选择Excel文件"}), 400
+
+    if not excel_file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({"error": "必须是Excel文件（.xlsx或.xls）"}), 400
+
+    # 导入模式
+    mode = request.form.get('mode', 'merge').lower()
+    if mode not in ['merge', 'replace']:
+        return jsonify({"error": "mode参数必须是merge或replace"}), 400
+
+    # 获取当前用户
+    actor = current_user() or {}
+    created_by = actor.get("username") or actor.get("display_name") or "teacher"
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
+            from services.graph_service import GraphService
+
+            # 创建导入器
+            importer = KnowledgeGraphBatchImporter(GraphService())
+
+            # 执行三表联动导入
+            result = importer.import_from_three_sheets(
+                excel_file=excel_file.stream,
+                mode=mode,
+                created_by=created_by,
+            )
+
+            # 返回结果
+            return result.to_dict(), 200
+
+        except Exception as e:
+            import logging
+            logging.exception("三表导入失败")
+            return {
+                "success": False,
+                "error": f"导入失败: {str(e)}",
+                "statistics": {
+                    "stages": {"total": 0, "created": 0, "updated": 0, "failed": 0},
+                    "points": {"total": 0, "created": 0, "updated": 0, "failed": 0},
+                    "relations": {"total": 0, "created": 0, "failed": 0},
+                    "examples": {"total": 0, "created": 0, "failed": 0},
+                },
+                "errors": [],
+                "warnings": [],
+                "execution_time": "0s",
+            }, 500
 
     return _graph_operation(_handler)

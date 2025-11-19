@@ -252,10 +252,22 @@ EXAMPLE_TYPE_CN_TO_EN = {
 # 模板定义
 # ============================================
 
-# 知识点主表模板（合并关系）
+# Sheet 1: 谈判流程表模板（Stage节点定义）
+FLOW_TEMPLATE_HEADERS = [
+    ("阶段名称", "name", True, "例如：询盘"),
+    ("英文名称", "englishName", False, "例如：Inquiry"),
+    ("阶段描述", "description", False, "简要说明该阶段的核心任务"),
+    ("难度级别", "difficulty", False, "初级/中级/高级"),
+    ("预计时长(天)", "estimatedDuration", False, "例如：7"),
+    ("图标", "icon", False, "例如：🔍"),
+    ("颜色", "color", False, "例如：#3B82F6"),
+]
+
+# Sheet 2: 知识点主表模板（合并关系，新增"所属阶段"列）
 POINTS_TEMPLATE_HEADERS = [
     ("章节", "chapter", False, "例如：第一章 询盘"),
     ("知识点名称", "name", True, "例如：询盘基本流程"),
+    ("所属阶段", "stage", False, "从下拉列表选择（询盘/报盘/还盘...）"),
     ("知识点类型", "type", False, "概念型/技能型/文档型/案例型"),
     ("难度", "difficulty", False, "初级/中级/高级"),
     ("重要性", "importance", False, "必修/推荐/选修（或：高/中/低）"),
@@ -268,7 +280,7 @@ POINTS_TEMPLATE_HEADERS = [
     ("可对比学习", "contrast", False, "填写知识点名称，多个用分号分隔"),
 ]
 
-# 案例库表模板
+# Sheet 3: 案例库表模板
 EXAMPLES_TEMPLATE_HEADERS = [
     ("关联知识点", "knowledge_point_name", True, "填写知识点名称"),
     ("案例类型", "type", True, "实际案例/邮件模板/文档模板/常见错误/对话示例"),
@@ -283,11 +295,12 @@ EXAMPLES_TEMPLATE_HEADERS = [
 # ============================================
 
 class KnowledgeGraphBatchImporter:
-    """智能知识图谱批量导入器"""
+    """智能知识图谱批量导入器（支持多节点类型）"""
 
     def __init__(self, graph_service: Optional[GraphService] = None):
         self.graph_service = graph_service or GraphService()
         self.known_point_names: List[str] = []  # 用于智能错误提示
+        self.known_stage_names: List[str] = []  # 已知阶段名称列表
 
     def import_from_two_tables(
         self,
@@ -384,9 +397,423 @@ class KnowledgeGraphBatchImporter:
 
         return result
 
+    def import_from_three_sheets(
+        self,
+        excel_file: BinaryIO,
+        mode: str = "merge",
+        created_by: str = "batch-import",
+    ) -> ImportResult:
+        """
+        三表联动导入（新版，支持多节点类型）
+
+        Args:
+            excel_file: 包含三个sheet的Excel文件
+                - Sheet 1: 谈判流程（Stage节点）
+                - Sheet 2: 知识点主表（支持"所属阶段"）
+                - Sheet 3: 案例库（可选）
+            mode: 导入模式 (merge/replace)
+            created_by: 操作用户标识
+
+        Returns:
+            ImportResult对象（扩展了stages_stats）
+        """
+        import time
+        start_time = time.time()
+
+        result = ImportResult(
+            success=False,
+            points_stats=ImportStatistics(),
+            relations_stats=ImportStatistics(),
+            examples_stats=ImportStatistics(),
+        )
+
+        # 添加stages统计
+        stages_stats = ImportStatistics()
+
+        try:
+            # Phase 1: 解析三个Sheet的数据
+            LOGGER.info("Phase 1: 解析Excel文件...")
+
+            # 1.1 解析谈判流程表（Sheet 1）
+            flow_data, flow_errors = self._parse_flow_table(excel_file)
+            result.errors.extend(flow_errors)
+
+            # 建立阶段名称列表
+            self.known_stage_names = [f["name"] for f in flow_data]
+
+            # 1.2 解析知识点表（Sheet 2）
+            points_data, points_errors = self._parse_points_table_from_workbook(excel_file, sheet_name="知识点主表")
+            result.errors.extend(points_errors)
+
+            # 建立知识点名称列表
+            self.known_point_names = [p["name"] for p in points_data]
+
+            # 1.3 解析案例库表（Sheet 3，可选）
+            examples_data, examples_errors = self._parse_examples_table_from_workbook(excel_file, sheet_name="案例库表")
+            result.errors.extend(examples_errors)
+
+            # Phase 2: 验证数据
+            LOGGER.info("Phase 2: 验证数据...")
+            validation_errors, validation_warnings = self._validate_three_sheets_data(
+                flow_data, points_data, examples_data
+            )
+            result.errors.extend(validation_errors)
+            result.warnings.extend(validation_warnings)
+
+            # 如果有致命错误，停止导入
+            if any(e.severity == "ERROR" for e in result.errors):
+                LOGGER.error(f"发现 {len([e for e in result.errors if e.severity == 'ERROR'])} 个错误，停止导入")
+                result.execution_time = time.time() - start_time
+                return result
+
+            # Phase 3: 事务性导入
+            LOGGER.info("Phase 3: 开始导入...")
+            stages_stats, result.points_stats, result.relations_stats, result.examples_stats = (
+                self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, created_by)
+            )
+
+            result.success = True
+            result.execution_time = time.time() - start_time
+
+            LOGGER.info(
+                f"导入完成: 阶段 {stages_stats.created}创建, "
+                f"知识点 {result.points_stats.created}创建/{result.points_stats.updated}更新, "
+                f"关系 {result.relations_stats.created}创建, "
+                f"案例 {result.examples_stats.created}创建"
+            )
+
+            # 将stages_stats添加到result中（需要扩展ImportResult）
+            # 这里暂时记录在日志中
+            LOGGER.info(f"Stage统计: {stages_stats}")
+
+        except Exception as e:
+            LOGGER.exception("三表导入失败")
+            result.errors.append(ValidationError(
+                severity="ERROR",
+                table="system",
+                row=0,
+                message=f"系统错误: {str(e)}",
+            ))
+            result.execution_time = time.time() - start_time
+
+        return result
+
     # ========================================
     # Phase 1: 数据解析
     # ========================================
+
+    def _parse_flow_table(self, file: BinaryIO) -> Tuple[List[Dict], List[ValidationError]]:
+        """解析谈判流程表（Sheet 1）"""
+        if not EXCEL_AVAILABLE:
+            raise RuntimeError("openpyxl未安装，无法读取Excel文件")
+
+        errors = []
+        flow_data = []
+
+        try:
+            if hasattr(file, 'seek'):
+                file.seek(0)
+
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+
+            # 尝试找到谈判流程表
+            sheet_name = None
+            if "谈判流程" in wb.sheetnames:
+                sheet_name = "谈判流程"
+            elif len(wb.sheetnames) > 0:
+                sheet_name = wb.sheetnames[0]  # 使用第一个sheet
+            else:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="flow",
+                    row=0,
+                    message="未找到谈判流程表",
+                ))
+                return [], errors
+
+            ws = wb[sheet_name]
+
+            # 读取表头
+            header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            headers = [h.replace('*', '').strip() if h else '' for h in header_row]
+
+            # 构建列名映射
+            field_map = {}
+            for idx, header in enumerate(headers):
+                for template_header, field, _, _ in FLOW_TEMPLATE_HEADERS:
+                    if header == template_header:
+                        field_map[field] = idx
+                        break
+
+            # 检查必填字段
+            if "name" not in field_map:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="flow",
+                    row=1,
+                    field="阶段名称",
+                    message="缺少必填列：阶段名称",
+                ))
+                return [], errors
+
+            # 读取数据行（跳过表头和示例行）
+            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+                if not any(row):
+                    continue
+
+                try:
+                    stage = self._parse_flow_row(row, field_map, row_idx)
+                    if stage:
+                        flow_data.append(stage)
+                except Exception as e:
+                    errors.append(ValidationError(
+                        severity="WARNING",
+                        table="flow",
+                        row=row_idx,
+                        message=f"解析行数据失败: {str(e)}",
+                        action_taken="SKIP_ROW",
+                    ))
+
+            wb.close()
+
+        except Exception as e:
+            errors.append(ValidationError(
+                severity="ERROR",
+                table="flow",
+                row=0,
+                message=f"读取Excel文件失败: {str(e)}",
+            ))
+
+        return flow_data, errors
+
+    def _parse_flow_row(self, row: tuple, field_map: Dict, row_idx: int) -> Optional[Dict]:
+        """解析单行谈判流程数据"""
+        stage = {}
+
+        for field, col_idx in field_map.items():
+            if col_idx >= len(row):
+                continue
+
+            value = row[col_idx]
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+
+            # 类型转换
+            if field == "estimatedDuration":
+                try:
+                    stage[field] = int(value)
+                except (ValueError, TypeError):
+                    stage[field] = 7  # 默认7天
+            elif field == "difficulty":
+                # 中英文转换
+                stage[field] = DIFFICULTY_CN_TO_EN.get(str(value).strip(), str(value).strip())
+            else:
+                stage[field] = str(value).strip()
+
+        # 必须有名称
+        if not stage.get("name"):
+            return None
+
+        # 添加行号
+        stage["_row"] = row_idx
+        # 添加顺序（根据Excel中的行号自动生成）
+        stage["_order"] = row_idx - 2  # 减去表头和示例行
+
+        return stage
+
+    def _parse_points_table_from_workbook(
+        self, file: BinaryIO, sheet_name: str = "知识点主表"
+    ) -> Tuple[List[Dict], List[ValidationError]]:
+        """从工作簿中解析知识点表（支持"所属阶段"列）"""
+        if not EXCEL_AVAILABLE:
+            raise RuntimeError("openpyxl未安装")
+
+        errors = []
+        points_data = []
+
+        try:
+            if hasattr(file, 'seek'):
+                file.seek(0)
+
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+
+            # 查找知识点表
+            if sheet_name not in wb.sheetnames:
+                # 尝试其他可能的名称
+                for possible_name in ["知识点主表", "知识点", "Sheet2"]:
+                    if possible_name in wb.sheetnames:
+                        sheet_name = possible_name
+                        break
+                else:
+                    errors.append(ValidationError(
+                        severity="WARNING",
+                        table="knowledge_points",
+                        row=0,
+                        message=f"未找到'{sheet_name}'表，知识点导入将跳过",
+                    ))
+                    return [], errors
+
+            ws = wb[sheet_name]
+
+            # 读取表头
+            header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            headers = [h.replace('*', '').strip() if h else '' for h in header_row]
+
+            # 构建列名映射
+            field_map = {}
+            for idx, header in enumerate(headers):
+                for template_header, field, _, _ in POINTS_TEMPLATE_HEADERS:
+                    if header == template_header:
+                        field_map[field] = idx
+                        break
+                if header in RELATION_COLUMNS:
+                    field_map[header] = idx
+
+            # 检查必填字段
+            if "name" not in field_map:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="knowledge_points",
+                    row=1,
+                    field="知识点名称",
+                    message="缺少必填列：知识点名称",
+                ))
+                return [], errors
+
+            # 读取数据行
+            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+                if not any(row):
+                    continue
+
+                try:
+                    point = self._parse_point_row(row, field_map, headers, row_idx)
+                    if point:
+                        points_data.append(point)
+                except Exception as e:
+                    errors.append(ValidationError(
+                        severity="WARNING",
+                        table="knowledge_points",
+                        row=row_idx,
+                        message=f"解析行数据失败: {str(e)}",
+                        action_taken="SKIP_ROW",
+                    ))
+
+            wb.close()
+
+        except Exception as e:
+            errors.append(ValidationError(
+                severity="ERROR",
+                table="knowledge_points",
+                row=0,
+                message=f"读取Excel文件失败: {str(e)}",
+            ))
+
+        return points_data, errors
+
+    def _parse_examples_table_from_workbook(
+        self, file: BinaryIO, sheet_name: str = "案例库表"
+    ) -> Tuple[List[Dict], List[ValidationError]]:
+        """从工作簿中解析案例库表"""
+        if not EXCEL_AVAILABLE:
+            raise RuntimeError("openpyxl未安装")
+
+        errors = []
+        examples_data = []
+
+        try:
+            if hasattr(file, 'seek'):
+                file.seek(0)
+
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+
+            # 查找案例库表（可选）
+            if sheet_name not in wb.sheetnames:
+                # 尝试其他可能的名称
+                for possible_name in ["案例库表", "案例库", "Sheet3"]:
+                    if possible_name in wb.sheetnames:
+                        sheet_name = possible_name
+                        break
+                else:
+                    # 案例库表是可选的，没有也不报错
+                    return [], errors
+
+            ws = wb[sheet_name]
+
+            # 读取表头
+            header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            headers = [h.replace('*', '').strip() if h else '' for h in header_row]
+
+            # 构建列名映射
+            field_map = {}
+            for idx, header in enumerate(headers):
+                for template_header, field, _, _ in EXAMPLES_TEMPLATE_HEADERS:
+                    if header == template_header:
+                        field_map[field] = idx
+                        break
+
+            # 检查必填字段
+            required_fields = ["knowledge_point_name", "type", "title", "content"]
+            missing_fields = [f for f in required_fields if f not in field_map]
+            if missing_fields:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="examples",
+                    row=1,
+                    message=f"缺少必填列: {', '.join(missing_fields)}",
+                ))
+                return [], errors
+
+            # 读取数据行
+            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+                if not any(row):
+                    continue
+
+                try:
+                    example = {}
+                    for field, col_idx in field_map.items():
+                        value = row[col_idx] if col_idx < len(row) else None
+                        if value is None or (isinstance(value, str) and not value.strip()):
+                            continue
+
+                        if field == "type":
+                            example[field] = EXAMPLE_TYPE_CN_TO_EN.get(
+                                str(value).strip(), str(value).strip()
+                            )
+                        else:
+                            example[field] = str(value).strip()
+
+                    if all(example.get(f) for f in required_fields):
+                        example["_row"] = row_idx
+                        examples_data.append(example)
+                    else:
+                        errors.append(ValidationError(
+                            severity="WARNING",
+                            table="examples",
+                            row=row_idx,
+                            message="缺少必填字段，已跳过",
+                            action_taken="SKIP_ROW",
+                        ))
+
+                except Exception as e:
+                    errors.append(ValidationError(
+                        severity="WARNING",
+                        table="examples",
+                        row=row_idx,
+                        message=f"解析失败: {str(e)}",
+                        action_taken="SKIP_ROW",
+                    ))
+
+            wb.close()
+
+        except Exception as e:
+            errors.append(ValidationError(
+                severity="ERROR",
+                table="examples",
+                row=0,
+                message=f"读取Excel文件失败: {str(e)}",
+            ))
+
+        return examples_data, errors
 
     def _parse_points_table(self, file: BinaryIO) -> Tuple[List[Dict], List[ValidationError]]:
         """解析知识点主表"""
@@ -768,6 +1195,107 @@ class KnowledgeGraphBatchImporter:
 
         return errors, warnings
 
+    def _validate_three_sheets_data(
+        self,
+        flow_data: List[Dict],
+        points_data: List[Dict],
+        examples_data: List[Dict],
+    ) -> Tuple[List[ValidationError], List[ValidationError]]:
+        """验证三表数据（扩展版）"""
+        errors = []
+        warnings = []
+
+        # 1. 验证谈判流程数据
+        flow_errors, flow_warnings = self._validate_flow_data(flow_data)
+        errors.extend(flow_errors)
+        warnings.extend(flow_warnings)
+
+        # 2. 验证知识点数据（包括阶段关联）
+        points_errors, points_warnings = self._validate_points_with_stages(points_data)
+        errors.extend(points_errors)
+        warnings.extend(points_warnings)
+
+        # 3. 验证案例数据
+        examples_errors, examples_warnings = self._validate_examples(examples_data)
+        errors.extend(examples_errors)
+        warnings.extend(examples_warnings)
+
+        return errors, warnings
+
+    def _validate_flow_data(self, flow_data: List[Dict]) -> Tuple[List[ValidationError], List[ValidationError]]:
+        """验证谈判流程数据"""
+        errors = []
+        warnings = []
+
+        stage_names = set()
+
+        for stage in flow_data:
+            row = stage.get("_row", 0)
+            name = stage.get("name", "")
+
+            # 检查重复
+            if name in stage_names:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="flow",
+                    row=row,
+                    field="阶段名称",
+                    value=name,
+                    message=f"阶段名称重复: '{name}'",
+                ))
+            else:
+                stage_names.add(name)
+
+            # 验证难度
+            difficulty = stage.get("difficulty")
+            if difficulty and difficulty not in ["beginner", "intermediate", "advanced"]:
+                warnings.append(ValidationError(
+                    severity="WARNING",
+                    table="flow",
+                    row=row,
+                    field="难度级别",
+                    value=difficulty,
+                    message="未知的难度级别",
+                    suggestion="建议使用: 初级/中级/高级",
+                    action_taken="使用默认值 'intermediate'",
+                ))
+                stage["difficulty"] = "intermediate"
+
+        return errors, warnings
+
+    def _validate_points_with_stages(
+        self, points_data: List[Dict]
+    ) -> Tuple[List[ValidationError], List[ValidationError]]:
+        """验证知识点数据（包括阶段关联）"""
+        errors = []
+        warnings = []
+
+        # 先使用原有的验证逻辑
+        base_errors, base_warnings = self._validate_points(points_data)
+        errors.extend(base_errors)
+        warnings.extend(base_warnings)
+
+        # 额外验证: 所属阶段是否存在
+        for point in points_data:
+            row = point.get("_row", 0)
+            stage_name = point.get("stage")
+
+            if stage_name:
+                # 检查阶段是否存在
+                if stage_name not in self.known_stage_names:
+                    warnings.append(ValidationError(
+                        severity="WARNING",
+                        table="knowledge_points",
+                        row=row,
+                        field="所属阶段",
+                        value=stage_name,
+                        message=f"阶段 '{stage_name}' 不存在",
+                        suggestion=f"可用阶段: {', '.join(self.known_stage_names[:5])}",
+                        action_taken="知识点将创建，但不会关联到阶段",
+                    ))
+
+        return errors, warnings
+
     def _find_similar_names(self, target: str, threshold: float = 0.6) -> List[str]:
         """查找相似的知识点名称（智能推荐）"""
         if not self.known_point_names:
@@ -870,6 +1398,219 @@ class KnowledgeGraphBatchImporter:
 
         return points_stats, relations_stats, examples_stats
 
+    def _import_three_sheets_with_transaction(
+        self,
+        flow_data: List[Dict],
+        points_data: List[Dict],
+        examples_data: List[Dict],
+        created_by: str,
+    ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics]:
+        """三表联动事务性导入"""
+
+        stages_stats = ImportStatistics(total=len(flow_data))
+        points_stats = ImportStatistics(total=len(points_data))
+        relations_stats = ImportStatistics()
+        examples_stats = ImportStatistics(total=len(examples_data))
+
+        # 导入 graph_service
+        from services import graph_service
+
+        # 第一步：导入 Stage 节点
+        LOGGER.info("导入谈判流程阶段...")
+        stage_name_map = {}  # 用于记录成功导入的阶段
+
+        for stage in flow_data:
+            clean_stage = {k: v for k, v in stage.items() if not k.startswith("_")}
+            stage_name = clean_stage.get("name")
+
+            try:
+                # 尝试获取已存在的 Stage
+                try:
+                    existing_stage = graph_service.get_stage(stage_name)
+                    # 如果存在，可以选择更新（这里暂时跳过更新）
+                    LOGGER.info(f"Stage '{stage_name}' 已存在，跳过创建")
+                    stage_name_map[stage_name] = stage
+                except graph_service.GraphEntityNotFoundError:
+                    # 不存在，需要创建
+                    # 直接调用 Neo4j 创建 Stage 节点
+                    self._create_stage_node(clean_stage, created_by)
+                    stages_stats.created += 1
+                    stage_name_map[stage_name] = stage
+                    LOGGER.info(f"Created Stage: {stage_name}")
+
+            except Exception as e:
+                LOGGER.error(f"导入 Stage 失败: {stage_name}: {e}")
+                stages_stats.failed += 1
+
+        # 第二步：创建 PRECEDES 关系（流程先后）
+        LOGGER.info("创建流程关系...")
+        sorted_stages = sorted(flow_data, key=lambda s: s.get("_order", 0))
+
+        for i in range(len(sorted_stages) - 1):
+            from_stage = sorted_stages[i].get("name")
+            to_stage = sorted_stages[i + 1].get("name")
+
+            if from_stage in stage_name_map and to_stage in stage_name_map:
+                try:
+                    self._create_precedes_relation(from_stage, to_stage, created_by)
+                    relations_stats.created += 1
+                    relations_stats.total += 1
+                    LOGGER.info(f"Created PRECEDES: {from_stage} -> {to_stage}")
+                except Exception as e:
+                    LOGGER.error(f"创建 PRECEDES 关系失败: {from_stage} -> {to_stage}: {e}")
+                    relations_stats.failed += 1
+                    relations_stats.total += 1
+
+        # 第三步：导入知识点节点
+        LOGGER.info("导入知识点节点...")
+        point_name_map = {}
+
+        for point in points_data:
+            clean_point = {k: v for k, v in point.items() if not k.startswith("_")}
+            point_name = clean_point.get("name")
+
+            # 移除 "stage" 字段，它只用于建立关系
+            stage_name = clean_point.pop("stage", None)
+
+            try:
+                # 使用 knowledge_service 创建/更新知识点
+                try:
+                    existing = knowledge_service.get_knowledge_point(point_name)
+                    # 更新
+                    knowledge_service.update_knowledge_point(point_name, clean_point)
+                    points_stats.updated += 1
+                except graph_service.GraphEntityNotFoundError:
+                    # 创建
+                    knowledge_service.create_knowledge_point(clean_point)
+                    points_stats.created += 1
+
+                point_name_map[point_name] = {
+                    "stage": stage_name,
+                }
+
+            except Exception as e:
+                LOGGER.error(f"导入知识点失败: {point_name}: {e}")
+                points_stats.failed += 1
+
+        # 第四步：创建 HAS_TOPIC 关系（阶段包含知识点）
+        LOGGER.info("创建阶段-知识点关联...")
+        for point_name, info in point_name_map.items():
+            stage_name = info.get("stage")
+
+            if stage_name and stage_name in stage_name_map:
+                try:
+                    graph_service.link_knowledge_point_to_stage(point_name, stage_name)
+                    relations_stats.created += 1
+                    relations_stats.total += 1
+                    LOGGER.info(f"Linked '{point_name}' to Stage '{stage_name}'")
+                except Exception as e:
+                    LOGGER.error(f"关联知识点到阶段失败: {point_name} -> {stage_name}: {e}")
+                    relations_stats.failed += 1
+                    relations_stats.total += 1
+
+        # 第五步：创建知识点之间的关系
+        LOGGER.info("创建知识点关系...")
+        for point in points_data:
+            if "_relations" not in point:
+                continue
+
+            source_name = point["name"]
+            if source_name not in point_name_map:
+                continue
+
+            for relation_type, target_names in point["_relations"].items():
+                for target_name in target_names:
+                    if target_name not in point_name_map:
+                        relations_stats.failed += 1
+                        relations_stats.total += 1
+                        continue
+
+                    try:
+                        self._create_relation(source_name, target_name, relation_type, created_by)
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+                    except Exception as e:
+                        LOGGER.error(f"创建关系失败: {source_name} -> {target_name}: {e}")
+                        relations_stats.failed += 1
+                        relations_stats.total += 1
+
+        # 第六步：创建案例节点
+        if examples_data:
+            LOGGER.info("创建案例数据...")
+            for example in examples_data:
+                kp_name = example.get("knowledge_point_name")
+                if not kp_name or kp_name not in point_name_map:
+                    examples_stats.failed += 1
+                    continue
+
+                try:
+                    self._create_example(example, created_by)
+                    examples_stats.created += 1
+                except Exception as e:
+                    LOGGER.error(f"创建案例失败: {example.get('title')}: {e}")
+                    examples_stats.failed += 1
+
+        return stages_stats, points_stats, relations_stats, examples_stats
+
+    def _create_stage_node(self, stage_data: Dict, created_by: str) -> None:
+        """创建 Stage 节点（直接操作 Neo4j）"""
+        from services import graph_service
+
+        driver = graph_service._get_driver()
+
+        query = """
+        CREATE (s:Stage {
+            name: $name,
+            englishName: $englishName,
+            description: $description,
+            difficulty: $difficulty,
+            estimatedDuration: $estimatedDuration,
+            icon: $icon,
+            color: $color,
+            createdAt: datetime(),
+            createdBy: $createdBy,
+            updatedAt: datetime()
+        })
+        RETURN s.name AS name
+        """
+
+        params = {
+            "name": stage_data.get("name"),
+            "englishName": stage_data.get("englishName", ""),
+            "description": stage_data.get("description", ""),
+            "difficulty": stage_data.get("difficulty", "intermediate"),
+            "estimatedDuration": stage_data.get("estimatedDuration", 7),
+            "icon": stage_data.get("icon", "🔵"),
+            "color": stage_data.get("color", "#3B82F6"),
+            "createdBy": created_by,
+        }
+
+        with driver.session() as session:
+            session.run(query, params)
+
+    def _create_precedes_relation(self, from_stage: str, to_stage: str, created_by: str) -> None:
+        """创建 PRECEDES 关系"""
+        from services import graph_service
+
+        driver = graph_service._get_driver()
+
+        query = """
+        MATCH (s1:Stage {name: $from_stage})
+        MATCH (s2:Stage {name: $to_stage})
+        MERGE (s1)-[r:PRECEDES]->(s2)
+        ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+        RETURN s1.name AS from, s2.name AS to
+        """
+
+        params = {
+            "from_stage": from_stage,
+            "to_stage": to_stage,
+            "createdBy": created_by,
+        }
+
+        with driver.session() as session:
+            session.run(query, params)
+
     def _generate_point_id(self, name: str) -> str:
         """生成知识点ID（基于名称的hash）"""
         # 使用MD5生成短ID
@@ -928,26 +1669,89 @@ class KnowledgeGraphBatchImporter:
 # 智能模板生成器
 # ============================================
 
-def generate_smart_templates(existing_points: Optional[List[str]] = None) -> bytes:
+def generate_smart_templates(existing_points: Optional[List[str]] = None, existing_stages: Optional[List[str]] = None) -> bytes:
     """
-    生成智能Excel模板（包含数据验证和下拉菜单）
+    生成智能Excel模板（包含数据验证和下拉菜单）- 支持多节点类型
 
     Args:
         existing_points: 现有知识点名称列表（用于关系列的下拉菜单）
+        existing_stages: 现有阶段名称列表（用于"所属阶段"下拉菜单）
 
     Returns:
-        包含两个sheet的Excel文件（知识点主表 + 案例库表）
+        包含三个sheet的Excel文件（谈判流程 + 知识点主表 + 案例库表）
     """
     if not EXCEL_AVAILABLE:
         raise RuntimeError("openpyxl未安装，无法生成模板")
 
     wb = Workbook()
 
+    # 样式定义（所有 Sheet 共用）
+    header_font = Font(bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    example_font = Font(italic=True, size=9, color="666666")
+    border = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC')
+    )
+
     # ========================================
-    # Sheet 1: 知识点主表
+    # Sheet 1: 谈判流程
     # ========================================
-    ws_points = wb.active
-    ws_points.title = "知识点主表"
+    ws_flow = wb.active
+    ws_flow.title = "谈判流程"
+
+    # 设置列宽
+    flow_widths = [15, 20, 40, 12, 15, 10, 12]
+    for idx, width in enumerate(flow_widths, start=1):
+        ws_flow.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
+
+    # 写入表头
+    for col_idx, (header, field, required, example) in enumerate(FLOW_TEMPLATE_HEADERS, start=1):
+        cell = ws_flow.cell(row=1, column=col_idx)
+        cell.value = f"{header}{'*' if required else ''}"
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+
+        # 示例行
+        example_cell = ws_flow.cell(row=2, column=col_idx)
+        example_cell.value = example
+        example_cell.font = example_font
+        example_cell.alignment = Alignment(wrap_text=True)
+
+    # 冻结首行
+    ws_flow.freeze_panes = "A3"
+
+    # 添加难度下拉菜单
+    difficulty_validation = DataValidation(
+        type="list",
+        formula1='"初级,中级,高级"',
+        allow_blank=True
+    )
+    difficulty_validation.error = "请从下拉列表中选择"
+    difficulty_validation.errorTitle = "输入错误"
+    ws_flow.add_data_validation(difficulty_validation)
+    difficulty_validation.add("D3:D1000")  # 难度级别列
+
+    # 添加示例数据
+    sample_stages = [
+        ["询盘", "Inquiry", "买方向卖方询问商品信息和交易条件的阶段", "初级", "7", "🔍", "#3B82F6"],
+        ["报盘", "Offer", "卖方向买方报价和交易条件的阶段", "中级", "5", "📊", "#10B981"],
+        ["还盘", "Counter-Offer", "买卖双方针对报价和条件进行协商和调整", "高级", "10", "🔄", "#F59E0B"],
+    ]
+    for row_idx, stage_data in enumerate(sample_stages, start=3):
+        for col_idx, value in enumerate(stage_data, start=1):
+            cell = ws_flow.cell(row=row_idx, column=col_idx)
+            cell.value = value
+            cell.font = Font(italic=True, size=9, color="999999")
+
+    # ========================================
+    # Sheet 2: 知识点主表
+    # ========================================
+    ws_points = wb.create_sheet("知识点主表")
 
     # 样式定义
     header_font = Font(bold=True, size=11, color="FFFFFF")
@@ -985,7 +1789,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None) -> byt
     ws_points.freeze_panes = "A3"
 
     # 添加数据验证（下拉菜单）
-    _add_data_validations(ws_points, existing_points)
+    _add_data_validations(ws_points, existing_points, existing_stages)
 
     # 添加示例数据
     _add_sample_data(ws_points)
@@ -1142,8 +1946,28 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None) -> byt
     return output.getvalue()
 
 
-def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
-    """为工作表添加数据验证（下拉菜单）"""
+def _add_data_validations(ws, existing_points: Optional[List[str]] = None, existing_stages: Optional[List[str]] = None):
+    """为工作表添加数据验证（下拉菜单）- 支持阶段下拉"""
+
+    # 所属阶段下拉菜单（新增）
+    if existing_stages and len(existing_stages) > 0:
+        # 使用现有阶段列表
+        stages_formula = f'"{",".join(existing_stages)}"'
+    else:
+        # 使用默认阶段列表
+        stages_formula = '"询盘,报盘,还盘,接受,签订合同,备货,报检报关,装运,保险,结汇"'
+
+    stage_validation = DataValidation(
+        type="list",
+        formula1=stages_formula,
+        allow_blank=True
+    )
+    stage_validation.error = "请从下拉列表中选择所属阶段"
+    stage_validation.errorTitle = "输入错误"
+    stage_validation.prompt = "选择该知识点所属的谈判流程阶段"
+    stage_validation.promptTitle = "提示"
+    ws.add_data_validation(stage_validation)
+    stage_validation.add("C3:C1000")  # 所属阶段在第3列
 
     # 知识点类型下拉菜单
     type_validation = DataValidation(
@@ -1156,7 +1980,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
     type_validation.prompt = "选择知识点类型"
     type_validation.promptTitle = "提示"
     ws.add_data_validation(type_validation)
-    type_validation.add("C3:C1000")
+    type_validation.add("D3:D1000")  # 知识点类型移到第4列
 
     # 难度下拉菜单
     difficulty_validation = DataValidation(
@@ -1167,7 +1991,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
     difficulty_validation.error = "请从下拉列表中选择：初级、中级、高级"
     difficulty_validation.errorTitle = "输入错误"
     ws.add_data_validation(difficulty_validation)
-    difficulty_validation.add("D3:D1000")
+    difficulty_validation.add("E3:E1000")  # 难度移到第5列
 
     # 重要性下拉菜单
     importance_validation = DataValidation(
@@ -1178,7 +2002,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
     importance_validation.error = "请从下拉列表中选择：必修、推荐、选修"
     importance_validation.errorTitle = "输入错误"
     ws.add_data_validation(importance_validation)
-    importance_validation.add("E3:E1000")
+    importance_validation.add("F3:F1000")  # 重要性移到第6列
 
     # 预计学时数字验证（只能输入正整数）
     minutes_validation = DataValidation(
@@ -1192,7 +2016,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
     minutes_validation.prompt = "填写预计学习时长（分钟），例如：30"
     minutes_validation.promptTitle = "提示"
     ws.add_data_validation(minutes_validation)
-    minutes_validation.add("F3:F1000")
+    minutes_validation.add("G3:G1000")  # 预计学时移到第7列
 
     # 如果有现有知识点，为关系列添加下拉菜单
     if existing_points and len(existing_points) > 0:
@@ -1218,10 +2042,11 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None):
 
 
 def _add_sample_data(ws):
-    """添加示例数据（第3行）"""
+    """添加示例数据（第3行）- 支持多节点类型"""
     sample_data = [
         "第一章 询盘",
         "询盘基本流程",
+        "询盘",  # 所属阶段（新增）
         "技能型",
         "初级",
         "必修",
