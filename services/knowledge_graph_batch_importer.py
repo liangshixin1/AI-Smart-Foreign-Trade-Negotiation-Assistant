@@ -1331,25 +1331,36 @@ class KnowledgeGraphBatchImporter:
 
         for point in points_data:
             stage_name = point.get("stage")
+            LOGGER.debug(f"知识点 '{point.get('name')}' 的 stage 字段值: {stage_name}")
             if stage_name and isinstance(stage_name, str) and stage_name.strip():
                 stages_to_create.add(stage_name.strip())
                 point_stage_map[point["name"]] = stage_name.strip()
 
+        LOGGER.info(f"提取到 {len(stages_to_create)} 个阶段: {stages_to_create}")
+
         # 创建 Stage 节点
         for stage_name in stages_to_create:
             try:
-                # 检查是否已存在
                 from services import graph_service
                 driver = graph_service._get_driver()
-                check_query = "MATCH (s:Stage {name: $name}) RETURN s"
-                with driver.session() as session:
-                    result = session.run(check_query, {"name": stage_name})
-                    if result.single():
-                        LOGGER.info(f"Stage '{stage_name}' 已存在，跳过创建")
-                        continue
 
-                # 创建新 Stage 节点
-                stage_data = {
+                # 使用 MERGE 确保节点存在（如果已存在则不创建）
+                merge_query = """
+                MERGE (s:Stage {name: $name})
+                ON CREATE SET
+                    s.englishName = $englishName,
+                    s.description = $description,
+                    s.difficulty = $difficulty,
+                    s.estimatedDuration = $estimatedDuration,
+                    s.icon = $icon,
+                    s.color = $color,
+                    s.createdAt = datetime(),
+                    s.createdBy = $createdBy,
+                    s.updatedAt = datetime()
+                RETURN s.name AS name
+                """
+
+                params = {
                     "name": stage_name,
                     "englishName": "",
                     "description": f"{stage_name}阶段",
@@ -1357,11 +1368,16 @@ class KnowledgeGraphBatchImporter:
                     "estimatedDuration": 7,
                     "icon": "🔵",
                     "color": "#3B82F6",
+                    "createdBy": created_by,
                 }
-                self._create_stage_node(stage_data, created_by)
-                LOGGER.info(f"创建 Stage 节点: {stage_name}")
+
+                with driver.session() as session:
+                    result = session.run(merge_query, params)
+                    created_name = result.single()["name"]
+                    LOGGER.info(f"✓ Stage 节点已确保存在: {created_name}")
+
             except Exception as e:
-                LOGGER.error(f"创建 Stage 节点失败 {stage_name}: {e}")
+                LOGGER.error(f"✗ 创建 Stage 节点失败 {stage_name}: {e}", exc_info=True)
 
         # 第一步：导入知识点节点
         LOGGER.info("导入知识点节点...")
@@ -1422,10 +1438,15 @@ class KnowledgeGraphBatchImporter:
                 points_stats.failed += 1
 
         # 第一点五步：创建 Stage 和 KnowledgePoint 的关系
-        LOGGER.info("创建 Stage 和 KnowledgePoint 的关系...")
+        LOGGER.info(f"创建 Stage 和 KnowledgePoint 的关系... (共 {len(point_stage_map)} 个)")
+        stage_relation_success = 0
+        stage_relation_failed = 0
+
         for point_name, stage_name in point_stage_map.items():
             if point_name not in point_name_to_id:
-                continue  # 知识点创建失败，跳过关系创建
+                LOGGER.warning(f"跳过关系创建: 知识点 '{point_name}' 未成功创建")
+                stage_relation_failed += 1
+                continue
 
             try:
                 from services import graph_service
@@ -1434,12 +1455,22 @@ class KnowledgeGraphBatchImporter:
                 MATCH (s:Stage {name: $stageName})
                 MATCH (k:KnowledgePoint {name: $pointName})
                 MERGE (s)-[:HAS_TOPIC]->(k)
+                RETURN s.name AS stage, k.name AS point
                 """
                 with driver.session() as session:
-                    session.run(rel_query, {"stageName": stage_name, "pointName": point_name})
-                    LOGGER.debug(f"创建关系: Stage '{stage_name}' -> KnowledgePoint '{point_name}'")
+                    result = session.run(rel_query, {"stageName": stage_name, "pointName": point_name})
+                    record = result.single()
+                    if record:
+                        stage_relation_success += 1
+                        LOGGER.debug(f"✓ Stage '{stage_name}' -[HAS_TOPIC]-> KnowledgePoint '{point_name}'")
+                    else:
+                        stage_relation_failed += 1
+                        LOGGER.error(f"✗ 未找到节点: Stage '{stage_name}' 或 KnowledgePoint '{point_name}'")
             except Exception as e:
-                LOGGER.error(f"创建 Stage-KnowledgePoint 关系失败 ({stage_name} -> {point_name}): {e}")
+                stage_relation_failed += 1
+                LOGGER.error(f"✗ 创建 Stage-KnowledgePoint 关系失败 ({stage_name} -> {point_name}): {e}", exc_info=True)
+
+        LOGGER.info(f"Stage-KnowledgePoint 关系创建完成: 成功 {stage_relation_success}, 失败 {stage_relation_failed}")
 
         # 第二步：创建关系
         LOGGER.info("创建知识点关系...")
