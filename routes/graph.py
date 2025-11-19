@@ -54,8 +54,8 @@ def initialize_graph():
     if option not in {"default", "blank", "import"}:
         return jsonify({"error": "option must be one of: default, blank, import"}), 400
 
-    actor = current_user() or {}
-    initiated_by = actor.get("username") or actor.get("display_name") or "teacher"
+    actor = current_user()
+    initiated_by = actor.username or actor.display_name or "teacher"
 
     def _handler() -> Tuple[dict, int]:
         try:
@@ -620,8 +620,8 @@ def import_batch():
         return jsonify({"error": "mode参数必须是merge或replace"}), 400
 
     # 获取当前用户
-    actor = current_user() or {}
-    created_by = actor.get("username") or actor.get("display_name") or "teacher"
+    actor = current_user()
+    created_by = actor.username or actor.display_name or "teacher"
 
     def _handler() -> Tuple[dict, int]:
         try:
@@ -853,8 +853,8 @@ def run_multi_node_types_migration():
 
     创建 Stage, Skill, Terminology 等专用节点类型
     """
-    actor = current_user() or {}
-    initiated_by = actor.get("username") or actor.get("display_name") or "teacher"
+    actor = current_user()
+    initiated_by = actor.username or actor.display_name or "teacher"
 
     def _handler() -> Tuple[dict, int]:
         try:
@@ -1045,8 +1045,8 @@ def import_three_sheets():
         return jsonify({"error": "mode参数必须是merge或replace"}), 400
 
     # 获取当前用户
-    actor = current_user() or {}
-    created_by = actor.get("username") or actor.get("display_name") or "teacher"
+    actor = current_user()
+    created_by = actor.username or actor.display_name or "teacher"
 
     def _handler() -> Tuple[dict, int]:
         try:
