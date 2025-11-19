@@ -1324,6 +1324,45 @@ class KnowledgeGraphBatchImporter:
         relations_stats = ImportStatistics()
         examples_stats = ImportStatistics(total=len(examples_data))
 
+        # 第零步：提取并创建 Stage 节点
+        LOGGER.info("从知识点中提取并创建阶段节点...")
+        stages_to_create = set()
+        point_stage_map = {}  # 记录每个知识点的所属阶段
+
+        for point in points_data:
+            stage_name = point.get("stage")
+            if stage_name and isinstance(stage_name, str) and stage_name.strip():
+                stages_to_create.add(stage_name.strip())
+                point_stage_map[point["name"]] = stage_name.strip()
+
+        # 创建 Stage 节点
+        for stage_name in stages_to_create:
+            try:
+                # 检查是否已存在
+                from services import graph_service
+                driver = graph_service._get_driver()
+                check_query = "MATCH (s:Stage {name: $name}) RETURN s"
+                with driver.session() as session:
+                    result = session.run(check_query, {"name": stage_name})
+                    if result.single():
+                        LOGGER.info(f"Stage '{stage_name}' 已存在，跳过创建")
+                        continue
+
+                # 创建新 Stage 节点
+                stage_data = {
+                    "name": stage_name,
+                    "englishName": "",
+                    "description": f"{stage_name}阶段",
+                    "difficulty": "intermediate",
+                    "estimatedDuration": 7,
+                    "icon": "🔵",
+                    "color": "#3B82F6",
+                }
+                self._create_stage_node(stage_data, created_by)
+                LOGGER.info(f"创建 Stage 节点: {stage_name}")
+            except Exception as e:
+                LOGGER.error(f"创建 Stage 节点失败 {stage_name}: {e}")
+
         # 第一步：导入知识点节点
         LOGGER.info("导入知识点节点...")
         point_name_to_id = {}
@@ -1381,6 +1420,26 @@ class KnowledgeGraphBatchImporter:
             except Exception as e:
                 LOGGER.error(f"导入知识点失败: {point.get('name', 'unknown')}: {e}")
                 points_stats.failed += 1
+
+        # 第一点五步：创建 Stage 和 KnowledgePoint 的关系
+        LOGGER.info("创建 Stage 和 KnowledgePoint 的关系...")
+        for point_name, stage_name in point_stage_map.items():
+            if point_name not in point_name_to_id:
+                continue  # 知识点创建失败，跳过关系创建
+
+            try:
+                from services import graph_service
+                driver = graph_service._get_driver()
+                rel_query = """
+                MATCH (s:Stage {name: $stageName})
+                MATCH (k:KnowledgePoint {name: $pointName})
+                MERGE (s)-[:HAS_TOPIC]->(k)
+                """
+                with driver.session() as session:
+                    session.run(rel_query, {"stageName": stage_name, "pointName": point_name})
+                    LOGGER.debug(f"创建关系: Stage '{stage_name}' -> KnowledgePoint '{point_name}'")
+            except Exception as e:
+                LOGGER.error(f"创建 Stage-KnowledgePoint 关系失败 ({stage_name} -> {point_name}): {e}")
 
         # 第二步：创建关系
         LOGGER.info("创建知识点关系...")
