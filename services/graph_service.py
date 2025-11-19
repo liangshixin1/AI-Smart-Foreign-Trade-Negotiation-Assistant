@@ -1274,6 +1274,7 @@ def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]
 
 def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
     allowed_labels = [
+        "Stage",
         "Chapter",
         "Practice",
         "TheoryTopic",
@@ -1285,7 +1286,8 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         """
         MATCH (n)
         WHERE any(label IN labels(n) WHERE label IN $allowed)
-        RETURN DISTINCT labels(n) AS labels, n AS node
+        OPTIONAL MATCH (n)<-[:HAS_TOPIC]-(stage:Stage)
+        RETURN DISTINCT labels(n) AS labels, n AS node, stage.name AS stageName
         LIMIT $limit
         """,
         {"allowed": allowed_labels, "limit": limit},
@@ -1298,7 +1300,7 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
           AND any(label IN labels(b) WHERE label IN $allowed)
         RETURN labels(a) AS sourceLabels, a AS source,
                labels(b) AS targetLabels, b AS target,
-               type(r) AS type
+               type(r) AS type, r AS relationship
         LIMIT $limit
         """,
         {"allowed": allowed_labels, "limit": limit * 3},
@@ -1315,11 +1317,21 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         if not identifier:
             continue
         key = f"{primary}:{identifier}"
+
+        # 计算层级和顺序
+        level = _calculate_node_level(primary)
+        stage_name = record.get("stageName") or node.get("stage")
+        order = node.get("orderIndex", 0) or node.get("order", 0) or 0
+
         node_payload[key] = {
             "key": key,
             "label": primary,
             "title": node.get("title") or node.get("name") or node.get("code") or identifier,
             "subtitle": _build_node_subtitle(primary, node),
+            "level": level,
+            "stage": stage_name,
+            "order": order,
+            "group": primary,
         }
 
     edge_payload: List[Dict[str, object]] = []
@@ -1334,11 +1346,17 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         target_key = f"{target_primary}:{target_identifier}"
         if source_key not in node_payload or target_key not in node_payload:
             continue
+
+        relationship = record.get("relationship") or {}
+        edge_type = record.get("type")
+
         edge_payload.append(
             {
                 "source": source_key,
                 "target": target_key,
-                "type": record.get("type"),
+                "type": edge_type,
+                "label": _get_edge_label(edge_type, relationship),
+                "arrows": "to",
             }
         )
 
@@ -1347,6 +1365,7 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
 
 def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
     priority = [
+        "Stage",
         "Chapter",
         "Practice",
         "TheoryTopic",
@@ -1378,6 +1397,55 @@ def _build_node_subtitle(label: str, node: Dict[str, object]) -> Optional[str]:
     if label == "ProcessStep":
         return f"顺序：{node.get('orderIndex')}"
     return node.get("description")
+
+
+def _calculate_node_level(label: str) -> int:
+    """
+    计算节点的层级（用于层级布局）
+    Level 0: Stage（阶段：询盘、报盘、还盘等）
+    Level 1: Chapter（章节）
+    Level 2: TheoryTopic / Practice / TheoryLesson
+    Level 3: KnowledgePoint（知识点）
+    Level 4: ProcessStep（流程步骤）
+    """
+    level_map = {
+        "Stage": 0,
+        "Chapter": 1,
+        "TheoryTopic": 2,
+        "Practice": 2,
+        "TheoryLesson": 2,
+        "KnowledgePoint": 3,
+        "ProcessStep": 4,
+    }
+    return level_map.get(label, 99)
+
+
+def _get_edge_label(edge_type: str, relationship: Dict[str, object]) -> Optional[str]:
+    """
+    获取关系边的标签（用于可视化）
+    """
+    # 知识点关系类型的中文映射
+    relation_type = relationship.get("relationType")
+    if relation_type:
+        type_labels = {
+            "prerequisite": "前置",
+            "similar": "相似",
+            "contrast": "对比",
+            "related": "相关",
+        }
+        return type_labels.get(relation_type)
+
+    # 边类型的默认标签
+    edge_labels = {
+        "REQUIRES": "依赖",
+        "RELATES_TO": "关联",
+        "HAS_TOPIC": "包含",
+        "TESTS": "考察",
+        "EXPLAINS": "讲解",
+        "HAS_PRACTICE": "练习",
+        "NEXT": "下一步",
+    }
+    return edge_labels.get(edge_type)
 
 
 # ========== 知识点管理增强功能 ==========
