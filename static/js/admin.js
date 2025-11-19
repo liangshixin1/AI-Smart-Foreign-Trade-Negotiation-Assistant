@@ -1416,127 +1416,168 @@ function renderAdminGraphNetwork() {
     return;
   }
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  if (!window.vis || !window.vis.Network) {
+  if (!window.echarts) {
     if (adminGraphStatus) {
-      adminGraphStatus.textContent = "可视化库未加载，无法渲染图谱";
+      adminGraphStatus.textContent = "ECharts 库未加载，无法渲染图谱";
     }
     return;
   }
-  adminGraphCanvas.innerHTML = "";
-  const nodes = new window.vis.DataSet(
-    (networkData.nodes || []).map((node) => ({
-      id: node.key,
-      label: node.title,
-      title: node.subtitle || node.title,
-      group: node.label,
-    })),
-  );
-  const edges = new window.vis.DataSet(
-    (networkData.edges || []).map((edge) => ({
-      from: edge.source,
-      to: edge.target,
-      label: edge.label || edge.type,
-      arrows: edge.arrows || "to",
-    })),
-  );
+
+  // 销毁旧实例
   if (adminGraphNetwork) {
-    adminGraphNetwork.destroy();
+    adminGraphNetwork.dispose();
     adminGraphNetwork = null;
   }
-  const options = {
-    nodes: {
-      shape: "dot",
-      size: 16,
-      font: { color: "#e2e8f0", size: 13, face: "Inter, system-ui, sans-serif" },
-      borderWidth: 2,
-      shadow: { enabled: true, color: "rgba(0,0,0,0.3)", size: 8 },
-    },
-    edges: {
-      color: { color: "#64748b", highlight: "#3b82f6", hover: "#60a5fa" },
-      width: 2,
-      smooth: { type: "continuous", roundness: 0.5 },
-      font: { color: "#cbd5e1", size: 11, align: "top", strokeWidth: 0 },
-      arrows: { to: { enabled: true, scaleFactor: 0.8 } },
-    },
-    layout: {
-      improvedLayout: true,
-      clusterThreshold: 150,
-    },
-    physics: {
-      enabled: true,
-      stabilization: {
-        enabled: true,
-        iterations: 1000,
-        updateInterval: 50,
-        onlyDynamicEdges: false,
-        fit: true,
-      },
-      barnesHut: {
-        gravitationalConstant: -8000,
-        centralGravity: 0.1,
-        springLength: 250,
-        springConstant: 0.001,
-        damping: 0.3,
-        avoidOverlap: 0.8,
-      },
-    },
-    groups: {
-      Stage: {
-        color: { background: "#7c3aed", border: "#a78bfa" },
-        shape: "box",
-        size: 25,
-        font: { size: 14, bold: true },
-        mass: 8,
-      },
-      Chapter: {
-        color: { background: "#312e81", border: "#6366f1" },
-        size: 20,
-        mass: 5,
-      },
-      Practice: {
-        color: { background: "#0f766e", border: "#2dd4bf" },
-        size: 18,
-        mass: 3,
-      },
-      TheoryTopic: {
-        color: { background: "#5b21b6", border: "#a855f7" },
-        size: 18,
-        mass: 3,
-      },
-      TheoryLesson: {
-        color: { background: "#9a3412", border: "#fb923c" },
-        size: 18,
-        mass: 3,
-      },
-      KnowledgePoint: {
-        color: { background: "#78350f", border: "#facc15" },
-        size: 16,
-        mass: 1,
-      },
-      ProcessStep: {
-        color: { background: "#14532d", border: "#22c55e" },
-        size: 14,
-        mass: 1,
-      },
-    },
-    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
-  };
-  adminGraphNetwork = new window.vis.Network(adminGraphCanvas, { nodes, edges }, options);
 
-  // 稳定后自动停止物理引擎
-  adminGraphNetwork.once("stabilizationIterationsDone", function() {
-    adminGraphNetwork.setOptions({ physics: false });
+  // 初始化 ECharts 实例
+  adminGraphNetwork = window.echarts.init(adminGraphCanvas, 'dark');
+
+  // 节点类型颜色配置
+  const categoryColors = {
+    Stage: { color: '#7c3aed', borderColor: '#a78bfa' },
+    Chapter: { color: '#312e81', borderColor: '#6366f1' },
+    Practice: { color: '#0f766e', borderColor: '#2dd4bf' },
+    TheoryTopic: { color: '#5b21b6', borderColor: '#a855f7' },
+    TheoryLesson: { color: '#9a3412', borderColor: '#fb923c' },
+    KnowledgePoint: { color: '#78350f', borderColor: '#facc15' },
+    ProcessStep: { color: '#14532d', borderColor: '#22c55e' },
+  };
+
+  // 节点大小配置
+  const nodeSizes = {
+    Stage: 35,
+    Chapter: 28,
+    Practice: 24,
+    TheoryTopic: 24,
+    TheoryLesson: 24,
+    KnowledgePoint: 20,
+    ProcessStep: 18,
+  };
+
+  // 构建分类列表
+  const categories = Object.keys(categoryColors).map(name => ({ name }));
+
+  // 转换节点数据
+  const nodes = (networkData.nodes || []).map((node) => {
+    const category = node.label || 'KnowledgePoint';
+    const categoryIndex = categories.findIndex(c => c.name === category);
+
+    return {
+      id: node.key,
+      name: node.title,
+      category: categoryIndex >= 0 ? categoryIndex : 0,
+      symbolSize: nodeSizes[category] || 20,
+      value: node.subtitle || node.title,
+      label: {
+        show: true,
+        fontSize: category === 'Stage' ? 13 : 11,
+        fontWeight: category === 'Stage' ? 'bold' : 'normal',
+      },
+      itemStyle: {
+        color: categoryColors[category]?.color || '#78350f',
+        borderColor: categoryColors[category]?.borderColor || '#facc15',
+        borderWidth: 2,
+      },
+    };
   });
 
-  adminGraphNetwork.on("selectNode", (params) => {
-    const key = params.nodes && params.nodes[0];
-    if (key) {
-      handleGraphNodeSelection(key);
+  // 转换边数据
+  const links = (networkData.edges || []).map((edge) => ({
+    source: edge.source,
+    target: edge.target,
+    label: {
+      show: !!edge.label,
+      formatter: edge.label || '',
+      fontSize: 10,
+    },
+    lineStyle: {
+      curveness: 0.2,
+    },
+  }));
+
+  // ECharts 配置
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      formatter: (params) => {
+        if (params.dataType === 'node') {
+          return `<strong>${params.data.name}</strong><br/>${params.data.value || ''}`;
+        } else if (params.dataType === 'edge') {
+          return params.data.label?.formatter || '';
+        }
+        return '';
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+      borderColor: '#334155',
+      textStyle: { color: '#e2e8f0' },
+    },
+    legend: [{
+      data: categories.map(c => c.name),
+      orient: 'vertical',
+      left: 10,
+      top: 20,
+      textStyle: { color: '#94a3b8', fontSize: 11 },
+      itemGap: 8,
+    }],
+    series: [{
+      type: 'graph',
+      layout: 'force',
+      data: nodes,
+      links: links,
+      categories: categories,
+      roam: true,
+      draggable: true,
+      focusNodeAdjacency: true,
+      label: {
+        position: 'right',
+        formatter: '{b}',
+        color: '#e2e8f0',
+      },
+      edgeLabel: {
+        fontSize: 10,
+        color: '#cbd5e1',
+      },
+      lineStyle: {
+        color: '#64748b',
+        width: 1.5,
+        curveness: 0.2,
+      },
+      emphasis: {
+        focus: 'adjacency',
+        label: {
+          fontSize: 13,
+          fontWeight: 'bold',
+        },
+        lineStyle: {
+          width: 3,
+          color: '#3b82f6',
+        },
+      },
+      force: {
+        repulsion: 800,
+        gravity: 0.1,
+        edgeLength: 150,
+        layoutAnimation: true,
+      },
+    }],
+  };
+
+  // 设置配置并渲染
+  adminGraphNetwork.setOption(option);
+
+  // 添加点击事件
+  adminGraphNetwork.on('click', (params) => {
+    if (params.dataType === 'node') {
+      handleGraphNodeSelection(params.data.id);
     }
   });
-  adminGraphNetwork.on("deselectNode", () => {
-    adminGraphSelectionKey = null;
-    renderAdminGraphSelection(null);
+
+  // 窗口大小改变时自动调整
+  window.addEventListener('resize', () => {
+    if (adminGraphNetwork) {
+      adminGraphNetwork.resize();
+    }
   });
 }
 
