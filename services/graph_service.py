@@ -1347,15 +1347,27 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         if source_key not in node_payload or target_key not in node_payload:
             continue
 
-        relationship = record.get("relationship") or {}
+        relationship = record.get("relationship")
         edge_type = record.get("type")
+
+        # 转换 Neo4j Relationship 对象为字典
+        rel_props = {}
+        if relationship:
+            try:
+                # Neo4j Relationship 对象可以像字典一样访问
+                if hasattr(relationship, 'items'):
+                    rel_props = dict(relationship)
+                elif hasattr(relationship, 'get'):
+                    rel_props = {k: relationship.get(k) for k in getattr(relationship, 'keys', lambda: [])()}
+            except (AttributeError, TypeError):
+                pass
 
         edge_payload.append(
             {
                 "source": source_key,
                 "target": target_key,
                 "type": edge_type,
-                "label": _get_edge_label(edge_type, relationship),
+                "label": _get_edge_label(edge_type, rel_props),
                 "arrows": "to",
             }
         )
@@ -1420,32 +1432,38 @@ def _calculate_node_level(label: str) -> int:
     return level_map.get(label, 99)
 
 
-def _get_edge_label(edge_type: str, relationship: Dict[str, object]) -> Optional[str]:
+def _get_edge_label(edge_type: Optional[str], relationship: Optional[Dict[str, object]]) -> Optional[str]:
     """
     获取关系边的标签（用于可视化）
     """
     # 知识点关系类型的中文映射
-    relation_type = relationship.get("relationType")
-    if relation_type:
-        type_labels = {
-            "prerequisite": "前置",
-            "similar": "相似",
-            "contrast": "对比",
-            "related": "相关",
-        }
-        return type_labels.get(relation_type)
+    if relationship:
+        relation_type = relationship.get("relationType")
+        if relation_type:
+            type_labels = {
+                "prerequisite": "前置",
+                "similar": "相似",
+                "contrast": "对比",
+                "related": "相关",
+            }
+            label = type_labels.get(relation_type)
+            if label:
+                return label
 
     # 边类型的默认标签
-    edge_labels = {
-        "REQUIRES": "依赖",
-        "RELATES_TO": "关联",
-        "HAS_TOPIC": "包含",
-        "TESTS": "考察",
-        "EXPLAINS": "讲解",
-        "HAS_PRACTICE": "练习",
-        "NEXT": "下一步",
-    }
-    return edge_labels.get(edge_type)
+    if edge_type:
+        edge_labels = {
+            "REQUIRES": "依赖",
+            "RELATES_TO": "关联",
+            "HAS_TOPIC": "包含",
+            "TESTS": "考察",
+            "EXPLAINS": "讲解",
+            "HAS_PRACTICE": "练习",
+            "NEXT": "下一步",
+        }
+        return edge_labels.get(edge_type)
+
+    return None
 
 
 # ========== 知识点管理增强功能 ==========
