@@ -1333,16 +1333,45 @@ class KnowledgeGraphBatchImporter:
             clean_point = {k: v for k, v in point.items() if not k.startswith("_")}
 
             try:
-                # 检查是否已存在
+                # 提取name
                 point_name = clean_point.pop("name")
+
+                # 字段映射和过滤：只保留 create_knowledge_point 支持的字段
+                supported_fields = {
+                    "category", "type", "difficulty", "importance",
+                    "summary", "description", "keywords", "tags",
+                    "estimated_minutes", "image_url", "video_url",
+                    "document_url", "external_url", "created_by"
+                }
+
+                # 字段名映射（camelCase -> snake_case）
+                field_mapping = {
+                    "estimatedMinutes": "estimated_minutes",
+                    "imageUrl": "image_url",
+                    "videoUrl": "video_url",
+                    "documentUrl": "document_url",
+                    "externalUrl": "external_url",
+                    "createdBy": "created_by",
+                }
+
+                # 过滤并映射字段
+                filtered_point = {}
+                for key, value in clean_point.items():
+                    # 映射字段名
+                    mapped_key = field_mapping.get(key, key)
+                    # 只保留支持的字段
+                    if mapped_key in supported_fields:
+                        filtered_point[mapped_key] = value
+
+                # 检查是否已存在
                 existing = knowledge_service.get_knowledge_point(point_name)
                 if existing:
                     # 更新
-                    knowledge_service.update_knowledge_point(point_name, **clean_point)
+                    knowledge_service.update_knowledge_point(point_name, **filtered_point)
                     points_stats.updated += 1
                 else:
                     # 创建
-                    knowledge_service.create_knowledge_point(point_name, **clean_point)
+                    knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
 
                 # 生成ID（用name的hash作为唯一标识）
