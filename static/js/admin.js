@@ -1456,25 +1456,30 @@ function renderAdminGraphNetwork() {
     edges: {
       color: { color: "#64748b", highlight: "#3b82f6", hover: "#60a5fa" },
       width: 2,
-      smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 },
-      font: { color: "#cbd5e1", size: 11, align: "top" },
+      smooth: { type: "continuous", roundness: 0.5 },
+      font: { color: "#cbd5e1", size: 11, align: "top", strokeWidth: 0 },
       arrows: { to: { enabled: true, scaleFactor: 0.8 } },
     },
     layout: {
-      hierarchical: {
-        enabled: true,
-        direction: "LR",
-        sortMethod: "directed",
-        levelSeparation: 250,
-        nodeSpacing: 150,
-        treeSpacing: 200,
-        blockShifting: true,
-        edgeMinimization: true,
-        parentCentralization: true,
-      },
+      improvedLayout: true,
+      clusterThreshold: 150,
     },
     physics: {
-      enabled: false,
+      enabled: true,
+      stabilization: {
+        enabled: true,
+        iterations: 200,
+        updateInterval: 25,
+      },
+      barnesHut: {
+        gravitationalConstant: -3000,
+        centralGravity: 0.3,
+        springLength: 200,
+        springConstant: 0.04,
+        damping: 0.09,
+        avoidOverlap: 0.5,
+      },
+      solver: "barnesHut",
     },
     groups: {
       Stage: {
@@ -1482,30 +1487,37 @@ function renderAdminGraphNetwork() {
         shape: "box",
         size: 25,
         font: { size: 14, bold: true },
+        mass: 5,
       },
       Chapter: {
         color: { background: "#312e81", border: "#6366f1" },
         size: 20,
+        mass: 3,
       },
       Practice: {
         color: { background: "#0f766e", border: "#2dd4bf" },
         size: 18,
+        mass: 2,
       },
       TheoryTopic: {
         color: { background: "#5b21b6", border: "#a855f7" },
         size: 18,
+        mass: 2,
       },
       TheoryLesson: {
         color: { background: "#9a3412", border: "#fb923c" },
         size: 18,
+        mass: 2,
       },
       KnowledgePoint: {
         color: { background: "#78350f", border: "#facc15" },
         size: 16,
+        mass: 1,
       },
       ProcessStep: {
         color: { background: "#14532d", border: "#22c55e" },
         size: 14,
+        mass: 1,
       },
     },
     interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
