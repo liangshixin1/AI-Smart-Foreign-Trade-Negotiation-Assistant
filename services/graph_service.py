@@ -2491,3 +2491,531 @@ def import_knowledge_points_from_csv(file_content: str) -> Dict[str, int]:
 
     return stats
 
+
+# ============================================
+# 多节点类型架构支持 (Multi-Node Types Support)
+# Migration 002 相关功能
+# ============================================
+
+def run_multi_node_types_migration(initiated_by: str = "system") -> Dict[str, object]:
+    """
+    运行多节点类型迁移 (Migration 002)
+
+    创建 Stage, Skill, Terminology 等专用节点类型
+    建立 PRECEDES 关系表达流程时序
+
+    Args:
+        initiated_by: 执行迁移的用户标识
+
+    Returns:
+        迁移统计信息
+    """
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    # 动态加载迁移模块
+    migration_path = Path(__file__).resolve().parent.parent / "migrations" / "002_multi_node_types.py"
+
+    if not migration_path.exists():
+        raise FileNotFoundError(f"Migration file not found: {migration_path}")
+
+    spec = importlib.util.spec_from_file_location("migration_002", str(migration_path))
+    if not spec or not spec.loader:
+        raise RuntimeError("Failed to load migration module")
+
+    migration_module = importlib.util.module_from_spec(spec)
+    sys.modules["migration_002"] = migration_module
+    spec.loader.exec_module(migration_module)
+
+    # 执行迁移
+    driver = _get_driver()
+    stats = migration_module.upgrade(driver, initiated_by=initiated_by)
+
+    LOGGER.info(f"Multi-node types migration completed: {stats}")
+    return stats
+
+
+def get_multi_node_types_migration_status() -> Dict[str, object]:
+    """
+    获取多节点类型迁移的状态
+
+    Returns:
+        {
+            "applied": bool,
+            "stages_count": int,
+            "terminology_count": int,
+            "precedes_count": int,
+            ...
+        }
+    """
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    migration_path = Path(__file__).resolve().parent.parent / "migrations" / "002_multi_node_types.py"
+
+    if not migration_path.exists():
+        return {
+            "applied": False,
+            "error": "Migration file not found"
+        }
+
+    spec = importlib.util.spec_from_file_location("migration_002", str(migration_path))
+    if not spec or not spec.loader:
+        return {
+            "applied": False,
+            "error": "Failed to load migration module"
+        }
+
+    migration_module = importlib.util.module_from_spec(spec)
+    sys.modules["migration_002"] = migration_module
+    spec.loader.exec_module(migration_module)
+
+    driver = _get_driver()
+    return migration_module.get_migration_status(driver)
+
+
+def get_process_flow() -> Dict[str, object]:
+    """
+    获取外贸谈判流程骨架
+
+    返回所有 Stage 节点及其 PRECEDES 关系,用于前端渲染主流程轴
+
+    Returns:
+        {
+            "stages": [
+                {
+                    "name": str,
+                    "englishName": str,
+                    "order": int,
+                    "description": str,
+                    "difficulty": str,
+                    "icon": str,
+                    "color": str,
+                    ...
+                }
+            ],
+            "flow": [
+                {"from": str, "to": str, "description": str}
+            ]
+        }
+    """
+    # 获取所有 Stage 节点
+    stages_query = """
+    MATCH (s:Stage)
+    OPTIONAL MATCH (s)-[:HAS_TOPIC]->(k)
+    RETURN s {
+        .*,
+        topicsCount: count(DISTINCT k)
+    } AS stage
+    ORDER BY s.order
+    """
+
+    stages_records = _execute_read(stages_query, {})
+    stages = [record["stage"] for record in stages_records] if stages_records else []
+
+    # 获取 PRECEDES 关系
+    flow_query = """
+    MATCH (s1:Stage)-[r:PRECEDES]->(s2:Stage)
+    RETURN s1.name AS from,
+           s2.name AS to,
+           r.description AS description,
+           s1.order AS fromOrder,
+           s2.order AS toOrder
+    ORDER BY s1.order
+    """
+
+    flow_records = _execute_read(flow_query, {})
+    flow = [
+        {
+            "from": record["from"],
+            "to": record["to"],
+            "description": record.get("description", ""),
+            "fromOrder": record.get("fromOrder"),
+            "toOrder": record.get("toOrder"),
+        }
+        for record in flow_records
+    ] if flow_records else []
+
+    return {
+        "stages": stages,
+        "flow": flow,
+        "totalStages": len(stages),
+        "totalFlows": len(flow),
+    }
+
+
+def list_stages(include_topics: bool = False) -> List[Dict[str, object]]:
+    """
+    获取所有 Stage (阶段) 节点列表
+
+    Args:
+        include_topics: 是否包含每个阶段下的知识点列表
+
+    Returns:
+        Stage 节点列表
+    """
+    if include_topics:
+        query = """
+        MATCH (s:Stage)
+        OPTIONAL MATCH (s)-[:HAS_TOPIC]->(k)
+        RETURN s {
+            .*,
+            topics: collect(DISTINCT k.name)
+        } AS stage
+        ORDER BY s.order
+        """
+    else:
+        query = """
+        MATCH (s:Stage)
+        RETURN s AS stage
+        ORDER BY s.order
+        """
+
+    records = _execute_read(query, {})
+    return [record["stage"] for record in records] if records else []
+
+
+def get_stage(name: str) -> Dict[str, object]:
+    """
+    获取单个 Stage 的详细信息
+
+    Args:
+        name: Stage 名称
+
+    Returns:
+        Stage 详细信息
+    """
+    query = """
+    MATCH (s:Stage {name: $name})
+    OPTIONAL MATCH (s)-[:HAS_TOPIC]->(k:KnowledgePoint)
+    OPTIONAL MATCH (s)-[:PRECEDES]->(next:Stage)
+    OPTIONAL MATCH (prev:Stage)-[:PRECEDES]->(s)
+    RETURN s {
+        .*,
+        topics: collect(DISTINCT k.name),
+        nextStage: next.name,
+        previousStage: prev.name
+    } AS stage
+    """
+
+    records = _execute_read(query, {"name": name})
+    if not records:
+        raise GraphEntityNotFoundError(f"Stage '{name}' not found")
+
+    return records[0]["stage"]
+
+
+def list_terminology(category: Optional[str] = None) -> List[Dict[str, object]]:
+    """
+    获取术语列表
+
+    Args:
+        category: 可选的分类过滤 (如 "Incoterms", "Payment")
+
+    Returns:
+        Terminology 节点列表
+    """
+    if category:
+        query = """
+        MATCH (t:Terminology {category: $category})
+        OPTIONAL MATCH (t)-[:RELATED_TO]-(related:Terminology)
+        RETURN t {
+            .*,
+            relatedTerms: collect(DISTINCT related.name)
+        } AS term
+        ORDER BY t.name
+        """
+        params = {"category": category}
+    else:
+        query = """
+        MATCH (t:Terminology)
+        OPTIONAL MATCH (t)-[:RELATED_TO]-(related:Terminology)
+        RETURN t {
+            .*,
+            relatedTerms: collect(DISTINCT related.name)
+        } AS term
+        ORDER BY t.category, t.name
+        """
+        params = {}
+
+    records = _execute_read(query, params)
+    return [record["term"] for record in records] if records else []
+
+
+def get_terminology(name: str) -> Dict[str, object]:
+    """
+    获取单个术语的详细信息
+
+    Args:
+        name: 术语名称 (如 "FOB", "CIF")
+
+    Returns:
+        Terminology 详细信息
+    """
+    query = """
+    MATCH (t:Terminology {name: $name})
+    OPTIONAL MATCH (t)-[:RELATED_TO]-(related:Terminology)
+    OPTIONAL MATCH (s:Stage)-[:HAS_TOPIC]->(k:KnowledgePoint)
+           WHERE k.name CONTAINS t.name OR k.content CONTAINS t.name
+    RETURN t {
+        .*,
+        relatedTerms: collect(DISTINCT related.name),
+        usedInStages: collect(DISTINCT s.name)
+    } AS term
+    """
+
+    records = _execute_read(query, {"name": name})
+    if not records:
+        raise GraphEntityNotFoundError(f"Terminology '{name}' not found")
+
+    return records[0]["term"]
+
+
+def link_knowledge_point_to_stage(knowledge_point_name: str, stage_name: str) -> Dict[str, object]:
+    """
+    将知识点关联到某个流程阶段
+
+    创建 (Stage)-[:HAS_TOPIC]->(KnowledgePoint) 关系
+
+    Args:
+        knowledge_point_name: 知识点名称
+        stage_name: 阶段名称
+
+    Returns:
+        更新后的 Stage 信息
+    """
+    query = """
+    MATCH (s:Stage {name: $stage_name})
+    MATCH (k:KnowledgePoint {name: $knowledge_point_name})
+    MERGE (s)-[r:HAS_TOPIC]->(k)
+    ON CREATE SET r.createdAt = datetime()
+    RETURN s {
+        .*,
+        topics: [(s)-[:HAS_TOPIC]->(topic) | topic.name]
+    } AS stage
+    """
+
+    records = _execute_write(
+        query,
+        {
+            "stage_name": stage_name,
+            "knowledge_point_name": knowledge_point_name,
+        },
+    )
+
+    if not records:
+        raise GraphEntityNotFoundError(
+            f"Failed to link: Stage '{stage_name}' or KnowledgePoint '{knowledge_point_name}' not found"
+        )
+
+    LOGGER.info(f"Linked KnowledgePoint '{knowledge_point_name}' to Stage '{stage_name}'")
+    return records[0]["stage"]
+
+
+def unlink_knowledge_point_from_stage(
+    knowledge_point_name: str, stage_name: str
+) -> Dict[str, object]:
+    """
+    移除知识点与流程阶段的关联
+
+    删除 (Stage)-[:HAS_TOPIC]->(KnowledgePoint) 关系
+
+    Args:
+        knowledge_point_name: 知识点名称
+        stage_name: 阶段名称
+
+    Returns:
+        更新后的 Stage 信息
+    """
+    query = """
+    MATCH (s:Stage {name: $stage_name})-[r:HAS_TOPIC]->(k:KnowledgePoint {name: $knowledge_point_name})
+    DELETE r
+    RETURN s {
+        .*,
+        topics: [(s)-[:HAS_TOPIC]->(topic) | topic.name]
+    } AS stage
+    """
+
+    records = _execute_write(
+        query,
+        {
+            "stage_name": stage_name,
+            "knowledge_point_name": knowledge_point_name,
+        },
+    )
+
+    if not records:
+        raise GraphEntityNotFoundError(
+            f"Relationship not found between Stage '{stage_name}' and KnowledgePoint '{knowledge_point_name}'"
+        )
+
+    LOGGER.info(f"Unlinked KnowledgePoint '{knowledge_point_name}' from Stage '{stage_name}'")
+    return records[0]["stage"]
+
+
+def get_enhanced_graph_visualization(
+    node_types: Optional[List[str]] = None,
+    max_nodes: int = 100,
+) -> Dict[str, object]:
+    """
+    获取增强的图谱可视化数据,支持多节点类型
+
+    Args:
+        node_types: 要包含的节点类型列表,如 ["Stage", "KnowledgePoint", "Terminology"]
+                   如果为 None,则包含所有类型
+        max_nodes: 最大节点数量限制
+
+    Returns:
+        {
+            "nodes": [
+                {
+                    "id": str,
+                    "label": str,
+                    "type": str,  # "Stage", "Skill", "Terminology", "KnowledgePoint"
+                    "properties": {...},
+                    "group": str,  # 用于前端分组着色
+                }
+            ],
+            "edges": [
+                {
+                    "from": str,
+                    "to": str,
+                    "label": str,  # "PRECEDES", "HAS_TOPIC", "REQUIRES", etc.
+                    "type": str,
+                }
+            ],
+            "statistics": {
+                "nodesByType": {...},
+                "edgesByType": {...},
+            }
+        }
+    """
+    # 默认包含所有节点类型
+    if node_types is None:
+        node_types = ["Stage", "Skill", "Terminology", "KnowledgePoint"]
+
+    # 构建节点类型过滤条件
+    labels_condition = " OR ".join([f'"{label}" IN labels(n)' for label in node_types])
+
+    # 查询节点
+    nodes_query = f"""
+    MATCH (n)
+    WHERE {labels_condition}
+    RETURN n,
+           labels(n) AS labels,
+           id(n) AS id
+    LIMIT $max_nodes
+    """
+
+    nodes_records = _execute_read(nodes_query, {"max_nodes": max_nodes})
+    nodes = []
+    node_ids = set()
+
+    for record in nodes_records:
+        node_data = record["n"]
+        node_labels = record["labels"]
+        internal_id = record["id"]
+
+        # 确定主要标签 (优先级: Stage > Skill > Terminology > KnowledgePoint)
+        primary_label = _select_primary_label_for_visualization(node_labels)
+
+        # 提取节点标识符
+        node_id = _extract_node_identifier_for_visualization(primary_label, node_data)
+
+        nodes.append({
+            "id": node_id,
+            "label": node_data.get("name") or node_id,
+            "type": primary_label,
+            "properties": dict(node_data),
+            "group": primary_label,  # 前端用于分组着色
+            "internalId": internal_id,
+        })
+
+        node_ids.add(internal_id)
+
+    # 查询这些节点之间的关系
+    edges_query = """
+    MATCH (a)-[r]->(b)
+    WHERE id(a) IN $node_ids AND id(b) IN $node_ids
+    RETURN id(a) AS fromId,
+           id(b) AS toId,
+           type(r) AS relType,
+           properties(r) AS relProps,
+           labels(a) AS fromLabels,
+           labels(b) AS toLabels,
+           a AS fromNode,
+           b AS toNode
+    """
+
+    edges_records = _execute_read(edges_query, {"node_ids": list(node_ids)})
+    edges = []
+
+    for record in edges_records:
+        from_labels = record["fromLabels"]
+        to_labels = record["toLabels"]
+        from_primary = _select_primary_label_for_visualization(from_labels)
+        to_primary = _select_primary_label_for_visualization(to_labels)
+
+        from_id = _extract_node_identifier_for_visualization(from_primary, record["fromNode"])
+        to_id = _extract_node_identifier_for_visualization(to_primary, record["toNode"])
+
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "label": record["relType"],
+            "type": record["relType"],
+            "properties": dict(record["relProps"]) if record["relProps"] else {},
+        })
+
+    # 统计信息
+    nodes_by_type = {}
+    for node in nodes:
+        node_type = node["type"]
+        nodes_by_type[node_type] = nodes_by_type.get(node_type, 0) + 1
+
+    edges_by_type = {}
+    for edge in edges:
+        edge_type = edge["type"]
+        edges_by_type[edge_type] = edges_by_type.get(edge_type, 0) + 1
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "statistics": {
+            "totalNodes": len(nodes),
+            "totalEdges": len(edges),
+            "nodesByType": nodes_by_type,
+            "edgesByType": edges_by_type,
+        },
+    }
+
+
+def _select_primary_label_for_visualization(labels: List[str]) -> str:
+    """
+    从节点的多个标签中选择主要标签
+
+    优先级: Stage > Skill > Terminology > KnowledgePoint > 其他
+    """
+    priority = ["Stage", "Skill", "Terminology", "KnowledgePoint"]
+
+    for label in priority:
+        if label in labels:
+            return label
+
+    return labels[0] if labels else "Unknown"
+
+
+def _extract_node_identifier_for_visualization(primary_label: str, node_data: Dict) -> str:
+    """
+    从节点数据中提取标识符
+
+    不同节点类型使用不同的标识字段
+    """
+    if primary_label in ["Stage", "Skill", "Terminology", "KnowledgePoint"]:
+        return node_data.get("name") or str(node_data.get("id", "unknown"))
+
+    # 其他节点类型
+    return str(node_data.get("id") or node_data.get("name", "unknown"))
+
