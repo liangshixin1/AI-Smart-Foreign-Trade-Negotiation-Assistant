@@ -1334,22 +1334,23 @@ class KnowledgeGraphBatchImporter:
 
             try:
                 # 检查是否已存在
-                existing = knowledge_service.get_knowledge_point(clean_point["name"])
+                point_name = clean_point.pop("name")
+                existing = knowledge_service.get_knowledge_point(point_name)
                 if existing:
                     # 更新
-                    knowledge_service.update_knowledge_point(clean_point["name"], clean_point)
+                    knowledge_service.update_knowledge_point(point_name, **clean_point)
                     points_stats.updated += 1
                 else:
                     # 创建
-                    knowledge_service.create_knowledge_point(clean_point)
+                    knowledge_service.create_knowledge_point(point_name, **clean_point)
                     points_stats.created += 1
 
                 # 生成ID（用name的hash作为唯一标识）
-                point_id = self._generate_point_id(clean_point["name"])
-                point_name_to_id[clean_point["name"]] = point_id
+                point_id = self._generate_point_id(point_name)
+                point_name_to_id[point_name] = point_id
 
             except Exception as e:
-                LOGGER.error(f"导入知识点失败: {clean_point.get('name')}: {e}")
+                LOGGER.error(f"导入知识点失败: {point.get('name', 'unknown')}: {e}")
                 points_stats.failed += 1
 
         # 第二步：创建关系
