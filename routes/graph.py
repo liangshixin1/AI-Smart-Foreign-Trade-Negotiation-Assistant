@@ -830,3 +830,163 @@ def export_csv():
         response["graphStatus"] = status_payload
         return jsonify(response), 503
 
+
+
+# ========== 多节点类型架构端点 (Multi-Node Types API) ==========
+
+
+@bp.post("/api/graph/migrations/multi-node-types/run")
+@require_role("teacher")
+def run_multi_node_types_migration():
+    """
+    运行多节点类型架构迁移
+
+    创建 Stage, Skill, Terminology 等专用节点类型
+    """
+    actor = current_user() or {}
+    initiated_by = actor.get("username") or actor.get("display_name") or "teacher"
+
+    def _handler() -> Tuple[dict, int]:
+        try:
+            stats = graph_service.run_multi_node_types_migration(initiated_by=initiated_by)
+            return {"success": True, "statistics": stats}, 200
+        except Exception as e:
+            return {"success": False, "error": str(e)}, 500
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/migrations/multi-node-types/status")
+@require_role("teacher")
+def get_multi_node_types_migration_status():
+    """获取多节点类型迁移的状态"""
+    def _handler() -> Tuple[dict, int]:
+        status = graph_service.get_multi_node_types_migration_status()
+        return {"status": status}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/flow")
+@require_role()
+def get_process_flow():
+    """
+    获取外贸谈判流程骨架
+
+    返回所有 Stage 节点及其 PRECEDES 关系,用于前端渲染流程图
+    """
+    def _handler() -> Tuple[dict, int]:
+        flow = graph_service.get_process_flow()
+        return flow, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/stages")
+@require_role()
+def list_stages():
+    """
+    获取所有 Stage (阶段) 列表
+
+    查询参数:
+    - include_topics: 是否包含每个阶段的知识点列表 (true/false)
+    """
+    include_topics = request.args.get("include_topics", "false").lower() == "true"
+
+    def _handler() -> Tuple[dict, int]:
+        stages = graph_service.list_stages(include_topics=include_topics)
+        return {"stages": stages}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/stages/<name>")
+@require_role()
+def get_stage(name: str):
+    """获取单个 Stage 的详细信息"""
+    def _handler() -> Tuple[dict, int]:
+        stage = graph_service.get_stage(name)
+        return {"stage": stage}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/terminology")
+@require_role()
+def list_terminology():
+    """
+    获取术语列表
+
+    查询参数:
+    - category: 可选的分类过滤 (如 "Incoterms", "Payment")
+    """
+    category = request.args.get("category")
+
+    def _handler() -> Tuple[dict, int]:
+        terms = graph_service.list_terminology(category=category)
+        return {"terminology": terms}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/terminology/<name>")
+@require_role()
+def get_terminology(name: str):
+    """获取单个术语的详细信息"""
+    def _handler() -> Tuple[dict, int]:
+        term = graph_service.get_terminology(name)
+        return {"term": term}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/stages/<stage_name>/knowledge-points/<knowledge_point_name>")
+@require_role("teacher")
+def link_knowledge_point_to_stage(stage_name: str, knowledge_point_name: str):
+    """将知识点关联到某个流程阶段"""
+    def _handler() -> Tuple[dict, int]:
+        stage = graph_service.link_knowledge_point_to_stage(knowledge_point_name, stage_name)
+        return {"stage": stage}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.delete("/api/graph/stages/<stage_name>/knowledge-points/<knowledge_point_name>")
+@require_role("teacher")
+def unlink_knowledge_point_from_stage(stage_name: str, knowledge_point_name: str):
+    """移除知识点与流程阶段的关联"""
+    def _handler() -> Tuple[dict, int]:
+        stage = graph_service.unlink_knowledge_point_from_stage(knowledge_point_name, stage_name)
+        return {"stage": stage}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/visualization/enhanced")
+@require_role("teacher")
+def get_enhanced_graph_visualization():
+    """
+    获取增强的图谱可视化数据,支持多节点类型
+
+    查询参数:
+    - node_types: 要包含的节点类型,用逗号分隔 (如 "Stage,KnowledgePoint,Terminology")
+    - max_nodes: 最大节点数量限制 (默认100)
+    """
+    node_types_param = request.args.get("node_types")
+    node_types = node_types_param.split(",") if node_types_param else None
+
+    try:
+        max_nodes = int(request.args.get("max_nodes", 100))
+        if max_nodes <= 0 or max_nodes > 500:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "max_nodes must be between 1 and 500"}), 400
+
+    def _handler() -> Tuple[dict, int]:
+        data = graph_service.get_enhanced_graph_visualization(
+            node_types=node_types,
+            max_nodes=max_nodes,
+        )
+        return data, 200
+
+    return _graph_operation(_handler)

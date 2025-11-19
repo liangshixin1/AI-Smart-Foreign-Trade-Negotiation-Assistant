@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱多节点类型可视化演示</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 2px solid #e2e8f0;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #mynetwork {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f7fafc;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-center;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .legend-icon.stage {
+            background: #FF6B6B;
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        }
+
+        .legend-icon.skill {
+            background: #4ECDC4;
+        }
+
+        .legend-icon.terminology {
+            background: #F7FFF7;
+            color: #2D3748;
+            border: 2px dashed #718096;
+        }
+
+        .legend-icon.knowledge {
+            background: #48BB78;
+        }
+
+        .legend-text {
+            flex: 1;
+        }
+
+        .legend-text .title {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .legend-text .desc {
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 知识图谱多节点类型可视化</h1>
+            <p>外贸谈判知识图谱 - 结构化骨架 + 语义网状结构</p>
+        </div>
+
+        <div class="card">
+            <div class="controls">
+                <div class="control-group">
+                    <label>节点类型:</label>
+                    <input type="checkbox" id="show-stage" checked>
+                    <label for="show-stage">Stage (阶段)</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" id="show-skill" checked>
+                    <label for="show-skill">Skill (技能)</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" id="show-terminology" checked>
+                    <label for="show-terminology">Terminology (术语)</label>
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" id="show-knowledge" checked>
+                    <label for="show-knowledge">KnowledgePoint (知识点)</label>
+                </div>
+                <div class="control-group">
+                    <label>最大节点数:</label>
+                    <select id="max-nodes">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+                <button onclick="loadGraph()">🔄 刷新图谱</button>
+                <button onclick="runMigration()">🚀 运行迁移</button>
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <div>加载中...</div>
+            </div>
+
+            <div id="error" class="error" style="display: none;"></div>
+
+            <div id="mynetwork"></div>
+
+            <div class="stats" id="stats" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-nodes">0</div>
+                    <div class="stat-label">总节点数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-edges">0</div>
+                    <div class="stat-label">总关系数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-stages">0</div>
+                    <div class="stat-label">阶段节点</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-terminology">0</div>
+                    <div class="stat-label">术语节点</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">图例</h2>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-icon stage">S</div>
+                    <div class="legend-text">
+                        <div class="title">Stage (阶段)</div>
+                        <div class="desc">外贸流程核心阶段</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon skill">K</div>
+                    <div class="legend-text">
+                        <div class="title">Skill (技能)</div>
+                        <div class="desc">可操作的技能方法</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon terminology">T</div>
+                    <div class="legend-text">
+                        <div class="title">Terminology (术语)</div>
+                        <div class="desc">贸易术语定义</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon knowledge">P</div>
+                    <div class="legend-text">
+                        <div class="title">KnowledgePoint (知识点)</div>
+                        <div class="desc">通用知识节点</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let network = null;
+
+        // 节点样式配置
+        const nodeGroups = {
+            Stage: {
+                shape: 'hexagon',
+                size: 40,
+                color: {
+                    background: '#FF6B6B',
+                    border: '#C92A2A',
+                    highlight: { background: '#FF8787', border: '#E03131' }
+                },
+                font: { size: 16, color: '#FFFFFF', bold: true },
+                borderWidth: 3,
+                shadow: true
+            },
+            Skill: {
+                shape: 'circle',
+                size: 25,
+                color: {
+                    background: '#4ECDC4',
+                    border: '#2C7A7B',
+                    highlight: { background: '#6EDDD6', border: '#38B2AC' }
+                },
+                font: { size: 14, color: '#FFFFFF' },
+                borderWidth: 2
+            },
+            Terminology: {
+                shape: 'circle',
+                size: 15,
+                color: {
+                    background: '#F7FFF7',
+                    border: '#718096',
+                    highlight: { background: '#FFFFFF', border: '#4A5568' }
+                },
+                font: { size: 12, color: '#2D3748' },
+                borderWidth: 2,
+                shapeProperties: { borderDashes: [5, 5] }
+            },
+            KnowledgePoint: {
+                shape: 'dot',
+                size: 20,
+                color: {
+                    background: '#48BB78',
+                    border: '#2F855A',
+                    highlight: { background: '#68D391', border: '#38A169' }
+                },
+                font: { size: 13, color: '#FFFFFF' },
+                borderWidth: 2
+            }
+        };
+
+        // 边样式
+        const edgeStyles = {
+            PRECEDES: { color: '#2D3748', width: 3, arrows: 'to', smooth: { type: 'curvedCW', roundness: 0.2 } },
+            HAS_TOPIC: { color: '#A0AEC0', width: 2, arrows: 'to', smooth: true },
+            RELATED_TO: { color: '#CBD5E0', width: 1, dashes: true },
+            REQUIRES: { color: '#FC8181', width: 2, arrows: 'to', smooth: { type: 'cubicBezier' } }
+        };
+
+        async function loadGraph() {
+            const nodeTypes = [];
+            if (document.getElementById('show-stage').checked) nodeTypes.push('Stage');
+            if (document.getElementById('show-skill').checked) nodeTypes.push('Skill');
+            if (document.getElementById('show-terminology').checked) nodeTypes.push('Terminology');
+            if (document.getElementById('show-knowledge').checked) nodeTypes.push('KnowledgePoint');
+
+            const maxNodes = document.getElementById('max-nodes').value;
+
+            const url = `/api/graph/visualization/enhanced?node_types=${nodeTypes.join(',')}&max_nodes=${maxNodes}`;
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('stats').style.display = 'none';
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                // 创建网络
+                const container = document.getElementById('mynetwork');
+                const nodes = new vis.DataSet(data.nodes);
+                const edges = new vis.DataSet(data.edges.map(edge => ({
+                    from: edge.from,
+                    to: edge.to,
+                    label: edge.label,
+                    title: edge.type,
+                    ...edgeStyles[edge.type]
+                })));
+
+                const options = {
+                    layout: {
+                        hierarchical: {
+                            enabled: true,
+                            direction: 'LR',
+                            sortMethod: 'directed',
+                            levelSeparation: 200,
+                            nodeSpacing: 150
+                        }
+                    },
+                    physics: { enabled: false },
+                    groups: nodeGroups,
+                    interaction: {
+                        hover: true,
+                        tooltipDelay: 200,
+                        zoomView: true,
+                        dragView: true
+                    }
+                };
+
+                if (network) network.destroy();
+                network = new vis.Network(container, { nodes, edges }, options);
+
+                // 更新统计
+                document.getElementById('stat-nodes').textContent = data.statistics.totalNodes;
+                document.getElementById('stat-edges').textContent = data.statistics.totalEdges;
+                document.getElementById('stat-stages').textContent = data.statistics.nodesByType.Stage || 0;
+                document.getElementById('stat-terminology').textContent = data.statistics.nodesByType.Terminology || 0;
+                document.getElementById('stats').style.display = 'grid';
+
+                // 点击事件
+                network.on('click', (params) => {
+                    if (params.nodes.length > 0) {
+                        const node = nodes.get(params.nodes[0]);
+                        alert(`节点: ${node.label}\n类型: ${node.type}\n属性: ${JSON.stringify(node.properties, null, 2)}`);
+                    }
+                });
+
+            } catch (error) {
+                document.getElementById('error').textContent = `加载失败: ${error.message}`;
+                document.getElementById('error').style.display = 'block';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function runMigration() {
+            if (!confirm('确定要运行多节点类型迁移吗？这将创建 Stage 和 Terminology 节点。')) return;
+
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const response = await fetch('/api/graph/migrations/multi-node-types/run', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`迁移成功!\n创建阶段: ${result.statistics.stages_created}\n创建术语: ${result.statistics.terminology_created}\n创建关系: ${result.statistics.precedes_relations}`);
+                    loadGraph();
+                } else {
+                    alert(`迁移失败: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`迁移失败: ${error.message}`);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 页面加载时自动加载图谱
+        window.addEventListener('load', () => {
+            loadGraph();
+        });
+    </script>
+</body>
+</html>
