@@ -1325,22 +1325,33 @@ class KnowledgeGraphBatchImporter:
         examples_stats = ImportStatistics(total=len(examples_data))
 
         # 第零步：提取并创建 Stage 节点
+        print("=" * 80)
+        print("🔍 [STAGE DEBUG] 开始提取并创建阶段节点...")
+        print(f"🔍 [STAGE DEBUG] 知识点总数: {len(points_data)}")
         LOGGER.info("从知识点中提取并创建阶段节点...")
         stages_to_create = set()
         point_stage_map = {}  # 记录每个知识点的所属阶段
 
-        for point in points_data:
+        for idx, point in enumerate(points_data):
             stage_name = point.get("stage")
+            if idx < 5:  # 只打印前5个作为示例
+                print(f"🔍 [STAGE DEBUG] 知识点 [{idx}] '{point.get('name')}' 的所有字段: {list(point.keys())}")
+                print(f"🔍 [STAGE DEBUG] 知识点 [{idx}] '{point.get('name')}' 的 stage 字段值: '{stage_name}'")
             LOGGER.debug(f"知识点 '{point.get('name')}' 的 stage 字段值: {stage_name}")
             if stage_name and isinstance(stage_name, str) and stage_name.strip():
                 stages_to_create.add(stage_name.strip())
                 point_stage_map[point["name"]] = stage_name.strip()
 
+        print(f"🔍 [STAGE DEBUG] 提取到 {len(stages_to_create)} 个唯一阶段: {stages_to_create}")
+        print(f"🔍 [STAGE DEBUG] point_stage_map 包含 {len(point_stage_map)} 个映射")
+        print("=" * 80)
         LOGGER.info(f"提取到 {len(stages_to_create)} 个阶段: {stages_to_create}")
 
         # 创建 Stage 节点
+        print(f"\n🔧 [STAGE CREATE] 开始创建 {len(stages_to_create)} 个 Stage 节点...")
         for stage_name in stages_to_create:
             try:
+                print(f"🔧 [STAGE CREATE] 正在创建 Stage: {stage_name}")
                 from services import graph_service
                 driver = graph_service._get_driver()
 
@@ -1374,9 +1385,11 @@ class KnowledgeGraphBatchImporter:
                 with driver.session() as session:
                     result = session.run(merge_query, params)
                     created_name = result.single()["name"]
+                    print(f"✅ [STAGE CREATE] Stage 节点已确保存在: {created_name}")
                     LOGGER.info(f"✓ Stage 节点已确保存在: {created_name}")
 
             except Exception as e:
+                print(f"❌ [STAGE CREATE] 创建 Stage 节点失败 {stage_name}: {e}")
                 LOGGER.error(f"✗ 创建 Stage 节点失败 {stage_name}: {e}", exc_info=True)
 
         # 第一步：导入知识点节点
@@ -1438,12 +1451,14 @@ class KnowledgeGraphBatchImporter:
                 points_stats.failed += 1
 
         # 第一点五步：创建 Stage 和 KnowledgePoint 的关系
+        print(f"\n🔗 [RELATION] 开始创建 Stage-KnowledgePoint 关系... (共 {len(point_stage_map)} 个)")
         LOGGER.info(f"创建 Stage 和 KnowledgePoint 的关系... (共 {len(point_stage_map)} 个)")
         stage_relation_success = 0
         stage_relation_failed = 0
 
         for point_name, stage_name in point_stage_map.items():
             if point_name not in point_name_to_id:
+                print(f"⚠️ [RELATION] 跳过: 知识点 '{point_name}' 未成功创建")
                 LOGGER.warning(f"跳过关系创建: 知识点 '{point_name}' 未成功创建")
                 stage_relation_failed += 1
                 continue
@@ -1462,14 +1477,20 @@ class KnowledgeGraphBatchImporter:
                     record = result.single()
                     if record:
                         stage_relation_success += 1
+                        if stage_relation_success <= 3:  # 只打印前3个作为示例
+                            print(f"✅ [RELATION] Stage '{stage_name}' -[HAS_TOPIC]-> KnowledgePoint '{point_name}'")
                         LOGGER.debug(f"✓ Stage '{stage_name}' -[HAS_TOPIC]-> KnowledgePoint '{point_name}'")
                     else:
                         stage_relation_failed += 1
+                        print(f"❌ [RELATION] 未找到节点: Stage '{stage_name}' 或 KnowledgePoint '{point_name}'")
                         LOGGER.error(f"✗ 未找到节点: Stage '{stage_name}' 或 KnowledgePoint '{point_name}'")
             except Exception as e:
                 stage_relation_failed += 1
+                print(f"❌ [RELATION] 创建失败 ({stage_name} -> {point_name}): {e}")
                 LOGGER.error(f"✗ 创建 Stage-KnowledgePoint 关系失败 ({stage_name} -> {point_name}): {e}", exc_info=True)
 
+        print(f"🔗 [RELATION] 完成! 成功: {stage_relation_success}, 失败: {stage_relation_failed}")
+        print("=" * 80)
         LOGGER.info(f"Stage-KnowledgePoint 关系创建完成: 成功 {stage_relation_success}, 失败 {stage_relation_failed}")
 
         # 第二步：创建关系
