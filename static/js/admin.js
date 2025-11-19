@@ -1429,14 +1429,16 @@ function renderAdminGraphNetwork() {
       label: node.title,
       title: node.subtitle || node.title,
       group: node.label,
+      level: node.level !== undefined ? node.level : undefined,
+      x: node.order !== undefined ? node.order * 100 : undefined,
     })),
   );
   const edges = new window.vis.DataSet(
     (networkData.edges || []).map((edge) => ({
       from: edge.source,
       to: edge.target,
-      label: edge.type,
-      arrows: "to",
+      label: edge.label || edge.type,
+      arrows: edge.arrows || "to",
     })),
   );
   if (adminGraphNetwork) {
@@ -1446,28 +1448,67 @@ function renderAdminGraphNetwork() {
   const options = {
     nodes: {
       shape: "dot",
-      size: 14,
-      font: { color: "#e2e8f0", size: 12 },
-      borderWidth: 1,
+      size: 16,
+      font: { color: "#e2e8f0", size: 13, face: "Inter, system-ui, sans-serif" },
+      borderWidth: 2,
+      shadow: { enabled: true, color: "rgba(0,0,0,0.3)", size: 8 },
     },
     edges: {
-      color: "#64748b",
-      smooth: { type: "dynamic" },
-      font: { color: "#94a3b8", size: 10, align: "middle" },
+      color: { color: "#64748b", highlight: "#3b82f6", hover: "#60a5fa" },
+      width: 2,
+      smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 },
+      font: { color: "#cbd5e1", size: 11, align: "top" },
+      arrows: { to: { enabled: true, scaleFactor: 0.8 } },
+    },
+    layout: {
+      hierarchical: {
+        enabled: true,
+        direction: "LR",
+        sortMethod: "directed",
+        levelSeparation: 250,
+        nodeSpacing: 150,
+        treeSpacing: 200,
+        blockShifting: true,
+        edgeMinimization: true,
+        parentCentralization: true,
+      },
     },
     physics: {
-      stabilization: true,
-      barnesHut: { gravitationalConstant: -4200, springLength: 160, springConstant: 0.04 },
+      enabled: false,
     },
     groups: {
-      Chapter: { color: { background: "#312e81", border: "#6366f1" } },
-      Practice: { color: { background: "#0f766e", border: "#2dd4bf" } },
-      TheoryTopic: { color: { background: "#5b21b6", border: "#a855f7" } },
-      TheoryLesson: { color: { background: "#9a3412", border: "#fb923c" } },
-      KnowledgePoint: { color: { background: "#78350f", border: "#facc15" } },
-      ProcessStep: { color: { background: "#14532d", border: "#22c55e" } },
+      Stage: {
+        color: { background: "#7c3aed", border: "#a78bfa" },
+        shape: "box",
+        size: 25,
+        font: { size: 14, bold: true },
+      },
+      Chapter: {
+        color: { background: "#312e81", border: "#6366f1" },
+        size: 20,
+      },
+      Practice: {
+        color: { background: "#0f766e", border: "#2dd4bf" },
+        size: 18,
+      },
+      TheoryTopic: {
+        color: { background: "#5b21b6", border: "#a855f7" },
+        size: 18,
+      },
+      TheoryLesson: {
+        color: { background: "#9a3412", border: "#fb923c" },
+        size: 18,
+      },
+      KnowledgePoint: {
+        color: { background: "#78350f", border: "#facc15" },
+        size: 16,
+      },
+      ProcessStep: {
+        color: { background: "#14532d", border: "#22c55e" },
+        size: 14,
+      },
     },
-    interaction: { hover: true, tooltipDelay: 120 },
+    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
   };
   adminGraphNetwork = new window.vis.Network(adminGraphCanvas, { nodes, edges }, options);
   adminGraphNetwork.on("selectNode", (params) => {
