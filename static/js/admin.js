@@ -1429,8 +1429,6 @@ function renderAdminGraphNetwork() {
       label: node.title,
       title: node.subtitle || node.title,
       group: node.label,
-      level: node.level !== undefined ? node.level : undefined,
-      x: node.order !== undefined ? node.order * 100 : undefined,
     })),
   );
   const edges = new window.vis.DataSet(
@@ -1468,18 +1466,19 @@ function renderAdminGraphNetwork() {
       enabled: true,
       stabilization: {
         enabled: true,
-        iterations: 200,
-        updateInterval: 25,
+        iterations: 1000,
+        updateInterval: 50,
+        onlyDynamicEdges: false,
+        fit: true,
       },
       barnesHut: {
-        gravitationalConstant: -3000,
-        centralGravity: 0.3,
-        springLength: 200,
-        springConstant: 0.04,
-        damping: 0.09,
-        avoidOverlap: 0.5,
+        gravitationalConstant: -8000,
+        centralGravity: 0.1,
+        springLength: 250,
+        springConstant: 0.001,
+        damping: 0.3,
+        avoidOverlap: 0.8,
       },
-      solver: "barnesHut",
     },
     groups: {
       Stage: {
@@ -1487,27 +1486,27 @@ function renderAdminGraphNetwork() {
         shape: "box",
         size: 25,
         font: { size: 14, bold: true },
-        mass: 5,
+        mass: 8,
       },
       Chapter: {
         color: { background: "#312e81", border: "#6366f1" },
         size: 20,
-        mass: 3,
+        mass: 5,
       },
       Practice: {
         color: { background: "#0f766e", border: "#2dd4bf" },
         size: 18,
-        mass: 2,
+        mass: 3,
       },
       TheoryTopic: {
         color: { background: "#5b21b6", border: "#a855f7" },
         size: 18,
-        mass: 2,
+        mass: 3,
       },
       TheoryLesson: {
         color: { background: "#9a3412", border: "#fb923c" },
         size: 18,
-        mass: 2,
+        mass: 3,
       },
       KnowledgePoint: {
         color: { background: "#78350f", border: "#facc15" },
@@ -1523,6 +1522,12 @@ function renderAdminGraphNetwork() {
     interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
   };
   adminGraphNetwork = new window.vis.Network(adminGraphCanvas, { nodes, edges }, options);
+
+  // 稳定后自动停止物理引擎
+  adminGraphNetwork.once("stabilizationIterationsDone", function() {
+    adminGraphNetwork.setOptions({ physics: false });
+  });
+
   adminGraphNetwork.on("selectNode", (params) => {
     const key = params.nodes && params.nodes[0];
     if (key) {
