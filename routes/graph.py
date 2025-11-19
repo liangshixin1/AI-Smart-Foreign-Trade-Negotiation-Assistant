@@ -6,7 +6,7 @@ from typing import Callable, Tuple
 
 from flask import Blueprint, jsonify, request, send_file
 
-from services import graph_service
+from services import graph_service, knowledge_service
 from services.auth_service import current_user, require_role
 
 
