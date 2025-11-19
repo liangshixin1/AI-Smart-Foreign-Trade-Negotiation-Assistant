@@ -1652,9 +1652,9 @@ class KnowledgeGraphBatchImporter:
         """创建知识点关系"""
         # 调用knowledge_service创建关系
         if relation_type == "prerequisite":
-            knowledge_service.add_prerequisite(source_name, target_name)
+            knowledge_service.add_knowledge_prerequisite(source_name, target_name)
         else:
-            knowledge_service.add_relation(
+            knowledge_service.add_knowledge_relation(
                 source_name, target_name, relation_type=relation_type
             )
 
