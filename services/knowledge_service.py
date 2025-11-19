@@ -191,8 +191,8 @@ def get_knowledge_point(name: str) -> Optional[Dict[str, object]]:
            collect(DISTINCT prereq.name) AS prerequisites,
            collect(DISTINCT {
                name: related.name,
-               type: rel.relationType,
-               strength: rel.strength
+               type: COALESCE(rel.relationType, 'related'),
+               strength: COALESCE(rel.strength, 0.5)
            }) AS related
     """
 
