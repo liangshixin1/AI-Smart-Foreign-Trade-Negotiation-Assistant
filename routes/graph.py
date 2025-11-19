@@ -624,54 +624,17 @@ def import_batch():
         try:
             from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
             from services.graph_service import GraphService
-            import openpyxl
-            import io
 
             # 创建导入器
             importer = KnowledgeGraphBatchImporter(GraphService())
 
-            # 智能检测：检查Excel是否包含"谈判流程"表
-            print("🔍 [IMPORT MODE] 检测Excel结构...")
-            points_file.stream.seek(0)
-            file_content = points_file.stream.read()
-            points_file.stream.seek(0)  # 重置指针供后续使用
-
-            has_stage_sheet = False
-            try:
-                wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True)
-                sheet_names = wb.sheetnames
-                print(f"🔍 [IMPORT MODE] 检测到的Sheet列表: {sheet_names}")
-
-                # 检查是否包含Stage/流程表
-                stage_sheet_names = ["谈判流程", "阶段", "Stage", "Stages", "流程", "Sheet1"]
-                for sheet_name in sheet_names:
-                    if sheet_name in stage_sheet_names:
-                        has_stage_sheet = True
-                        print(f"✅ [IMPORT MODE] 检测到阶段表: '{sheet_name}'，将使用三表导入模式")
-                        break
-
-                wb.close()
-            except Exception as e:
-                print(f"⚠️ [IMPORT MODE] 检测Sheet失败: {e}，将使用两表导入模式")
-
-            # 根据检测结果选择导入模式
-            if has_stage_sheet:
-                print("🚀 [IMPORT MODE] 使用三表导入模式 (import_from_three_sheets)")
-                # 使用三表导入（包含Stage流程表）
-                result = importer.import_from_three_sheets(
-                    excel_file=io.BytesIO(file_content),
-                    mode=mode,
-                    created_by=created_by,
-                )
-            else:
-                print("🚀 [IMPORT MODE] 使用两表导入模式 (import_from_two_tables)")
-                # 使用两表导入（知识点+案例）
-                result = importer.import_from_two_tables(
-                    points_file=io.BytesIO(file_content),
-                    examples_file=examples_file.stream if examples_file else None,
-                    mode=mode,
-                    created_by=created_by,
-                )
+            # 执行导入
+            result = importer.import_from_two_tables(
+                points_file=points_file.stream,
+                examples_file=examples_file.stream if examples_file else None,
+                mode=mode,
+                created_by=created_by,
+            )
 
             # 返回结果
             return result.to_dict(), 200
