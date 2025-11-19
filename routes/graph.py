@@ -88,22 +88,19 @@ def list_knowledge_points():
     获取知识点列表（旧版API，向后兼容）
     支持通过查询参数进行过滤：search, category, difficulty
     """
-    # 检查是否有过滤参数，如果有则使用enhanced版本
+    # 检查是否有过滤参数
     search = request.args.get("search")
     category = request.args.get("category")
     difficulty = request.args.get("difficulty")
 
     def _handler() -> Tuple[dict, int]:
-        if search or category or difficulty:
-            # 使用enhanced版本
-            points = graph_service.list_knowledge_points_enhanced(
-                search=search,
-                category=category,
-                difficulty=difficulty
-            )
-        else:
-            # 使用旧版本
-            points = graph_service.list_knowledge_points()
+        # 使用新的 knowledge_service，兼容性更好
+        points = knowledge_service.list_knowledge_points(
+            category=category,
+            difficulty=difficulty,
+            keyword=search,
+            limit=1000
+        )
         return {"knowledgePoints": points}, 200
 
     return _graph_operation(_handler)
