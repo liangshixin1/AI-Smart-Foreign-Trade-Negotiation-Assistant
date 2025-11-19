@@ -570,10 +570,6 @@ def _link_category_parent(session, child_id: str, parent_id: str, order_index: i
 
 def _format_knowledge_point(node) -> Dict[str, object]:
     """格式化知识点节点为字典"""
-    # 将Neo4j DateTime转换为ISO字符串
-    created_at = node.get("createdAt")
-    updated_at = node.get("updatedAt")
-
     return {
         "name": node.get("name"),
         "code": node.get("code"),
@@ -593,8 +589,8 @@ def _format_knowledge_point(node) -> Dict[str, object]:
         "viewCount": node.get("viewCount", 0),
         "practiceCount": node.get("practiceCount", 0),
         "averageScore": node.get("averageScore"),
-        "createdAt": created_at.iso_format() if created_at and hasattr(created_at, 'iso_format') else str(created_at) if created_at else None,
-        "updatedAt": updated_at.iso_format() if updated_at and hasattr(updated_at, 'iso_format') else str(updated_at) if updated_at else None,
+        "createdAt": node.get("createdAt"),
+        "updatedAt": node.get("updatedAt"),
         "createdBy": node.get("createdBy"),
         "version": node.get("version", 1),
     }
