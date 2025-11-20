@@ -1639,12 +1639,12 @@ class KnowledgeGraphBatchImporter:
                 # 使用 knowledge_service 创建/更新知识点
                 try:
                     existing = knowledge_service.get_knowledge_point(point_name)
-                    # 更新
-                    knowledge_service.update_knowledge_point(point_name, clean_point)
+                    # 更新（展开字典为关键字参数）
+                    knowledge_service.update_knowledge_point(point_name, **clean_point)
                     points_stats.updated += 1
                 except graph_service.GraphEntityNotFoundError:
-                    # 创建
-                    knowledge_service.create_knowledge_point(clean_point)
+                    # 创建（展开字典为关键字参数）
+                    knowledge_service.create_knowledge_point(**clean_point)
                     points_stats.created += 1
 
                 point_name_map[point_name] = {
