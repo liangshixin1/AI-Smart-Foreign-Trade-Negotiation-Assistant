@@ -227,19 +227,16 @@ class KnowledgeGraphImporter:
             # 步骤4: 导入到Neo4j（使用事务确保原子性）
             LOGGER.info("步骤4: 导入到Neo4j...")
             with self.driver.session() as session:
-                with session.begin_transaction() as tx:
-                    try:
-                        self._import_to_neo4j(
-                            tx, stages_data, points_data, practices_data,
-                            result, created_by
-                        )
-                        tx.commit()
-                        result.success = True
-                        LOGGER.info("事务提交成功")
-                    except Exception as e:
-                        tx.rollback()
-                        LOGGER.error(f"事务回滚: {e}")
-                        raise
+                # 使用 write_transaction 确保事务正确管理
+                def import_work(tx):
+                    self._import_to_neo4j(
+                        tx, stages_data, points_data, practices_data,
+                        result, created_by
+                    )
+
+                session.write_transaction(import_work)
+                result.success = True
+                LOGGER.info("事务提交成功")
 
             result.duration_seconds = time.time() - start_time
 
