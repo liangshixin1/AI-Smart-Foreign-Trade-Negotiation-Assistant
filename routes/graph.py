@@ -625,54 +625,18 @@ def import_batch():
 
     def _handler() -> Tuple[dict, int]:
         try:
-            import openpyxl
-            from io import BytesIO
-            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
+            from services.knowledge_graph_importer import KnowledgeGraphImporter
             from services.graph_service import GraphService
 
-            # 创建导入器
-            importer = KnowledgeGraphBatchImporter(GraphService())
+            # 创建新版导入器
+            driver = graph_service._get_driver()
+            importer = KnowledgeGraphImporter(driver)
 
-            # 读取文件内容到内存
-            file_content = points_file.stream.read()
-
-            # 读取workbook获取sheet名称
-            wb = openpyxl.load_workbook(BytesIO(file_content), read_only=True)
-            sheet_names = wb.sheetnames
-            wb.close()
-
-            # 判断是否包含"谈判流程"Sheet（三表法的标志）
-            has_flow_sheet = "谈判流程" in sheet_names
-
-            # 根据检测结果选择导入方法
-            if has_flow_sheet:
-                # 三表法：Excel文件包含谈判流程、知识点主表、案例库表
-                import logging
-                logging.info("检测到'谈判流程'Sheet，使用三表法导入")
-
-                # 使用BytesIO包装文件内容，确保可以多次读取
-                result = importer.import_from_three_sheets(
-                    excel_file=BytesIO(file_content),
-                    mode=mode,
-                    created_by=created_by,
-                )
-            else:
-                # 两表法：使用分离的知识点主表和案例库表
-                import logging
-                logging.info("未检测到'谈判流程'Sheet，使用两表法导入")
-
-                # 准备examples文件（如果有）
-                examples_io = None
-                if examples_file:
-                    examples_content = examples_file.stream.read()
-                    examples_io = BytesIO(examples_content)
-
-                result = importer.import_from_two_tables(
-                    points_file=BytesIO(file_content),
-                    examples_file=examples_io,
-                    mode=mode,
-                    created_by=created_by,
-                )
+            # 执行导入（统一使用新的简洁实现）
+            result = importer.import_from_excel(
+                excel_file=points_file.stream,
+                created_by=created_by,
+            )
 
             # 返回结果
             return result.to_dict(), 200
@@ -1085,16 +1049,15 @@ def import_three_sheets():
 
     def _handler() -> Tuple[dict, int]:
         try:
-            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
-            from services.graph_service import GraphService
+            from services.knowledge_graph_importer import KnowledgeGraphImporter
 
-            # 创建导入器
-            importer = KnowledgeGraphBatchImporter(GraphService())
+            # 创建新版导入器
+            driver = graph_service._get_driver()
+            importer = KnowledgeGraphImporter(driver)
 
-            # 执行三表联动导入
-            result = importer.import_from_three_sheets(
+            # 执行导入（使用统一的简洁实现）
+            result = importer.import_from_excel(
                 excel_file=excel_file.stream,
-                mode=mode,
                 created_by=created_by,
             )
 
@@ -1111,7 +1074,7 @@ def import_three_sheets():
                     "stages": {"total": 0, "created": 0, "updated": 0, "failed": 0},
                     "points": {"total": 0, "created": 0, "updated": 0, "failed": 0},
                     "relations": {"total": 0, "created": 0, "failed": 0},
-                    "examples": {"total": 0, "created": 0, "failed": 0},
+                    "practices": {"total": 0, "created": 0, "failed": 0},
                 },
                 "errors": [],
                 "warnings": [],
