@@ -74,7 +74,7 @@ class ImportResult:
     duration_seconds: float = 0.0
 
     def to_dict(self) -> Dict:
-        """转换为字典格式"""
+        """转换为字典格式（向后兼容：practices字段对外显示为examples）"""
         return {
             "success": self.success,
             "statistics": {
@@ -92,7 +92,7 @@ class ImportResult:
                     "failed": self.knowledge_points.failed,
                     "success_rate": self.knowledge_points.success_rate,
                 },
-                "practices": {
+                "examples": {  # 向后兼容：前端期望examples字段
                     "total": self.practices.total,
                     "created": self.practices.created,
                     "failed": self.practices.failed,
