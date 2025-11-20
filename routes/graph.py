@@ -626,19 +626,17 @@ def import_batch():
     def _handler() -> Tuple[dict, int]:
         try:
             import openpyxl
+            from io import BytesIO
             from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
             from services.graph_service import GraphService
 
             # 创建导入器
             importer = KnowledgeGraphBatchImporter(GraphService())
 
-            # 检测Excel文件的Sheet名称，判断使用两表法还是三表法
-            # 读取文件内容（需要peek来检查，之后重置）
+            # 读取文件内容到内存
             file_content = points_file.stream.read()
-            points_file.stream.seek(0)  # 重置文件指针
 
             # 读取workbook获取sheet名称
-            from io import BytesIO
             wb = openpyxl.load_workbook(BytesIO(file_content), read_only=True)
             sheet_names = wb.sheetnames
             wb.close()
@@ -652,11 +650,9 @@ def import_batch():
                 import logging
                 logging.info("检测到'谈判流程'Sheet，使用三表法导入")
 
-                # 重置文件指针，准备导入
-                points_file.stream.seek(0)
-
+                # 使用BytesIO包装文件内容，确保可以多次读取
                 result = importer.import_from_three_sheets(
-                    excel_file=points_file.stream,
+                    excel_file=BytesIO(file_content),
                     mode=mode,
                     created_by=created_by,
                 )
@@ -665,12 +661,15 @@ def import_batch():
                 import logging
                 logging.info("未检测到'谈判流程'Sheet，使用两表法导入")
 
-                # 重置文件指针，准备导入
-                points_file.stream.seek(0)
+                # 准备examples文件（如果有）
+                examples_io = None
+                if examples_file:
+                    examples_content = examples_file.stream.read()
+                    examples_io = BytesIO(examples_content)
 
                 result = importer.import_from_two_tables(
-                    points_file=points_file.stream,
-                    examples_file=examples_file.stream if examples_file else None,
+                    points_file=BytesIO(file_content),
+                    examples_file=examples_io,
                     mode=mode,
                     created_by=created_by,
                 )
