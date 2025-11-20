@@ -434,23 +434,32 @@ class KnowledgeGraphBatchImporter:
             # Phase 1: 解析三个Sheet的数据
             LOGGER.info("Phase 1: 解析Excel文件...")
 
+            # 读取文件内容到内存，避免多次读取同一文件流时出现问题
+            if hasattr(excel_file, 'read'):
+                file_content = excel_file.read()
+            else:
+                file_content = excel_file
+
             # 1.1 解析谈判流程表（Sheet 1）
-            flow_data, flow_errors = self._parse_flow_table(excel_file)
+            flow_data, flow_errors = self._parse_flow_table(io.BytesIO(file_content))
             result.errors.extend(flow_errors)
 
             # 建立阶段名称列表
             self.known_stage_names = [f["name"] for f in flow_data]
+            LOGGER.info(f"解析到 {len(flow_data)} 个阶段: {self.known_stage_names}")
 
             # 1.2 解析知识点表（Sheet 2）
-            points_data, points_errors = self._parse_points_table_from_workbook(excel_file, sheet_name="知识点主表")
+            points_data, points_errors = self._parse_points_table_from_workbook(io.BytesIO(file_content), sheet_name="知识点主表")
             result.errors.extend(points_errors)
 
             # 建立知识点名称列表
             self.known_point_names = [p["name"] for p in points_data]
+            LOGGER.info(f"解析到 {len(points_data)} 个知识点")
 
             # 1.3 解析案例库表（Sheet 3，可选）
-            examples_data, examples_errors = self._parse_examples_table_from_workbook(excel_file, sheet_name="案例库表")
+            examples_data, examples_errors = self._parse_examples_table_from_workbook(io.BytesIO(file_content), sheet_name="案例库表")
             result.errors.extend(examples_errors)
+            LOGGER.info(f"解析到 {len(examples_data)} 个案例")
 
             # Phase 2: 验证数据
             LOGGER.info("Phase 2: 验证数据...")
