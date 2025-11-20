@@ -227,14 +227,28 @@ class KnowledgeGraphImporter:
             # 步骤4: 导入到Neo4j（使用事务确保原子性）
             LOGGER.info("步骤4: 导入到Neo4j...")
             with self.driver.session() as session:
-                # 使用 write_transaction 确保事务正确管理
+                # 使用 execute_write 确保事务正确管理（Neo4j driver 5.x+）
                 def import_work(tx):
                     self._import_to_neo4j(
                         tx, stages_data, points_data, practices_data,
                         result, created_by
                     )
 
-                session.write_transaction(import_work)
+                # 兼容不同版本的 Neo4j driver
+                if hasattr(session, 'execute_write'):
+                    session.execute_write(import_work)
+                elif hasattr(session, 'write_transaction'):
+                    session.write_transaction(import_work)
+                else:
+                    # 降级到手动事务管理
+                    tx = session.begin_transaction()
+                    try:
+                        import_work(tx)
+                        tx.commit()
+                    except Exception:
+                        tx.rollback()
+                        raise
+
                 result.success = True
                 LOGGER.info("事务提交成功")
 
@@ -408,12 +422,19 @@ class KnowledgeGraphImporter:
         try:
             wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
 
-            # 查找"知识点主表"Sheet
+            # 查找"知识点主表"Sheet（优先使用明确命名的sheet）
             sheet_name = None
-            for possible_name in ["知识点主表", "知识点", "Sheet2"]:
+            for possible_name in ["知识点主表", "知识点"]:
                 if possible_name in wb.sheetnames:
                     sheet_name = possible_name
                     break
+
+            # 如果没找到，尝试使用第一个不是"谈判流程"的sheet
+            if not sheet_name:
+                for name in wb.sheetnames:
+                    if name not in ["谈判流程", "案例库表", "案例库"]:
+                        sheet_name = name
+                        break
 
             if not sheet_name:
                 errors.append(ImportError(
@@ -430,6 +451,18 @@ class KnowledgeGraphImporter:
 
             # 读取表头
             headers = [str(cell).strip() if cell else "" for cell in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
+
+            # 检查表头是否为空（可能是个空sheet）
+            if not any(headers):
+                errors.append(ImportError(
+                    level="WARNING",
+                    sheet="知识点主表",
+                    row=0,
+                    message=f"Sheet '{sheet_name}' 的表头为空",
+                    suggestion="知识点导入将跳过",
+                ))
+                wb.close()
+                return [], errors
 
             # 构建列索引映射
             col_map = {}
@@ -456,10 +489,11 @@ class KnowledgeGraphImporter:
             if "name" not in col_map:
                 errors.append(ImportError(
                     level="ERROR",
-                    sheet="知识点主表",
+                    sheet=f"知识点主表 ({sheet_name})",
                     row=1,
                     field="知识点名称",
                     message="缺少必填列'知识点名称'",
+                    suggestion=f"请确保Sheet '{sheet_name}' 的第1行包含'知识点名称'或'*知识点名称'列",
                 ))
                 wb.close()
                 return [], errors
