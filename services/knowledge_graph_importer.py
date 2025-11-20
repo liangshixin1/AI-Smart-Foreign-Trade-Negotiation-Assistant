@@ -31,6 +31,25 @@ LOGGER = logging.getLogger(__name__)
 
 
 # ============================================
+# 配置常量
+# ============================================
+
+# Excel 解析配置
+EXCEL_HEADER_ROW = 1  # 表头行号
+EXCEL_DATA_START_ROW = 2  # 数据起始行（跳过表头后的第一行，允许用户删除示例行）
+
+# 默认节点属性
+DEFAULT_STAGE_ICON = "🔵"
+DEFAULT_STAGE_COLOR = "#3B82F6"
+DEFAULT_STAGE_DIFFICULTY = "intermediate"
+DEFAULT_STAGE_DURATION = 7
+
+DEFAULT_POINT_TYPE = "concept"
+DEFAULT_POINT_DIFFICULTY = "intermediate"
+DEFAULT_POINT_IMPORTANCE = "recommended"
+
+
+# ============================================
 # 数据结构定义
 # ============================================
 
@@ -205,14 +224,23 @@ class KnowledgeGraphImporter:
                 result.duration_seconds = time.time() - start_time
                 return result
 
-            # 步骤4: 导入到Neo4j
+            # 步骤4: 导入到Neo4j（使用事务确保原子性）
             LOGGER.info("步骤4: 导入到Neo4j...")
-            self._import_to_neo4j(
-                stages_data, points_data, practices_data,
-                result, created_by
-            )
+            with self.driver.session() as session:
+                with session.begin_transaction() as tx:
+                    try:
+                        self._import_to_neo4j(
+                            tx, stages_data, points_data, practices_data,
+                            result, created_by
+                        )
+                        tx.commit()
+                        result.success = True
+                        LOGGER.info("事务提交成功")
+                    except Exception as e:
+                        tx.rollback()
+                        LOGGER.error(f"事务回滚: {e}")
+                        raise
 
-            result.success = True
             result.duration_seconds = time.time() - start_time
 
             LOGGER.info(
@@ -300,9 +328,9 @@ class KnowledgeGraphImporter:
                 wb.close()
                 return [], errors
 
-            # 读取数据（从第3行开始，跳过表头和示例行）
+            # 读取数据（从第2行开始，跳过表头）
             order = 0
-            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            for row_idx, row in enumerate(ws.iter_rows(min_row=EXCEL_DATA_START_ROW, values_only=True), start=EXCEL_DATA_START_ROW):
                 # 跳过空行
                 if not any(row):
                     continue
@@ -356,7 +384,7 @@ class KnowledgeGraphImporter:
                     sheet="谈判流程",
                     row=0,
                     message="未找到任何阶段数据",
-                    suggestion="请在'谈判流程'Sheet的第3行及以后添加阶段数据",
+                    suggestion=f"请在'谈判流程'Sheet的第{EXCEL_DATA_START_ROW}行及以后添加阶段数据",
                 ))
 
         except Exception as e:
@@ -439,8 +467,8 @@ class KnowledgeGraphImporter:
                 wb.close()
                 return [], errors
 
-            # 读取数据（从第3行开始）
-            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            # 读取数据（从第2行开始，跳过表头）
+            for row_idx, row in enumerate(ws.iter_rows(min_row=EXCEL_DATA_START_ROW, values_only=True), start=EXCEL_DATA_START_ROW):
                 # 跳过空行
                 if not any(row):
                     continue
@@ -539,8 +567,8 @@ class KnowledgeGraphImporter:
                 elif clean_header == "案例内容":
                     col_map["content"] = idx
 
-            # 读取数据（从第3行开始）
-            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            # 读取数据（从第2行开始，跳过表头）
+            for row_idx, row in enumerate(ws.iter_rows(min_row=EXCEL_DATA_START_ROW, values_only=True), start=EXCEL_DATA_START_ROW):
                 # 跳过空行
                 if not any(row):
                     continue
@@ -637,13 +665,24 @@ class KnowledgeGraphImporter:
 
     def _import_to_neo4j(
         self,
+        tx,  # Neo4j Transaction对象
         stages: List[Dict],
         points: List[Dict],
         practices: List[Dict],
         result: ImportResult,
         created_by: str,
     ):
-        """导入数据到Neo4j"""
+        """
+        导入数据到Neo4j（在事务中执行）
+
+        Args:
+            tx: Neo4j事务对象
+            stages: 阶段数据列表
+            points: 知识点数据列表
+            practices: 案例数据列表
+            result: 导入结果对象
+            created_by: 创建者标识
+        """
 
         # 设置统计
         result.stages.total = len(stages)
@@ -655,7 +694,7 @@ class KnowledgeGraphImporter:
         stage_names = set()
         for stage in stages:
             try:
-                self._create_stage(stage, created_by)
+                self._create_stage(tx, stage, created_by)
                 result.stages.created += 1
                 stage_names.add(stage["name"])
                 LOGGER.debug(f"  创建Stage: {stage['name']}")
@@ -672,7 +711,7 @@ class KnowledgeGraphImporter:
 
             if from_stage in stage_names and to_stage in stage_names:
                 try:
-                    self._create_precedes_relation(from_stage, to_stage, created_by)
+                    self._create_precedes_relation(tx, from_stage, to_stage, created_by)
                     result.relations.created += 1
                     result.relations.total += 1
                     LOGGER.debug(f"  创建关系: {from_stage} -> {to_stage}")
@@ -693,13 +732,13 @@ class KnowledgeGraphImporter:
 
             try:
                 # 检查是否已存在
-                existing = self._get_knowledge_point(point_name)
+                existing = self._get_knowledge_point(tx, point_name)
                 if existing:
-                    self._update_knowledge_point(point_name, point)
+                    self._update_knowledge_point(tx, point_name, point)
                     result.knowledge_points.updated += 1
                     LOGGER.debug(f"  更新知识点: {point_name}")
                 else:
-                    self._create_knowledge_point(point)
+                    self._create_knowledge_point(tx, point)
                     result.knowledge_points.created += 1
                     LOGGER.debug(f"  创建知识点: {point_name}")
 
@@ -716,7 +755,7 @@ class KnowledgeGraphImporter:
         for point_name, stage_name in point_stage_map.items():
             if stage_name in stage_names and point_name in point_names:
                 try:
-                    self._create_has_topic_relation(stage_name, point_name, created_by)
+                    self._create_has_topic_relation(tx, stage_name, point_name, created_by)
                     result.relations.created += 1
                     result.relations.total += 1
                     LOGGER.debug(f"  创建关系: {stage_name} -> {point_name}")
@@ -735,12 +774,12 @@ class KnowledgeGraphImporter:
                 # 只有关联的知识点存在才创建
                 if kp_name and kp_name in point_names:
                     try:
-                        practice_id = self._create_practice(practice, created_by)
+                        practice_id = self._create_practice(tx, practice, created_by)
                         result.practices.created += 1
                         LOGGER.debug(f"  创建案例: {practice.get('title', practice_id)}")
 
                         # 创建关联关系
-                        self._create_has_practice_relation(kp_name, practice_id, created_by)
+                        self._create_has_practice_relation(tx, kp_name, practice_id, created_by)
                         result.relations.created += 1
                         result.relations.total += 1
                     except Exception as e:
@@ -751,8 +790,8 @@ class KnowledgeGraphImporter:
     # Neo4j操作方法
     # ========================================
 
-    def _create_stage(self, stage: Dict, created_by: str):
-        """创建Stage节点"""
+    def _create_stage(self, tx, stage: Dict, created_by: str):
+        """创建Stage节点（在事务中执行）"""
         query = """
         MERGE (s:Stage {name: $name})
         SET s.englishName = $englishName,
@@ -772,18 +811,17 @@ class KnowledgeGraphImporter:
             "name": stage.get("name"),
             "englishName": stage.get("englishName", ""),
             "description": stage.get("description", ""),
-            "difficulty": stage.get("difficulty", "intermediate"),
-            "estimatedDuration": stage.get("estimatedDuration", 7),
-            "icon": stage.get("icon", "🔵"),
-            "color": stage.get("color", "#3B82F6"),
+            "difficulty": stage.get("difficulty", DEFAULT_STAGE_DIFFICULTY),
+            "estimatedDuration": stage.get("estimatedDuration", DEFAULT_STAGE_DURATION),
+            "icon": stage.get("icon", DEFAULT_STAGE_ICON),
+            "color": stage.get("color", DEFAULT_STAGE_COLOR),
             "createdBy": created_by,
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
-    def _create_precedes_relation(self, from_stage: str, to_stage: str, created_by: str):
-        """创建PRECEDES关系"""
+    def _create_precedes_relation(self, tx, from_stage: str, to_stage: str, created_by: str):
+        """创建PRECEDES关系（在事务中执行）"""
         query = """
         MATCH (s1:Stage {name: $from_stage})
         MATCH (s2:Stage {name: $to_stage})
@@ -797,19 +835,17 @@ class KnowledgeGraphImporter:
             "createdBy": created_by,
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
-    def _get_knowledge_point(self, name: str) -> Optional[Dict]:
-        """检查知识点是否存在"""
+    def _get_knowledge_point(self, tx, name: str) -> Optional[Dict]:
+        """检查知识点是否存在（在事务中执行）"""
         query = "MATCH (k:KnowledgePoint {name: $name}) RETURN k"
-        with self.driver.session() as session:
-            result = session.run(query, {"name": name})
-            record = result.single()
-            return dict(record["k"]) if record else None
+        result = tx.run(query, {"name": name})
+        record = result.single()
+        return dict(record["k"]) if record else None
 
-    def _create_knowledge_point(self, point: Dict):
-        """创建知识点节点"""
+    def _create_knowledge_point(self, tx, point: Dict):
+        """创建知识点节点（在事务中执行）"""
         query = """
         CREATE (k:KnowledgePoint {
             name: $name,
@@ -826,19 +862,18 @@ class KnowledgeGraphImporter:
         """
         params = {
             "name": point.get("name"),
-            "type": point.get("type", "concept"),
-            "difficulty": point.get("difficulty", "intermediate"),
-            "importance": point.get("importance", "recommended"),
+            "type": point.get("type", DEFAULT_POINT_TYPE),
+            "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
+            "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
             "description": point.get("description", ""),
             "chapter": point.get("chapter", ""),
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
-    def _update_knowledge_point(self, name: str, point: Dict):
-        """更新知识点节点"""
+    def _update_knowledge_point(self, tx, name: str, point: Dict):
+        """更新知识点节点（在事务中执行）"""
         query = """
         MATCH (k:KnowledgePoint {name: $name})
         SET k.type = $type,
@@ -852,19 +887,18 @@ class KnowledgeGraphImporter:
         """
         params = {
             "name": name,
-            "type": point.get("type", "concept"),
-            "difficulty": point.get("difficulty", "intermediate"),
-            "importance": point.get("importance", "recommended"),
+            "type": point.get("type", DEFAULT_POINT_TYPE),
+            "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
+            "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
             "description": point.get("description", ""),
             "chapter": point.get("chapter", ""),
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
-    def _create_has_topic_relation(self, stage_name: str, point_name: str, created_by: str):
-        """创建HAS_TOPIC关系"""
+    def _create_has_topic_relation(self, tx, stage_name: str, point_name: str, created_by: str):
+        """创建HAS_TOPIC关系（在事务中执行）"""
         query = """
         MATCH (s:Stage {name: $stage_name})
         MATCH (k:KnowledgePoint {name: $point_name})
@@ -878,11 +912,10 @@ class KnowledgeGraphImporter:
             "createdBy": created_by,
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
-    def _create_practice(self, practice: Dict, created_by: str) -> str:
-        """创建Practice节点"""
+    def _create_practice(self, tx, practice: Dict, created_by: str) -> str:
+        """创建Practice节点（在事务中执行）"""
         import hashlib
         practice_id = hashlib.md5(
             f"{practice.get('title', '')}{practice.get('content', '')}".encode()
@@ -907,13 +940,12 @@ class KnowledgeGraphImporter:
             "createdBy": created_by,
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
 
         return practice_id
 
-    def _create_has_practice_relation(self, point_name: str, practice_id: str, created_by: str):
-        """创建HAS_PRACTICE关系"""
+    def _create_has_practice_relation(self, tx, point_name: str, practice_id: str, created_by: str):
+        """创建HAS_PRACTICE关系（在事务中执行）"""
         query = """
         MATCH (k:KnowledgePoint {name: $point_name})
         MATCH (p:Practice {id: $practice_id})
@@ -927,5 +959,4 @@ class KnowledgeGraphImporter:
             "createdBy": created_by,
         }
 
-        with self.driver.session() as session:
-            session.run(query, params)
+        tx.run(query, params)
