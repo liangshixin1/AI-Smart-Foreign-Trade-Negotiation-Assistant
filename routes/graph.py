@@ -648,6 +648,7 @@ def import_batch():
                 "success": False,
                 "error": f"导入失败: {str(e)}",
                 "statistics": {
+                    "stages": {"total": 0, "created": 0, "updated": 0, "failed": 0, "success_rate": "0%"},
                     "points": {"total": 0, "created": 0, "updated": 0, "failed": 0, "success_rate": "0%"},
                     "relations": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
                     "examples": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
@@ -1071,10 +1072,10 @@ def import_three_sheets():
                 "success": False,
                 "error": f"导入失败: {str(e)}",
                 "statistics": {
-                    "stages": {"total": 0, "created": 0, "updated": 0, "failed": 0},
-                    "points": {"total": 0, "created": 0, "updated": 0, "failed": 0},
-                    "relations": {"total": 0, "created": 0, "failed": 0},
-                    "practices": {"total": 0, "created": 0, "failed": 0},
+                    "stages": {"total": 0, "created": 0, "updated": 0, "failed": 0, "success_rate": "0%"},
+                    "points": {"total": 0, "created": 0, "updated": 0, "failed": 0, "success_rate": "0%"},
+                    "relations": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
+                    "examples": {"total": 0, "created": 0, "failed": 0, "success_rate": "0%"},
                 },
                 "errors": [],
                 "warnings": [],
