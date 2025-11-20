@@ -448,6 +448,19 @@ class KnowledgeGraphBatchImporter:
             self.known_stage_names = [f["name"] for f in flow_data]
             LOGGER.info(f"解析到 {len(flow_data)} 个阶段: {self.known_stage_names}")
 
+            # 检查：如果没有解析到阶段，添加明确的错误提示
+            if len(flow_data) == 0:
+                result.errors.append(ValidationError(
+                    severity="ERROR",
+                    table="flow",
+                    row=0,
+                    message="未在'谈判流程'Sheet中找到任何阶段数据",
+                    suggestion="请确保在'谈判流程'Sheet的第3行及以后添加阶段数据，或保留模板中的示例数据",
+                ))
+                LOGGER.error("未找到任何阶段数据，停止导入")
+                result.execution_time = time.time() - start_time
+                return result
+
             # 1.2 解析知识点表（Sheet 2）
             points_data, points_errors = self._parse_points_table_from_workbook(io.BytesIO(file_content), sheet_name="知识点主表")
             result.errors.extend(points_errors)
