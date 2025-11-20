@@ -572,17 +572,20 @@ def download_batch_import_template():
 @require_role("teacher")
 def import_batch():
     """
-    智能批量导入知识图谱（两表法）
+    智能批量导入知识图谱（支持两表法和三表法的自动识别）
 
     请求格式: multipart/form-data
     - points_file: 知识点主表Excel文件（必填）
-    - examples_file: 案例库表Excel文件（可选）
+      - 如果包含"谈判流程"Sheet，将自动使用三表法导入
+      - 否则使用两表法导入
+    - examples_file: 案例库表Excel文件（可选，仅两表法使用）
     - mode: 导入模式，merge（合并）或replace（替换），默认为merge
 
     响应格式:
     {
       "success": true,
       "statistics": {
+        "stages": {"total": 10, "created": 10, "updated": 0, "failed": 0},  # 仅三表法
         "points": {"total": 50, "created": 45, "updated": 5, "failed": 0, "success_rate": "100%"},
         "relations": {"total": 80, "created": 80, "failed": 0, "success_rate": "100%"},
         "examples": {"total": 30, "created": 30, "failed": 0, "success_rate": "100%"}
@@ -622,19 +625,55 @@ def import_batch():
 
     def _handler() -> Tuple[dict, int]:
         try:
+            import openpyxl
             from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
             from services.graph_service import GraphService
 
             # 创建导入器
             importer = KnowledgeGraphBatchImporter(GraphService())
 
-            # 执行导入
-            result = importer.import_from_two_tables(
-                points_file=points_file.stream,
-                examples_file=examples_file.stream if examples_file else None,
-                mode=mode,
-                created_by=created_by,
-            )
+            # 检测Excel文件的Sheet名称，判断使用两表法还是三表法
+            # 读取文件内容（需要peek来检查，之后重置）
+            file_content = points_file.stream.read()
+            points_file.stream.seek(0)  # 重置文件指针
+
+            # 读取workbook获取sheet名称
+            from io import BytesIO
+            wb = openpyxl.load_workbook(BytesIO(file_content), read_only=True)
+            sheet_names = wb.sheetnames
+            wb.close()
+
+            # 判断是否包含"谈判流程"Sheet（三表法的标志）
+            has_flow_sheet = "谈判流程" in sheet_names
+
+            # 根据检测结果选择导入方法
+            if has_flow_sheet:
+                # 三表法：Excel文件包含谈判流程、知识点主表、案例库表
+                import logging
+                logging.info("检测到'谈判流程'Sheet，使用三表法导入")
+
+                # 重置文件指针，准备导入
+                points_file.stream.seek(0)
+
+                result = importer.import_from_three_sheets(
+                    excel_file=points_file.stream,
+                    mode=mode,
+                    created_by=created_by,
+                )
+            else:
+                # 两表法：使用分离的知识点主表和案例库表
+                import logging
+                logging.info("未检测到'谈判流程'Sheet，使用两表法导入")
+
+                # 重置文件指针，准备导入
+                points_file.stream.seek(0)
+
+                result = importer.import_from_two_tables(
+                    points_file=points_file.stream,
+                    examples_file=examples_file.stream if examples_file else None,
+                    mode=mode,
+                    created_by=created_by,
+                )
 
             # 返回结果
             return result.to_dict(), 200
