@@ -1143,40 +1143,64 @@ function renderAdminGraphKnowledgeList() {
   if (!adminGraphKnowledgeList) {
     return;
   }
-  const rawList = Array.isArray(state.admin.graph.knowledgePoints)
-    ? state.admin.graph.knowledgePoints
-    : [];
-  const list = rawList
-    .map((item) => ({
-      name: extractKnowledgeName(item),
-      summary: item.summary || "",
-      practiceCount: typeof item.practiceCount === "number" ? item.practiceCount : 0,
-      lessonCount: typeof item.lessonCount === "number" ? item.lessonCount : 0,
-    }))
-    .filter((record) => record.name);
+  const network = state.admin.graph.network || { nodes: [] };
+  const nodes = Array.isArray(network.nodes) ? network.nodes : [];
+  const stages = nodes.filter((n) => n.label === "Stage");
+  const points = nodes.filter((n) => n.label === "KnowledgePoint");
+  const stageMap = {};
+  stages.forEach((s) => {
+    stageMap[s.title] = { stage: s, points: [] };
+  });
+  points.forEach((p) => {
+    const stageName = p.stage || p.stageName;
+    if (stageName && stageMap[stageName]) {
+      stageMap[stageName].points.push(p);
+    }
+  });
+  const stageList = Object.values(stageMap).sort((a, b) => (a.stage.order || 0) - (b.stage.order || 0));
   adminGraphKnowledgeList.innerHTML = "";
-  if (list.length === 0) {
+  if (stageList.length === 0) {
     const empty = document.createElement("li");
     empty.className = "rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-500";
     empty.textContent = "暂无知识点数据或图谱尚未初始化。";
     adminGraphKnowledgeList.appendChild(empty);
     return;
   }
-  list.forEach((item) => {
+  stageList.forEach(({ stage, points }) => {
     const li = document.createElement("li");
-    li.className = "rounded-xl border border-slate-800/70 bg-slate-950/60 p-3";
-    const practiceCount = item.practiceCount || 0;
-    const lessonCount = item.lessonCount || 0;
+    li.className = "rounded-xl border border-slate-800/70 bg-slate-950/60";
+    const pointCount = points.length;
+    const stageTitle = stage.title || stage.name;
+    const listId = `stage-${stageTitle}-list`;
     li.innerHTML = `
-      <p class="text-sm text-slate-200">${escapeHtmlText(item.name || "知识点")}</p>
-      ${item.summary ? `<p class="mt-1 text-xs text-slate-400">${escapeHtmlText(item.summary)}</p>` : ""}
-      <p class="text-xs text-slate-500">实战关卡：${practiceCount} · 理论课程：${lessonCount}</p>
+      <button class="flex w-full items-center justify-between px-3 py-3 text-left text-sm font-semibold text-white">
+        <span>${escapeHtmlText(stageTitle || "阶段")}</span>
+        <span class="text-xs text-slate-400">${pointCount} 个知识点</span>
+      </button>
+      <div id="${listId}" class="space-y-2 px-3 pb-3 hidden"></div>
     `;
     adminGraphKnowledgeList.appendChild(li);
+    const listEl = li.querySelector(`#${listId}`);
+    const headerEl = li.querySelector("button");
+    headerEl.addEventListener("click", () => {
+      listEl.classList.toggle("hidden");
+    });
+    points
+      .sort((a, b) => (a.title || "").localeCompare(b.title || ""))
+      .forEach((p) => {
+        const item = document.createElement("div");
+        item.className = "rounded-lg border border-slate-800/60 bg-slate-950/40 p-2 text-xs text-slate-200 cursor-pointer hover:border-emerald-400/60";
+        item.textContent = p.title || p.key;
+        item.addEventListener("click", () => {
+          handleGraphNodeSelection(p.key);
+        });
+        listEl.appendChild(item);
+      });
   });
 }
 
 function renderAdminGraphSelection(detail) {
+  showGraphDetailDrawer(detail);
   if (!adminGraphSelection) {
     return;
   }
@@ -1208,80 +1232,46 @@ function renderAdminGraphSelection(detail) {
     });
     adminGraphSelection.appendChild(list);
   }
-  const knowledgeEntries = normalizeKnowledgePayloadList(detail.knowledge || []);
-  if (knowledgeEntries.length > 0) {
-    const wrap = document.createElement("div");
-    wrap.className = "mt-3 space-y-2";
-    knowledgeEntries.forEach((kp) => {
-      const card = document.createElement("div");
-      card.className = "graph-knowledge-card";
-      const title = document.createElement("p");
-      title.className = "graph-knowledge-card__title";
-      title.textContent = kp.name || "知识点";
-      card.appendChild(title);
-      const summaryText = kp.summary || "";
-      let bodyPreview = "";
-      if (!summaryText && kp.bodyHtml) {
-        const temp = document.createElement("div");
-        temp.innerHTML = sanitizeKnowledgeCardHtml(kp.bodyHtml);
-        bodyPreview = (temp.textContent || "").trim();
-      }
-      if (summaryText || bodyPreview) {
-        const summaryEl = document.createElement("p");
-        summaryEl.className = "graph-knowledge-card__summary";
-        summaryEl.textContent = summaryText || bodyPreview.slice(0, 120);
-        card.appendChild(summaryEl);
-      }
-      if (Array.isArray(kp.tags) && kp.tags.length > 0) {
-        const tagsLine = document.createElement("p");
-        tagsLine.className = "graph-knowledge-card__summary";
-        tagsLine.textContent = `标签：${kp.tags.join("、")}`;
-        card.appendChild(tagsLine);
-      }
-      if (kp.anchorId) {
-        const actions = document.createElement("div");
-        actions.className = "graph-knowledge-card__actions";
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "graph-knowledge-card__button";
-        button.dataset.knowledgeAnchor = kp.anchorId;
-        button.textContent = "定位到正文";
-        actions.appendChild(button);
-        card.appendChild(actions);
-      }
-      wrap.appendChild(card);
-    });
-    adminGraphSelection.appendChild(wrap);
+}
+
+function showGraphDetailDrawer(detail) {
+  const overlay = document.getElementById('graph-detail-overlay');
+  const drawer = document.getElementById('graph-detail-drawer');
+  if (!drawer || !overlay) return;
+  if (!overlay._graphDrawerBound) {
+    overlay._graphDrawerBound = true;
+    overlay.addEventListener('click', hideGraphDetailDrawer);
   }
-  if (Array.isArray(detail.relatedLessons) && detail.relatedLessons.length > 0) {
-    const header = document.createElement("p");
-    header.className = "mt-3 text-xs font-semibold text-emerald-400";
-    header.textContent = "关联理论课程";
-    adminGraphSelection.appendChild(header);
-    const list = document.createElement("ul");
-    list.className = "mt-1 space-y-1 text-xs text-slate-300";
-    detail.relatedLessons.forEach((lesson) => {
-      const li = document.createElement("li");
-      const code = lesson.code ? `（${lesson.code}）` : "";
-      li.textContent = `${lesson.title || lesson.id}${code}`;
-      list.appendChild(li);
-    });
-    adminGraphSelection.appendChild(list);
+  document.getElementById('graph-detail-close')?.addEventListener('click', hideGraphDetailDrawer);
+  overlay.classList.remove('hidden');
+  drawer.classList.remove('hidden');
+  setTimeout(() => drawer.classList.remove('translate-y-full'), 10);
+  document.getElementById('graph-detail-title').textContent = detail?.title || '知识点详情';
+  document.getElementById('graph-detail-subtitle').textContent = detail?.subtitle || '';
+  const metaEl = document.getElementById('graph-detail-meta');
+  metaEl.innerHTML = '';
+  (detail?.meta || []).forEach((line) => {
+    const li = document.createElement('p');
+    li.textContent = line;
+    metaEl.appendChild(li);
+  });
+  const bodyEl = document.getElementById('graph-detail-body');
+  bodyEl.innerHTML = detail?.body || '';
+}
+
+function hideGraphDetailDrawer() {
+  const overlay = document.getElementById('graph-detail-overlay');
+  const drawer = document.getElementById('graph-detail-drawer');
+  if (!drawer || !overlay) return;
+  if (!overlay._graphDrawerBound) {
+    overlay._graphDrawerBound = true;
+    overlay.addEventListener('click', hideGraphDetailDrawer);
   }
-  if (Array.isArray(detail.relatedPractices) && detail.relatedPractices.length > 0) {
-    const header = document.createElement("p");
-    header.className = "mt-3 text-xs font-semibold text-sky-400";
-    header.textContent = "关联实战关卡";
-    adminGraphSelection.appendChild(header);
-    const list = document.createElement("ul");
-    list.className = "mt-1 space-y-1 text-xs text-slate-300";
-    detail.relatedPractices.forEach((practice) => {
-      const li = document.createElement("li");
-      li.textContent = `${practice.title || practice.id}`;
-      list.appendChild(li);
-    });
-    adminGraphSelection.appendChild(list);
-  }
+  drawer.classList.add('translate-y-full');
+  setTimeout(() => {
+    drawer.classList.add('hidden');
+    overlay.classList.add('hidden');
+  }, 180);
 }
 
 async function loadPracticeGraphDetail(practiceId) {
@@ -1431,6 +1421,7 @@ function renderAdminGraphNetwork() {
 
   // 初始化 ECharts 实例
   adminGraphNetwork = window.echarts.init(adminGraphCanvas, 'dark');
+  adminGraphNetwork._nodeIndexMap = {};
 
   // 节点类型颜色配置
   const categoryColors = {
@@ -1457,43 +1448,140 @@ function renderAdminGraphNetwork() {
   // 构建分类列表
   const categories = Object.keys(categoryColors).map(name => ({ name }));
 
+  const keyword =
+    state.admin.graph.searchKeyword ||
+    (document.getElementById('admin-graph-search-graph')?.value ||
+      document.getElementById('admin-graph-search')?.value ||
+      '').trim().toLowerCase();
+  const highlightedKeys = new Set();
+  const nodesRaw = networkData.nodes || [];
+
+  // 标记高亮/降噪
+  if (keyword) {
+    const keyToNode = {};
+    nodesRaw.forEach((n) => {
+      keyToNode[n.key] = n;
+    });
+
+    nodesRaw.forEach((n) => {
+      const title = (n.title || '').toLowerCase();
+      const subtitle = (n.subtitle || '').toLowerCase();
+      if (title.includes(keyword) || subtitle.includes(keyword)) {
+        n.isHighlighted = true;
+        highlightedKeys.add(n.key);
+        // 高亮所属阶段
+        if (n.stage) {
+          const stageKey = `Stage:${n.stage}`;
+          const stageNode = keyToNode[stageKey];
+          if (stageNode) {
+            stageNode.isHighlighted = true;
+            highlightedKeys.add(stageKey);
+          }
+        }
+      } else {
+        n.isDimmed = true;
+      }
+    });
+  }
+
   // 转换节点数据
-  const nodes = (networkData.nodes || []).map((node) => {
+  const nodes = nodesRaw.map((node) => {
     const category = node.label || 'KnowledgePoint';
     const categoryIndex = categories.findIndex(c => c.name === category);
+    const isStage = category === 'Stage';
+    const isTopic = category === 'TheoryTopic';
+    const highlighted = !!node.isHighlighted;
+
+    // 控制标签：默认只显示 Stage/Topic，高亮时强制显示
+    const showLabel = highlighted || isStage || isTopic;
+    const nameColor = highlighted ? '#0f172a' : '#1f2937';
+    const labelOpacity = highlighted ? 1 : (showLabel ? 0.9 : 0);
 
     return {
       id: node.key,
       name: node.title,
       category: categoryIndex >= 0 ? categoryIndex : 0,
-      symbolSize: nodeSizes[category] || 20,
+      symbolSize: highlighted ? (nodeSizes[category] || 20) + 6 : (nodeSizes[category] || 20),
       value: node.subtitle || node.title,
+      isDimmed: node.isDimmed,
       label: {
-        show: true,
-        fontSize: category === 'Stage' ? 13 : 11,
-        fontWeight: category === 'Stage' ? 'bold' : 'normal',
+        show: showLabel,
+        formatter: '{b}',
+        fontSize: isStage ? 14 : 11,
+        fontWeight: isStage ? 'bold' : 'normal',
+        color: nameColor,
+        opacity: labelOpacity,
+        textShadowBlur: highlighted ? 2 : 0,
+        textShadowColor: '#ffffff',
       },
       itemStyle: {
         color: categoryColors[category]?.color || '#78350f',
-        borderColor: categoryColors[category]?.borderColor || '#facc15',
-        borderWidth: 2,
-      },
-    };
+        borderColor: highlighted ? '#0f172a' : (categoryColors[category]?.borderColor || '#facc15'),
+      borderWidth: highlighted ? 3 : 2,
+      opacity: node.isDimmed ? 0.2 : 0.95,
+    },
+  };
   });
+  nodes.forEach((n, idx) => {
+    adminGraphNetwork._nodeIndexMap[n.id] = idx;
+  });
+
+  // 更新搜索联想
+  function updateGraphSearchSuggestions() {
+    const sugg = document.getElementById('admin-graph-search-suggestions');
+    if (!sugg) return;
+    const kw = keyword || '';
+    const options = [];
+    if (kw) {
+      nodesRaw.forEach((n) => {
+        const title = n.title || '';
+        if (title.toLowerCase().includes(kw) && options.length < 10) {
+          options.push(title);
+        }
+      });
+    } else {
+      nodesRaw.slice(0, 10).forEach((n) => options.push(n.title || ''));
+    }
+    sugg.innerHTML = options
+      .filter(Boolean)
+      .map((t) => `<option value=\"${t.replace(/\"/g, '&quot;')}\"></option>`)
+      .join('');
+  }
+  updateGraphSearchSuggestions();
 
   // 转换边数据
   const links = (networkData.edges || []).map((edge) => ({
     source: edge.source,
     target: edge.target,
     label: {
-      show: !!edge.label,
+      show: !!edge.label && !edge.isDimmed,
       formatter: edge.label || '',
       fontSize: 10,
+      color: '#0f172a',
+      opacity: edge.isDimmed ? 0.25 : 0.75,
     },
     lineStyle: {
       curveness: 0.2,
+      color: edge.isDimmed ? 'rgba(148,163,184,0.15)' : 'rgba(100,116,139,0.5)',
+      width: edge.isDimmed ? 0.6 : 1.2,
     },
-  }));
+  })).map((edge) => {
+    if (keyword) {
+      const srcHighlighted = highlightedKeys.has(edge.source);
+      const tgtHighlighted = highlightedKeys.has(edge.target);
+      if (!srcHighlighted && !tgtHighlighted) {
+        edge.isDimmed = true;
+        edge.lineStyle.color = 'rgba(148,163,184,0.12)';
+        edge.lineStyle.width = 0.5;
+        edge.label.show = false;
+      } else {
+        edge.isDimmed = false;
+        edge.lineStyle.color = 'rgba(59,130,246,0.6)';
+        edge.lineStyle.width = 2;
+      }
+    }
+    return edge;
+  });
 
   // ECharts 配置
   const option = {
@@ -1531,17 +1619,15 @@ function renderAdminGraphNetwork() {
       focusNodeAdjacency: true,
       label: {
         position: 'right',
-        formatter: '{b}',
-        color: '#e2e8f0',
       },
       edgeLabel: {
         fontSize: 10,
-        color: '#cbd5e1',
+        color: '#0f172a',
       },
       lineStyle: {
-        color: '#64748b',
-        width: 1.5,
-        curveness: 0.2,
+        color: 'rgba(100,116,139,0.5)',
+        width: 1.2,
+        curveness: 0.22,
       },
       emphasis: {
         focus: 'adjacency',
@@ -1555,9 +1641,9 @@ function renderAdminGraphNetwork() {
         },
       },
       force: {
-        repulsion: 800,
-        gravity: 0.1,
-        edgeLength: 150,
+        repulsion: 520,
+        gravity: 0.08,
+        edgeLength: 140,
         layoutAnimation: true,
       },
     }],
@@ -1566,12 +1652,49 @@ function renderAdminGraphNetwork() {
   // 设置配置并渲染
   adminGraphNetwork.setOption(option);
 
+  // 若有高亮结果，自动聚焦第一个
+  if (keyword && highlightedKeys.size > 0) {
+    const firstKey = highlightedKeys.values().next().value;
+    const idx = adminGraphNetwork._nodeIndexMap[firstKey];
+    if (typeof idx === 'number') {
+      try {
+        adminGraphNetwork.dispatchAction({
+          type: 'focusNodeAdjacency',
+          seriesIndex: 0,
+          dataIndex: idx,
+        });
+        adminGraphNetwork.dispatchAction({
+          type: 'showTip',
+          seriesIndex: 0,
+          dataIndex: idx,
+        });
+      } catch (e) {
+        console.warn('focus node failed', e);
+      }
+    }
+  }
+
   // 添加点击事件
   adminGraphNetwork.on('click', (params) => {
     if (params.dataType === 'node') {
       handleGraphNodeSelection(params.data.id);
     }
   });
+
+  // 搜索输入实时联动
+  const searchGraphInput =
+    document.getElementById('admin-graph-search-graph') ||
+    document.getElementById('admin-graph-search');
+  if (searchGraphInput && !searchGraphInput._graphSearchBound) {
+    searchGraphInput._graphSearchBound = true;
+    searchGraphInput.addEventListener('input', () => {
+      clearTimeout(searchGraphInput._graphSearchTimer);
+      searchGraphInput._graphSearchTimer = setTimeout(() => {
+        updateGraphSearchSuggestions();
+        refreshAdminGraph();
+      }, 180);
+    });
+  }
 
   // 窗口大小改变时自动调整
   window.addEventListener('resize', () => {
@@ -1592,22 +1715,48 @@ async function refreshAdminGraph() {
     adminGraphStatus.textContent = "加载知识图谱中...";
   }
   try {
+    const keyword =
+      (document.getElementById('admin-graph-search-graph')?.value ||
+        document.getElementById('admin-graph-search')?.value ||
+        '').trim();
+
     const [networkResp, knowledgeResp] = await Promise.all([
-      fetchWithAuth("/api/graph/network?limit=400"),
+      fetchWithAuth(`/api/graph/network?limit=800${keyword ? `&search=${encodeURIComponent(keyword)}` : ''}`),
       fetchWithAuth("/api/graph/knowledge-points"),
     ]);
+
+    // --- Graph network fetch ---
+    const networkText = await networkResp.clone().text();
     if (!networkResp.ok) {
+      console.error("[Graph] /api/graph/network failed", networkResp.status, networkText);
       if (networkResp.status === 503) {
         throw new Error("知识图谱服务暂不可用");
       }
-      throw new Error("无法加载知识图谱");
+      throw new Error(networkText || "无法加载知识图谱");
     }
-    const networkData = await networkResp.json();
+    let networkData;
+    try {
+      networkData = networkText ? JSON.parse(networkText) : { nodes: [], edges: [] };
+    } catch (jsonErr) {
+      console.error("[Graph] network JSON parse error", jsonErr, networkText);
+      throw new Error("知识图谱数据解析失败");
+    }
     state.admin.graph.network = networkData || { nodes: [], edges: [] };
-    if (knowledgeResp.ok) {
-      const knowledgeData = await knowledgeResp.json();
-      state.admin.graph.knowledgePoints = knowledgeData.knowledgePoints || [];
+    state.admin.graph.searchKeyword = keyword.toLowerCase();
+
+    // --- Knowledge list fetch (best-effort) ---
+    const knowledgeText = await knowledgeResp.clone().text();
+    if (!knowledgeResp.ok) {
+      console.error("[Graph] /api/graph/knowledge-points failed", knowledgeResp.status, knowledgeText);
+    } else {
+      try {
+        const knowledgeData = knowledgeText ? JSON.parse(knowledgeText) : {};
+        state.admin.graph.knowledgePoints = knowledgeData.knowledgePoints || [];
+      } catch (jsonErr) {
+        console.error("[Graph] knowledge JSON parse error", jsonErr, knowledgeText);
+      }
     }
+
     renderAdminGraphKnowledgeList();
     renderAdminGraphNetwork();
     if (adminGraphStatus) {
@@ -1616,7 +1765,7 @@ async function refreshAdminGraph() {
       adminGraphStatus.textContent = `节点 ${nodeCount} · 关系 ${edgeCount}`;
     }
   } catch (error) {
-    console.error(error);
+    console.error("[Graph] refreshAdminGraph error", error);
     if (adminGraphStatus) {
       adminGraphStatus.textContent = error.message || "加载知识图谱失败";
     }
@@ -5759,5 +5908,3 @@ function initTokenEditors() {
     activateTokenEditorFallback(adminAssignmentScenario, adminAssignmentScenarioHost);
   }
 }
-
-

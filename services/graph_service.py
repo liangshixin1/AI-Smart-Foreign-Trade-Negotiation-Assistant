@@ -1272,7 +1272,7 @@ def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]
         return []
 
 
-def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
+def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
     allowed_labels = [
         "Stage",
         "Chapter",
@@ -1287,8 +1287,21 @@ def fetch_graph_snapshot(limit: int = 250) -> Dict[str, object]:
         MATCH (n)
         WHERE any(label IN labels(n) WHERE label IN $allowed)
         OPTIONAL MATCH (n)<-[:HAS_TOPIC]-(stage:Stage)
-        RETURN DISTINCT labels(n) AS labels, n AS node, stage.name AS stageName
+        WITH labels(n) AS labels, n AS node, stage.name AS stageName,
+             CASE
+                 WHEN 'Stage' IN labels(n) THEN 0
+                 WHEN 'ProcessStep' IN labels(n) THEN 1
+                 WHEN 'Chapter' IN labels(n) THEN 2
+                 WHEN 'Practice' IN labels(n) THEN 3
+                 WHEN 'TheoryTopic' IN labels(n) THEN 4
+                 WHEN 'TheoryLesson' IN labels(n) THEN 5
+                 WHEN 'KnowledgePoint' IN labels(n) THEN 6
+                 ELSE 99
+             END AS priority
+        WITH DISTINCT labels, node, stageName, priority
+        ORDER BY priority ASC
         LIMIT $limit
+        RETURN labels, node, stageName
         """,
         {"allowed": allowed_labels, "limit": limit},
     )
@@ -1394,9 +1407,9 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
 def _extract_node_identifier(label: Optional[str], node: Dict[str, object]) -> Optional[str]:
     if not label:
         return None
-    if label == "KnowledgePoint":
+    if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology"}:
         return node.get("name")
-    return node.get("id") or node.get("code") or node.get("title")
+    return node.get("id") or node.get("code") or node.get("title") or node.get("name")
 
 
 def _build_node_subtitle(label: str, node: Dict[str, object]) -> Optional[str]:
@@ -1780,16 +1793,21 @@ def get_knowledge_management_overview() -> Dict[str, object]:
     """聚合知识点、分类树和知识卡索引，供前端统一加载。"""
 
     status = get_initialization_status()
-    if not status.get("initialized"):
+    # 直接使用 Neo4j 为主数据源
+    raw_points = list_knowledge_points_enhanced()
+    card_by_name = {point.get("name"): point for point in raw_points if point.get("name")}
+
+    # 如果已有数据，则认为图谱已完成初始化；否则返回默认预设
+    if raw_points:
+        if not status.get("initialized"):
+            status["initialized"] = True
+            status["option"] = status.get("option") or "import"
+    else:
         return {
             "initialized": False,
             "initialization": status,
             "defaults": get_initialization_defaults_preview(),
         }
-
-    raw_points = list_knowledge_points_enhanced()
-    card_payloads = list_knowledge_points()
-    card_by_name = {card.get("name"): card for card in card_payloads if card.get("name")}
 
     overview_points: List[Dict[str, object]] = []
     category_paths: Dict[str, None] = {}
@@ -1946,15 +1964,7 @@ def get_knowledge_management_overview() -> Dict[str, object]:
 
     tree_children = _serialize_tree(tree_root).get("children", [])
 
-    category_options = sorted(path for path in category_paths.keys() if path)
-    for card in card_payloads:
-        card_path = _normalize_category_path_input(
-            card.get("categoryPath") if card.get("categoryPath") is not None else card.get("category")
-        )
-        path_key = _category_path_to_string(card_path)
-        if path_key:
-            category_options.append(path_key)
-    category_options = sorted({path for path in category_options if path})
+    category_options = sorted({path for path in category_paths.keys() if path}) or []
     if "未分类" not in category_options:
         category_options.append("未分类")
 
@@ -2001,11 +2011,16 @@ def get_knowledge_management_overview() -> Dict[str, object]:
         "metadata_suggestions": metadata_suggestions,
     }
 
+    category_paths_list = sorted(category_paths.keys())
+    tree_children = list(tree_root.get("children", {}).values())
+
     return {
         "initialized": True,
         "initialization": status,
         "knowledge_points": overview_points,
         "tree": tree_children,
+        "category_tree": tree_children,  # backward compatibility for UI
+        "category_paths": category_paths_list,
         "uncategorized": uncategorized_points,
         "categoryOptions": category_options,
         "metadata": metadata_suggestions,
@@ -2778,9 +2793,10 @@ def get_stage(name: str) -> Dict[str, object]:
     OPTIONAL MATCH (s)-[:HAS_TOPIC]->(k:KnowledgePoint)
     OPTIONAL MATCH (s)-[:PRECEDES]->(next:Stage)
     OPTIONAL MATCH (prev:Stage)-[:PRECEDES]->(s)
+    WITH s, collect(DISTINCT k.name) AS topics, next, prev
     RETURN s {
         .*,
-        topics: collect(DISTINCT k.name),
+        topics: topics,
         nextStage: next.name,
         previousStage: prev.name
     } AS stage
@@ -2883,7 +2899,7 @@ def link_knowledge_point_to_stage(knowledge_point_name: str, stage_name: str) ->
     } AS stage
     """
 
-    records = _execute_write(
+    records = _execute_read(
         query,
         {
             "stage_name": stage_name,
@@ -3104,4 +3120,3 @@ def _extract_node_identifier_for_visualization(primary_label: str, node_data: Di
 
     # 其他节点类型
     return str(node_data.get("id") or node_data.get("name", "unknown"))
-

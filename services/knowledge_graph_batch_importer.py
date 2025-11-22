@@ -490,9 +490,14 @@ class KnowledgeGraphBatchImporter:
 
             # Phase 3: 事务性导入
             LOGGER.info("Phase 3: 开始导入...")
-            stages_stats, result.points_stats, result.relations_stats, result.examples_stats = (
-                self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, created_by)
-            )
+            (
+                stages_stats,
+                result.points_stats,
+                result.relations_stats,
+                result.examples_stats,
+                transaction_errors,
+            ) = self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, created_by)
+            result.errors.extend(transaction_errors)
 
             result.success = True
             result.execution_time = time.time() - start_time
@@ -1389,7 +1394,17 @@ class KnowledgeGraphBatchImporter:
                     s.color = $color,
                     s.createdAt = datetime(),
                     s.createdBy = $createdBy,
-                    s.updatedAt = datetime()
+                    s.updatedAt = datetime(),
+                    s.updatedBy = $createdBy
+                SET
+                    s.englishName = coalesce(s.englishName, $englishName),
+                    s.description = $description,
+                    s.difficulty = $difficulty,
+                    s.estimatedDuration = $estimatedDuration,
+                    s.icon = $icon,
+                    s.color = $color,
+                    s.updatedAt = datetime(),
+                    s.updatedBy = $createdBy
                 RETURN s.name AS name
                 """
 
@@ -1431,7 +1446,7 @@ class KnowledgeGraphBatchImporter:
                     "category", "type", "difficulty", "importance",
                     "summary", "description", "keywords", "tags",
                     "estimated_minutes", "image_url", "video_url",
-                    "document_url", "external_url", "created_by"
+                    "document_url", "external_url", "created_by",
                 }
 
                 # 字段名映射（camelCase -> snake_case）
@@ -1447,20 +1462,20 @@ class KnowledgeGraphBatchImporter:
                 # 过滤并映射字段
                 filtered_point = {}
                 for key, value in clean_point.items():
-                    # 映射字段名
                     mapped_key = field_mapping.get(key, key)
-                    # 只保留支持的字段
                     if mapped_key in supported_fields:
                         filtered_point[mapped_key] = value
 
                 # 检查是否已存在
-                existing = knowledge_service.get_knowledge_point(point_name)
+                try:
+                    existing = knowledge_service.get_knowledge_point(point_name)
+                except graph_service.GraphEntityNotFoundError:
+                    existing = None
+
                 if existing:
-                    # 更新
                     knowledge_service.update_knowledge_point(point_name, **filtered_point)
                     points_stats.updated += 1
                 else:
-                    # 创建
                     knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
 
@@ -1567,13 +1582,14 @@ class KnowledgeGraphBatchImporter:
         points_data: List[Dict],
         examples_data: List[Dict],
         created_by: str,
-    ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics]:
+    ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics, List[ValidationError]]:
         """三表联动事务性导入"""
 
         stages_stats = ImportStatistics(total=len(flow_data))
         points_stats = ImportStatistics(total=len(points_data))
         relations_stats = ImportStatistics()
         examples_stats = ImportStatistics(total=len(examples_data))
+        errors: List[ValidationError] = []
 
         # 导入 graph_service
         from services import graph_service
@@ -1604,6 +1620,14 @@ class KnowledgeGraphBatchImporter:
             except Exception as e:
                 LOGGER.error(f"导入 Stage 失败: {stage_name}: {e}")
                 stages_stats.failed += 1
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="flow",
+                    row=stage.get("_row", 0),
+                    field="阶段名称",
+                    value=stage_name,
+                    message=str(e),
+                ))
 
         # 第二步：创建 PRECEDES 关系（流程先后）
         LOGGER.info("创建流程关系...")
@@ -1630,30 +1654,65 @@ class KnowledgeGraphBatchImporter:
 
         for point in points_data:
             clean_point = {k: v for k, v in point.items() if not k.startswith("_")}
-            point_name = clean_point.get("name")
 
-            # 移除 "stage" 字段，它只用于建立关系
+            # 提取名称并移除不应直接写入的字段
+            point_name = clean_point.pop("name", None)
             stage_name = clean_point.pop("stage", None)
 
+            # 字段名映射（CamelCase -> snake_case，符合 knowledge_service）
+            field_mapping = {
+                "estimatedMinutes": "estimated_minutes",
+                "imageUrl": "image_url",
+                "videoUrl": "video_url",
+                "documentUrl": "document_url",
+                "externalUrl": "external_url",
+            }
+
+            # 仅保留 knowledge_service 支持的字段
+            allowed_fields = {
+                "category", "type", "difficulty", "importance",
+                "summary", "description", "keywords", "tags",
+                "estimated_minutes", "image_url", "video_url",
+                "document_url", "external_url",
+            }
+
+            filtered_point = {}
+            for key, value in clean_point.items():
+                mapped_key = field_mapping.get(key, key)
+                if mapped_key in allowed_fields:
+                    filtered_point[mapped_key] = value
+
+            if not point_name:
+                LOGGER.warning("跳过缺少名称的知识点行")
+                points_stats.failed += 1
+                continue
+
             try:
-                # 使用 knowledge_service 创建/更新知识点
                 try:
                     existing = knowledge_service.get_knowledge_point(point_name)
-                    # 更新（展开字典为关键字参数）
-                    knowledge_service.update_knowledge_point(point_name, **clean_point)
-                    points_stats.updated += 1
                 except graph_service.GraphEntityNotFoundError:
-                    # 创建（展开字典为关键字参数）
-                    knowledge_service.create_knowledge_point(**clean_point)
+                    existing = None
+
+                if existing:
+                    knowledge_service.update_knowledge_point(point_name, **filtered_point)
+                    points_stats.updated += 1
+                else:
+                    knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
 
-                point_name_map[point_name] = {
-                    "stage": stage_name,
-                }
+                point_name_map[point_name] = {"stage": stage_name}
 
             except Exception as e:
                 LOGGER.error(f"导入知识点失败: {point_name}: {e}")
                 points_stats.failed += 1
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="knowledge_points",
+                    row=point.get("_row", 0),
+                    field="知识点名称",
+                    value=point_name,
+                    message=str(e),
+                ))
 
         # 第四步：创建 HAS_TOPIC 关系（阶段包含知识点）
         LOGGER.info("创建阶段-知识点关联...")
@@ -1670,6 +1729,14 @@ class KnowledgeGraphBatchImporter:
                     LOGGER.error(f"关联知识点到阶段失败: {point_name} -> {stage_name}: {e}")
                     relations_stats.failed += 1
                     relations_stats.total += 1
+                    errors.append(ValidationError(
+                        severity="ERROR",
+                        table="relations",
+                        row=point.get("_row", 0),
+                        field="所属阶段",
+                        value=stage_name,
+                        message=str(e),
+                    ))
 
         # 第五步：创建知识点之间的关系
         LOGGER.info("创建知识点关系...")
@@ -1682,20 +1749,28 @@ class KnowledgeGraphBatchImporter:
                 continue
 
             for relation_type, target_names in point["_relations"].items():
-                for target_name in target_names:
-                    if target_name not in point_name_map:
-                        relations_stats.failed += 1
-                        relations_stats.total += 1
-                        continue
+                    for target_name in target_names:
+                        if target_name not in point_name_map:
+                            relations_stats.failed += 1
+                            relations_stats.total += 1
+                            continue
 
-                    try:
-                        self._create_relation(source_name, target_name, relation_type, created_by)
-                        relations_stats.created += 1
-                        relations_stats.total += 1
-                    except Exception as e:
-                        LOGGER.error(f"创建关系失败: {source_name} -> {target_name}: {e}")
-                        relations_stats.failed += 1
-                        relations_stats.total += 1
+                        try:
+                            self._create_relation(source_name, target_name, relation_type, created_by)
+                            relations_stats.created += 1
+                            relations_stats.total += 1
+                        except Exception as e:
+                            LOGGER.error(f"创建关系失败: {source_name} -> {target_name}: {e}")
+                            relations_stats.failed += 1
+                            relations_stats.total += 1
+                            errors.append(ValidationError(
+                                severity="ERROR",
+                                table="relations",
+                                row=point.get("_row", 0),
+                                field=relation_type,
+                                value=target_name,
+                                message=str(e),
+                            ))
 
         # 第六步：创建案例节点
         if examples_data:
@@ -1712,8 +1787,16 @@ class KnowledgeGraphBatchImporter:
                 except Exception as e:
                     LOGGER.error(f"创建案例失败: {example.get('title')}: {e}")
                     examples_stats.failed += 1
+                    errors.append(ValidationError(
+                        severity="ERROR",
+                        table="examples",
+                        row=example.get("_row", 0),
+                        field="案例标题",
+                        value=example.get("title"),
+                        message=str(e),
+                    ))
 
-        return stages_stats, points_stats, relations_stats, examples_stats
+        return stages_stats, points_stats, relations_stats, examples_stats, errors
 
     def _create_stage_node(self, stage_data: Dict, created_by: str) -> None:
         """创建 Stage 节点（直接操作 Neo4j）"""
@@ -1722,18 +1805,27 @@ class KnowledgeGraphBatchImporter:
         driver = graph_service._get_driver()
 
         query = """
-        CREATE (s:Stage {
-            name: $name,
-            englishName: $englishName,
-            description: $description,
-            difficulty: $difficulty,
-            estimatedDuration: $estimatedDuration,
-            icon: $icon,
-            color: $color,
-            createdAt: datetime(),
-            createdBy: $createdBy,
-            updatedAt: datetime()
-        })
+        MERGE (s:Stage {name: $name})
+        ON CREATE SET
+            s.englishName = $englishName,
+            s.description = $description,
+            s.difficulty = $difficulty,
+            s.estimatedDuration = $estimatedDuration,
+            s.icon = $icon,
+            s.color = $color,
+            s.createdAt = datetime(),
+            s.createdBy = $createdBy,
+            s.updatedAt = datetime(),
+            s.updatedBy = $createdBy
+        SET
+            s.englishName = coalesce(s.englishName, $englishName),
+            s.description = $description,
+            s.difficulty = $difficulty,
+            s.estimatedDuration = $estimatedDuration,
+            s.icon = $icon,
+            s.color = $color,
+            s.updatedAt = datetime(),
+            s.updatedBy = $createdBy
         RETURN s.name AS name
         """
 

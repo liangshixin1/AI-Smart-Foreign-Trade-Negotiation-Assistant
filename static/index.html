@@ -2325,8 +2325,96 @@
             >
               学生个人成长看板
             </button>
-          </div>
+  </div>
+</div>
+<!-- 知识点详情抽屉 -->
+<div
+  id="graph-detail-overlay"
+  class="fixed inset-0 z-40 hidden backdrop-blur-sm bg-slate-900/40 transition-opacity"
+></div>
+<div
+  id="graph-detail-drawer"
+  class="fixed bottom-0 left-0 right-0 z-50 hidden translate-y-full transform rounded-t-2xl border border-slate-800 bg-slate-900/95 p-6 text-slate-100 shadow-2xl transition-transform"
+>
+  <div class="flex items-center justify-between">
+    <div>
+      <p id="graph-detail-title" class="text-lg font-semibold text-white"></p>
+      <p id="graph-detail-subtitle" class="text-xs text-slate-400"></p>
+    </div>
+    <button
+      id="graph-detail-close"
+      class="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:border-emerald-400"
+    >
+      关闭
+    </button>
+  </div>
+  <div id="graph-detail-meta" class="mt-3 space-y-1 text-xs text-slate-300"></div>
+  <div id="graph-detail-body" class="mt-4 text-sm text-slate-200 space-y-3">
+    <form id="admin-graph-form" class="space-y-3">
+      <input type="hidden" id="admin-graph-form-mode" value="" />
+      <input type="hidden" id="admin-graph-form-original-name" value="" />
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">知识点名称</span>
+        <input id="admin-graph-form-name" type="text" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none" />
+      </label>
+      <div class="grid gap-3 md:grid-cols-3">
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">分类</span>
+          <select id="admin-graph-form-category" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none">
+            <option value="">未分类</option>
+          </select>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">难度</span>
+          <select id="admin-graph-form-difficulty" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none">
+            <option value="beginner">初级</option>
+            <option value="intermediate">中级</option>
+            <option value="advanced">高级</option>
+          </select>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">重要性</span>
+          <select id="admin-graph-form-importance" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none">
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="critical">核心</option>
+          </select>
+        </label>
+      </div>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">描述</span>
+        <textarea id="admin-graph-form-description" rows="3" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"></textarea>
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">详细内容</span>
+        <textarea id="admin-graph-form-content" rows="4" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"></textarea>
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">标签（逗号分隔）</span>
+        <input id="admin-graph-form-tags" type="text" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none" />
+      </label>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-300">前置依赖</span>
+          <button id="admin-graph-form-add-prerequisite" type="button" class="rounded-lg border border-sky-500/70 px-2 py-0.5 text-xs text-sky-300 transition hover:border-sky-300">+ 添加</button>
         </div>
+        <div id="admin-graph-form-prerequisites" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-300">关联知识点</span>
+          <button id="admin-graph-form-add-relation" type="button" class="rounded-lg border border-purple-500/70 px-2 py-0.5 text-xs text-purple-300 transition hover:border-purple-300">+ 添加</button>
+        </div>
+        <div id="admin-graph-form-relations" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button id="admin-graph-form-submit" type="submit" class="flex-1 rounded-xl border border-emerald-500/70 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:border-emerald-300 hover:bg-emerald-500/30">保存</button>
+      </div>
+      <p id="admin-graph-form-status" class="text-xs text-slate-400"></p>
+    </form>
+  </div>
+</div>
       </div>
     </header>
 
@@ -3434,7 +3522,15 @@
                     <h3 class="text-lg font-semibold text-white">知识图谱总览</h3>
                     <p class="text-xs text-slate-400">基于 Neo4j 的谈判知识节点与关系可视化。</p>
                   </div>
-                  <div class="flex flex-wrap gap-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <input
+                      id="admin-graph-search"
+                      type="search"
+                      placeholder="搜索知识点/阶段（回车高亮）..."
+                      class="w-60 rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-1 text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+                      list="admin-graph-search-suggestions"
+                    />
+                    <datalist id="admin-graph-search-suggestions"></datalist>
                     <button
                       id="admin-graph-refresh"
                       type="button"
@@ -3457,519 +3553,50 @@
                 <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                   <div>
                     <h3 class="text-lg font-semibold text-white">知识点索引</h3>
-                    <p class="text-xs text-slate-400">展示已关联的知识点数量与覆盖范围。</p>
+                    <p class="text-xs text-slate-400">按阶段快速定位知识点。</p>
                   </div>
                   <ul id="admin-graph-knowledge-list" class="space-y-2 text-sm text-slate-200"></ul>
-                </section>
-                <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div>
-                    <h3 class="text-lg font-semibold text-white">节点详情</h3>
-                    <p class="text-xs text-slate-400">点击图谱节点查看关联知识点、关卡或理论课程。</p>
-                  </div>
-                  <div id="admin-graph-selection" class="min-h-[160px] space-y-2 text-sm text-slate-300">
-                    <p class="text-xs text-slate-500">请选择节点以查看详细信息。</p>
-                  </div>
                 </section>
               </div>
             </div>
 
-            <!-- 知识点管理面板 -->
-            <div class="mt-6 space-y-6">
-              <!-- Excel导入导出工具栏 -->
-              <section class="admin-panel-card rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                <div class="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h3 class="text-lg font-semibold text-white">知识点批量管理</h3>
-                    <p class="text-xs text-slate-400">支持Excel批量导入导出知识点数据</p>
-                  </div>
-                  <div class="flex flex-wrap gap-2">
-                    <a
-                      id="admin-graph-download-template"
-                      href="/api/graph/import/template"
-                      download="knowledge_points_template.xlsx"
-                      class="inline-flex items-center gap-2 rounded-xl border border-sky-500/70 px-3 py-1.5 text-xs text-sky-300 transition hover:border-sky-300 hover:text-sky-100"
-                    >
-                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      下载模板
-                    </a>
-                    <button
-                      id="admin-graph-import-excel"
-                      type="button"
-                      class="inline-flex items-center gap-2 rounded-xl border border-emerald-500/70 px-3 py-1.5 text-xs text-emerald-300 transition hover:border-emerald-300 hover:text-emerald-100"
-                    >
-                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                      导入Excel
-                    </button>
-                    <input
-                      id="admin-graph-import-file"
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      class="hidden"
-                    />
-                    <button
-                      id="admin-graph-export-excel"
-                      type="button"
-                      class="inline-flex items-center gap-2 rounded-xl border border-purple-500/70 px-3 py-1.5 text-xs text-purple-300 transition hover:border-purple-300 hover:text-purple-100"
-                    >
-                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                      </svg>
-                      导出Excel
-                    </button>
-                  </div>
-                </div>
-                <p id="admin-graph-import-status" class="mt-3 text-xs text-slate-400"></p>
+            <!-- 简洁的导入导出工具行 -->
+            <div class="mt-4">
+              <section class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-200">
+                <span
+                  class="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300"
+                  title="下载模板填好后导入；导入/导出均使用批量知识图谱模板。"
+                >
+                  ?
+                </span>
+                <a
+                  id="admin-graph-download-template"
+                  href="/api/graph/import/batch/template?include_existing=true"
+                  download="知识图谱批量导入模板.xlsx"
+                  class="rounded-lg border border-sky-500/70 px-3 py-1 transition hover:border-sky-300 hover:text-sky-100"
+                  title="下载批量导入模板"
+                >
+                  下载模板
+                </a>
+                <button
+                  id="admin-graph-import-excel"
+                  type="button"
+                  class="rounded-lg border border-emerald-500/70 px-3 py-1 transition hover:border-emerald-300 hover:text-emerald-100"
+                  title="上传批量导入 Excel"
+                >
+                  导入
+                </button>
+                <input id="admin-graph-import-file" type="file" accept=".xlsx,.xls" class="hidden" />
+                <button
+                  id="admin-graph-export-excel"
+                  type="button"
+                  class="rounded-lg border border-purple-500/70 px-3 py-1 transition hover:border-purple-300 hover:text-purple-100"
+                  title="导出当前知识点为 Excel"
+                >
+                  导出
+                </button>
+                <span id="admin-graph-import-status" class="text-[11px] text-slate-400"></span>
               </section>
-
-              <!-- 智能批量导入（新功能） -->
-              <section class="admin-panel-card rounded-2xl border border-emerald-800/50 bg-gradient-to-br from-emerald-900/20 to-slate-900/70 p-6">
-                <div class="mb-4 flex items-start gap-3">
-                  <div class="rounded-lg bg-emerald-500/10 p-2">
-                    <svg class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div class="flex-1">
-                    <h3 class="text-lg font-semibold text-white">✨ 智能批量导入（推荐）</h3>
-                    <p class="mt-1 text-sm text-emerald-300/80">一次性导入知识点、关系和案例。自动验证、智能提示，非技术人员友好！</p>
-                  </div>
-                </div>
-
-                <!-- 特点说明 -->
-                <div class="mb-5 grid gap-2 rounded-xl border border-emerald-700/30 bg-emerald-950/30 p-4 text-xs text-slate-300">
-                  <div class="flex items-center gap-2">
-                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                    </svg>
-                    <span>不需要手动填写ID，系统自动生成</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                    </svg>
-                    <span>关系用自然语言表达（必须先学、建议同时学）</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                    </svg>
-                    <span>Excel内置下拉菜单，防止输入错误</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <svg class="h-4 w-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                    </svg>
-                    <span>智能错误检测，自动推荐相似名称</span>
-                  </div>
-                </div>
-
-                <!-- 操作按钮 -->
-                <div class="space-y-4">
-                  <!-- 第一步：下载模板 -->
-                  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-                    <div class="mb-3 flex items-center gap-2">
-                      <span class="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">1</span>
-                      <h4 class="font-semibold text-white">下载智能模板</h4>
-                    </div>
-                    <p class="mb-3 text-xs text-slate-400">下载包含数据验证和使用说明的Excel模板</p>
-                    <button
-                      onclick="downloadBatchTemplate()"
-                      type="button"
-                      class="inline-flex items-center gap-2 rounded-lg border border-sky-500/70 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-300 transition hover:border-sky-300 hover:bg-sky-500/20"
-                    >
-                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      下载智能模板
-                    </button>
-                  </div>
-
-                  <!-- 第二步：上传文件 -->
-                  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-                    <div class="mb-3 flex items-center gap-2">
-                      <span class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">2</span>
-                      <h4 class="font-semibold text-white">上传填好的表格</h4>
-                    </div>
-
-                    <div class="space-y-3">
-                      <!-- 知识点主表 -->
-                      <div>
-                        <label class="mb-1 block text-xs font-medium text-slate-300">
-                          知识点主表 <span class="text-red-400">*</span>
-                        </label>
-                        <input
-                          id="batch-import-points-file"
-                          type="file"
-                          accept=".xlsx,.xls"
-                          class="block w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-emerald-500/20 file:px-3 file:py-1 file:text-xs file:text-emerald-300 hover:border-slate-600"
-                        />
-                        <p class="mt-1 text-xs text-slate-500">包含知识点和关系的Excel文件</p>
-                      </div>
-
-                      <!-- 案例库表（可选） -->
-                      <div>
-                        <label class="mb-1 block text-xs font-medium text-slate-300">
-                          案例库表（可选）
-                        </label>
-                        <input
-                          id="batch-import-examples-file"
-                          type="file"
-                          accept=".xlsx,.xls"
-                          class="block w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-xs file:text-sky-300 hover:border-slate-600"
-                        />
-                        <p class="mt-1 text-xs text-slate-500">包含案例数据的Excel文件（如无案例可不上传）</p>
-                      </div>
-
-                      <!-- 操作按钮 -->
-                      <div class="flex flex-wrap gap-2 pt-2">
-                        <button
-                          onclick="validateBatchImport()"
-                          type="button"
-                          class="inline-flex items-center gap-2 rounded-lg border border-yellow-500/70 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-300 transition hover:border-yellow-300 hover:bg-yellow-500/20"
-                        >
-                          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          先检查数据
-                        </button>
-                        <button
-                          onclick="handleBatchImport()"
-                          type="button"
-                          class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/70 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:border-emerald-300 hover:bg-emerald-500/20"
-                        >
-                          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                          </svg>
-                          开始导入
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 导入进度 -->
-                  <div id="batch-import-progress" class="hidden rounded-lg border border-blue-500/50 bg-blue-500/10 p-3">
-                    <div class="flex items-center gap-3">
-                      <div class="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
-                      <span class="text-sm text-blue-300">正在处理...</span>
-                    </div>
-                  </div>
-
-                  <!-- 状态消息 -->
-                  <p id="batch-import-status" class="text-sm"></p>
-                </div>
-
-                <!-- 校验结果显示区 -->
-                <div id="batch-import-validation-result" class="mt-4 hidden rounded-lg border border-slate-700 bg-slate-900/70 p-4 text-sm">
-                  <!-- 动态填充 -->
-                </div>
-
-                <!-- 导入结果显示区 -->
-                <div id="batch-import-result" class="mt-4 hidden rounded-lg border border-slate-700 bg-slate-900/70 p-4 text-sm">
-                  <!-- 动态填充 -->
-                </div>
-
-                <!-- 使用提示 -->
-                <details class="mt-4">
-                  <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
-                    💡 使用提示
-                  </summary>
-                  <div class="mt-2 space-y-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-400">
-                    <p><strong class="text-slate-300">Q: 和上面的Excel导入有什么区别？</strong></p>
-                    <p>A: 上面的Excel导入只能导入知识点节点，无法定义关系。智能批量导入可以一次性导入知识点、关系和案例，更适合批量构建知识图谱。</p>
-
-                    <p class="pt-2"><strong class="text-slate-300">Q: 如果我填错了知识点名称怎么办？</strong></p>
-                    <p>A: 系统会自动检测并推荐相似的名称。例如你写了"CIF术语"，系统会提示"你是不是想写：CIF价格术语"。</p>
-
-                    <p class="pt-2"><strong class="text-slate-300">Q: 案例库表必须填吗？</strong></p>
-                    <p>A: 不是必须的！如果暂时没有案例数据，只上传知识点主表即可。</p>
-
-                    <p class="pt-2"><strong class="text-slate-300">Q: 建议先检查还是直接导入？</strong></p>
-                    <p>A: 建议先点击"先检查数据"按钮，系统会告诉你有没有错误。确认无误后再点"开始导入"。</p>
-                  </div>
-                </details>
-              </section>
-
-              <!-- 知识点列表和编辑 -->
-              <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,2fr)]">
-                <!-- 分类树 -->
-                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 class="text-lg font-semibold text-white">知识分类树</h3>
-                      <p class="text-xs text-slate-400">拖拽知识点到分类分支，快速调整知识体系。</p>
-                    </div>
-                    <button
-                      id="admin-graph-category-reset"
-                      type="button"
-                      data-category-path=""
-                      class="rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200"
-                    >
-                      全部知识
-                    </button>
-                  </div>
-                  <div id="admin-graph-knowledge-stats" class="grid gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
-                    <div class="flex items-center justify-between">
-                      <span>知识点总数</span>
-                      <span id="admin-graph-stats-total" class="font-semibold text-sky-300">-</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <span>分类数量</span>
-                      <span id="admin-graph-stats-categories" class="font-semibold text-emerald-300">-</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <span>待分类</span>
-                      <span id="admin-graph-stats-uncategorized" class="font-semibold text-amber-300">-</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <span>未关联课程/关卡</span>
-                      <span id="admin-graph-stats-unlinked" class="font-semibold text-rose-300">-</span>
-                    </div>
-                    <div class="space-y-1">
-                      <p class="text-[11px] text-slate-500">难度分布</p>
-                      <div id="admin-graph-stats-difficulty" class="space-y-1"></div>
-                    </div>
-                  </div>
-                  <div class="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-200">
-                    <div class="flex items-center justify-between">
-                      <div>
-                        <h4 class="text-sm font-semibold text-white">智能辅助</h4>
-                        <p class="text-[11px] text-slate-400">自动识别待整理的知识点与可用内容补全。</p>
-                      </div>
-                      <svg class="h-5 w-5 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l3 3" />
-                      </svg>
-                    </div>
-                    <p id="admin-graph-assist-status" class="text-[11px] text-slate-500"></p>
-                    <div id="admin-graph-smart-assist-list" class="space-y-3"></div>
-                    <p id="admin-graph-smart-assist-empty" class="text-[11px] text-slate-500">
-                      当前暂无智能建议，可通过导入知识卡或完善知识点后刷新查看。
-                    </p>
-                  </div>
-                  <p id="admin-graph-category-status" class="text-[11px] text-slate-500"></p>
-                  <div id="admin-graph-category-tree" class="max-h-[600px] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-200"></div>
-                  <p class="text-[11px] text-slate-500">提示：列表中的知识点可以拖拽到任意分类节点，也可以拖拽到“全部知识”按钮快速归类为未分类。</p>
-                </section>
-
-                <!-- 中间：知识点列表 -->
-                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div class="flex items-center justify-between gap-3">
-                    <h3 class="text-lg font-semibold text-white">知识点列表</h3>
-                    <button
-                      id="admin-graph-add-knowledge"
-                      type="button"
-                      class="rounded-xl border border-emerald-500/70 px-3 py-1 text-xs text-emerald-300 transition hover:border-emerald-300 hover:text-emerald-100"
-                    >
-                      + 新增
-                    </button>
-                  </div>
-
-                  <div class="space-y-2">
-                    <input
-                      id="admin-graph-search"
-                      type="search"
-                      placeholder="搜索知识点名称、描述或标签..."
-                      class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
-                    />
-                    <div class="flex flex-wrap gap-2">
-                      <select
-                        id="admin-graph-filter-category"
-                        class="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-300 focus:border-sky-400 focus:outline-none"
-                      >
-                        <option value="">全部分类</option>
-                      </select>
-                      <select
-                        id="admin-graph-filter-difficulty"
-                        class="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-300 focus:border-sky-400 focus:outline-none"
-                      >
-                        <option value="">全部难度</option>
-                        <option value="beginner">初级</option>
-                        <option value="intermediate">中级</option>
-                        <option value="advanced">高级</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="max-h-[600px] space-y-2 overflow-y-auto">
-                    <ul id="admin-graph-points-list" class="space-y-2"></ul>
-                    <p id="admin-graph-points-empty" class="hidden py-8 text-center text-xs text-slate-500">
-                      暂无知识点，点击“新增”创建
-                    </p>
-                  </div>
-                </section>
-
-                <!-- 右侧：编辑表单 -->
-                <section class="admin-panel-card space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div class="flex items-center justify-between gap-3">
-                    <h3 class="text-lg font-semibold text-white">
-                      <span id="admin-graph-form-title">知识点详情</span>
-                    </h3>
-                    <div class="flex gap-2">
-                      <button
-                        id="admin-graph-form-delete"
-                        type="button"
-                        class="hidden rounded-xl border border-rose-500/70 px-3 py-1 text-xs text-rose-300 transition hover:border-rose-300 hover:text-rose-100"
-                      >
-                        删除
-                      </button>
-                      <button
-                        id="admin-graph-form-cancel"
-                        type="button"
-                        class="hidden rounded-xl border border-slate-600 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- 表单 -->
-                  <form id="admin-graph-form" class="space-y-4">
-                    <input type="hidden" id="admin-graph-form-mode" value="" />
-                    <input type="hidden" id="admin-graph-form-original-name" value="" />
-
-                    <div class="grid gap-4 md:grid-cols-2">
-                      <label class="block space-y-1">
-                        <span class="text-xs text-slate-300">知识点名称 <span class="text-rose-400">*</span></span>
-                        <input
-                          id="admin-graph-form-name"
-                          type="text"
-                          required
-                          placeholder="例：FOB术语"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        />
-                      </label>
-
-                      <label class="block space-y-1">
-                        <span class="text-xs text-slate-300">分类</span>
-                        <select
-                          id="admin-graph-form-category"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        >
-                          <option value="">未分类</option>
-                        </select>
-                      </label>
-                    </div>
-
-                    <label class="block space-y-1">
-                      <span class="text-xs text-slate-300">描述</span>
-                      <textarea
-                        id="admin-graph-form-description"
-                        rows="3"
-                        placeholder="简要描述该知识点..."
-                        class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-
-                    <div class="grid gap-4 md:grid-cols-3">
-                      <label class="block space-y-1">
-                        <span class="text-xs text-slate-300">难度级别</span>
-                        <select
-                          id="admin-graph-form-difficulty"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        >
-                          <option value="beginner">初级</option>
-                          <option value="intermediate">中级</option>
-                          <option value="advanced">高级</option>
-                        </select>
-                      </label>
-
-                      <label class="block space-y-1">
-                        <span class="text-xs text-slate-300">重要程度</span>
-                        <select
-                          id="admin-graph-form-importance"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        >
-                          <option value="low">低</option>
-                          <option value="medium">中</option>
-                          <option value="high">高</option>
-                          <option value="critical">核心</option>
-                        </select>
-                      </label>
-
-                      <label class="block space-y-1">
-                        <span class="text-xs text-slate-300">学习时长(分钟)</span>
-                        <input
-                          id="admin-graph-form-duration"
-                          type="number"
-                          min="1"
-                          placeholder="30"
-                          class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        />
-                      </label>
-                    </div>
-
-                    <label class="block space-y-1">
-                      <span class="text-xs text-slate-300">标签（用逗号分隔）</span>
-                      <input
-                        id="admin-graph-form-tags"
-                        type="text"
-                        placeholder="贸易术语, 价格条款, 国际贸易"
-                        class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                      />
-                    </label>
-
-                    <label class="block space-y-1">
-                      <span class="text-xs text-slate-300">详细内容</span>
-                      <textarea
-                        id="admin-graph-form-content"
-                        rows="6"
-                        placeholder="详细的知识点内容、要点、示例等..."
-                        class="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                      ></textarea>
-                    </label>
-
-                    <!-- 前置依赖 -->
-                    <div class="space-y-2">
-                      <div class="flex items-center justify-between">
-                        <span class="text-xs text-slate-300">前置依赖知识点</span>
-                        <button
-                          id="admin-graph-form-add-prerequisite"
-                          type="button"
-                          class="rounded-lg border border-sky-500/70 px-2 py-0.5 text-xs text-sky-300 transition hover:border-sky-300"
-                        >
-                          + 添加
-                        </button>
-                      </div>
-                      <div id="admin-graph-form-prerequisites" class="flex flex-wrap gap-2"></div>
-                    </div>
-
-                    <!-- 关联知识点 -->
-                    <div class="space-y-2">
-                      <div class="flex items-center justify-between">
-                        <span class="text-xs text-slate-300">关联知识点</span>
-                        <button
-                          id="admin-graph-form-add-relation"
-                          type="button"
-                          class="rounded-lg border border-purple-500/70 px-2 py-0.5 text-xs text-purple-300 transition hover:border-purple-300"
-                        >
-                          + 添加
-                        </button>
-                      </div>
-                      <div id="admin-graph-form-relations" class="flex flex-wrap gap-2"></div>
-                    </div>
-
-                    <div class="flex gap-3 pt-4">
-                      <button
-                        id="admin-graph-form-submit"
-                        type="submit"
-                        class="flex-1 rounded-xl border border-emerald-500/70 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:border-emerald-300 hover:bg-emerald-500/30"
-                      >
-                        保存知识点
-                      </button>
-                    </div>
-                  </form>
-
-                  <p id="admin-graph-form-status" class="text-xs text-slate-400"></p>
-
-                  <!-- 空状态提示 -->
-                  <div id="admin-graph-form-empty" class="py-12 text-center">
-                    <p class="text-sm text-slate-400">请从左侧选择或创建知识点</p>
-                  </div>
-                </section>
-              </div>
             </div>
           </div>
         </div>

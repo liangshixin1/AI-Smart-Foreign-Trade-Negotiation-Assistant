@@ -825,7 +825,19 @@ class KnowledgeGraphImporter:
         """创建Stage节点（在事务中执行）"""
         query = """
         MERGE (s:Stage {name: $name})
-        SET s.englishName = $englishName,
+        ON CREATE SET
+            s.englishName = $englishName,
+            s.description = $description,
+            s.difficulty = $difficulty,
+            s.estimatedDuration = $estimatedDuration,
+            s.icon = $icon,
+            s.color = $color,
+            s.createdAt = datetime(),
+            s.createdBy = $createdBy,
+            s.updatedAt = datetime(),
+            s.updatedBy = $createdBy
+        SET
+            s.englishName = coalesce(s.englishName, $englishName),
             s.description = $description,
             s.difficulty = $difficulty,
             s.estimatedDuration = $estimatedDuration,
@@ -833,9 +845,6 @@ class KnowledgeGraphImporter:
             s.color = $color,
             s.updatedAt = datetime(),
             s.updatedBy = $createdBy
-        ON CREATE SET
-            s.createdAt = datetime(),
-            s.createdBy = $createdBy
         RETURN s.name AS name
         """
         params = {

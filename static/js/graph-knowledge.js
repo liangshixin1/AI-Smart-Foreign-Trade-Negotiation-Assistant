@@ -1585,6 +1585,12 @@ function initGraphKnowledgeManagement() {
     exportBtn.addEventListener('click', handleExportExcel);
   }
 
+  const downloadTemplate = document.getElementById('admin-graph-download-template');
+  if (downloadTemplate) {
+    downloadTemplate.href = '/api/graph/import/batch/template?include_existing=true';
+    downloadTemplate.download = '知识图谱批量导入模板.xlsx';
+  }
+
   const addPrereqBtn = document.getElementById('admin-graph-form-add-prerequisite');
   if (addPrereqBtn) {
     addPrereqBtn.addEventListener('click', handleAddPrerequisite);

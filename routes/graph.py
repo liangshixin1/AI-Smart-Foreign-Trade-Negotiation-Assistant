@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import logging
 from typing import Callable, Tuple
 
 from flask import Blueprint, jsonify, request, send_file
@@ -25,6 +27,9 @@ def _graph_operation(fn: Callable[[], Tuple[dict, int]]):
         return jsonify(response), 503
     except graph_service.GraphEntityNotFoundError as exc:
         return jsonify({"error": str(exc)}), 404
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logging.exception("Graph operation failed")
+        return jsonify({"error": str(exc) or "Internal server error"}), 500
     return jsonify(payload), status
 
 
@@ -440,24 +445,37 @@ def fetch_graph_network():
 @bp.get("/api/graph/import/template")
 @require_role("teacher")
 def download_import_template():
-    """下载Excel导入模板"""
-    def _handler() -> Tuple[dict, int]:
-        excel_file = graph_service.export_knowledge_points_to_excel()
-        return send_file(
-            excel_file,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name="knowledge_points_template.xlsx"
-        ), 200
+    """
+    下载三表导入模板（谈判流程 + 知识点主表 + 案例库表）
 
-    # 不使用_graph_operation包装，因为send_file有特殊的返回类型
+    采用与智能批量导入一致的模板，避免旧版模板与导入逻辑不匹配。
+    """
+    include_existing = request.args.get("include_existing", "true").lower() == "true"
+
     try:
-        excel_file = graph_service.export_knowledge_points_to_excel()
+        from services.knowledge_graph_batch_importer import generate_smart_templates
+
+        existing_points = None
+        if include_existing:
+            try:
+                points = knowledge_service.list_knowledge_points(limit=1000)
+                existing_points = [p.get("name") for p in points if p.get("name")]
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logging.warning("获取现有知识点失败，继续生成模板: %s", exc)
+
+        existing_stages = None
+        try:
+            stages = graph_service.list_stages()
+            existing_stages = [s.get("name") for s in stages if s.get("name")]
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logging.warning("获取现有阶段失败，使用默认阶段列表: %s", exc)
+
+        excel_content = generate_smart_templates(existing_points, existing_stages)
         return send_file(
-            excel_file,
+            io.BytesIO(excel_content),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="knowledge_points_template.xlsx"
+            download_name="知识图谱批量导入模板.xlsx",
         )
     except graph_service.GraphUnavailableError as exc:
         status_payload = graph_service.graph_status()
@@ -466,6 +484,9 @@ def download_import_template():
             response["detail"] = status_payload["message"]
         response["graphStatus"] = status_payload
         return jsonify(response), 503
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logging.exception("生成导入模板失败")
+        return jsonify({"error": f"生成模板失败: {exc}"}), 500
 
 
 @bp.post("/api/graph/import/excel")
@@ -482,10 +503,26 @@ def import_excel():
     if not file.filename.endswith(('.xlsx', '.xls')):
         return jsonify({"error": "File must be an Excel file (.xlsx or .xls)"}), 400
 
+    actor = current_user()
+    created_by = actor.username or actor.display_name or "teacher"
+
     def _handler() -> Tuple[dict, int]:
-        file_content = file.read()
-        stats = graph_service.import_knowledge_points_from_excel(file_content)
-        return stats, 200
+        from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
+
+        importer = KnowledgeGraphBatchImporter()
+        result = importer.import_from_three_sheets(
+            excel_file=file.stream,
+            created_by=created_by,
+            mode="merge",
+        )
+
+        payload = result.to_dict()
+        points_stats = payload.get("statistics", {}).get("points", {})
+        payload.setdefault("created", points_stats.get("created", 0))
+        payload.setdefault("updated", points_stats.get("updated", 0))
+        payload.setdefault("failed", points_stats.get("failed", 0))
+        payload.setdefault("errors", payload.get("errors", []))
+        return payload, 200
 
     return _graph_operation(_handler)
 
@@ -625,20 +662,24 @@ def import_batch():
 
     def _handler() -> Tuple[dict, int]:
         try:
-            from services.knowledge_graph_importer import KnowledgeGraphImporter
-            from services.graph_service import GraphService
+            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
 
-            # 创建新版导入器
-            driver = graph_service._get_driver()
-            importer = KnowledgeGraphImporter(driver)
+            importer = KnowledgeGraphBatchImporter()
 
-            # 执行导入（统一使用新的简洁实现）
-            result = importer.import_from_excel(
-                excel_file=points_file.stream,
-                created_by=created_by,
-            )
+            if examples_file:
+                result = importer.import_from_two_tables(
+                    points_file=points_file.stream,
+                    examples_file=examples_file.stream,
+                    mode=mode,
+                    created_by=created_by,
+                )
+            else:
+                result = importer.import_from_three_sheets(
+                    excel_file=points_file.stream,
+                    mode=mode,
+                    created_by=created_by,
+                )
 
-            # 返回结果
             return result.to_dict(), 200
 
         except Exception as e:
@@ -701,32 +742,41 @@ def validate_batch_import():
     def _handler() -> Tuple[dict, int]:
         try:
             from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
-            from services.graph_service import GraphService
+            importer = KnowledgeGraphBatchImporter()
 
-            importer = KnowledgeGraphBatchImporter(GraphService())
+            # 读取一次文件内容，避免多次读取同一流导致偏移
+            file_content = points_file.stream.read()
+            if hasattr(points_file.stream, "seek"):
+                points_file.stream.seek(0)
 
-            # Phase 1: 解析数据
-            points_data, parse_errors = importer._parse_points_table(points_file.stream)
-            errors = parse_errors
-            warnings = []
+            errors: list = []
+            warnings: list = []
+
+            # Phase 1: 解析三个sheet
+            flow_data, flow_errors = importer._parse_flow_table(io.BytesIO(file_content))
+            errors.extend(flow_errors)
+
+            points_data, points_errors = importer._parse_points_table_from_workbook(
+                io.BytesIO(file_content),
+                sheet_name="知识点主表",
+            )
+            errors.extend(points_errors)
 
             examples_data = []
             if examples_file:
                 examples_data, example_errors = importer._parse_examples_table(examples_file.stream)
                 errors.extend(example_errors)
 
-            # 建立知识点名称列表
-            importer.known_point_names = [p["name"] for p in points_data]
+            importer.known_stage_names = [f.get("name") for f in flow_data if f.get("name")]
+            importer.known_point_names = [p.get("name") for p in points_data if p.get("name")]
 
-            # Phase 2: 验证数据
-            if points_data:
-                validation_errors, validation_warnings = importer._validate_all_data(
-                    points_data, examples_data
-                )
-                errors.extend(validation_errors)
-                warnings.extend(validation_warnings)
+            # Phase 2: 验证数据（含阶段和案例）
+            validation_errors, validation_warnings = importer._validate_three_sheets_data(
+                flow_data, points_data, examples_data
+            )
+            errors.extend(validation_errors)
+            warnings.extend(validation_warnings)
 
-            # 统计关系数量
             relations_count = sum(
                 len(relations)
                 for point in points_data
@@ -762,6 +812,7 @@ def validate_batch_import():
                     for w in warnings
                 ],
                 "preview": {
+                    "stages_count": len(flow_data),
                     "points_count": len(points_data),
                     "relations_count": relations_count,
                     "examples_count": len(examples_data),
@@ -776,7 +827,7 @@ def validate_batch_import():
                 "error": f"验证失败: {str(e)}",
                 "errors": [],
                 "warnings": [],
-                "preview": {"points_count": 0, "relations_count": 0, "examples_count": 0}
+                "preview": {"stages_count": 0, "points_count": 0, "relations_count": 0, "examples_count": 0}
             }, 500
 
     return _graph_operation(_handler)
@@ -1050,23 +1101,18 @@ def import_three_sheets():
 
     def _handler() -> Tuple[dict, int]:
         try:
-            from services.knowledge_graph_importer import KnowledgeGraphImporter
+            from services.knowledge_graph_batch_importer import KnowledgeGraphBatchImporter
 
-            # 创建新版导入器
-            driver = graph_service._get_driver()
-            importer = KnowledgeGraphImporter(driver)
-
-            # 执行导入（使用统一的简洁实现）
-            result = importer.import_from_excel(
+            importer = KnowledgeGraphBatchImporter()
+            result = importer.import_from_three_sheets(
                 excel_file=excel_file.stream,
+                mode=mode,
                 created_by=created_by,
             )
 
-            # 返回结果
             return result.to_dict(), 200
 
         except Exception as e:
-            import logging
             logging.exception("三表导入失败")
             return {
                 "success": False,

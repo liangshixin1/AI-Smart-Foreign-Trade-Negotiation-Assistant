@@ -19,6 +19,16 @@ from services import graph_service
 LOGGER = logging.getLogger(__name__)
 
 
+def _to_iso(dt):
+    """Convert Neo4j temporal values to ISO strings for JSON serialization."""
+    try:
+        if hasattr(dt, "isoformat"):
+            return dt.isoformat()
+    except Exception:
+        return dt
+    return dt
+
+
 # ============================================
 # 枚举定义
 # ============================================
@@ -589,8 +599,8 @@ def _format_knowledge_point(node) -> Dict[str, object]:
         "viewCount": node.get("viewCount", 0),
         "practiceCount": node.get("practiceCount", 0),
         "averageScore": node.get("averageScore"),
-        "createdAt": node.get("createdAt"),
-        "updatedAt": node.get("updatedAt"),
+        "createdAt": _to_iso(node.get("createdAt")),
+        "updatedAt": _to_iso(node.get("updatedAt")),
         "createdBy": node.get("createdBy"),
         "version": node.get("version", 1),
     }
