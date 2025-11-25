@@ -544,6 +544,15 @@ python scripts/clear_neo4j.py
 
 ---
 
+## 🚀 自动构建知识图谱 (Beta)
+
+- 入口：教师端“自动构建知识图谱 (Beta)”卡片，上传 Word 文档。
+- 流程：`POST /api/admin/theory/import-docx/drafts` 解析章节/小节 → 生成知识点草稿并持久化（表 `knowledge_jobs` / `knowledge_drafts`）。
+- 审核：`GET /api/admin/theory/drafts/{jobId}` 查看草稿；`POST /api/admin/theory/drafts/{jobId}/approve` 勾选通过，写入 Neo4j（节点字段含 summary/content/bodyHtml/tags）。当前不自动生成关系，可后续补充关系草稿。
+- 扩展：可接入向量检索 + 异步 LLM 任务，替换现有同步草稿生成，支持大文本分批处理与关系草稿生成。
+
+---
+
 ## 📞 技术支持
 
 如有问题，请：

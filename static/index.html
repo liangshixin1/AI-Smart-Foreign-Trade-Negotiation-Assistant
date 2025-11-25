@@ -3273,6 +3273,13 @@
                             </button>
                             <button
                               type="button"
+                              id="insert-knowledge-rag-btn"
+                              class="rounded-xl border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
+                            >
+                              🧠 智能匹配 (Beta)
+                            </button>
+                            <button
+                              type="button"
                               id="insert-challenge-btn"
                               class="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-400"
                             >
@@ -3556,6 +3563,25 @@
                     <p class="text-xs text-slate-400">按阶段快速定位知识点。</p>
                   </div>
                   <ul id="admin-graph-knowledge-list" class="space-y-2 text-sm text-slate-200"></ul>
+                </section>
+                <section class="admin-panel-card space-y-3 rounded-2xl border border-amber-200/60 bg-amber-50 p-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h3 class="text-base font-semibold text-amber-800">自动构建知识图谱 (Beta)</h3>
+                      <p class="text-xs text-amber-700">上传电子教材，一键生成草稿知识点并审核后入图。</p>
+                    </div>
+                    <button
+                      type="button"
+                      id="auto-build-graph-btn"
+                      class="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-700 transition hover:border-amber-400 hover:bg-amber-100"
+                    >
+                      ⚡ 生成草稿
+                    </button>
+                    <input id="auto-build-graph-input" type="file" accept=".docx" class="hidden" />
+                  </div>
+                  <div id="auto-build-graph-drafts" class="space-y-2 text-sm text-amber-900">
+                    <p class="text-xs text-amber-700">尚未生成草稿，点击“生成草稿”上传 Word 文档。</p>
+                  </div>
                 </section>
               </div>
             </div>

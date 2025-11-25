@@ -180,6 +180,10 @@ const adminTheoryLessonEditorHost = document.getElementById("admin-theory-lesson
 const adminTheoryLessonContent = document.getElementById("admin-theory-lesson-content");
 const adminTheoryLessonKnowledge = document.getElementById("admin-theory-lesson-knowledge");
 const insertKnowledgeBtn = document.getElementById("insert-knowledge-btn");
+const insertKnowledgeRagBtn = document.getElementById("insert-knowledge-rag-btn");
+const autoBuildGraphBtn = document.getElementById("auto-build-graph-btn");
+const autoBuildGraphInput = document.getElementById("auto-build-graph-input");
+const autoBuildGraphDraftList = document.getElementById("auto-build-graph-drafts");
 const insertChallengeBtn = document.getElementById("insert-challenge-btn");
 const adminTheoryDocxGlobalTrigger = document.getElementById("admin-theory-docx-global-trigger");
 const adminTheoryDocxTrigger = document.getElementById("admin-theory-docx-trigger");
@@ -261,4 +265,3 @@ const adminGraphRefresh = document.getElementById("admin-graph-refresh");
 const adminGraphStatus = document.getElementById("admin-graph-status");
 const adminGraphKnowledgeList = document.getElementById("admin-graph-knowledge-list");
 const adminGraphSelection = document.getElementById("admin-graph-selection");
-

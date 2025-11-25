@@ -194,6 +194,28 @@ def init_database() -> None:
                 FOREIGN KEY(topic_id) REFERENCES theory_topics(id) ON DELETE CASCADE,
                 FOREIGN KEY(section_id) REFERENCES level_sections(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS knowledge_jobs (
+                id TEXT PRIMARY KEY,
+                status TEXT DEFAULT 'processing',
+                total INTEGER DEFAULT 0,
+                processed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_drafts (
+                id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                summary TEXT,
+                body_html TEXT,
+                tags_json TEXT,
+                status TEXT DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(job_id) REFERENCES knowledge_jobs(id) ON DELETE CASCADE
+            );
             """
         )
         conn.commit()
@@ -328,6 +350,9 @@ def ensure_schema() -> None:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_assignment_students_session ON assignment_students(session_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_drafts_job ON knowledge_drafts(job_id, status)"
         )
         conn.commit()
 
@@ -2249,4 +2274,3 @@ def delete_session(session_id: str) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
         conn.commit()
-

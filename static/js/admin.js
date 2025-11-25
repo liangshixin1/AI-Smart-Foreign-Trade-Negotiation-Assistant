@@ -671,6 +671,10 @@ function readKnowledgeCardForm() {
   if (knowledgeCardModalState.imageDataUrl) {
     payload.imageUrl = knowledgeCardModalState.imageDataUrl;
   }
+   // 同步正文到 content，便于知识图谱“详细描述”字段复用
+  if (payload.bodyHtml && !payload.content) {
+    payload.content = payload.bodyHtml;
+  }
   return payload;
 }
 
@@ -755,6 +759,354 @@ function handleKnowledgeCardConfirm() {
   }
   insertKnowledgeCardIntoEditor(payload, { replaceNode: knowledgeCardModalState.editingNode });
   closeKnowledgeCardModal();
+}
+
+function getEditorSelectionContent() {
+  if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
+    return null;
+  }
+  const selection = window.getSelection && window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  if (!adminTheoryLessonEditor.root.contains(range.commonAncestorContainer)) {
+    return null;
+  }
+  const clone = range.cloneContents();
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(clone);
+  const html = wrapper.innerHTML.trim();
+  const text = (wrapper.textContent || "").replace(/\s+/g, " ").trim();
+  if (!html) {
+    return null;
+  }
+  return { html, text };
+}
+
+function openKnowledgeCardFromSelection() {
+  const selection = getEditorSelectionContent();
+  if (!selection) {
+    openKnowledgeCardModal();
+    return;
+  }
+  const summary = selection.text ? summarizePreviewText(selection.text, 140) : "";
+  const payload = {
+    bodyHtml: selection.html,
+    summary,
+  };
+  openKnowledgeCardModal(payload);
+  if (knowledgeCardStatus) {
+    knowledgeCardStatus.textContent = "已用选中文本预填知识点正文，可选择或新建知识点。";
+  }
+}
+
+function getSelectionRectWithinEditor() {
+  if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
+    return null;
+  }
+  const selection = window.getSelection && window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  if (!adminTheoryLessonEditor.root.contains(range.commonAncestorContainer)) {
+    return null;
+  }
+  let rect = range.getBoundingClientRect();
+  if ((!rect || (rect.width === 0 && rect.height === 0)) && range.getClientRects) {
+    const rects = range.getClientRects();
+    rect = rects && rects[0] ? rects[0] : rect;
+  }
+  if (!rect || (rect.width === 0 && rect.height === 0)) {
+    return null;
+  }
+  return rect;
+}
+
+let knowledgeBubbleEl = null;
+
+function hideKnowledgeSelectionBubble() {
+  if (knowledgeBubbleEl) {
+    knowledgeBubbleEl.remove();
+    knowledgeBubbleEl = null;
+  }
+}
+
+async function handleBubbleMatchClick() {
+  const selection = getEditorSelectionContent();
+  if (!selection) {
+    hideKnowledgeSelectionBubble();
+    openKnowledgeCardModal();
+    return;
+  }
+  hideKnowledgeSelectionBubble();
+  updateInlineStatus(adminTheoryLessonStatus, "正在匹配知识点...", "muted");
+  try {
+    const knowledgeList =
+      state.admin &&
+      state.admin.graph &&
+      Array.isArray(state.admin.graph.knowledgePoints)
+        ? state.admin.graph.knowledgePoints
+        : [];
+    const candidateNames = knowledgeList.map((k) => k.name).filter(Boolean);
+    const response = await fetchWithAuth("/api/ai/knowledge-points/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectionText: selection.text,
+        selectionHtml: selection.html,
+        lessonId: state.admin && state.admin.theory ? state.admin.theory.selectedLessonId : "",
+        candidateNames,
+      }),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "匹配失败");
+    }
+    const data = await response.json();
+    const match = data.match || {};
+    const confidence = data.confidence || 0;
+    const payload = {
+      name: match.name || "",
+      summary: match.summary || "",
+      tags: match.tags || [],
+      bodyHtml: match.bodyHtml || match.content || selection.html,
+      imageUrl: match.imageUrl || "",
+      knowledgeId: match.knowledgeId || match.sourceId || "",
+    };
+    if (!payload.name) {
+      throw new Error("未匹配到知识点");
+    }
+    insertKnowledgeCardIntoEditor(payload);
+    if (adminTheoryLessonStatus) {
+      adminTheoryLessonStatus.textContent = `已关联到知识点「${payload.name}」(score ${confidence.toFixed(2)})`;
+    }
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryLessonStatus, error.message || "匹配失败", "error");
+    // 退回手动弹窗
+    openKnowledgeCardModal({
+      bodyHtml: selection ? selection.html : "",
+      summary: selection ? summarizePreviewText(selection.text || "", 140) : "",
+    });
+  }
+}
+
+function showKnowledgeSelectionBubble() {
+  hideKnowledgeSelectionBubble();
+  const rect = getSelectionRectWithinEditor();
+  if (!rect) return;
+  const bubble = document.createElement("button");
+  bubble.type = "button";
+  bubble.textContent = "一键关联知识点";
+  bubble.className =
+    "knowledge-select-bubble";
+  bubble.style.position = "fixed";
+  bubble.style.zIndex = "9999";
+  bubble.style.borderRadius = "9999px";
+  bubble.style.background = "#10b981";
+  bubble.style.color = "#fff";
+  bubble.style.padding = "6px 10px";
+  bubble.style.fontSize = "12px";
+  bubble.style.boxShadow = "0 6px 16px rgba(16,185,129,0.35)";
+  bubble.style.border = "none";
+  bubble.style.cursor = "pointer";
+  bubble.style.transition = "opacity 0.15s ease";
+  const top = rect.top + window.scrollY - 36;
+  const left = rect.left + window.scrollX + rect.width / 2 - 60;
+  bubble.style.top = `${Math.max(0, top)}px`;
+  bubble.style.left = `${Math.max(0, left)}px`;
+  bubble.addEventListener("click", handleBubbleMatchClick);
+  document.body.appendChild(bubble);
+  knowledgeBubbleEl = bubble;
+}
+
+function bindKnowledgeSelectionWatcher() {
+  if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) return;
+  const root = adminTheoryLessonEditor.root;
+  const handler = () => {
+    const selection = getEditorSelectionContent();
+    if (selection && selection.text && selection.text.length >= 1) {
+      showKnowledgeSelectionBubble();
+    } else {
+      hideKnowledgeSelectionBubble();
+    }
+  };
+  root.addEventListener("mouseup", handler);
+  root.addEventListener("keyup", handler);
+  root.addEventListener("mouseleave", hideKnowledgeSelectionBubble);
+  document.addEventListener("scroll", hideKnowledgeSelectionBubble, true);
+  // 兜底：当用户点击编辑器外时隐藏
+  document.addEventListener("mousedown", (event) => {
+    if (!root.contains(event.target) && knowledgeBubbleEl) {
+      hideKnowledgeSelectionBubble();
+    }
+  });
+}
+
+function triggerAutoKnowledgeMatch() {
+  const selection = getEditorSelectionContent();
+  if (selection && selection.text && selection.text.length > 0) {
+    handleBubbleMatchClick();
+  } else {
+    openKnowledgeCardModal();
+  }
+}
+
+async function triggerRagMatchBeta() {
+  const selection = getEditorSelectionContent();
+  if (!selection || !selection.text) {
+    openKnowledgeCardModal();
+    return;
+  }
+  updateInlineStatus(adminTheoryLessonStatus, "RAG(Beta) 正在匹配知识点...", "muted");
+  try {
+    const knowledgeList =
+      state.admin &&
+      state.admin.graph &&
+      Array.isArray(state.admin.graph.knowledgePoints)
+        ? state.admin.graph.knowledgePoints
+        : [];
+    const candidateNames = knowledgeList.map((k) => k.name).filter(Boolean);
+    const response = await fetchWithAuth("/api/ai/knowledge-points/match-rag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectionText: selection.text,
+        selectionHtml: selection.html,
+        candidateNames,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "RAG 匹配失败");
+    }
+    const data = await response.json();
+    const match = data.match || {};
+    if (!match.name) {
+      throw new Error("未匹配到知识点");
+    }
+    const payload = {
+      name: match.name,
+      summary: match.summary || "",
+      tags: match.tags || [],
+      bodyHtml: match.bodyHtml || match.content || selection.html,
+      imageUrl: match.imageUrl || "",
+      knowledgeId: match.knowledgeId || match.sourceId || "",
+    };
+    insertKnowledgeCardIntoEditor(payload);
+    updateInlineStatus(
+      adminTheoryLessonStatus,
+      `RAG(Beta) 已关联到知识点「${payload.name}」`,
+      "success"
+    );
+  } catch (error) {
+    console.error(error);
+    updateInlineStatus(adminTheoryLessonStatus, error.message || "匹配失败", "error");
+    openKnowledgeCardModal({
+      bodyHtml: selection.html,
+      summary: summarizePreviewText(selection.text || "", 140),
+    });
+  }
+}
+
+async function handleAutoBuildGraphUpload() {
+  if (!autoBuildGraphInput || autoBuildGraphInput.files.length === 0) {
+    return;
+  }
+  const file = autoBuildGraphInput.files[0];
+  const formData = new FormData();
+  formData.append("file", file);
+  if (autoBuildGraphDraftList) {
+    autoBuildGraphDraftList.innerHTML = '<p class="text-xs text-slate-500">正在生成知识点草稿...</p>';
+  }
+  try {
+    const resp = await fetchWithAuth("/api/admin/theory/import-docx/drafts", {
+      method: "POST",
+      body: formData,
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || "生成失败");
+    }
+    const data = await resp.json();
+    const drafts = data.drafts || [];
+    renderAutoBuildDrafts(drafts);
+  } catch (error) {
+    console.error(error);
+    if (autoBuildGraphDraftList) {
+      autoBuildGraphDraftList.innerHTML = `<p class="text-xs text-rose-500">${error.message || "生成失败"}</p>`;
+    }
+  } finally {
+    if (autoBuildGraphInput) {
+      autoBuildGraphInput.value = "";
+    }
+  }
+}
+
+async function approveAutoBuildDrafts(selectedIds) {
+  if (!Array.isArray(selectedIds) || selectedIds.length === 0) {
+    return;
+  }
+  try {
+    const resp = await fetchWithAuth(`/api/admin/theory/drafts/${autoBuildGraphDraftList.dataset.batchId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: selectedIds }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || "审核失败");
+    }
+    const data = await resp.json();
+    if (autoBuildGraphDraftList) {
+      autoBuildGraphDraftList.innerHTML += `<p class="text-xs text-emerald-500 mt-2">已创建 ${data.count} 条知识点。</p>`;
+    }
+  } catch (error) {
+    console.error(error);
+    if (autoBuildGraphDraftList) {
+      autoBuildGraphDraftList.innerHTML += `<p class="text-xs text-rose-500 mt-2">${error.message || "审核失败"}</p>`;
+    }
+  }
+}
+
+function renderAutoBuildDrafts(drafts) {
+  if (!autoBuildGraphDraftList) return;
+  if (!drafts || drafts.length === 0) {
+    autoBuildGraphDraftList.innerHTML = '<p class="text-xs text-slate-500">暂无草稿</p>';
+    return;
+  }
+  autoBuildGraphDraftList.dataset.batchId = drafts[0].job_id || drafts[0].batchId || "";
+  const container = document.createElement("div");
+  container.className = "space-y-2";
+  drafts.forEach((draft) => {
+    const card = document.createElement("div");
+    card.className = "rounded-lg border border-slate-200 bg-white p-3 shadow-sm";
+    card.innerHTML = `
+      <label class="flex items-start gap-3 text-sm text-slate-800">
+        <input type="checkbox" class="mt-1" value="${draft.id}">
+        <div class="space-y-1">
+          <p class="font-semibold">${draft.name || "未命名知识点"}</p>
+          <p class="text-xs text-slate-500">${draft.summary || "（无摘要）"}</p>
+        </div>
+      </label>
+    `;
+    container.appendChild(card);
+  });
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className =
+    "rounded-lg bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-400";
+  btn.textContent = "✅ 批量通过并写入图谱";
+  btn.addEventListener("click", () => {
+    const checks = autoBuildGraphDraftList.querySelectorAll("input[type='checkbox']:checked");
+    const ids = Array.from(checks).map((c) => c.value);
+    approveAutoBuildDrafts(ids);
+  });
+  autoBuildGraphDraftList.innerHTML = "";
+  autoBuildGraphDraftList.appendChild(container);
+  autoBuildGraphDraftList.appendChild(btn);
 }
 
 function renderAdminStudentList() {
@@ -1256,7 +1608,32 @@ function showGraphDetailDrawer(detail) {
     metaEl.appendChild(li);
   });
   const bodyEl = document.getElementById('graph-detail-body');
-  bodyEl.innerHTML = detail?.body || '';
+  if (!bodyEl) {
+    return;
+  }
+  let textEl = bodyEl.querySelector('[data-graph-detail-text]');
+  if (!textEl) {
+    textEl = document.createElement('div');
+    textEl.dataset.graphDetailText = 'true';
+    textEl.className = 'space-y-2';
+    bodyEl.prepend(textEl);
+  }
+  const formEl = document.getElementById('admin-graph-form');
+  const showForm = detail?.kind === 'KnowledgePoint';
+
+  if (formEl) {
+    formEl.style.display = showForm ? 'block' : 'none';
+  }
+  applyGraphDrawerTheme(showForm ? 'light' : 'dark');
+  if (textEl) {
+    if (showForm) {
+      textEl.classList.add('hidden');
+      textEl.innerHTML = '';
+    } else {
+      textEl.classList.remove('hidden');
+      textEl.innerHTML = detail?.body || '<p class="text-xs text-slate-400">暂无详细内容</p>';
+    }
+  }
 }
 
 function hideGraphDetailDrawer() {
@@ -1373,6 +1750,38 @@ function buildProcessDetail(processId) {
   };
 }
 
+async function openKnowledgePointEditor(name, selectionKey = null) {
+  if (!name || typeof window === "undefined" || typeof window.showKnowledgeGraphForm !== "function") {
+    return;
+  }
+  const statusFn = typeof showStatus === "function" ? showStatus : null;
+  if (selectionKey && adminGraphSelectionKey !== selectionKey) {
+    return;
+  }
+  try {
+    if (statusFn) {
+      statusFn("admin-graph-form-status", "加载中...", "info");
+    }
+    const response = await fetchWithAuth(`/api/graph/knowledge-points/${encodeURIComponent(name)}`);
+    if (!response.ok) {
+      throw new Error(`加载知识点失败: ${response.status}`);
+    }
+    const data = await response.json();
+    if (selectionKey && adminGraphSelectionKey !== selectionKey) {
+      return;
+    }
+    window.showKnowledgeGraphForm("edit", data);
+    if (statusFn) {
+      statusFn("admin-graph-form-status", "", "");
+    }
+  } catch (error) {
+    console.error("[Graph] load knowledge point detail failed", error);
+    if (statusFn) {
+      statusFn("admin-graph-form-status", `加载失败: ${error.message}`, "error");
+    }
+  }
+}
+
 async function handleGraphNodeSelection(nodeKey) {
   adminGraphSelectionKey = nodeKey;
   if (!nodeKey) {
@@ -1395,10 +1804,68 @@ async function handleGraphNodeSelection(nodeKey) {
   } else {
     detail = { title: nodeKey, meta: ["暂未提供详细信息"] };
   }
+  detail.kind = label;
+  detail.id = detail.id || id;
   if (adminGraphSelectionKey !== nodeKey) {
     return;
   }
   renderAdminGraphSelection(detail);
+  if (label === "KnowledgePoint") {
+    await openKnowledgePointEditor(id, nodeKey);
+  }
+}
+
+function ensureGraphDrawerLightStyles() {
+  if (document.getElementById('graph-drawer-light-style')) return;
+  const style = document.createElement('style');
+  style.id = 'graph-drawer-light-style';
+  style.textContent = `
+    #graph-detail-drawer.graph-drawer-light {
+      background: #f8fafc !important;
+      color: #0f172a !important;
+      border-color: #e2e8f0 !important;
+    }
+    #graph-detail-drawer.graph-drawer-light h4,
+    #graph-detail-drawer.graph-drawer-light p,
+    #graph-detail-drawer.graph-drawer-light label,
+    #graph-detail-drawer.graph-drawer-light span {
+      color: #0f172a !important;
+    }
+    #graph-detail-drawer.graph-drawer-light input,
+    #graph-detail-drawer.graph-drawer-light select,
+    #graph-detail-drawer.graph-drawer-light textarea {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      border-color: #cbd5e1 !important;
+    }
+    #graph-detail-drawer.graph-drawer-light button {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      border-color: #cbd5e1 !important;
+    }
+    #graph-detail-drawer.graph-drawer-light #admin-graph-form-submit {
+      background: #0d9488 !important;
+      color: #ffffff !important;
+      border-color: #0f766e !important;
+    }
+    #graph-detail-drawer.graph-drawer-light #admin-graph-form-status {
+      color: #0f172a !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function applyGraphDrawerTheme(mode) {
+  const drawer = document.getElementById('graph-detail-drawer');
+  if (!drawer) return;
+  if (mode === 'light') {
+    ensureGraphDrawerLightStyles();
+    drawer.classList.add('graph-drawer-light');
+  } else {
+    drawer.classList.remove('graph-drawer-light');
+    drawer.style.background = '';
+    drawer.style.color = '';
+  }
 }
 
 function renderAdminGraphNetwork() {
@@ -2992,10 +3459,13 @@ async function handleAdminTheoryDocxUpload() {
   if (adminTheoryDocxPublish) {
     adminTheoryDocxPublish.disabled = true;
   }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
   try {
     const response = await fetchWithAuth("/api/admin/theory/import-docx", {
       method: "POST",
       body: formData,
+      signal: controller.signal,
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -3021,10 +3491,16 @@ async function handleAdminTheoryDocxUpload() {
     console.error(error);
     state.admin.theory.pendingImport = null;
     renderAdminTheoryDocxPreview(null);
-    updateInlineStatus(adminTheoryDocxStatus, error.message || "解析失败", "error");
+    if (error?.name === "AbortError") {
+      updateInlineStatus(adminTheoryDocxStatus, "解析超时，请检查网络或文档大小后重试。", "error");
+    } else {
+      updateInlineStatus(adminTheoryDocxStatus, error.message || "解析失败", "error");
+    }
     if (adminTheoryDocxInput) {
       adminTheoryDocxInput.value = "";
     }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -3923,6 +4399,7 @@ function initAdminTheoryLessonEditor() {
         openKnowledgeCardModal(payload, cardNode);
       }
     });
+    bindKnowledgeSelectionWatcher();
   }
 }
 

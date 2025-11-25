@@ -953,6 +953,11 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, obje
             image_alt_value = ""
         elif not isinstance(image_alt_value, str):
             image_alt_value = str(image_alt_value)
+        content_value = payload.get("content", "") or body_html_value
+        if content_value is None:
+            content_value = ""
+        elif not isinstance(content_value, str):
+            content_value = str(content_value)
         anchor_value = payload.get("anchorId", "")
         if anchor_value is None:
             anchor_value = ""
@@ -981,6 +986,7 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, obje
             "SET k.summary = CASE WHEN $summary = '' THEN k.summary ELSE $summary END "
             "SET k.imageUrl = CASE WHEN $imageUrl = '' THEN k.imageUrl ELSE $imageUrl END "
             "SET k.imageAlt = CASE WHEN $imageAlt = '' THEN k.imageAlt ELSE $imageAlt END "
+            "SET k.content = CASE WHEN $content = '' THEN k.content ELSE $content END "
             "SET k.bodyHtml = CASE WHEN $bodyHtml = '' THEN k.bodyHtml ELSE $bodyHtml END "
             "SET k.sourceId = CASE WHEN $knowledgeId = '' THEN k.sourceId ELSE $knowledgeId END "
             "SET k.tags = CASE WHEN size($tags) = 0 THEN k.tags ELSE $tags END "
@@ -996,6 +1002,7 @@ def _set_lesson_knowledge_tx(tx, lesson_id: str, points: Sequence[Dict[str, obje
                 "name": name,
                 "summary": summary_value,
                 "bodyHtml": body_html_value,
+                "content": content_value,
                 "imageUrl": image_url_value,
                 "imageAlt": image_alt_value,
                 "anchorId": anchor_value,

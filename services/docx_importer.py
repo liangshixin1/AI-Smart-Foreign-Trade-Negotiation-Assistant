@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from html import escape
 from io import BytesIO
@@ -335,3 +336,11 @@ def parse_docx_outline(file_storage) -> dict:
             "lessonCount": lesson_count,
         },
     }
+
+
+def parse_docx_outline_with_timeout(file_storage, timeout_seconds: int = 25) -> dict:
+    """Run DOCX parsing with a hard timeout to avoid hanging on malformed files."""
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(parse_docx_outline, file_storage)
+        return future.result(timeout=timeout_seconds)

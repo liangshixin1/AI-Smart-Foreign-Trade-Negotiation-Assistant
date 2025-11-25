@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from concurrent.futures import TimeoutError
 from itertools import chain
 from typing import Dict, List, Optional, Sequence
 
@@ -10,7 +12,11 @@ from openpyxl import load_workbook
 
 import database
 from services import graph_service
+from services import ai_matching
 from services import docx_importer
+from services import draft_knowledge_service
+from services import knowledge_job_service
+from services import rag_matcher
 from services.auth_service import current_user, require_role
 from services.scenario_generator import ensure_level_hierarchy, inject_difficulty_metadata
 from utils.normalizers import normalize_text
@@ -145,8 +151,20 @@ def import_theory_from_docx():
         return jsonify({"error": "file is required"}), 400
     if not file.filename.lower().endswith(".docx"):
         return jsonify({"error": "仅支持 .docx 文档"}), 400
+
+    size_bytes = getattr(file, "content_length", None)
+    if size_bytes and size_bytes > 10 * 1024 * 1024:
+        return jsonify({"error": "文档体积过大，请控制在 10MB 以内后重试"}), 400
+
+    current_app.logger.info(
+        "Word import requested: name=%s size=%s", file.filename, size_bytes or "unknown"
+    )
+
     try:
-        outline = docx_importer.parse_docx_outline(file)
+        outline = docx_importer.parse_docx_outline_with_timeout(file, timeout_seconds=25)
+    except TimeoutError:
+        current_app.logger.error("Word import timed out for file %s", file.filename)
+        return jsonify({"error": "解析超时，请简化文档或拆分后重试"}), 504
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -154,6 +172,205 @@ def import_theory_from_docx():
         return jsonify({"error": "无法解析该 Word 文档，请检查格式后重试"}), 500
 
     return jsonify({"import": outline})
+
+
+@bp.post("/api/admin/theory/import-docx/drafts")
+@require_role("teacher")
+def import_theory_docx_generate_drafts():
+    """Parse a Word doc and generate draft knowledge points (MVP, persistent)."""
+
+    current_user()
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "file is required"}), 400
+    if not file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "仅支持 .docx 文档"}), 400
+    job_id = knowledge_job_service.create_job()
+    try:
+        outline = docx_importer.parse_docx_outline(file)
+        drafts: List[Dict[str, object]] = []
+        chapters = outline.get("chapters") or []
+        for chapter in chapters:
+            topics = chapter.get("topics") or []
+            for topic in topics:
+                lessons = topic.get("lessons") or []
+                for lesson in lessons:
+                    lesson_title = lesson.get("title") or "未命名知识点"
+                    body_html = lesson.get("contentHtml") or ""
+                    summary = lesson.get("summary") or (body_html[:180] if body_html else "")
+                    drafts.append(
+                        {
+                            "id": str(uuid.uuid4()),
+                            "name": lesson_title,
+                            "summary": summary,
+                            "bodyHtml": body_html,
+                            "content": body_html,
+                            "tags": [],
+                            "status": "draft",
+                        }
+                    )
+        knowledge_job_service.insert_drafts(job_id, drafts)
+        knowledge_job_service.update_job(job_id, status="completed", total=len(drafts), processed=len(drafts))
+        return jsonify({"jobId": job_id, "drafts": drafts, "status": "completed"}), 200
+    except Exception as exc:  # pragma: no cover - defensive logging
+        current_app.logger.exception("Failed to parse Word document: %s", exc)
+        knowledge_job_service.update_job(job_id, status="failed")
+        return jsonify({"error": "无法解析该 Word 文档，请检查格式后重试"}), 500
+
+
+@bp.get("/api/admin/theory/drafts/<batch_id>")
+@require_role("teacher")
+def list_theory_drafts(batch_id: str):
+    """Fetch generated knowledge point drafts by batch."""
+
+    current_user()
+    drafts = draft_knowledge_service.get_batch(batch_id)
+    if not drafts:
+        drafts = knowledge_job_service.list_drafts(batch_id)
+    return jsonify({"batchId": batch_id, "drafts": drafts}), 200
+
+
+@bp.post("/api/admin/theory/drafts/<batch_id>/approve")
+@require_role("teacher")
+def approve_theory_drafts(batch_id: str):
+    """Approve drafts -> create/merge knowledge points in Neo4j (no relations)."""
+
+    current_user()
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids is required"}), 400
+    approved = draft_knowledge_service.approve(batch_id, ids)
+    created: List[Dict[str, object]] = []
+    for draft in approved:
+        try:
+            payload = {
+                "name": draft.get("name", ""),
+                "summary": draft.get("summary", ""),
+                "content": draft.get("content", ""),
+                "bodyHtml": draft.get("bodyHtml", ""),
+                "tags": draft.get("tags") or [],
+            }
+            graph_service.create_knowledge_point(payload)
+            created.append(payload)
+        except Exception as exc:  # pragma: no cover - continue best-effort
+            current_app.logger.warning("Failed to create draft knowledge point: %s", exc)
+            continue
+    knowledge_job_service.mark_drafts(batch_id, ids, "approved")
+    return jsonify({"created": created, "count": len(created)}), 200
+
+
+@bp.post("/api/ai/knowledge-points/match")
+@require_role("teacher")
+def ai_match_knowledge_point():
+    """Auto-match selected text to an existing knowledge point (lightweight heuristic)."""
+
+    current_user()
+    data = request.get_json(force=True, silent=True) or {}
+    selection_text = normalize_text(data.get("selectionText") or "")
+    selection_html = data.get("selectionHtml") or ""
+    candidate_names = data.get("candidateNames") or []
+    lesson_id = data.get("lessonId") or ""
+    if not selection_text:
+        return jsonify({"error": "selectionText is required"}), 400
+
+    try:
+        overview = graph_service.get_knowledge_management_overview()
+    except Exception as exc:  # pragma: no cover - defensive log
+        current_app.logger.exception("Knowledge overview failed: %s", exc)
+        return jsonify({"error": "知识点索引获取失败"}), 500
+
+    records = overview.get("knowledge_cards") or []
+    if candidate_names:
+        candidate_set = {normalize_text(n) for n in candidate_names if n}
+        records = [r for r in records if normalize_text(r.get("name")) in candidate_set]
+
+    def _score(record: dict) -> float:
+        name = normalize_text(record.get("name") or "")
+        summary = normalize_text(record.get("summary") or "")
+        body = normalize_text(record.get("bodyHtml") or record.get("content") or "")
+        score = 0.0
+        if selection_text and selection_text in name:
+            score += 3
+        if selection_text and selection_text in summary:
+            score += 2
+        if selection_text and selection_text in body:
+            score += 1.5
+        tokens = [t for t in selection_text.split() if len(t) > 2]
+        for tok in tokens:
+            if tok in name:
+                score += 0.6
+            if tok in summary:
+                score += 0.4
+            if tok in body:
+                score += 0.3
+        lesson_ids = record.get("lessons") or []
+        if lesson_id and lesson_id in lesson_ids:
+            score += 0.5
+        return score
+
+    ranked = sorted(records, key=_score, reverse=True)
+    top_candidates = ranked[:12]
+
+    source = "heuristic"
+    confidence = 0.0
+    best = top_candidates[0] if top_candidates else None
+    reason = ""
+
+    try:
+        if top_candidates:
+            best, confidence, reason = ai_matching.match_knowledge_point(selection_text, top_candidates)
+            source = "deepseek"
+    except Exception as exc:
+        current_app.logger.warning("Deepseek match failed, fallback to heuristic: %s", exc)
+        best = top_candidates[0] if top_candidates else None
+        confidence = _score(best) if best else 0.0
+        source = "fallback"
+        reason = str(exc)
+
+    payload = {
+        "match": best or {},
+        "confidence": confidence,
+        "selection": {"text": selection_text, "html": selection_html},
+        "source": source,
+        "reason": reason,
+    }
+    return jsonify(payload), 200
+
+
+@bp.post("/api/ai/knowledge-points/match-rag")
+@require_role("teacher")
+def ai_match_knowledge_point_rag():
+    """RAG风格匹配：chunk + embedding-like 排序（Beta）。"""
+
+    current_user()
+    data = request.get_json(force=True, silent=True) or {}
+    selection_text = normalize_text(data.get("selectionText") or "")
+    selection_html = data.get("selectionHtml") or ""
+    candidate_names = data.get("candidateNames") or []
+    if not selection_text:
+        return jsonify({"error": "selectionText is required"}), 400
+
+    try:
+        overview = graph_service.get_knowledge_management_overview()
+    except Exception as exc:  # pragma: no cover
+        current_app.logger.exception("Knowledge overview failed: %s", exc)
+        return jsonify({"error": "知识点索引获取失败"}), 500
+
+    records = overview.get("knowledge_cards") or []
+    if candidate_names:
+        candidate_set = {normalize_text(n) for n in candidate_names if n}
+        records = [r for r in records if normalize_text(r.get("name")) in candidate_set]
+
+    match, confidence, context = rag_matcher.match(selection_text, records)
+    payload = {
+        "match": match,
+        "confidence": confidence,
+        "selection": {"text": selection_text, "html": selection_html},
+        "context": context,
+        "source": "rag-beta",
+    }
+    return jsonify(payload), 200
 
 
 @bp.post("/api/admin/students/<int:student_id>/password")

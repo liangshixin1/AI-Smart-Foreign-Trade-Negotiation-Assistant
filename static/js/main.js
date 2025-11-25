@@ -247,7 +247,34 @@ if (adminTheoryLessonDeleteBtn) {
 
 if (insertKnowledgeBtn) {
   insertKnowledgeBtn.addEventListener("click", () => {
-    openKnowledgeCardModal();
+    if (typeof triggerAutoKnowledgeMatch === "function") {
+      triggerAutoKnowledgeMatch();
+    } else if (typeof openKnowledgeCardFromSelection === "function") {
+      openKnowledgeCardFromSelection();
+    } else {
+      openKnowledgeCardModal();
+    }
+  });
+}
+
+if (typeof insertKnowledgeRagBtn !== "undefined" && insertKnowledgeRagBtn) {
+  insertKnowledgeRagBtn.addEventListener("click", () => {
+    if (typeof triggerRagMatchBeta === "function") {
+      triggerRagMatchBeta();
+    } else {
+      openKnowledgeCardModal();
+    }
+  });
+}
+
+if (autoBuildGraphBtn && autoBuildGraphInput) {
+  autoBuildGraphBtn.addEventListener("click", () => {
+    autoBuildGraphInput.click();
+  });
+  autoBuildGraphInput.addEventListener("change", () => {
+    if (typeof handleAutoBuildGraphUpload === "function") {
+      handleAutoBuildGraphUpload();
+    }
   });
 }
 

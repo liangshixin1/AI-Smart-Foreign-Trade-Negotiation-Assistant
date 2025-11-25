@@ -64,9 +64,9 @@ AI-Smart-Foreign-Trade-Negotiation-Assistant/
 - `docker-compose.neo4j.yml`: Docker编排配置
   - Neo4j 5.15 Community版
   - APOC插件支持
-  - 数据持久化
-  - 健康检查
-  - 内存优化配置
+- 数据持久化
+- 健康检查
+- 内存优化配置
 
 - `.env.example`: 环境变量模板
   - Neo4j连接配置
@@ -129,6 +129,12 @@ KnowledgePoint {
     version: Integer
 }
 ```
+
+### 3. 自动化 & 智能化（Beta）
+- **自动构建知识图谱**：上传 Word 教材 → 生成知识点草稿（持久化）→ 教师勾选通过写入 Neo4j（节点字段含 summary/content/bodyHtml/tags 等）
+- **智能知识点匹配**：前端“插入关键知识点”/“智能匹配 (Beta)”按钮，调用 DeepSeek 精排或 RAG(Beta) 接口，将选中文本自动插入知识卡
+- **RAG/LLM 预留**：`services/knowledge_generation.py`（LLM 生成草稿）、`rag_matcher.py`（轻量相似度），可替换为向量库 + 真·RAG；`knowledge_job_service.py` 持久化 job/draft
+- **草稿审核流**：接口 `/api/admin/theory/import-docx/drafts` 生成草稿；`/api/admin/theory/drafts/{id}` 查看；`/approve` 批量入图（无关系，后续可扩展关系草稿）
 
 ### 3. 知识分类体系
 

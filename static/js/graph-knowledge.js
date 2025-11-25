@@ -774,20 +774,17 @@ function showForm(mode = 'create', point = null) {
   // 填充表单数据
   if (point) {
     if (originalNameInput) originalNameInput.value = point.name;
-    document.getElementById('admin-graph-form-name').value = point.name || '';
-    const categorySelect = document.getElementById('admin-graph-form-category');
-    if (categorySelect) {
-      const pathKey = Array.isArray(point.category_path) && point.category_path.length > 0
-        ? point.category_path.join('/')
-        : point.category_path_key || point.category || '';
-      categorySelect.value = pathKey || '';
-    }
-    document.getElementById('admin-graph-form-description').value = point.description || '';
-    document.getElementById('admin-graph-form-difficulty').value = point.difficulty || 'beginner';
-    document.getElementById('admin-graph-form-importance').value = point.importance || 'medium';
-    document.getElementById('admin-graph-form-duration').value = point.estimated_duration || '';
-    document.getElementById('admin-graph-form-tags').value = point.tags ? point.tags.join(', ') : '';
-    document.getElementById('admin-graph-form-content').value = point.content || '';
+    setFieldValue('admin-graph-form-name', point.name || '');
+    const pathKey = Array.isArray(point.category_path) && point.category_path.length > 0
+      ? point.category_path.join('/')
+      : point.category_path_key || point.category || '';
+    setFieldValue('admin-graph-form-category', pathKey || '');
+    setFieldValue('admin-graph-form-description', point.description || '');
+    setFieldValue('admin-graph-form-difficulty', point.difficulty || 'beginner');
+    setFieldValue('admin-graph-form-importance', point.importance || 'medium');
+    setFieldValue('admin-graph-form-duration', point.estimated_duration || '');
+    setFieldValue('admin-graph-form-tags', point.tags ? point.tags.join(', ') : '');
+    setFieldValue('admin-graph-form-content', point.content || '');
 
     // 渲染前置依赖和关联
     renderPrerequisites(point.prerequisites || []);
@@ -824,8 +821,8 @@ function resetForm() {
   const form = document.getElementById('admin-graph-form');
   if (form) form.reset();
 
-  document.getElementById('admin-graph-form-mode').value = '';
-  document.getElementById('admin-graph-form-original-name').value = '';
+  setFieldValue('admin-graph-form-mode', '');
+  setFieldValue('admin-graph-form-original-name', '');
 
   renderPrerequisites([]);
   renderRelations([]);
@@ -1587,8 +1584,11 @@ function initGraphKnowledgeManagement() {
 
   const downloadTemplate = document.getElementById('admin-graph-download-template');
   if (downloadTemplate) {
-    downloadTemplate.href = '/api/graph/import/batch/template?include_existing=true';
-    downloadTemplate.download = '知识图谱批量导入模板.xlsx';
+    downloadTemplate.removeAttribute('href');
+    downloadTemplate.addEventListener('click', (event) => {
+      event.preventDefault();
+      downloadBatchTemplate();
+    });
   }
 
   const addPrereqBtn = document.getElementById('admin-graph-form-add-prerequisite');
@@ -1631,6 +1631,17 @@ function showStatus(elementId, message, type) {
 // 导出全局函数供HTML onclick使用
 if (typeof window !== 'undefined') {
   window.handleKnowledgePointClick = handleKnowledgePointClick;
+  window.showKnowledgeGraphForm = showForm;
   window.removePrerequisite = removePrerequisite;
   window.removeRelation = removeRelation;
+}
+
+// 安全设置表单字段的值，避免缺失元素时报错
+function setFieldValue(id, value) {
+  const el = document.getElementById(id);
+  if (!el) {
+    console.warn('[Graph] Field not found:', id);
+    return;
+  }
+  el.value = value ?? '';
 }
