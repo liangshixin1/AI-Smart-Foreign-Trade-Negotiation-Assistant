@@ -683,6 +683,7 @@ function insertKnowledgeCardIntoEditor(payload, { replaceNode = null } = {}) {
   if (adminTheoryLessonEditor) {
     const quill = adminTheoryLessonEditor;
     const source = window.Quill ? window.Quill.sources.USER : undefined;
+    const currentRange = quill.getSelection(true);
     if (replaceNode) {
       const blot = window.Quill ? window.Quill.find(replaceNode) : null;
       if (blot) {
@@ -695,8 +696,14 @@ function insertKnowledgeCardIntoEditor(payload, { replaceNode = null } = {}) {
         updateKnowledgeCardNode(replaceNode, normalized);
       }
     } else {
-      const range = quill.getSelection(true);
-      const index = range && typeof range.index === "number" ? range.index : quill.getLength();
+      let index = quill.getLength();
+      if (currentRange && typeof currentRange.index === "number") {
+        index = currentRange.index;
+        // 若有选中内容，先删除再插入卡片，达到“替换选中文本”的效果
+        if (currentRange.length && currentRange.length > 0) {
+          quill.deleteText(currentRange.index, currentRange.length, source);
+        }
+      }
       quill.insertEmbed(index, "knowledgePointCard", normalized, source);
       quill.insertText(index + 1, "\n", source);
       quill.setSelection(index + 2, 0, window.Quill ? window.Quill.sources.SILENT : undefined);
@@ -824,6 +831,200 @@ function getSelectionRectWithinEditor() {
   return rect;
 }
 
+function normalizeMatchText(value) {
+  return (value || "")
+    .toString()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function extractMatchTokens(selectionText) {
+  const normalized = normalizeMatchText(selectionText);
+  if (!normalized) {
+    return [];
+  }
+  const raw = normalized.split(/[^a-zA-Z0-9\u4e00-\u9fa5]+/);
+  const filtered = raw.map((t) => t.trim()).filter((t) => t.length > 1);
+  return Array.from(new Set(filtered)).slice(0, 30);
+}
+
+function shouldOverrideBodyWithSelection(payloadBody, payloadSummary, selection) {
+  const selectionText = selection ? normalizeMatchText(selection.html || selection.text || "") : "";
+  if (!selectionText || selectionText.length < 6) {
+    return false;
+  }
+  const bodyText = normalizeMatchText(payloadBody || "");
+  const summaryText = normalizeMatchText(payloadSummary || "");
+  // 如果正文为空/过短/与摘要相同，且选中文本更长，则用选中文本覆盖。
+  const isBodyMissing = !bodyText || bodyText.length < 12;
+  const isBodySameAsSummary = bodyText && summaryText && bodyText === summaryText;
+  const selectionMuchLonger = selectionText.length > bodyText.length + 16;
+  return isBodyMissing || isBodySameAsSummary || selectionMuchLonger;
+}
+
+function ensureBodyFromSelection(payload, selection) {
+  if (!selection || !payload) {
+    return payload;
+  }
+  if (shouldOverrideBodyWithSelection(payload.bodyHtml, payload.summary, selection)) {
+    payload.bodyHtml = selection.html || selection.text || payload.bodyHtml;
+  }
+  if (!payload.summary) {
+    payload.summary = summarizePreviewText(selection.text || selection.html || "", 120);
+  }
+  return payload;
+}
+
+function getLessonContextPayload() {
+  if (!state.admin || !state.admin.theory || !state.admin.theory.selectedLessonId) {
+    return null;
+  }
+  const ctx = typeof findAdminTheoryLesson === "function" ? findAdminTheoryLesson(state.admin.theory.selectedLessonId) : null;
+  if (!ctx || !ctx.lesson) {
+    return null;
+  }
+  return {
+    lessonId: ctx.lesson.id || "",
+    lessonTitle: ctx.lesson.title || ctx.lesson.name || "",
+    topicTitle: ctx.topic && (ctx.topic.title || ctx.topic.name) ? ctx.topic.title || ctx.topic.name : "",
+    chapterTitle: ctx.chapter && (ctx.chapter.title || ctx.chapter.displayTitle) ? ctx.chapter.title || ctx.chapter.displayTitle : "",
+  };
+}
+
+function computeHeuristicKnowledgeScores(selectionText, knowledgeList, { topK = 6 } = {}) {
+  const tokens = extractMatchTokens(selectionText);
+  const selectionNormalized = normalizeMatchText(selectionText);
+  const scored = (knowledgeList || [])
+    .map((item) => {
+      const name = item.name || "";
+      const summary = item.summary || "";
+      const body = item.bodyHtml || item.content || item.body || item.contentHtml || "";
+      const nameNorm = normalizeMatchText(name);
+      const summaryNorm = normalizeMatchText(summary);
+      const bodyNorm = normalizeMatchText(body);
+      let nameScore = 0;
+      let summaryScore = 0;
+      let bodyScore = 0;
+      if (selectionNormalized && nameNorm.includes(selectionNormalized)) {
+        nameScore += 3;
+      }
+      if (selectionNormalized && summaryNorm.includes(selectionNormalized)) {
+        summaryScore += 2;
+      }
+      if (selectionNormalized && bodyNorm.includes(selectionNormalized)) {
+        bodyScore += 1.5;
+      }
+      const matchedTokens = [];
+      tokens.forEach((tok) => {
+        if (!tok) return;
+        let hit = false;
+        if (nameNorm.includes(tok)) {
+          nameScore += 0.6;
+          hit = true;
+        }
+        if (summaryNorm.includes(tok)) {
+          summaryScore += 0.4;
+          hit = true;
+        }
+        if (bodyNorm.includes(tok)) {
+          bodyScore += 0.3;
+          hit = true;
+        }
+        if (hit) {
+          matchedTokens.push(tok);
+        }
+      });
+      const totalScore = nameScore + summaryScore + bodyScore;
+      return {
+        name,
+        summaryPreview: summarizePreviewText(summary || body || "", 80),
+        totalScore,
+        nameScore,
+        summaryScore,
+        bodyScore,
+        matchedTokens: Array.from(new Set(matchedTokens)),
+      };
+    })
+    .filter((item) => item && item.totalScore > 0)
+    .sort((a, b) => b.totalScore - a.totalScore)
+    .slice(0, topK);
+  return { tokens, scored };
+}
+
+function renderKnowledgeMatchDebug({ selection, heuristics, backend, label = "知识点匹配调试" } = {}) {
+  if (!adminTheoryMatchDebug) {
+    return;
+  }
+  const lines = [];
+  lines.push(`[${label}] 自动匹配未返回结果，展示调试信息方便排查。`);
+  if (selection && selection.text) {
+    lines.push(`选中文本: ${summarizePreviewText(selection.text, 180)}`);
+  }
+  if (heuristics && Array.isArray(heuristics.tokens) && heuristics.tokens.length > 0) {
+    lines.push(`候选词: ${heuristics.tokens.join(", ")}`);
+  }
+  if (heuristics && Array.isArray(heuristics.scored) && heuristics.scored.length > 0) {
+    lines.push("启发式预筛选 (name/summary/body 分值):");
+    heuristics.scored.forEach((item, idx) => {
+      lines.push(
+        `${idx + 1}. ${item.name || "(未命名)"} | 总分 ${item.totalScore.toFixed(2)} = name ${
+          item.nameScore.toFixed ? item.nameScore.toFixed(2) : item.nameScore
+        } + summary ${item.summaryScore.toFixed ? item.summaryScore.toFixed(2) : item.summaryScore} + body ${
+          item.bodyScore.toFixed ? item.bodyScore.toFixed(2) : item.bodyScore
+        }`
+      );
+      if (item.summaryPreview) {
+        lines.push(`    摘要: ${item.summaryPreview}`);
+      }
+      if (item.matchedTokens && item.matchedTokens.length > 0) {
+        lines.push(`    命中文本片段: ${item.matchedTokens.join(", ")}`);
+      }
+    });
+  } else {
+    lines.push("启发式预筛选：暂无得分，可能知识索引为空或文本过短。");
+  }
+  if (backend) {
+    const backendConfidence =
+      backend.confidence !== undefined && backend.confidence !== null
+        ? Number(backend.confidence).toFixed(3)
+        : "N/A";
+    const backendName =
+      backend.match && backend.match.name
+        ? backend.match.name
+        : backend.match && backend.match.name === ""
+        ? "(空字符串)"
+        : backend.match && backend.match.title
+        ? backend.match.title
+        : "(未返回名称)";
+    lines.push(
+      `Deepseek/后端返回: source=${backend.source || "-"} confidence=${backendConfidence} match=${backendName}`
+    );
+    if (backend.reason) {
+      lines.push(`LLM/Deepseek reason: ${backend.reason}`);
+    }
+    if (Array.isArray(backend.context) && backend.context.length > 0) {
+      lines.push("上下文/候选片段 (来自 RAG/context)：");
+      backend.context.slice(0, 4).forEach((ctx, index) => {
+        const score = ctx && typeof ctx.score === "number" ? ctx.score.toFixed(3) : "N/A";
+        const preview = summarizePreviewText((ctx && ctx.text) || "", 120);
+        lines.push(`  #${index + 1} ${ctx && ctx.name ? ctx.name : "(未知)"} | score=${score} | ${preview}`);
+      });
+    }
+  }
+  adminTheoryMatchDebug.textContent = lines.join("\n");
+  adminTheoryMatchDebug.classList.remove("hidden");
+}
+
+function clearKnowledgeMatchDebug() {
+  if (!adminTheoryMatchDebug) {
+    return;
+  }
+  adminTheoryMatchDebug.textContent = "";
+  adminTheoryMatchDebug.classList.add("hidden");
+}
+
 let knowledgeBubbleEl = null;
 
 function hideKnowledgeSelectionBubble() {
@@ -841,14 +1042,15 @@ async function handleBubbleMatchClick() {
     return;
   }
   hideKnowledgeSelectionBubble();
+  clearKnowledgeMatchDebug();
   updateInlineStatus(adminTheoryLessonStatus, "正在匹配知识点...", "muted");
+  const knowledgeList =
+    state.admin && state.admin.graph && Array.isArray(state.admin.graph.knowledgePoints)
+      ? state.admin.graph.knowledgePoints
+      : [];
+  const heuristics = computeHeuristicKnowledgeScores(selection.text, knowledgeList);
+  let backendDebug = null;
   try {
-    const knowledgeList =
-      state.admin &&
-      state.admin.graph &&
-      Array.isArray(state.admin.graph.knowledgePoints)
-        ? state.admin.graph.knowledgePoints
-        : [];
     const candidateNames = knowledgeList.map((k) => k.name).filter(Boolean);
     const response = await fetchWithAuth("/api/ai/knowledge-points/match", {
       method: "POST",
@@ -858,6 +1060,7 @@ async function handleBubbleMatchClick() {
         selectionHtml: selection.html,
         lessonId: state.admin && state.admin.theory ? state.admin.theory.selectedLessonId : "",
         candidateNames,
+        lessonContext: getLessonContextPayload(),
       }),
     });
     if (!response.ok) {
@@ -865,6 +1068,13 @@ async function handleBubbleMatchClick() {
       throw new Error(errData.error || "匹配失败");
     }
     const data = await response.json();
+    backendDebug = {
+      source: data.source,
+      confidence: data.confidence,
+      reason: data.reason,
+      match: data.match,
+      context: data.context,
+    };
     const match = data.match || {};
     const confidence = data.confidence || 0;
     const payload = {
@@ -875,9 +1085,17 @@ async function handleBubbleMatchClick() {
       imageUrl: match.imageUrl || "",
       knowledgeId: match.knowledgeId || match.sourceId || "",
     };
+    ensureBodyFromSelection(payload, selection);
     if (!payload.name) {
+      renderKnowledgeMatchDebug({
+        selection,
+        heuristics,
+        backend: backendDebug,
+        label: "关键知识点匹配",
+      });
       throw new Error("未匹配到知识点");
     }
+    clearKnowledgeMatchDebug();
     insertKnowledgeCardIntoEditor(payload);
     if (adminTheoryLessonStatus) {
       adminTheoryLessonStatus.textContent = `已关联到知识点「${payload.name}」(score ${confidence.toFixed(2)})`;
@@ -885,6 +1103,12 @@ async function handleBubbleMatchClick() {
   } catch (error) {
     console.error(error);
     updateInlineStatus(adminTheoryLessonStatus, error.message || "匹配失败", "error");
+    renderKnowledgeMatchDebug({
+      selection,
+      heuristics,
+      backend: backendDebug,
+      label: "关键知识点匹配",
+    });
     // 退回手动弹窗
     openKnowledgeCardModal({
       bodyHtml: selection ? selection.html : "",
@@ -960,14 +1184,15 @@ async function triggerRagMatchBeta() {
     openKnowledgeCardModal();
     return;
   }
+  clearKnowledgeMatchDebug();
   updateInlineStatus(adminTheoryLessonStatus, "RAG(Beta) 正在匹配知识点...", "muted");
+  const knowledgeList =
+    state.admin && state.admin.graph && Array.isArray(state.admin.graph.knowledgePoints)
+      ? state.admin.graph.knowledgePoints
+      : [];
+  const heuristics = computeHeuristicKnowledgeScores(selection.text, knowledgeList);
+  let backendDebug = null;
   try {
-    const knowledgeList =
-      state.admin &&
-      state.admin.graph &&
-      Array.isArray(state.admin.graph.knowledgePoints)
-        ? state.admin.graph.knowledgePoints
-        : [];
     const candidateNames = knowledgeList.map((k) => k.name).filter(Boolean);
     const response = await fetchWithAuth("/api/ai/knowledge-points/match-rag", {
       method: "POST",
@@ -976,6 +1201,7 @@ async function triggerRagMatchBeta() {
         selectionText: selection.text,
         selectionHtml: selection.html,
         candidateNames,
+        lessonContext: getLessonContextPayload(),
       }),
     });
     if (!response.ok) {
@@ -983,8 +1209,21 @@ async function triggerRagMatchBeta() {
       throw new Error(err.error || "RAG 匹配失败");
     }
     const data = await response.json();
+    backendDebug = {
+      source: data.source || "rag-beta",
+      confidence: data.confidence,
+      reason: data.reason,
+      match: data.match,
+      context: data.context,
+    };
     const match = data.match || {};
     if (!match.name) {
+      renderKnowledgeMatchDebug({
+        selection,
+        heuristics,
+        backend: backendDebug,
+        label: "RAG 智能匹配",
+      });
       throw new Error("未匹配到知识点");
     }
     const payload = {
@@ -995,6 +1234,8 @@ async function triggerRagMatchBeta() {
       imageUrl: match.imageUrl || "",
       knowledgeId: match.knowledgeId || match.sourceId || "",
     };
+    ensureBodyFromSelection(payload, selection);
+    clearKnowledgeMatchDebug();
     insertKnowledgeCardIntoEditor(payload);
     updateInlineStatus(
       adminTheoryLessonStatus,
@@ -1004,6 +1245,12 @@ async function triggerRagMatchBeta() {
   } catch (error) {
     console.error(error);
     updateInlineStatus(adminTheoryLessonStatus, error.message || "匹配失败", "error");
+    renderKnowledgeMatchDebug({
+      selection,
+      heuristics,
+      backend: backendDebug,
+      label: "RAG 智能匹配",
+    });
     openKnowledgeCardModal({
       bodyHtml: selection.html,
       summary: summarizePreviewText(selection.text || "", 140),

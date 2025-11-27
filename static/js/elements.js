@@ -176,6 +176,7 @@ const adminTheoryLessonSection = document.getElementById("admin-theory-lesson-se
 const adminTheoryLessonPublished = document.getElementById("admin-theory-lesson-published");
 const adminTheoryLessonDeleteBtn = document.getElementById("admin-theory-lesson-delete");
 const adminTheoryLessonStatus = document.getElementById("admin-theory-lesson-status");
+const adminTheoryMatchDebug = document.getElementById("admin-theory-match-debug");
 const adminTheoryLessonEditorHost = document.getElementById("admin-theory-lesson-editor");
 const adminTheoryLessonContent = document.getElementById("admin-theory-lesson-content");
 const adminTheoryLessonKnowledge = document.getElementById("admin-theory-lesson-knowledge");

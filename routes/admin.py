@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from concurrent.futures import TimeoutError
 from itertools import chain
@@ -11,10 +12,11 @@ from flask import Blueprint, jsonify, request, current_app
 from openpyxl import load_workbook
 
 import database
-from services import graph_service
 from services import ai_matching
 from services import docx_importer
 from services import draft_knowledge_service
+from services import embedding_service
+from services import graph_service
 from services import knowledge_job_service
 from services import rag_matcher
 from services.auth_service import current_user, require_role
@@ -271,6 +273,7 @@ def ai_match_knowledge_point():
     selection_html = data.get("selectionHtml") or ""
     candidate_names = data.get("candidateNames") or []
     lesson_id = data.get("lessonId") or ""
+    lesson_context = data.get("lessonContext") or {}
     if not selection_text:
         return jsonify({"error": "selectionText is required"}), 400
 
@@ -285,28 +288,86 @@ def ai_match_knowledge_point():
         candidate_set = {normalize_text(n) for n in candidate_names if n}
         records = [r for r in records if normalize_text(r.get("name")) in candidate_set]
 
+    def _cosine(a: Optional[List[float]], b: Optional[List[float]]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = sum(x * x for x in a) ** 0.5
+        norm_b = sum(y * y for y in b) ** 0.5
+        return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
+
+    def _extract_tokens(value: str) -> List[str]:
+        """适配中英文的轻量分词，中文拆成2-3字 ngram，英文按单词。"""
+        normalized = normalize_text(value)
+        raw_parts = re.findall(r"[\w\d]+|[\u4e00-\u9fa5]+", normalized)
+        tokens: List[str] = []
+        for part in raw_parts:
+            if not part or len(part) <= 1:
+                continue
+            if re.search(r"[\u4e00-\u9fa5]", part):
+                ngrams = set()
+                for n in (2, 3):
+                    ngrams.update(part[i : i + n] for i in range(0, max(len(part) - n + 1, 0)))
+                tokens.extend([ng for ng in ngrams if len(ng) >= 2])
+            else:
+                tokens.append(part)
+        return tokens
+
+    selection_tokens = _extract_tokens(selection_text)
+
+    # 语义向量相似度（sentence-transformers，若模型不可用则为空）
+    embed_scores: Dict[int, float] = {}
+    selection_vec: Optional[List[float]] = None
+    try:
+        selection_vecs = embedding_service.embed_texts([selection_text])
+        selection_vec = selection_vecs[0] if selection_vecs else None
+        if selection_vec:
+            candidate_texts = [
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            rec.get("name"),
+                            rec.get("summary"),
+                            rec.get("bodyHtml"),
+                            rec.get("content"),
+                            rec.get("description"),
+                        ],
+                    )
+                )
+                for rec in records
+            ]
+            candidate_vecs = embedding_service.embed_texts(candidate_texts)
+            if candidate_vecs:
+                for rec, vec in zip(records, candidate_vecs):
+                    embed_scores[id(rec)] = _cosine(selection_vec, vec)
+    except Exception as exc:  # pragma: no cover - safety
+        current_app.logger.warning("Embedding similarity failed: %s", exc)
+
     def _score(record: dict) -> float:
         name = normalize_text(record.get("name") or "")
         summary = normalize_text(record.get("summary") or "")
         body = normalize_text(record.get("bodyHtml") or record.get("content") or "")
         score = 0.0
+        # 适度提高中文匹配的局部敏感度
         if selection_text and selection_text in name:
             score += 3
         if selection_text and selection_text in summary:
             score += 2
         if selection_text and selection_text in body:
             score += 1.5
-        tokens = [t for t in selection_text.split() if len(t) > 2]
-        for tok in tokens:
+        for tok in selection_tokens:
             if tok in name:
                 score += 0.6
             if tok in summary:
-                score += 0.4
+                score += 0.45
             if tok in body:
-                score += 0.3
+                score += 0.35
         lesson_ids = record.get("lessons") or []
         if lesson_id and lesson_id in lesson_ids:
             score += 0.5
+        if embed_scores:
+            score += 3.2 * embed_scores.get(id(record), 0.0)
         return score
 
     ranked = sorted(records, key=_score, reverse=True)
@@ -319,7 +380,9 @@ def ai_match_knowledge_point():
 
     try:
         if top_candidates:
-            best, confidence, reason = ai_matching.match_knowledge_point(selection_text, top_candidates)
+            best, confidence, reason = ai_matching.match_knowledge_point(
+                selection_text, top_candidates, lesson_context=lesson_context
+            )
             source = "deepseek"
     except Exception as exc:
         current_app.logger.warning("Deepseek match failed, fallback to heuristic: %s", exc)
@@ -334,6 +397,8 @@ def ai_match_knowledge_point():
         "selection": {"text": selection_text, "html": selection_html},
         "source": source,
         "reason": reason,
+        "embed_score": embed_scores.get(id(best)) if best and embed_scores else None,
+        "lesson_context": lesson_context,
     }
     return jsonify(payload), 200
 

@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from services import embedding_service
 
 
 def _normalize(text: str) -> str:
@@ -49,6 +51,15 @@ def _cosine(a: Counter, b: Counter) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
+def _cosine_dense(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
 def rank_chunks(selection: str, chunks: List[Dict[str, object]], top_k: int = 5) -> List[Tuple[Dict[str, object], float]]:
     query_vec = _embed(selection)
     scored: List[Tuple[Dict[str, object], float]] = []
@@ -61,6 +72,49 @@ def rank_chunks(selection: str, chunks: List[Dict[str, object]], top_k: int = 5)
 
 
 def match(selection_text: str, knowledge_cards: List[Dict[str, object]]) -> Tuple[Dict[str, object], float, List[Dict[str, object]]]:
+    # 优先尝试真实向量（sentence-transformers），失败则退回 ngram chunk 逻辑
+    try:
+        selection_vecs = embedding_service.embed_texts([selection_text])
+        selection_vec = selection_vecs[0] if selection_vecs else None
+        if selection_vec:
+            texts = []
+            for card in knowledge_cards:
+                combined = " ".join(
+                    filter(
+                        None,
+                        [
+                            card.get("name"),
+                            card.get("summary"),
+                            card.get("bodyHtml"),
+                            card.get("content"),
+                        ],
+                    )
+                )
+                texts.append(combined)
+            candidate_vecs = embedding_service.embed_texts(texts)
+            if candidate_vecs:
+                scored_pairs = []
+                for card, vec in zip(knowledge_cards, candidate_vecs):
+                    score = _cosine_dense(selection_vec, vec)
+                    scored_pairs.append((card, score))
+                scored_pairs.sort(key=lambda x: x[1], reverse=True)
+                top = scored_pairs[:6]
+                best = top[0][0] if top else {}
+                confidence = top[0][1] if top else 0.0
+                context = [
+                    {
+                        "name": card.get("name"),
+                        "score": score,
+                        "text": (card.get("summary") or card.get("bodyHtml") or card.get("content") or "")[:260],
+                    }
+                    for card, score in top
+                ]
+                if best:
+                    return best, float(confidence), context
+    except Exception:
+        # silent fallback to ngram matching
+        pass
+
     chunks: List[Dict[str, object]] = []
     for card in knowledge_cards:
         body = card.get("bodyHtml") or card.get("content") or card.get("summary") or ""

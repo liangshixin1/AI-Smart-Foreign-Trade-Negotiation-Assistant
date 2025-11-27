@@ -1990,11 +1990,14 @@ def get_knowledge_management_overview() -> Dict[str, object]:
         card_category_path = _normalize_category_path_input(
             card.get("categoryPath") if card.get("categoryPath") is not None else card.get("category")
         )
+        summary = card.get("summary") or card.get("description") or card.get("content") or ""
+        body_html = card.get("bodyHtml") or card.get("content") or card.get("description") or ""
         knowledge_cards.append(
             {
                 "name": name,
-                "summary": card.get("summary") or "",
-                "bodyHtml": card.get("bodyHtml") or "",
+                "summary": summary,
+                "bodyHtml": body_html,
+                "content": card.get("content") or "",
                 "imageUrl": card.get("imageUrl") or "",
                 "imageAlt": card.get("imageAlt") or "",
                 "knowledgeId": card.get("knowledgeId") or "",
