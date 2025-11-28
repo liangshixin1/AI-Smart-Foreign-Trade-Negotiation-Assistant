@@ -1065,9 +1065,20 @@ async function handleFileSelected(event) {
 
     const result = await importExcelFile(file);
 
+    const stats = result.statistics || {};
+    const stages = stats.stages || {};
+    const topics = stats.topics || {};
+    const points = stats.points || {};
+    const topicsByStage = result.topicsByStage || {};
+    const topicSummary = Object.keys(topicsByStage).length
+      ? Object.entries(topicsByStage)
+          .map(([stage, count]) => `${stage}:${count}`)
+          .join('，')
+      : '无';
+
     showStatus(
       'admin-graph-import-status',
-      `导入成功！创建 ${result.created} 个，更新 ${result.updated} 个，失败 ${result.failed} 个。`,
+      `导入成功：阶段 ${stages.created || 0}/${stages.total || 0}，主题 ${topics.created || 0}/${topics.total || 0}（${topicSummary}），知识点 新建${points.created || 0} 更新${points.updated || 0} 失败${points.failed || 0}`,
       'success'
     );
 

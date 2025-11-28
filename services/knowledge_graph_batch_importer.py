@@ -70,16 +70,25 @@ class ImportResult:
     """导入结果"""
     success: bool
     points_stats: ImportStatistics
+    topics_stats: ImportStatistics
     relations_stats: ImportStatistics
     examples_stats: ImportStatistics
     errors: List[ValidationError] = field(default_factory=list)
     warnings: List[ValidationError] = field(default_factory=list)
     execution_time: float = 0.0
+    topics_by_stage: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
         return {
             "success": self.success,
             "statistics": {
+                "topics": {
+                    "total": self.topics_stats.total,
+                    "created": self.topics_stats.created,
+                    "updated": self.topics_stats.updated,
+                    "failed": self.topics_stats.failed,
+                    "success_rate": self.topics_stats.success_rate,
+                },
                 "points": {
                     "total": self.points_stats.total,
                     "created": self.points_stats.created,
@@ -127,6 +136,7 @@ class ImportResult:
                 for w in self.warnings
             ],
             "execution_time": f"{self.execution_time:.2f}s",
+            "topicsByStage": self.topics_by_stage,
         }
 
 
@@ -268,7 +278,8 @@ POINTS_TEMPLATE_HEADERS = [
     ("章节", "chapter", False, "例如：第一章 询盘"),
     ("知识点名称", "name", True, "例如：询盘基本流程"),
     ("所属阶段", "stage", False, "从下拉列表选择（询盘/报盘/还盘...）"),
-    ("知识点类型", "type", False, "概念型/技能型/文档型/案例型"),
+    ("二级主题", "topic", False, "例如：采购需求分析与供应商甄选"),
+    ("知识点类型", "type", False, "术语/技能/知识（或概念型/技能型/文档型等）"),
     ("难度", "difficulty", False, "初级/中级/高级"),
     ("重要性", "importance", False, "必修/推荐/选修（或：高/中/低）"),
     ("预计学时(分钟)", "estimatedMinutes", False, "例如：30"),
@@ -422,9 +433,11 @@ class KnowledgeGraphBatchImporter:
 
         result = ImportResult(
             success=False,
+            topics_stats=ImportStatistics(),
             points_stats=ImportStatistics(),
             relations_stats=ImportStatistics(),
             examples_stats=ImportStatistics(),
+            topics_by_stage={},
         )
 
         # 添加stages统计
@@ -492,9 +505,11 @@ class KnowledgeGraphBatchImporter:
             LOGGER.info("Phase 3: 开始导入...")
             (
                 stages_stats,
+                result.topics_stats,
                 result.points_stats,
                 result.relations_stats,
                 result.examples_stats,
+                result.topics_by_stage,
                 transaction_errors,
             ) = self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, created_by)
             result.errors.extend(transaction_errors)
@@ -1582,13 +1597,15 @@ class KnowledgeGraphBatchImporter:
         points_data: List[Dict],
         examples_data: List[Dict],
         created_by: str,
-    ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics, List[ValidationError]]:
+    ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics, Dict[str, int], List[ValidationError]]:
         """三表联动事务性导入"""
 
         stages_stats = ImportStatistics(total=len(flow_data))
+        topics_stats = ImportStatistics()
         points_stats = ImportStatistics(total=len(points_data))
         relations_stats = ImportStatistics()
         examples_stats = ImportStatistics(total=len(examples_data))
+        topics_by_stage: Dict[str, int] = {}
         errors: List[ValidationError] = []
 
         # 导入 graph_service
@@ -1597,6 +1614,8 @@ class KnowledgeGraphBatchImporter:
         # 第一步：导入 Stage 节点
         LOGGER.info("导入谈判流程阶段...")
         stage_name_map = {}  # 用于记录成功导入的阶段
+        topic_stage_map: Dict[str, str] = {}  # Topic -> Stage
+        point_topic_map: Dict[str, str] = {}  # Point -> Topic
 
         for stage in flow_data:
             clean_stage = {k: v for k, v in stage.items() if not k.startswith("_")}
@@ -1629,6 +1648,16 @@ class KnowledgeGraphBatchImporter:
                     message=str(e),
                 ))
 
+        # 从知识点中提取 Topic-Stage 映射
+        for point in points_data:
+            topic_name = point.get("topic")
+            stage_name = point.get("stage")
+            if topic_name and stage_name:
+                topic_stage_map[str(topic_name).strip()] = str(stage_name).strip()
+                point_topic_map[point.get("name")] = str(topic_name).strip()
+
+        topics_stats.total = len(topic_stage_map)
+
         # 第二步：创建 PRECEDES 关系（流程先后）
         LOGGER.info("创建流程关系...")
         sorted_stages = sorted(flow_data, key=lambda s: s.get("_order", 0))
@@ -1648,6 +1677,35 @@ class KnowledgeGraphBatchImporter:
                     relations_stats.failed += 1
                     relations_stats.total += 1
 
+        # 第二步半：创建 Topic 节点并关联 Stage
+        LOGGER.info("创建业务主题 Topic 节点...")
+        for topic_name, stage_name in topic_stage_map.items():
+            if stage_name not in stage_name_map:
+                continue
+            try:
+                from services import graph_service
+                driver = graph_service._get_driver()
+                with driver.session() as session:
+                    session.run(
+                        """
+                        MATCH (s:Stage {name: $stage})
+                        MERGE (t:Topic {name: $topic})
+                        ON CREATE SET t.createdAt = datetime(), t.createdBy = $createdBy, t.updatedAt = datetime(), t.updatedBy = $createdBy
+                        SET t.updatedAt = datetime(), t.updatedBy = $createdBy
+                        MERGE (s)-[:CONTAIN_TOPIC]->(t)
+                        """,
+                        {"stage": stage_name, "topic": topic_name, "createdBy": created_by},
+                    )
+                    topics_stats.created += 1
+                    topics_by_stage[stage_name] = topics_by_stage.get(stage_name, 0) + 1
+                    relations_stats.created += 1
+                    relations_stats.total += 1
+            except Exception as e:
+                LOGGER.error(f"创建 Topic 失败: {topic_name} -> {stage_name}: {e}")
+                topics_stats.failed += 1
+                relations_stats.failed += 1
+                relations_stats.total += 1
+
         # 第三步：导入知识点节点
         LOGGER.info("导入知识点节点...")
         point_name_map = {}
@@ -1658,6 +1716,7 @@ class KnowledgeGraphBatchImporter:
             # 提取名称并移除不应直接写入的字段
             point_name = clean_point.pop("name", None)
             stage_name = clean_point.pop("stage", None)
+            topic_name = clean_point.get("topic")
 
             # 字段名映射（CamelCase -> snake_case，符合 knowledge_service）
             field_mapping = {
@@ -1700,7 +1759,7 @@ class KnowledgeGraphBatchImporter:
                     knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
 
-                point_name_map[point_name] = {"stage": stage_name}
+                point_name_map[point_name] = {"stage": stage_name, "topic": topic_name}
 
             except Exception as e:
                 LOGGER.error(f"导入知识点失败: {point_name}: {e}")
@@ -1714,29 +1773,30 @@ class KnowledgeGraphBatchImporter:
                     message=str(e),
                 ))
 
-        # 第四步：创建 HAS_TOPIC 关系（阶段包含知识点）
-        LOGGER.info("创建阶段-知识点关联...")
+        # 第四步：创建 Topic->Point 树形关系（不直接挂 Stage）
+        LOGGER.info("创建主题-知识点关联...")
         for point_name, info in point_name_map.items():
-            stage_name = info.get("stage")
-
-            if stage_name and stage_name in stage_name_map:
+            topic_name = info.get("topic")
+            if topic_name and topic_name in topic_stage_map:
                 try:
-                    graph_service.link_knowledge_point_to_stage(point_name, stage_name)
-                    relations_stats.created += 1
-                    relations_stats.total += 1
-                    LOGGER.info(f"Linked '{point_name}' to Stage '{stage_name}'")
+                    from services import graph_service
+                    driver = graph_service._get_driver()
+                    with driver.session() as session:
+                        session.run(
+                            """
+                            MATCH (t:Topic {name: $topic, stage: $stage})
+                            MATCH (k:KnowledgePoint {name: $point})
+                            MERGE (t)-[:INCLUDE_POINT]->(k)
+                            """,
+                            {"topic": topic_name, "point": point_name, "stage": topic_stage_map[topic_name]},
+                        )
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+                        LOGGER.info(f"Linked '{point_name}' to Topic '{topic_name}'")
                 except Exception as e:
-                    LOGGER.error(f"关联知识点到阶段失败: {point_name} -> {stage_name}: {e}")
+                    LOGGER.error(f"关联知识点到主题失败: {point_name} -> {topic_name}: {e}")
                     relations_stats.failed += 1
                     relations_stats.total += 1
-                    errors.append(ValidationError(
-                        severity="ERROR",
-                        table="relations",
-                        row=point.get("_row", 0),
-                        field="所属阶段",
-                        value=stage_name,
-                        message=str(e),
-                    ))
 
         # 第五步：创建知识点之间的关系
         LOGGER.info("创建知识点关系...")
@@ -1796,7 +1856,7 @@ class KnowledgeGraphBatchImporter:
                         message=str(e),
                     ))
 
-        return stages_stats, points_stats, relations_stats, examples_stats, errors
+        return stages_stats, topics_stats, points_stats, relations_stats, examples_stats, topics_by_stage, errors
 
     def _create_stage_node(self, stage_data: Dict, created_by: str) -> None:
         """创建 Stage 节点（直接操作 Neo4j）"""
@@ -2105,7 +2165,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         ("第一步：填写「知识点主表」", True, 12),
         ("  1. 章节：例如「第一章 询盘」", False, 11),
         ("  2. 知识点名称：必填，例如「询盘基本流程」", False, 11),
-        ("  3. 知识点类型：从下拉菜单选择（概念型/技能型/文档型/案例型）", False, 11),
+        ("  3. 知识点类型：从下拉菜单选择（术语/技能/知识，或概念型/技能型/文档型/案例型等）", False, 11),
         ("  4. 难度：从下拉菜单选择（初级/中级/高级）", False, 11),
         ("  5. 重要性：从下拉菜单选择（必修/推荐/选修）", False, 11),
         ("  6. 预计学时：填写数字，单位为分钟", False, 11),
@@ -2210,7 +2270,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
         stages_formula = f'"{",".join(existing_stages)}"'
     else:
         # 使用默认阶段列表
-        stages_formula = '"询盘,报盘,还盘,接受,签订合同,备货,报检报关,装运,保险,结汇"'
+        stages_formula = '"询盘,报盘,还盘,接受与订货,包装与装运,付款与交货,商检,保险与仲裁,投诉,索赔与理赔"'
 
     stage_validation = DataValidation(
         type="list",
@@ -2224,10 +2284,12 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     ws.add_data_validation(stage_validation)
     stage_validation.add("C3:C1000")  # 所属阶段在第3列
 
+    # 二级主题列提示（不做校验，保留自由文本）
+
     # 知识点类型下拉菜单
     type_validation = DataValidation(
         type="list",
-        formula1='"概念型,技能型,文档型,案例型,工具型,理论型,法规型"',
+        formula1='"术语,技能,知识,概念型,技能型,文档型,案例型,工具型,理论型,法规型"',
         allow_blank=True
     )
     type_validation.error = "请从下拉列表中选择知识点类型"
@@ -2235,7 +2297,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     type_validation.prompt = "选择知识点类型"
     type_validation.promptTitle = "提示"
     ws.add_data_validation(type_validation)
-    type_validation.add("D3:D1000")  # 知识点类型移到第4列
+    type_validation.add("E3:E1000")  # 知识点类型移到第5列
 
     # 难度下拉菜单
     difficulty_validation = DataValidation(
@@ -2246,7 +2308,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     difficulty_validation.error = "请从下拉列表中选择：初级、中级、高级"
     difficulty_validation.errorTitle = "输入错误"
     ws.add_data_validation(difficulty_validation)
-    difficulty_validation.add("E3:E1000")  # 难度移到第5列
+    difficulty_validation.add("F3:F1000")  # 难度移到第6列
 
     # 重要性下拉菜单
     importance_validation = DataValidation(
@@ -2257,7 +2319,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     importance_validation.error = "请从下拉列表中选择：必修、推荐、选修"
     importance_validation.errorTitle = "输入错误"
     ws.add_data_validation(importance_validation)
-    importance_validation.add("F3:F1000")  # 重要性移到第6列
+    importance_validation.add("G3:G1000")  # 重要性移到第7列
 
     # 预计学时数字验证（只能输入正整数）
     minutes_validation = DataValidation(
@@ -2271,7 +2333,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     minutes_validation.prompt = "填写预计学习时长（分钟），例如：30"
     minutes_validation.promptTitle = "提示"
     ws.add_data_validation(minutes_validation)
-    minutes_validation.add("G3:G1000")  # 预计学时移到第7列
+    minutes_validation.add("H3:H1000")  # 预计学时移到第8列
 
     # 如果有现有知识点，为关系列添加下拉菜单
     if existing_points and len(existing_points) > 0:
@@ -2293,7 +2355,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
         relation_validation.promptTitle = "提示"
         ws.add_data_validation(relation_validation)
         # 应用到关系列
-        relation_validation.add("J3:L1000")
+        relation_validation.add("L3:N1000")
 
 
 def _add_sample_data(ws):
@@ -2301,7 +2363,8 @@ def _add_sample_data(ws):
     sample_data = [
         "第一章 询盘",
         "询盘基本流程",
-        "询盘",  # 所属阶段（新增）
+        "询盘",  # 所属阶段
+        "采购需求分析与供应商甄选",  # 二级主题
         "技能型",
         "初级",
         "必修",

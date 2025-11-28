@@ -13,6 +13,7 @@
       href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css"
     />
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
+    <script src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -21,20 +22,20 @@
     />
         <style>
       :root {
-        --primary-color: #ff4040;
-        --primary-soft: #ff6b6b;
-        --primary-muted: rgba(255, 64, 64, 0.12);
+        --primary-color: #6ac4c9;
+        --primary-soft: #8bd8dc;
+        --primary-muted: rgba(106, 196, 201, 0.14);
         --surface-color: rgba(255, 255, 255, 0.96);
         --surface-muted: rgba(255, 255, 255, 0.85);
         --surface-border: rgba(148, 163, 184, 0.25);
-        --surface-shadow: 0 25px 45px -25px rgba(15, 23, 42, 0.25);
-        --surface-shadow-hover: 0 30px 55px -28px rgba(255, 64, 64, 0.28);
+        --surface-shadow: 0 25px 45px -25px rgba(13, 42, 56, 0.2);
+        --surface-shadow-hover: 0 30px 55px -28px rgba(106, 196, 201, 0.28);
         --text-strong: #0f172a;
         --text-muted: #6b7280;
         --background-gradient: radial-gradient(
             120% 120% at 50% 0%,
-            rgba(255, 216, 216, 0.32),
-            rgba(238, 242, 255, 0.62) 55%,
+            rgba(130, 220, 225, 0.28),
+            rgba(224, 242, 255, 0.62) 55%,
             #f8fafc 100%
           );
         --level-column-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
@@ -52,28 +53,28 @@
         --victory-border: rgba(16, 185, 129, 0.6);
         --victory-badge-bg: rgba(16, 185, 129, 0.16);
         --victory-badge-text: #047857;
-        --selection-glow: rgba(255, 64, 64, 0.32);
+        --selection-glow: rgba(106, 196, 201, 0.32);
         --muted-panel-bg: rgba(248, 250, 252, 0.75);
         --chapter-body-bg: rgba(255, 255, 255, 0.35);
         --selected-level-bg: rgba(59, 130, 246, 0.1);
         --selected-level-border: rgba(59, 130, 246, 0.35);
-        --file-button-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.28));
-        --file-button-text: #1d4ed8;
+        --file-button-bg: linear-gradient(135deg, rgba(106, 196, 201, 0.2), rgba(59, 130, 246, 0.2));
+        --file-button-text: #0f7682;
         --token-toolbar-bg: rgba(255, 255, 255, 0.98);
         --token-toolbar-border: rgba(148, 163, 184, 0.35);
         --token-toolbar-text: #1f2937;
-        --token-button-bg: rgba(59, 130, 246, 0.12);
-        --token-button-border: rgba(59, 130, 246, 0.25);
-        --token-button-hover-bg: rgba(59, 130, 246, 0.18);
+        --token-button-bg: rgba(106, 196, 201, 0.16);
+        --token-button-border: rgba(106, 196, 201, 0.32);
+        --token-button-hover-bg: rgba(106, 196, 201, 0.22);
         --token-button-hover-border: rgba(37, 99, 235, 0.45);
-        --token-button-text: #1d4ed8;
+        --token-button-text: #0f7682;
         --token-surface-bg: rgba(255, 255, 255, 0.98);
         --token-surface-border: rgba(148, 163, 184, 0.4);
         --token-surface-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
         --token-surface-placeholder: rgba(148, 163, 184, 0.7);
         --token-text: #1f2937;
-        --token-chip-bg: rgba(14, 165, 233, 0.14);
-        --token-chip-border: rgba(14, 165, 233, 0.4);
+        --token-chip-bg: rgba(106, 196, 201, 0.18);
+        --token-chip-border: rgba(106, 196, 201, 0.42);
         --token-chip-text: #0f172a;
         --token-chip-code-bg: rgba(14, 165, 233, 0.16);
         --token-chip-code-text: #0369a1;
@@ -89,11 +90,11 @@
         --student-entry-theory-shadow: 0 30px 50px -28px rgba(59, 130, 246, 0.28);
         --student-entry-practice-bg: linear-gradient(
           135deg,
-          rgba(244, 63, 94, 0.16),
-          rgba(251, 113, 133, 0.18)
+          rgba(106, 196, 201, 0.18),
+          rgba(14, 165, 233, 0.18)
         );
-        --student-entry-practice-border: rgba(244, 63, 94, 0.3);
-        --student-entry-practice-shadow: 0 30px 50px -28px rgba(244, 63, 94, 0.32);
+        --student-entry-practice-border: rgba(106, 196, 201, 0.35);
+        --student-entry-practice-shadow: 0 30px 50px -28px rgba(106, 196, 201, 0.28);
         --student-entry-text: #0f172a;
         --student-entry-muted: #475569;
         --student-entry-cta-bg: rgba(15, 23, 42, 0.08);
@@ -108,9 +109,9 @@
         --theory-button-hover-border: rgba(37, 99, 235, 0.55);
         --theory-button-active-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(129, 140, 248, 0.35));
         --theory-button-active-color: #0f172a;
-        --theory-badge-draft-bg: rgba(244, 63, 94, 0.16);
-        --theory-badge-draft-border: rgba(244, 63, 94, 0.4);
-        --theory-badge-draft-text: #be123c;
+        --theory-badge-draft-bg: rgba(106, 196, 201, 0.16);
+        --theory-badge-draft-border: rgba(106, 196, 201, 0.4);
+        --theory-badge-draft-text: #0f7682;
         --theory-badge-published-bg: rgba(16, 185, 129, 0.16);
         --theory-badge-published-border: rgba(16, 185, 129, 0.45);
         --theory-badge-published-text: #047857;
@@ -125,8 +126,8 @@
 
       @media (prefers-color-scheme: dark) {
         :root {
-          --primary-color: #fb7185;
-          --primary-soft: #f97373;
+          --primary-color: #6ac4c9;
+          --primary-soft: #8bd8dc;
           --primary-muted: rgba(251, 113, 133, 0.22);
           --surface-color: rgba(15, 23, 42, 0.92);
           --surface-muted: rgba(15, 23, 42, 0.85);
@@ -745,7 +746,7 @@
 
       .app-hero {
         position: relative;
-        background: linear-gradient(120deg, #ff4d57, #ff6b6b);
+      background: linear-gradient(120deg, #5fc0c5, #8bd8dc);
         border-bottom: none;
         color: #fff;
         box-shadow: 0 25px 45px -28px rgba(255, 64, 64, 0.45);
@@ -3548,6 +3549,14 @@
                       class="rounded-xl border border-emerald-500/70 px-3 py-1 text-xs text-emerald-300 transition hover:border-emerald-300 hover:text-emerald-100"
                     >
                       刷新图谱
+                    </button>
+                    <button
+                      id="admin-graph-toggle-renderer"
+                      type="button"
+                      class="rounded-xl border border-slate-700/70 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-300 hover:text-emerald-100"
+                      title="切换 ECharts / G6（Beta）渲染"
+                    >
+                      当前 ECharts
                     </button>
                   </div>
                 </div>

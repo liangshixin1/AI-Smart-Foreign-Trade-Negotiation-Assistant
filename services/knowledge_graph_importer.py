@@ -48,6 +48,33 @@ DEFAULT_POINT_TYPE = "concept"
 DEFAULT_POINT_DIFFICULTY = "intermediate"
 DEFAULT_POINT_IMPORTANCE = "recommended"
 
+# 节点类型映射（用于将 Excel 类型列映射到节点标签）
+POINT_TYPE_ALIASES = {
+    "terminology": "Terminology",
+    "term": "Terminology",
+    "concept": "Terminology",
+    "conceptual": "Terminology",
+    "术语": "Terminology",
+    "概念": "Terminology",
+    "概念型": "Terminology",
+    "概念性": "Terminology",
+    "概念类": "Terminology",
+    "知识点": "KnowledgePoint",
+    "知识": "KnowledgePoint",
+    "knowledge": "KnowledgePoint",
+    "knowledgepoint": "KnowledgePoint",
+    "skill": "Skill",
+    "skills": "Skill",
+    "技能": "Skill",
+    "技能型": "Skill",
+    "技能性": "Skill",
+    "业务流程": "Skill",
+    "流程": "Skill",
+    "流程型": "Skill",
+    "process": "Skill",
+    "practice": "Skill",
+}
+
 
 # ============================================
 # 数据结构定义
@@ -85,12 +112,14 @@ class ImportResult:
     """导入结果"""
     success: bool
     stages: ImportStats = field(default_factory=ImportStats)
+    topics: ImportStats = field(default_factory=ImportStats)
     knowledge_points: ImportStats = field(default_factory=ImportStats)
     practices: ImportStats = field(default_factory=ImportStats)
     relations: ImportStats = field(default_factory=ImportStats)
     errors: List[ImportError] = field(default_factory=list)
     warnings: List[ImportError] = field(default_factory=list)
     duration_seconds: float = 0.0
+    topics_by_stage: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
         """转换为字典格式（向后兼容：practices字段对外显示为examples）"""
@@ -103,6 +132,13 @@ class ImportResult:
                     "updated": self.stages.updated,
                     "failed": self.stages.failed,
                     "success_rate": self.stages.success_rate,
+                },
+                "topics": {
+                    "total": self.topics.total,
+                    "created": self.topics.created,
+                    "updated": self.topics.updated,
+                    "failed": self.topics.failed,
+                    "success_rate": self.topics.success_rate,
                 },
                 "points": {
                     "total": self.knowledge_points.total,
@@ -149,6 +185,7 @@ class ImportResult:
                 for w in self.warnings
             ],
             "execution_time": f"{self.duration_seconds:.2f}s",
+            "topicsByStage": self.topics_by_stage,
         }
 
 
@@ -167,6 +204,14 @@ class KnowledgeGraphImporter:
             neo4j_driver: Neo4j数据库驱动
         """
         self.driver = neo4j_driver
+
+    def _resolve_node_label(self, raw_type: Optional[str]) -> str:
+        """根据导入类型返回节点标签,默认为 KnowledgePoint。"""
+
+        if raw_type is None:
+            return "KnowledgePoint"
+        normalized = str(raw_type).strip().lower()
+        return POINT_TYPE_ALIASES.get(normalized, "KnowledgePoint")
 
     def import_from_excel(
         self,
@@ -472,6 +517,8 @@ class KnowledgeGraphImporter:
                     col_map["name"] = idx
                 elif clean_header == "所属阶段":
                     col_map["stage"] = idx
+                elif clean_header in {"二级主题", "主题", "业务主题"}:
+                    col_map["topic"] = idx
                 elif clean_header == "知识点类型":
                     col_map["type"] = idx
                 elif clean_header == "难度":
@@ -519,6 +566,9 @@ class KnowledgeGraphImporter:
                 # 可选字段
                 if "stage" in col_map and len(row) > col_map["stage"] and row[col_map["stage"]]:
                     point["stage"] = str(row[col_map["stage"]]).strip()
+
+                if "topic" in col_map and len(row) > col_map["topic"] and row[col_map["topic"]]:
+                    point["topic"] = str(row[col_map["topic"]]).strip()
 
                 if "type" in col_map and len(row) > col_map["type"] and row[col_map["type"]]:
                     point["type"] = str(row[col_map["type"]]).strip()
@@ -754,44 +804,83 @@ class KnowledgeGraphImporter:
         # 第3步：创建KnowledgePoint节点
         LOGGER.info(f"第3步: 创建 {len(points)} 个KnowledgePoint节点...")
         point_names = set()
-        point_stage_map = {}  # 记录知识点和阶段的对应关系
+        point_stage_map = {}  # 记录知识点和阶段/主题的对应关系
+        topics: Dict[str, Dict[str, str]] = {}  # topic_key -> {"stage": stage_name, "name": topic_name}
 
         for point in points:
             point_name = point["name"]
             stage_name = point.pop("stage", None)  # 移除stage字段，不存入节点
+            topic_name = point.pop("topic", None)
+            node_label = self._resolve_node_label(point.get("type"))
             point.pop("_row", None)  # 移除辅助字段
 
             try:
+                if stage_name and stage_name not in stage_names:
+                    # 确保不存在于本次stage列表的阶段也被创建, 保证Topic/Point可挂接
+                    self._ensure_stage_stub(tx, stage_name, created_by)
+                    stage_names.add(stage_name)
+
                 # 检查是否已存在
                 existing = self._get_knowledge_point(tx, point_name)
                 if existing:
-                    self._update_knowledge_point(tx, point_name, point)
+                    self._update_knowledge_point(tx, point_name, point, node_label, created_by)
                     result.knowledge_points.updated += 1
                     LOGGER.debug(f"  更新知识点: {point_name}")
                 else:
-                    self._create_knowledge_point(tx, point)
+                    self._create_knowledge_point(tx, point, node_label, created_by)
                     result.knowledge_points.created += 1
                     LOGGER.debug(f"  创建知识点: {point_name}")
 
                 point_names.add(point_name)
                 if stage_name:
-                    point_stage_map[point_name] = stage_name
+                    point_stage_map[point_name] = {
+                        "stage": stage_name,
+                        "label": node_label,
+                        "topic": topic_name,
+                    }
+                if topic_name and stage_name:
+                    topic_key = f"{stage_name}::{topic_name}"
+                    topics[topic_key] = {"stage": stage_name, "name": topic_name}
 
             except Exception as e:
                 LOGGER.error(f"  创建/更新知识点失败 {point_name}: {e}")
                 result.knowledge_points.failed += 1
 
+        # 第3.5步：创建 Topic 节点并与 Stage 关联
+        LOGGER.info("第3.5步: 创建 Topic 节点并关联 Stage ...")
+        result.topics.total = len(topics)
+        for topic_key, payload in topics.items():
+            topic_name = payload.get("name")
+            stage_name = payload.get("stage")
+            if not stage_name or stage_name not in stage_names:
+                continue
+            try:
+                self._create_topic(tx, topic_name, stage_name, created_by)
+                result.topics.created += 1
+                result.topics_by_stage[stage_name] = result.topics_by_stage.get(stage_name, 0) + 1
+                result.relations.created += 1  # 计入 Stage-Topic 关系
+                result.relations.total += 1
+            except Exception as e:
+                LOGGER.error(f"  创建 Topic 失败 {topic_name}: {e}")
+                result.topics.failed += 1
+                result.relations.failed += 1
+                result.relations.total += 1
+
         # 第4步：创建Stage-KnowledgePoint的HAS_TOPIC关系
-        LOGGER.info(f"第4步: 创建Stage-KnowledgePoint关系...")
-        for point_name, stage_name in point_stage_map.items():
-            if stage_name in stage_names and point_name in point_names:
+        LOGGER.info(f"第4步: 创建Topic-Point关系 (树形)")
+        for point_name, stage_payload in point_stage_map.items():
+            stage_name = stage_payload["stage"]
+            topic_name = stage_payload.get("topic")
+            if topic_name and stage_name in stage_names and point_name in point_names:
                 try:
-                    self._create_has_topic_relation(tx, stage_name, point_name, created_by)
+                    self._create_include_point_relation(
+                        tx, topic_name, point_name, stage_name, created_by
+                    )
                     result.relations.created += 1
                     result.relations.total += 1
-                    LOGGER.debug(f"  创建关系: {stage_name} -> {point_name}")
+                    LOGGER.debug(f"  创建关系: {topic_name} -> {point_name}")
                 except Exception as e:
-                    LOGGER.error(f"  创建关系失败 {stage_name}->{point_name}: {e}")
+                    LOGGER.error(f"  创建关系失败 {topic_name}->{point_name}: {e}")
                     result.relations.failed += 1
                     result.relations.total += 1
 
@@ -877,71 +966,151 @@ class KnowledgeGraphImporter:
 
         tx.run(query, params)
 
-    def _get_knowledge_point(self, tx, name: str) -> Optional[Dict]:
-        """检查知识点是否存在（在事务中执行）"""
-        query = "MATCH (k:KnowledgePoint {name: $name}) RETURN k"
-        result = tx.run(query, {"name": name})
-        record = result.single()
-        return dict(record["k"]) if record else None
+    def _ensure_stage_stub(self, tx, stage_name: str, created_by: str):
+        """若Stage不存在则创建一个占位节点，避免引用失败"""
+        tx.run(
+            """
+            MERGE (s:Stage {name: $name})
+            ON CREATE SET s.createdAt = datetime(),
+                          s.createdBy = $createdBy,
+                          s.difficulty = $difficulty,
+                          s.estimatedDuration = $estimatedDuration,
+                          s.icon = $icon,
+                          s.color = $color,
+                          s.order = coalesce(s.order, 0),
+                          s.updatedAt = datetime(),
+                          s.updatedBy = $createdBy
+            """,
+            {
+                "name": stage_name,
+                "createdBy": created_by,
+                "difficulty": DEFAULT_STAGE_DIFFICULTY,
+                "estimatedDuration": DEFAULT_STAGE_DURATION,
+                "icon": DEFAULT_STAGE_ICON,
+                "color": DEFAULT_STAGE_COLOR,
+            },
+        )
 
-    def _create_knowledge_point(self, tx, point: Dict):
-        """创建知识点节点（在事务中执行）"""
+    def _create_topic(self, tx, topic_name: str, stage_name: str, created_by: str):
+        """创建 Topic 节点并与 Stage 建立 CONTAIN_TOPIC 关系"""
         query = """
-        CREATE (k:KnowledgePoint {
-            name: $name,
-            type: $type,
-            difficulty: $difficulty,
-            importance: $importance,
-            summary: $summary,
-            description: $description,
-            chapter: $chapter,
-            createdAt: datetime(),
-            updatedAt: datetime()
-        })
-        RETURN k.name AS name
+        MERGE (s:Stage {name: $stage_name})
+        MERGE (t:Topic {name: $name, stage: $stage_name})
+        ON CREATE SET
+            t.createdAt = datetime(),
+            t.updatedAt = datetime(),
+            t.createdBy = $createdBy,
+            t.updatedBy = $createdBy
+        SET
+            t.updatedAt = datetime(),
+            t.updatedBy = $createdBy
+        MERGE (s)-[r:CONTAIN_TOPIC]->(t)
+        ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+        RETURN t.name AS name
         """
         params = {
+            "name": topic_name,
+            "stage_name": stage_name,
+            "createdBy": created_by,
+        }
+        tx.run(query, params)
+
+    def _get_knowledge_point(self, tx, name: str) -> Optional[Dict]:
+        """检查知识点是否存在（在事务中执行）"""
+        query = """
+        MATCH (k:KnowledgePoint {name: $name})
+        RETURN k, labels(k) AS labels
+        """
+        result = tx.run(query, {"name": name})
+        record = result.single()
+        if not record:
+            return None
+        payload = dict(record["k"])
+        payload["labels"] = record.get("labels") or []
+        return payload
+
+    def _create_knowledge_point(self, tx, point: Dict, label: str, created_by: str):
+        """创建知识点节点（在事务中执行）"""
+        labels_cypher = "KnowledgePoint" if label == "KnowledgePoint" else f"KnowledgePoint:{label}"
+        query = f"""
+        MERGE (k:{labels_cypher} {{
+            name: $name
+        }})
+        ON CREATE SET
+            k.type = $type,
+            k.difficulty = $difficulty,
+            k.importance = $importance,
+            k.summary = $summary,
+            k.description = $description,
+            k.chapter = $chapter,
+            k.nodeType = $nodeType,
+            k.createdAt = datetime(),
+            k.createdBy = $createdBy,
+            k.updatedAt = datetime(),
+            k.updatedBy = $createdBy
+        SET
+            k.type = $type,
+            k.difficulty = $difficulty,
+            k.importance = $importance,
+            k.summary = $summary,
+            k.description = $description,
+            k.chapter = $chapter,
+            k.nodeType = $nodeType,
+            k.updatedAt = datetime(),
+            k.updatedBy = $createdBy
+        RETURN k.name AS name
+        """
+        point_type = str(point.get("type", DEFAULT_POINT_TYPE) or DEFAULT_POINT_TYPE).strip().lower()
+        params = {
             "name": point.get("name"),
-            "type": point.get("type", DEFAULT_POINT_TYPE),
+            "type": point_type,
             "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
             "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
             "description": point.get("description", ""),
             "chapter": point.get("chapter", ""),
+            "nodeType": label,
+            "createdBy": created_by,
         }
 
         tx.run(query, params)
 
-    def _update_knowledge_point(self, tx, name: str, point: Dict):
+    def _update_knowledge_point(self, tx, name: str, point: Dict, label: str, created_by: str):
         """更新知识点节点（在事务中执行）"""
-        query = """
-        MATCH (k:KnowledgePoint {name: $name})
+        query = f"""
+        MATCH (k:KnowledgePoint {{name: $name}})
+        SET k:{label}
         SET k.type = $type,
             k.difficulty = $difficulty,
             k.importance = $importance,
             k.summary = $summary,
             k.description = $description,
             k.chapter = $chapter,
-            k.updatedAt = datetime()
+            k.nodeType = $nodeType,
+            k.updatedAt = datetime(),
+            k.updatedBy = $createdBy
         RETURN k.name AS name
         """
+        point_type = str(point.get("type", DEFAULT_POINT_TYPE) or DEFAULT_POINT_TYPE).strip().lower()
         params = {
             "name": name,
-            "type": point.get("type", DEFAULT_POINT_TYPE),
+            "type": point_type,
             "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
             "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
             "description": point.get("description", ""),
             "chapter": point.get("chapter", ""),
+            "nodeType": label,
+            "createdBy": created_by,
         }
 
         tx.run(query, params)
 
-    def _create_has_topic_relation(self, tx, stage_name: str, point_name: str, created_by: str):
+    def _create_has_topic_relation(self, tx, stage_name: str, point_name: str, target_label: str, created_by: str):
         """创建HAS_TOPIC关系（在事务中执行）"""
         query = """
         MATCH (s:Stage {name: $stage_name})
-        MATCH (k:KnowledgePoint {name: $point_name})
+        MATCH (k {name: $point_name}) WHERE $target_label IN labels(k)
         MERGE (s)-[r:HAS_TOPIC]->(k)
         ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
         RETURN s.name AS stage, k.name AS point
@@ -949,9 +1118,31 @@ class KnowledgeGraphImporter:
         params = {
             "stage_name": stage_name,
             "point_name": point_name,
+            "target_label": target_label,
             "createdBy": created_by,
         }
 
+        tx.run(query, params)
+
+    def _create_include_point_relation(
+        self, tx, topic_name: str, point_name: str, stage_name: str, created_by: str
+    ):
+        """创建 Topic->Point 的 INCLUDE_POINT 关系并确保 Stage 关联"""
+        query = """
+        MATCH (t:Topic {name: $topic_name, stage: $stage_name})
+        MATCH (k {name: $point_name})
+        MERGE (t)-[r:INCLUDE_POINT]->(k)
+        ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+        WITH t
+        MATCH (s:Stage {name: $stage_name})
+        MERGE (s)-[:CONTAIN_TOPIC]->(t)
+        """
+        params = {
+            "topic_name": topic_name,
+            "point_name": point_name,
+            "stage_name": stage_name,
+            "createdBy": created_by,
+        }
         tx.run(query, params)
 
     def _create_practice(self, tx, practice: Dict, created_by: str) -> str:

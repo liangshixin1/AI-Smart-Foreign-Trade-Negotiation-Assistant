@@ -1214,6 +1214,7 @@ def list_knowledge_points() -> List[Dict[str, object]]:
     return _execute_read(
         """
         MATCH (k:KnowledgePoint)
+        OPTIONAL MATCH (t:Topic)-[:INCLUDE_POINT]->(k)
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
@@ -1227,6 +1228,12 @@ def list_knowledge_points() -> List[Dict[str, object]]:
                k.orderIndex AS orderIndex,
                k.sourceId AS knowledgeId,
                k.tags AS tags,
+               t.name AS topic,
+               CASE
+                   WHEN 'Terminology' IN labels(k) THEN 'Terminology'
+                   WHEN 'Skill' IN labels(k) THEN 'Skill'
+                   ELSE coalesce(k.nodeType, 'KnowledgePoint')
+               END AS nodeType,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount
         ORDER BY name
@@ -1280,13 +1287,18 @@ def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]
 
 
 def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
+    _refresh_node_type_labels()
+
     allowed_labels = [
         "Stage",
+        "Topic",
         "Chapter",
         "Practice",
         "TheoryTopic",
         "TheoryLesson",
         "KnowledgePoint",
+        "Skill",
+        "Terminology",
         "ProcessStep",
     ]
     nodes = _execute_read(
@@ -1297,12 +1309,13 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         WITH labels(n) AS labels, n AS node, stage.name AS stageName,
              CASE
                  WHEN 'Stage' IN labels(n) THEN 0
-                 WHEN 'ProcessStep' IN labels(n) THEN 1
-                 WHEN 'Chapter' IN labels(n) THEN 2
-                 WHEN 'Practice' IN labels(n) THEN 3
-                 WHEN 'TheoryTopic' IN labels(n) THEN 4
-                 WHEN 'TheoryLesson' IN labels(n) THEN 5
-                 WHEN 'KnowledgePoint' IN labels(n) THEN 6
+                 WHEN 'Topic' IN labels(n) THEN 1
+                 WHEN 'ProcessStep' IN labels(n) THEN 2
+                 WHEN 'Chapter' IN labels(n) THEN 3
+                 WHEN 'Practice' IN labels(n) THEN 4
+                 WHEN 'TheoryTopic' IN labels(n) THEN 5
+                 WHEN 'TheoryLesson' IN labels(n) THEN 6
+                 WHEN 'KnowledgePoint' IN labels(n) THEN 7
                  ELSE 99
              END AS priority
         WITH DISTINCT labels, node, stageName, priority
@@ -1346,6 +1359,7 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         node_payload[key] = {
             "key": key,
             "label": primary,
+            "nodeType": primary,
             "title": node.get("title") or node.get("name") or node.get("code") or identifier,
             "subtitle": _build_node_subtitle(primary, node),
             "level": level,
@@ -1395,13 +1409,61 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
     return {"nodes": list(node_payload.values()), "edges": edge_payload}
 
 
+def _refresh_node_type_labels() -> None:
+    """根据节点属性 type/nodeType 自动补打 Skill/Terminology 标签, 保证前端着色正确。"""
+
+    skill_aliases = [
+        "skill",
+        "skills",
+        "技能",
+        "技能型",
+        "技能性",
+        "业务流程",
+        "流程",
+        "流程型",
+        "process",
+        "practice",
+    ]
+    term_aliases = [
+        "terminology",
+        "term",
+        "concept",
+        "conceptual",
+        "术语",
+        "概念",
+        "概念型",
+        "概念性",
+        "概念类",
+    ]
+
+    driver = _get_driver()
+    with driver.session() as session:
+        session.run(
+            """
+            MATCH (k:KnowledgePoint)
+            WITH k, toLower(coalesce(k.nodeType, k.type, '')) AS t
+            WHERE t <> ''
+            FOREACH (_ IN CASE WHEN t IN $skill THEN [1] ELSE [] END |
+                SET k:Skill SET k.nodeType = 'Skill'
+            )
+            FOREACH (_ IN CASE WHEN t IN $term THEN [1] ELSE [] END |
+                SET k:Terminology SET k.nodeType = 'Terminology'
+            )
+            """,
+            {"skill": skill_aliases, "term": term_aliases},
+        )
+
+
 def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
     priority = [
         "Stage",
+        "Topic",
         "Chapter",
         "Practice",
         "TheoryTopic",
         "TheoryLesson",
+        "Skill",
+        "Terminology",
         "KnowledgePoint",
         "ProcessStep",
     ]
@@ -1414,7 +1476,11 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
 def _extract_node_identifier(label: Optional[str], node: Dict[str, object]) -> Optional[str]:
     if not label:
         return None
-    if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology"}:
+    if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology", "Topic"}:
+        if label == "Topic":
+            stage = node.get("stage") or node.get("stageName") or ""
+            name = node.get("name")
+            return f"{stage}:{name}" if stage else name
         return node.get("name")
     return node.get("id") or node.get("code") or node.get("title") or node.get("name")
 
@@ -1424,6 +1490,8 @@ def _build_node_subtitle(label: str, node: Dict[str, object]) -> Optional[str]:
         return node.get("description")
     if label == "TheoryLesson":
         return node.get("code")
+    if label == "Topic":
+        return node.get("description")
     if label == "KnowledgePoint":
         return None
     if label == "ProcessStep":
@@ -1442,11 +1510,14 @@ def _calculate_node_level(label: str) -> int:
     """
     level_map = {
         "Stage": 0,
+        "Topic": 1,
         "Chapter": 1,
         "TheoryTopic": 2,
         "Practice": 2,
         "TheoryLesson": 2,
         "KnowledgePoint": 3,
+        "Skill": 3,
+        "Terminology": 3,
         "ProcessStep": 4,
     }
     return level_map.get(label, 99)
@@ -1476,10 +1547,13 @@ def _get_edge_label(edge_type: Optional[str], relationship: Optional[Dict[str, o
             "REQUIRES": "依赖",
             "RELATES_TO": "关联",
             "HAS_TOPIC": "包含",
+            "CONTAIN_TOPIC": "包含",
+            "INCLUDE_POINT": "收录",
             "TESTS": "考察",
             "EXPLAINS": "讲解",
             "HAS_PRACTICE": "练习",
             "NEXT": "下一步",
+            "PRECEDES": "顺序",
         }
         return edge_labels.get(edge_type)
 
@@ -1533,12 +1607,17 @@ def list_knowledge_points_enhanced(
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               CASE
+                   WHEN 'Terminology' IN labels(k) THEN 'Terminology'
+                   WHEN 'Skill' IN labels(k) THEN 'Skill'
+                   ELSE coalesce(k.nodeType, 'KnowledgePoint')
+               END AS nodeType,
                k.isSystemRecommended AS isSystemRecommended,
                k.isArchived AS isArchived,
                count(DISTINCT p) AS practiceCount,
                count(DISTINCT l) AS lessonCount,
-               collect(DISTINCT prereq.name) AS prerequisites,
-               collect(DISTINCT related.name) AS relations
+                collect(DISTINCT prereq.name) AS prerequisites,
+                collect(DISTINCT related.name) AS relations
         ORDER BY name
     """
 
@@ -1551,6 +1630,7 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
     records = _execute_read(
         """
         MATCH (k:KnowledgePoint {name: $name})
+        OPTIONAL MATCH (t:Topic)-[:INCLUDE_POINT]->(k)
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
@@ -1566,6 +1646,12 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               t.name AS topic,
+               CASE
+                   WHEN 'Terminology' IN labels(k) THEN 'Terminology'
+                   WHEN 'Skill' IN labels(k) THEN 'Skill'
+                   ELSE coalesce(k.nodeType, 'KnowledgePoint')
+               END AS nodeType,
                collect(DISTINCT p.id) AS practices,
                collect(DISTINCT l.id) AS lessons,
                collect(DISTINCT prereq.name) AS prerequisites,
@@ -1589,6 +1675,8 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         "content": record.get("content"),
         "order_index": record.get("order_index"),
         "tags": [tag for tag in (record.get("tags") or []) if tag],
+        "nodeType": record.get("nodeType") or "KnowledgePoint",
+        "topic": record.get("topic"),
         "practices": [p for p in (record.get("practices") or []) if p],
         "lessons": [l for l in (record.get("lessons") or []) if l],
         "prerequisites": [p for p in (record.get("prerequisites") or []) if p],
@@ -1914,6 +2002,7 @@ def get_knowledge_management_overview() -> Dict[str, object]:
             "lessonCount": point.get("lessonCount", 0),
             "isSystemRecommended": bool(point.get("isSystemRecommended")),
             "isArchived": bool(point.get("isArchived")),
+            "nodeType": point.get("nodeType") or "KnowledgePoint",
         }
         overview_points.append(overview)
 
@@ -3108,9 +3197,9 @@ def _select_primary_label_for_visualization(labels: List[str]) -> str:
     """
     从节点的多个标签中选择主要标签
 
-    优先级: Stage > Skill > Terminology > KnowledgePoint > 其他
+    优先级: Stage > Topic > Skill > Terminology > KnowledgePoint > 其他
     """
-    priority = ["Stage", "Skill", "Terminology", "KnowledgePoint"]
+    priority = ["Stage", "Topic", "Skill", "Terminology", "KnowledgePoint"]
 
     for label in priority:
         if label in labels:
