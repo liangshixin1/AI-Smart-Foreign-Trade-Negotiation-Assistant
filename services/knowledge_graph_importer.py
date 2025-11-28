@@ -73,6 +73,28 @@ POINT_TYPE_ALIASES = {
     "流程型": "Skill",
     "process": "Skill",
     "practice": "Skill",
+    "document": "Document",
+    "doc": "Document",
+    "文档": "Document",
+    "文档型": "Document",
+}
+
+# KnowledgeCategory 名称映射（用于物理中间层）
+CATEGORY_NAME_ALIASES = {
+    "skill": "技能",
+    "技能": "技能",
+    "技能型": "技能",
+    "terminology": "术语",
+    "term": "术语",
+    "术语": "术语",
+    "概念": "术语",
+    "concept": "术语",
+    "knowledge": "知识",
+    "知识": "知识",
+    "knowledgepoint": "知识",
+    "document": "文档",
+    "doc": "文档",
+    "文档": "文档",
 }
 
 
@@ -212,6 +234,20 @@ class KnowledgeGraphImporter:
             return "KnowledgePoint"
         normalized = str(raw_type).strip().lower()
         return POINT_TYPE_ALIASES.get(normalized, "KnowledgePoint")
+
+    def _resolve_category_name(self, raw_type: Optional[str], node_label: str) -> str:
+        """根据类型或标签确定 KnowledgeCategory 名称。"""
+        if raw_type:
+            normalized = str(raw_type).strip().lower()
+            if normalized in CATEGORY_NAME_ALIASES:
+                return CATEGORY_NAME_ALIASES[normalized]
+
+        # 如果无法从原始类型解析,使用节点标签推断
+        label_normalized = node_label.lower()
+        if label_normalized in CATEGORY_NAME_ALIASES:
+            return CATEGORY_NAME_ALIASES[label_normalized]
+
+        return "知识"
 
     def import_from_excel(
         self,
@@ -804,14 +840,16 @@ class KnowledgeGraphImporter:
         # 第3步：创建KnowledgePoint节点
         LOGGER.info(f"第3步: 创建 {len(points)} 个KnowledgePoint节点...")
         point_names = set()
-        point_stage_map = {}  # 记录知识点和阶段/主题的对应关系
+        point_stage_map = {}  # 记录知识点和阶段/主题/分类的对应关系
         topics: Dict[str, Dict[str, str]] = {}  # topic_key -> {"stage": stage_name, "name": topic_name}
+        topic_categories: Dict[str, set] = {}  # topic_key -> {category_names}
 
         for point in points:
             point_name = point["name"]
             stage_name = point.pop("stage", None)  # 移除stage字段，不存入节点
             topic_name = point.pop("topic", None)
             node_label = self._resolve_node_label(point.get("type"))
+            category_name = self._resolve_category_name(point.get("type"), node_label)
             point.pop("_row", None)  # 移除辅助字段
 
             try:
@@ -837,10 +875,12 @@ class KnowledgeGraphImporter:
                         "stage": stage_name,
                         "label": node_label,
                         "topic": topic_name,
+                        "category": category_name,
                     }
                 if topic_name and stage_name:
                     topic_key = f"{stage_name}::{topic_name}"
                     topics[topic_key] = {"stage": stage_name, "name": topic_name}
+                    topic_categories.setdefault(topic_key, set()).add(category_name)
 
             except Exception as e:
                 LOGGER.error(f"  创建/更新知识点失败 {point_name}: {e}")
@@ -866,27 +906,51 @@ class KnowledgeGraphImporter:
                 result.relations.failed += 1
                 result.relations.total += 1
 
-        # 第4步：创建Stage-KnowledgePoint的HAS_TOPIC关系
-        LOGGER.info(f"第4步: 创建Topic-Point关系 (树形)")
-        for point_name, stage_payload in point_stage_map.items():
-            stage_name = stage_payload["stage"]
-            topic_name = stage_payload.get("topic")
-            if topic_name and stage_name in stage_names and point_name in point_names:
+        # 第4步：创建 KnowledgeCategory 节点并建立层级关系
+        LOGGER.info("第4步: 创建 KnowledgeCategory 并挂载到 Topic ...")
+        for topic_key, categories in topic_categories.items():
+            topic_payload = topics.get(topic_key)
+            if not topic_payload:
+                continue
+            topic_name = topic_payload.get("name")
+            stage_name = topic_payload.get("stage")
+            for category_name in categories:
                 try:
-                    self._create_include_point_relation(
-                        tx, topic_name, point_name, stage_name, created_by
+                    self._create_knowledge_category(
+                        tx, topic_name, stage_name, category_name, created_by
                     )
-                    result.relations.created += 1
+                    result.relations.created += 1  # 计入 Topic-Category 关系
                     result.relations.total += 1
-                    LOGGER.debug(f"  创建关系: {topic_name} -> {point_name}")
                 except Exception as e:
-                    LOGGER.error(f"  创建关系失败 {topic_name}->{point_name}: {e}")
+                    LOGGER.error(f"  创建 KnowledgeCategory 失败 {topic_name}-{category_name}: {e}")
                     result.relations.failed += 1
                     result.relations.total += 1
 
-        # 第5步：创建Practice节点和关系（如果有）
+        # 第5步：将知识点挂载到对应的 KnowledgeCategory
+        LOGGER.info("第5步: 将知识点挂载到 KnowledgeCategory ...")
+        for point_name, stage_payload in point_stage_map.items():
+            stage_name = stage_payload.get("stage")
+            topic_name = stage_payload.get("topic")
+            category_name = stage_payload.get("category")
+            if not (topic_name and category_name):
+                continue
+            if stage_name not in stage_names or point_name not in point_names:
+                continue
+            try:
+                self._attach_point_to_category(
+                    tx, topic_name, stage_name, category_name, point_name, created_by
+                )
+                result.relations.created += 1  # Category-Point 关系
+                result.relations.total += 1
+                LOGGER.debug(f"  创建关系: {topic_name}/{category_name} -> {point_name}")
+            except Exception as e:
+                LOGGER.error(f"  创建关系失败 {topic_name}/{category_name}->{point_name}: {e}")
+                result.relations.failed += 1
+                result.relations.total += 1
+
+        # 第6步：创建Practice节点和关系（如果有）
         if practices:
-            LOGGER.info(f"第5步: 创建 {len(practices)} 个Practice节点...")
+            LOGGER.info(f"第6步: 创建 {len(practices)} 个Practice节点...")
             for practice in practices:
                 kp_name = practice.pop("knowledgePoint", None)
                 practice.pop("_row", None)
@@ -1011,6 +1075,36 @@ class KnowledgeGraphImporter:
         params = {
             "name": topic_name,
             "stage_name": stage_name,
+            "createdBy": created_by,
+        }
+        tx.run(query, params)
+
+    def _create_knowledge_category(
+        self, tx, topic_name: str, stage_name: str, category_name: str, created_by: str
+    ):
+        """创建 KnowledgeCategory 节点并挂载到 Topic 下。"""
+        query = """
+        MERGE (t:Topic {name: $topic_name, stage: $stage_name})
+        MERGE (c:KnowledgeCategory {name: $category_name, topic: $topic_name, stage: $stage_name})
+        ON CREATE SET
+            c.type = $category_name,
+            c.createdAt = datetime(),
+            c.updatedAt = datetime(),
+            c.createdBy = $createdBy,
+            c.updatedBy = $createdBy
+        SET
+            c.updatedAt = datetime(),
+            c.updatedBy = $createdBy
+        MERGE (t)-[r:HAS_CATEGORY]->(c)
+        ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+        WITH t
+        MATCH (s:Stage {name: $stage_name})
+        MERGE (s)-[:CONTAIN_TOPIC]->(t)
+        """
+        params = {
+            "topic_name": topic_name,
+            "stage_name": stage_name,
+            "category_name": category_name,
             "createdBy": created_by,
         }
         tx.run(query, params)
@@ -1141,6 +1235,31 @@ class KnowledgeGraphImporter:
             "topic_name": topic_name,
             "point_name": point_name,
             "stage_name": stage_name,
+            "createdBy": created_by,
+        }
+        tx.run(query, params)
+
+    def _attach_point_to_category(
+        self,
+        tx,
+        topic_name: str,
+        stage_name: str,
+        category_name: str,
+        point_name: str,
+        created_by: str,
+    ):
+        """创建 Category->Point 的 CONTAINS 关系。"""
+        query = """
+        MATCH (c:KnowledgeCategory {name: $category_name, topic: $topic_name, stage: $stage_name})
+        MATCH (k:KnowledgePoint {name: $point_name})
+        MERGE (c)-[r:CONTAINS]->(k)
+        ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+        """
+        params = {
+            "topic_name": topic_name,
+            "stage_name": stage_name,
+            "category_name": category_name,
+            "point_name": point_name,
             "createdBy": created_by,
         }
         tx.run(query, params)

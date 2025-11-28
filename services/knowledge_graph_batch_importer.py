@@ -177,6 +177,24 @@ TYPE_CN_TO_EN = {
     "贸易术语": "concept",
 }
 
+# 分类名称映射（用于 KnowledgeCategory）
+CATEGORY_NAME_ALIASES = {
+    "skill": "技能",
+    "技能": "技能",
+    "技能型": "技能",
+    "terminology": "术语",
+    "term": "术语",
+    "术语": "术语",
+    "概念": "术语",
+    "concept": "术语",
+    "knowledge": "知识",
+    "知识": "知识",
+    "knowledgepoint": "知识",
+    "document": "文档",
+    "doc": "文档",
+    "文档": "文档",
+}
+
 # 难度级别
 DIFFICULTY_LEVELS = {
     "beginner": "初级",
@@ -1616,6 +1634,7 @@ class KnowledgeGraphBatchImporter:
         stage_name_map = {}  # 用于记录成功导入的阶段
         topic_stage_map: Dict[str, str] = {}  # Topic -> Stage
         point_topic_map: Dict[str, str] = {}  # Point -> Topic
+        topic_categories: Dict[str, set] = {}  # Topic -> {category_name}
 
         for stage in flow_data:
             clean_stage = {k: v for k, v in stage.items() if not k.startswith("_")}
@@ -1689,7 +1708,7 @@ class KnowledgeGraphBatchImporter:
                     session.run(
                         """
                         MATCH (s:Stage {name: $stage})
-                        MERGE (t:Topic {name: $topic})
+                        MERGE (t:Topic {name: $topic, stage: $stage})
                         ON CREATE SET t.createdAt = datetime(), t.createdBy = $createdBy, t.updatedAt = datetime(), t.updatedBy = $createdBy
                         SET t.updatedAt = datetime(), t.updatedBy = $createdBy
                         MERGE (s)-[:CONTAIN_TOPIC]->(t)
@@ -1717,6 +1736,8 @@ class KnowledgeGraphBatchImporter:
             point_name = clean_point.pop("name", None)
             stage_name = clean_point.pop("stage", None)
             topic_name = clean_point.get("topic")
+            raw_type = clean_point.get("type")
+            category_name = self._resolve_category_name(raw_type)
 
             # 字段名映射（CamelCase -> snake_case，符合 knowledge_service）
             field_mapping = {
@@ -1760,6 +1781,8 @@ class KnowledgeGraphBatchImporter:
                     points_stats.created += 1
 
                 point_name_map[point_name] = {"stage": stage_name, "topic": topic_name}
+                if topic_name:
+                    topic_categories.setdefault(str(topic_name).strip(), set()).add(category_name)
 
             except Exception as e:
                 LOGGER.error(f"导入知识点失败: {point_name}: {e}")
@@ -1773,32 +1796,80 @@ class KnowledgeGraphBatchImporter:
                     message=str(e),
                 ))
 
-        # 第四步：创建 Topic->Point 树形关系（不直接挂 Stage）
-        LOGGER.info("创建主题-知识点关联...")
-        for point_name, info in point_name_map.items():
-            topic_name = info.get("topic")
-            if topic_name and topic_name in topic_stage_map:
+        # 第四步：为每个 Topic 创建 KnowledgeCategory 并建立 HAS_CATEGORY
+        LOGGER.info("创建 Topic 下的 KnowledgeCategory ...")
+        from services import graph_service
+        driver = graph_service._get_driver()
+        for topic_name, categories in topic_categories.items():
+            stage_name = topic_stage_map.get(topic_name)
+            if not stage_name:
+                continue
+            for category_name in categories:
                 try:
-                    from services import graph_service
-                    driver = graph_service._get_driver()
                     with driver.session() as session:
                         session.run(
                             """
                             MATCH (t:Topic {name: $topic, stage: $stage})
-                            MATCH (k:KnowledgePoint {name: $point})
-                            MERGE (t)-[:INCLUDE_POINT]->(k)
+                            MERGE (c:KnowledgeCategory {name: $category, topic: $topic, stage: $stage})
+                            ON CREATE SET
+                                c.type = $category,
+                                c.createdAt = datetime(),
+                                c.updatedAt = datetime(),
+                                c.createdBy = $createdBy,
+                                c.updatedBy = $createdBy
+                            SET
+                                c.updatedAt = datetime(),
+                                c.updatedBy = $createdBy
+                            MERGE (t)-[:HAS_CATEGORY]->(c)
                             """,
-                            {"topic": topic_name, "point": point_name, "stage": topic_stage_map[topic_name]},
+                            {
+                                "topic": topic_name,
+                                "stage": stage_name,
+                                "category": category_name,
+                                "createdBy": created_by,
+                            },
                         )
                         relations_stats.created += 1
                         relations_stats.total += 1
-                        LOGGER.info(f"Linked '{point_name}' to Topic '{topic_name}'")
                 except Exception as e:
-                    LOGGER.error(f"关联知识点到主题失败: {point_name} -> {topic_name}: {e}")
+                    LOGGER.error(f"创建 KnowledgeCategory 失败: {topic_name}-{category_name}: {e}")
                     relations_stats.failed += 1
                     relations_stats.total += 1
 
-        # 第五步：创建知识点之间的关系
+        # 第五步：将知识点挂到对应 Category
+        LOGGER.info("创建 Category-Point 关联...")
+        for point_name, info in point_name_map.items():
+            topic_name = info.get("topic")
+            stage_name = topic_stage_map.get(topic_name) if topic_name else None
+            category_name = None
+            if topic_name in topic_categories:
+                # 重新解析分类（确保一致）
+                raw_point = next((p for p in points_data if p.get("name") == point_name), {})
+                category_name = self._resolve_category_name(raw_point.get("type"))
+            if topic_name and stage_name and category_name:
+                try:
+                    with driver.session() as session:
+                        session.run(
+                            """
+                            MATCH (c:KnowledgeCategory {name: $category, topic: $topic, stage: $stage})
+                            MATCH (k:KnowledgePoint {name: $point})
+                            MERGE (c)-[:CONTAINS]->(k)
+                            """,
+                            {
+                                "category": category_name,
+                                "topic": topic_name,
+                                "stage": stage_name,
+                                "point": point_name,
+                            },
+                        )
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+                except Exception as e:
+                    LOGGER.error(f"关联知识点到分类失败: {topic_name}/{category_name} -> {point_name}: {e}")
+                    relations_stats.failed += 1
+                    relations_stats.total += 1
+
+        # 第六步：创建知识点之间的关系
         LOGGER.info("创建知识点关系...")
         for point in points_data:
             if "_relations" not in point:
@@ -1832,7 +1903,7 @@ class KnowledgeGraphBatchImporter:
                                 message=str(e),
                             ))
 
-        # 第六步：创建案例节点
+        # 第七步：创建案例节点
         if examples_data:
             LOGGER.info("创建案例数据...")
             for example in examples_data:
@@ -1925,6 +1996,20 @@ class KnowledgeGraphBatchImporter:
 
         with driver.session() as session:
             session.run(query, params)
+
+    def _resolve_category_name(self, raw_type: Optional[str]) -> str:
+        """根据类型字段映射 KnowledgeCategory 名称。"""
+        if raw_type is not None:
+            normalized = str(raw_type).strip()
+            lower = normalized.lower()
+            # 先尝试中文到英文的映射
+            mapped = TYPE_CN_TO_EN.get(normalized) or TYPE_CN_TO_EN.get(lower)
+            candidate = mapped or lower
+            if candidate in CATEGORY_NAME_ALIASES:
+                return CATEGORY_NAME_ALIASES[candidate]
+            if normalized in CATEGORY_NAME_ALIASES:
+                return CATEGORY_NAME_ALIASES[normalized]
+        return "知识"
 
     def _generate_point_id(self, name: str) -> str:
         """生成知识点ID（基于名称的hash）"""

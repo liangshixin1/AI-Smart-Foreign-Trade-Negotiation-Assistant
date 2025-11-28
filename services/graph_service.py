@@ -1305,19 +1305,29 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         """
         MATCH (n)
         WHERE any(label IN labels(n) WHERE label IN $allowed)
-        OPTIONAL MATCH (n)<-[:HAS_TOPIC]-(stage:Stage)
-        WITH labels(n) AS labels, n AS node, stage.name AS stageName,
-             CASE
-                 WHEN 'Stage' IN labels(n) THEN 0
-                 WHEN 'Topic' IN labels(n) THEN 1
-                 WHEN 'ProcessStep' IN labels(n) THEN 2
-                 WHEN 'Chapter' IN labels(n) THEN 3
-                 WHEN 'Practice' IN labels(n) THEN 4
-                 WHEN 'TheoryTopic' IN labels(n) THEN 5
-                 WHEN 'TheoryLesson' IN labels(n) THEN 6
-                 WHEN 'KnowledgePoint' IN labels(n) THEN 7
-                 ELSE 99
-             END AS priority
+        OPTIONAL MATCH (s1:Stage)-[:CONTAIN_TOPIC]->(:Topic)-[:HAS_CATEGORY]->(:KnowledgeCategory)-[:CONTAINS]->(kp:KnowledgePoint)
+        WHERE kp = n
+        OPTIONAL MATCH (s2:Stage)-[:CONTAIN_TOPIC]->(:Topic)-[:HAS_CATEGORY]->(kc:KnowledgeCategory)
+        WHERE kc = n
+        OPTIONAL MATCH (s3:Stage)-[:CONTAIN_TOPIC]->(t:Topic)
+        WHERE t = n
+        OPTIONAL MATCH (s4:Stage)
+        WHERE s4 = n
+        WITH
+            labels(n) AS labels,
+            n AS node,
+            coalesce(s1.name, s2.name, s3.name, s4.name) AS stageName,
+            CASE
+                WHEN 'Stage' IN labels(n) THEN 0
+                WHEN 'Topic' IN labels(n) THEN 1
+                WHEN 'ProcessStep' IN labels(n) THEN 2
+                WHEN 'Chapter' IN labels(n) THEN 3
+                WHEN 'Practice' IN labels(n) THEN 4
+                WHEN 'TheoryTopic' IN labels(n) THEN 5
+                WHEN 'TheoryLesson' IN labels(n) THEN 6
+                WHEN 'KnowledgePoint' IN labels(n) THEN 7
+                ELSE 99
+            END AS priority
         WITH DISTINCT labels, node, stageName, priority
         ORDER BY priority ASC
         LIMIT $limit
@@ -1331,6 +1341,7 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         MATCH (a)-[r]->(b)
         WHERE any(label IN labels(a) WHERE label IN $allowed)
           AND any(label IN labels(b) WHERE label IN $allowed)
+          AND type(r) <> 'HAS_TOPIC'
         RETURN labels(a) AS sourceLabels, a AS source,
                labels(b) AS targetLabels, b AS target,
                type(r) AS type, r AS relationship
@@ -1339,11 +1350,23 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         {"allowed": allowed_labels, "limit": limit * 3},
     )
 
+    # 额外生成 Topic -> KnowledgePoint 的直连边（通过 Category 汇总）
+    extra_edges = _execute_read(
+        """
+        MATCH (t:Topic)-[:HAS_CATEGORY]->(:KnowledgeCategory)-[:CONTAINS]->(k:KnowledgePoint)
+        RETURN labels(t) AS sourceLabels, t AS source,
+               labels(k) AS targetLabels, k AS target,
+               'INCLUDE_POINT' AS type, {} AS relationship
+        """
+    )
+
     node_payload: Dict[str, Dict[str, object]] = {}
     for record in nodes:
         labels = record.get("labels") or []
         node = record.get("node") or {}
         primary = _select_primary_label(labels)
+        if primary == "KnowledgeCategory":
+            continue  # 不在总览中展示分类节点
         if not primary:
             continue
         identifier = _extract_node_identifier(primary, node)
@@ -1353,7 +1376,11 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
 
         # 计算层级和顺序
         level = _calculate_node_level(primary)
-        stage_name = record.get("stageName") or node.get("stage")
+        stage_name = (
+            record.get("stageName")
+            or node.get("stage")
+            or (node.get("name") if primary == "Stage" else None)
+        )
         order = node.get("orderIndex", 0) or node.get("order", 0) or 0
 
         node_payload[key] = {
@@ -1364,12 +1391,13 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
             "subtitle": _build_node_subtitle(primary, node),
             "level": level,
             "stage": stage_name,
+            "stageName": stage_name,
             "order": order,
             "group": primary,
         }
 
     edge_payload: List[Dict[str, object]] = []
-    for record in edges:
+    for record in edges + extra_edges:
         source_primary = _select_primary_label(record.get("sourceLabels") or [])
         target_primary = _select_primary_label(record.get("targetLabels") or [])
         source_identifier = _extract_node_identifier(source_primary, record.get("source") or {})
@@ -1458,6 +1486,7 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
     priority = [
         "Stage",
         "Topic",
+        "KnowledgeCategory",
         "Chapter",
         "Practice",
         "TheoryTopic",
@@ -1476,6 +1505,15 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
 def _extract_node_identifier(label: Optional[str], node: Dict[str, object]) -> Optional[str]:
     if not label:
         return None
+    if label == "KnowledgeCategory":
+        base = node.get("name") or node.get("type")
+        topic = node.get("topic") or node.get("topicName")
+        stage = node.get("stage") or node.get("stageName")
+        if topic:
+            return f"{topic}:{base}"
+        if stage and base:
+            return f"{stage}:{base}"
+        return base
     if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology", "Topic"}:
         if label == "Topic":
             stage = node.get("stage") or node.get("stageName") or ""
@@ -1503,14 +1541,15 @@ def _calculate_node_level(label: str) -> int:
     """
     计算节点的层级（用于层级布局）
     Level 0: Stage（阶段：询盘、报盘、还盘等）
-    Level 1: Chapter（章节）
-    Level 2: TheoryTopic / Practice / TheoryLesson
+    Level 1: Topic（二级主题）
+    Level 2: KnowledgeCategory（类型分类）
     Level 3: KnowledgePoint（知识点）
     Level 4: ProcessStep（流程步骤）
     """
     level_map = {
         "Stage": 0,
         "Topic": 1,
+        "KnowledgeCategory": 2,
         "Chapter": 1,
         "TheoryTopic": 2,
         "Practice": 2,
@@ -3074,7 +3113,7 @@ def get_enhanced_graph_visualization(
                 {
                     "id": str,
                     "label": str,
-                    "type": str,  # "Stage", "Skill", "Terminology", "KnowledgePoint"
+                    "type": str,  # "Stage", "Topic", "KnowledgeCategory", "KnowledgePoint"
                     "properties": {...},
                     "group": str,  # 用于前端分组着色
                 }
@@ -3095,22 +3134,27 @@ def get_enhanced_graph_visualization(
     """
     # 默认包含所有节点类型
     if node_types is None:
-        node_types = ["Stage", "Skill", "Terminology", "KnowledgePoint"]
-
-    # 构建节点类型过滤条件
-    labels_condition = " OR ".join([f'"{label}" IN labels(n)' for label in node_types])
+        node_types = ["Stage", "Topic", "KnowledgeCategory", "KnowledgePoint"]
 
     # 查询节点
-    nodes_query = f"""
-    MATCH (n)
-    WHERE {labels_condition}
+    nodes_query = """
+    MATCH (s:Stage)-[:CONTAIN_TOPIC]->(t:Topic)
+    OPTIONAL MATCH (t)-[:HAS_CATEGORY]->(c:KnowledgeCategory)
+    OPTIONAL MATCH (c)-[:CONTAINS]->(k:KnowledgePoint)
+    WITH collect(DISTINCT s) AS stages,
+         collect(DISTINCT t) AS topics,
+         [cat IN collect(DISTINCT c) WHERE cat IS NOT NULL] AS categories,
+         [kp IN collect(DISTINCT k) WHERE kp IS NOT NULL][0..$max_nodes] AS points
+    WITH stages + topics + categories + points AS nodes
+    UNWIND nodes AS n
+    WITH DISTINCT n
+    WHERE any(label IN labels(n) WHERE label IN $labels)
     RETURN n,
            labels(n) AS labels,
            id(n) AS id
-    LIMIT $max_nodes
     """
 
-    nodes_records = _execute_read(nodes_query, {"max_nodes": max_nodes})
+    nodes_records = _execute_read(nodes_query, {"max_nodes": max_nodes, "labels": node_types})
     nodes = []
     node_ids = set()
 
@@ -3197,9 +3241,9 @@ def _select_primary_label_for_visualization(labels: List[str]) -> str:
     """
     从节点的多个标签中选择主要标签
 
-    优先级: Stage > Topic > Skill > Terminology > KnowledgePoint > 其他
+    优先级: Stage > Topic > KnowledgeCategory > Skill > Terminology > KnowledgePoint > 其他
     """
-    priority = ["Stage", "Topic", "Skill", "Terminology", "KnowledgePoint"]
+    priority = ["Stage", "Topic", "KnowledgeCategory", "Skill", "Terminology", "KnowledgePoint"]
 
     for label in priority:
         if label in labels:
@@ -3214,6 +3258,16 @@ def _extract_node_identifier_for_visualization(primary_label: str, node_data: Di
 
     不同节点类型使用不同的标识字段
     """
+    if primary_label == "KnowledgeCategory":
+        base = node_data.get("name") or node_data.get("type") or "category"
+        topic = node_data.get("topic") or node_data.get("topicName")
+        stage = node_data.get("stage") or node_data.get("stageName")
+        if topic:
+            return f"{topic}:{base}"
+        if stage:
+            return f"{stage}:{base}"
+        return str(base)
+
     if primary_label in ["Stage", "Skill", "Terminology", "KnowledgePoint"]:
         return node_data.get("name") or str(node_data.get("id", "unknown"))
 

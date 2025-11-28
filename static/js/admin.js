@@ -4,7 +4,7 @@ let knowledgePointCardBlotRegistered = false;
 let adminGraphNetwork = null;
 let adminG6Graph = null;
 let adminGraphSelectionKey = null;
-let adminGraphRenderer = "echarts"; // "echarts" | "g6"
+let adminGraphRenderer = "g6-tree"; // 强制使用 G6 TreeGraph
 const knowledgeCardModalState = {
   editingNode: null,
   selectedKnowledge: null,
@@ -2182,412 +2182,129 @@ function applyGraphDrawerTheme(mode) {
 }
 
 function renderAdminGraphNetwork() {
-  if (adminGraphRenderer === "g6" && window.G6) {
-    return renderAdminGraphWithG6();
-  }
-
-  if (!adminGraphCanvas) {
-    return;
-  }
-  const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  if (!window.echarts) {
-    if (adminGraphStatus) {
-      adminGraphStatus.textContent = "ECharts 库未加载，无法渲染图谱";
-    }
+  if (!adminGraphCanvas || !window.G6 || !window.GraphTransformer) {
     return;
   }
 
-  // 销毁旧实例
   if (adminGraphNetwork) {
     adminGraphNetwork.dispose();
     adminGraphNetwork = null;
   }
-
-  // 初始化 ECharts 实例
-  adminGraphNetwork = window.echarts.init(adminGraphCanvas, 'dark');
-  adminGraphNetwork._nodeIndexMap = {};
-
-  // 节点类型颜色配置
-  const categoryColors = {
-    Stage: { color: '#7c3aed', borderColor: '#a78bfa' },
-    Topic: { color: '#f97316', borderColor: '#fdba74' },
-    Chapter: { color: '#312e81', borderColor: '#6366f1' },
-    Practice: { color: '#0f766e', borderColor: '#2dd4bf' },
-    TheoryTopic: { color: '#5b21b6', borderColor: '#a855f7' },
-    TheoryLesson: { color: '#9a3412', borderColor: '#fb923c' },
-    KnowledgePoint: { color: '#78350f', borderColor: '#facc15' },
-    Skill: { color: '#0ea5e9', borderColor: '#7dd3fc' },
-    Terminology: { color: '#475569', borderColor: '#cbd5e1' },
-    ProcessStep: { color: '#14532d', borderColor: '#22c55e' },
-  };
-
-  // 节点大小配置
-  const nodeSizes = {
-    Stage: 35,
-    Topic: 26,
-    Chapter: 28,
-    Practice: 24,
-    TheoryTopic: 24,
-    TheoryLesson: 24,
-    KnowledgePoint: 20,
-    Skill: 20,
-    Terminology: 18,
-    ProcessStep: 18,
-  };
-
-  // 构建分类列表
-  const categories = Object.keys(categoryColors).map(name => ({ name }));
-
-  const keyword =
-    state.admin.graph.searchKeyword ||
-    (document.getElementById('admin-graph-search-graph')?.value ||
-      document.getElementById('admin-graph-search')?.value ||
-      '').trim().toLowerCase();
-  const highlightedKeys = new Set();
-  const nodesRaw = networkData.nodes || [];
-  const edgesRaw = networkData.edges || [];
-  if (!state.admin.graph.expandedTopics) {
-    state.admin.graph.expandedTopics = new Set();
-  }
-  const expandedTopics = state.admin.graph.expandedTopics;
-
-  // 建立 Topic 集合与叶子关联
-  const topicKeys = new Set(nodesRaw.filter((n) => n.label === 'Topic').map((n) => n.key));
-  const leafToTopics = {};
-  edgesRaw.forEach((edge) => {
-    const { source, target } = edge;
-    if (topicKeys.has(source)) {
-      (leafToTopics[target] = leafToTopics[target] || new Set()).add(source);
-    }
-    if (topicKeys.has(target)) {
-      (leafToTopics[source] = leafToTopics[source] || new Set()).add(target);
-    }
-  });
-
-  // 为 Stage 节点分配固定位置，形成主轴
-  const stageNodes = nodesRaw
-    .filter((n) => n.label === 'Stage')
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-  if (stageNodes.length > 0) {
-    const stageSpacing = 180;
-    const offsetX = -((stageNodes.length - 1) * stageSpacing) / 2;
-    stageNodes.forEach((stage, idx) => {
-      stage.fx = offsetX + idx * stageSpacing;
-      stage.fy = 0;
-    });
+  if (adminG6Graph) {
+    adminG6Graph.destroy();
+    adminG6Graph = null;
   }
 
-  // 标记高亮/降噪
-  if (keyword) {
-    const keyToNode = {};
-    nodesRaw.forEach((n) => {
-      keyToNode[n.key] = n;
-    });
-
-    nodesRaw.forEach((n) => {
-      const title = (n.title || '').toLowerCase();
-      const subtitle = (n.subtitle || '').toLowerCase();
-      if (title.includes(keyword) || subtitle.includes(keyword)) {
-        n.isHighlighted = true;
-        highlightedKeys.add(n.key);
-        // 高亮所属阶段
-        if (n.stage) {
-          const stageKey = `Stage:${n.stage}`;
-          const stageNode = keyToNode[stageKey];
-          if (stageNode) {
-            stageNode.isHighlighted = true;
-            highlightedKeys.add(stageKey);
-          }
-        }
-      } else {
-        n.isDimmed = true;
-      }
-    });
+  const networkData = state.admin.graph.network || { nodes: [], edges: [] };
+  const treeData = window.GraphTransformer.transformToTree(networkData);
+  if (!treeData || !Array.isArray(treeData.children) || treeData.children.length === 0) {
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
+    }
+    return;
   }
+  const totalNodes = (networkData.nodes || []).length;
+  const totalEdges = (networkData.edges || []).length;
+  const width = adminGraphCanvas.clientWidth || 960;
+  const height = adminGraphCanvas.clientHeight || 820;
 
-  // 转换节点数据
-  const nodes = nodesRaw.map((node) => {
-    const category = node.label || 'KnowledgePoint';
-    const categoryIndex = categories.findIndex((c) => c.name === category);
-    const isStage = category === 'Stage';
-    const isTopic = category === 'Topic';
-    const highlighted = !!node.isHighlighted;
+  const stageColor = '#3b82f6';
+  const topicColor = '#f97316';
+  const pointColor = '#22c55e';
 
-    // 可见性：默认只显示 Stage 与 Topic；叶子需对应 Topic 展开才显示
-    let isVisible = isStage || isTopic;
-    if (!isVisible) {
-      const relatedTopics = leafToTopics[node.key];
-      if (!relatedTopics || relatedTopics.size === 0) {
-        isVisible = true; // 无主题挂载的叶子，直接显示
-      } else {
-        isVisible = Array.from(relatedTopics).some((t) => expandedTopics.has(t));
-      }
-    }
-
-    // 控制标签：默认只显示 Stage/Topic，高亮时强制显示
-    const showLabel = isVisible && (highlighted || isStage || isTopic);
-    const nameColor = highlighted ? '#0f172a' : '#1f2937';
-    const labelOpacity = highlighted ? 1 : showLabel ? 0.9 : 0;
-
-    const mapped = {
-      id: node.key,
-      name: node.title,
-      category: categoryIndex >= 0 ? categoryIndex : 0,
-      symbolSize: highlighted ? (nodeSizes[category] || 20) + 6 : nodeSizes[category] || 20,
-      value: node.subtitle || node.title,
-      isDimmed: node.isDimmed || !isVisible,
-      draggable: category !== 'Stage',
-      symbol: category === 'Topic' ? 'rect' : 'circle',
-      label: {
-        show: showLabel,
-        formatter: '{b}',
-        fontSize: isStage ? 14 : 11,
-        fontWeight: isStage ? 'bold' : 'normal',
-        color: nameColor,
-        opacity: labelOpacity,
-        textShadowBlur: highlighted ? 2 : 0,
-        textShadowColor: '#ffffff',
-      },
-      itemStyle: {
-        color: categoryColors[category]?.color || '#78350f',
-        borderColor: highlighted ? '#0f172a' : categoryColors[category]?.borderColor || '#facc15',
-        borderWidth: highlighted ? 3 : 2,
-        opacity: isVisible ? 0.95 : 0,
-      },
-    };
-
-    if (category === 'Skill' || category === 'Terminology') {
-      mapped.label.show = highlighted;
-    }
-
-    if (isStage && typeof node.fx === 'number' && typeof node.fy === 'number') {
-      mapped.fixed = true;
-      mapped.x = node.fx;
-      mapped.y = node.fy;
-      mapped.label.show = true;
-    }
-
-    return mapped;
-  });
-  nodes.forEach((n, idx) => {
-    adminGraphNetwork._nodeIndexMap[n.id] = idx;
-  });
-
-  // 更新搜索联想
-  function updateGraphSearchSuggestions() {
-    const sugg = document.getElementById('admin-graph-search-suggestions');
-    if (!sugg) return;
-    const kw = keyword || '';
-    const options = [];
-    if (kw) {
-      nodesRaw.forEach((n) => {
-        const title = n.title || '';
-        if (title.toLowerCase().includes(kw) && options.length < 10) {
-          options.push(title);
-        }
-      });
-    } else {
-      nodesRaw.slice(0, 10).forEach((n) => options.push(n.title || ''));
-    }
-    sugg.innerHTML = options
-      .filter(Boolean)
-      .map((t) => `<option value=\"${t.replace(/\"/g, '&quot;')}\"></option>`)
-      .join('');
-  }
-  updateGraphSearchSuggestions();
-
-  // 转换边数据
-  const visibleNodeIds = new Set(nodes.filter((n) => !n.isDimmed).map((n) => n.id));
-  const links = (networkData.edges || []).map((edge) => {
-    const showEdge = visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
-    return {
-      source: edge.source,
-      target: edge.target,
-      label: {
-        show: !!edge.label && showEdge && !edge.isDimmed,
-        formatter: edge.label || '',
-        fontSize: 10,
-        color: '#0f172a',
-        opacity: edge.isDimmed ? 0.25 : 0.75,
-      },
-      lineStyle: {
-        curveness: 0.2,
-        color: showEdge
-          ? edge.isDimmed
-            ? 'rgba(148,163,184,0.15)'
-            : 'rgba(100,116,139,0.5)'
-          : 'rgba(148,163,184,0.08)',
-        width: showEdge ? (edge.isDimmed ? 0.6 : 1.2) : 0,
-      },
-      _visible: showEdge,
-    };
-  }).map((edge) => {
-    if (keyword) {
-      const srcHighlighted = highlightedKeys.has(edge.source);
-      const tgtHighlighted = highlightedKeys.has(edge.target);
-      if (!srcHighlighted && !tgtHighlighted) {
-        edge.isDimmed = true;
-        edge.lineStyle.color = 'rgba(148,163,184,0.12)';
-        edge.lineStyle.width = 0.5;
-        edge.label.show = false;
-      } else {
-        edge.isDimmed = false;
-        edge.lineStyle.color = 'rgba(59,130,246,0.6)';
-        edge.lineStyle.width = 2;
-      }
-    }
-    return edge;
-  });
-
-  // ECharts 配置
-  const option = {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      formatter: (params) => {
-        if (params.dataType === 'node') {
-          return `<strong>${params.data.name}</strong><br/>${params.data.value || ''}`;
-        } else if (params.dataType === 'edge') {
-          return params.data.label?.formatter || '';
-        }
-        return '';
-      },
-      backgroundColor: 'rgba(15, 23, 42, 0.95)',
-      borderColor: '#334155',
-      textStyle: { color: '#e2e8f0' },
+  adminG6Graph = new G6.TreeGraph({
+    container: adminGraphCanvas,
+    width,
+    height,
+    linkCenter: true,
+    fitView: true,
+    modes: {
+      default: ['drag-canvas', 'zoom-canvas'],
     },
-    legend: [{
-      data: categories.map(c => c.name),
-      orient: 'vertical',
-      left: 10,
-      top: 20,
-      textStyle: { color: '#94a3b8', fontSize: 11 },
-      itemGap: 8,
-    }],
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      data: nodes,
-      links: links,
-      categories: categories,
-      roam: true,
-      draggable: true,
-      focusNodeAdjacency: true,
-      label: {
+    defaultNode: {
+      style: {
+        radius: 8,
+        lineWidth: 1,
+      },
+      labelCfg: {
         position: 'right',
-      },
-      edgeLabel: {
-        fontSize: 10,
-        color: '#0f172a',
-      },
-      lineStyle: {
-        color: 'rgba(100,116,139,0.5)',
-        width: 1.2,
-        curveness: 0.22,
-      },
-      emphasis: {
-        focus: 'adjacency',
-        label: {
-          fontSize: 13,
-          fontWeight: 'bold',
-        },
-        lineStyle: {
-          width: 3,
-          color: '#3b82f6',
+        offset: 8,
+        style: {
+          fontSize: 12,
+          fill: '#0f172a',
         },
       },
-      force: {
-        repulsion: 520,
-        gravity: 0.08,
-        edgeLength: 140,
-        layoutAnimation: true,
+    },
+    defaultEdge: {
+      type: 'cubic-horizontal',
+      style: {
+        stroke: 'rgba(148,163,184,0.8)',
+        lineWidth: 1.2,
       },
-    }],
-  };
+    },
+    layout: {
+      type: 'compactBox',
+      direction: 'LR',
+      getId: (d) => d.id,
+      getHeight: () => 20,
+      getWidth: (d) => (d.type === 'Stage' ? 140 : d.type === 'Topic' ? 120 : 10),
+      getVGap: () => 18,
+      getHGap: () => 60,
+    },
+  });
 
-  // 设置配置并渲染
-  adminGraphNetwork.setOption(option);
-
-  // 若有高亮结果，自动聚焦第一个
-  if (keyword && highlightedKeys.size > 0) {
-    const firstKey = highlightedKeys.values().next().value;
-    const idx = adminGraphNetwork._nodeIndexMap[firstKey];
-    if (typeof idx === 'number') {
-      try {
-        adminGraphNetwork.dispatchAction({
-          type: 'focusNodeAdjacency',
-          seriesIndex: 0,
-          dataIndex: idx,
-        });
-        adminGraphNetwork.dispatchAction({
-          type: 'showTip',
-          seriesIndex: 0,
-          dataIndex: idx,
-        });
-      } catch (e) {
-        console.warn('focus node failed', e);
-      }
+  adminG6Graph.node((node) => {
+    if (node.type === 'Stage') {
+      return {
+        type: 'rect',
+        size: [140, 36],
+        style: { fill: stageColor, stroke: '#2563eb', radius: 10, lineWidth: 1.4 },
+        labelCfg: { style: { fill: '#fff', fontWeight: 700, fontSize: 13 } },
+      };
     }
+    if (node.type === 'Topic') {
+      return {
+        type: 'rect',
+        size: [120, 30],
+        style: { fill: topicColor, stroke: '#f59e0b', radius: 8, lineWidth: 1.2 },
+        labelCfg: { style: { fill: '#fff', fontWeight: 600, fontSize: 12 } },
+      };
+    }
+    return {
+      type: 'circle',
+      size: 8,
+      style: { fill: pointColor, stroke: '#16a34a', lineWidth: 1 },
+      labelCfg: { position: 'right', offset: 6, style: { fill: '#0f172a', fontSize: 11 } },
+    };
+  });
+
+  adminG6Graph.data(treeData);
+  adminG6Graph.render();
+  adminG6Graph.fitView(60);
+
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = `节点 ${totalNodes} · 关系 ${totalEdges}`;
   }
 
-  // 添加点击事件
-  adminGraphNetwork.on('click', (params) => {
-    if (params.dataType === 'node') {
-      const nodeId = params.data.id;
-      const rawNode = nodesRaw.find((n) => n.key === nodeId);
-      if (rawNode && rawNode.label === 'Topic') {
-        if (expandedTopics.has(nodeId)) {
-          expandedTopics.delete(nodeId);
-        } else {
-          expandedTopics.add(nodeId);
-        }
-        // 重新渲染以应用展开/收起
-        renderAdminGraphNetwork();
-        return;
-      }
-      handleGraphNodeSelection(nodeId);
+  adminG6Graph.on('node:click', (evt) => {
+    const item = evt.item;
+    if (!item) return;
+    const model = item.getModel();
+    if (model.children && model.children.length) {
+      model.collapsed = !model.collapsed;
+      adminG6Graph.layout();
+      adminG6Graph.fitView(60);
+    } else if (model.key) {
+      handleGraphNodeSelection(model.key);
     }
   });
 
-  // 搜索输入实时联动
-  const searchGraphInput =
-    document.getElementById('admin-graph-search-graph') ||
-    document.getElementById('admin-graph-search');
-  if (searchGraphInput && !searchGraphInput._graphSearchBound) {
-    searchGraphInput._graphSearchBound = true;
-    searchGraphInput.addEventListener('input', () => {
-      clearTimeout(searchGraphInput._graphSearchTimer);
-      searchGraphInput._graphSearchTimer = setTimeout(() => {
-        updateGraphSearchSuggestions();
-        refreshAdminGraph();
-      }, 180);
-    });
-  }
-
-  const toggleBtn = document.getElementById('admin-graph-toggle-renderer');
-  if (toggleBtn && !toggleBtn._bound) {
-    toggleBtn._bound = true;
-    const syncLabel = () => {
-      toggleBtn.textContent =
-        adminGraphRenderer === "echarts" ? "当前 ECharts" : "当前 G6 (Beta)";
-    };
-    syncLabel();
-    toggleBtn.addEventListener('click', () => {
-      adminGraphRenderer = adminGraphRenderer === "echarts" ? "g6" : "echarts";
-      syncLabel();
-      refreshAdminGraph();
-    });
-  }
-
-  // 窗口大小改变时自动调整
   window.addEventListener('resize', () => {
-    if (adminGraphNetwork) {
-      adminGraphNetwork.resize();
-    }
     if (adminG6Graph) {
       const w = adminGraphCanvas?.clientWidth || 800;
-      const h = adminGraphCanvas?.clientHeight || 420;
+      const h = adminGraphCanvas?.clientHeight || 820;
       adminG6Graph.changeSize(w, h);
+      adminG6Graph.fitView(60);
     }
   });
 }
@@ -2612,6 +2329,7 @@ function renderAdminGraphWithG6() {
   const colorMap = {
     Stage: "#6c63ff",
     Topic: "#f97316",
+    KnowledgeCategory: "#cbd5e1",
     Skill: "#0ea5e9",
     Terminology: "#475569",
     KnowledgePoint: "#22c55e",
@@ -2623,17 +2341,19 @@ function renderAdminGraphWithG6() {
   };
 
   const nodes = (networkData.nodes || []).map((n, idx, arr) => {
-    const labelVisible = n.label === "Stage" || n.label === "Topic";
+    const labelVisible =
+      n.label === "Stage" || n.label === "Topic" || n.label === "KnowledgeCategory";
     let size = 24;
     if (n.label === "Stage") size = 46;
     else if (n.label === "Topic") size = 32;
+    else if (n.label === "KnowledgeCategory") size = 26;
     else if (n.label === "KnowledgePoint") size = 20;
     else if (n.label === "Skill" || n.label === "Terminology") size = 20;
     return {
       id: n.key,
       label: labelVisible ? (n.title || n.name) : "",
       originLabel: n.title || n.name,
-      type: n.label === "Topic" ? "rect" : "circle",
+      type: n.label === "Topic" || n.label === "KnowledgeCategory" ? "rect" : "circle",
       style: {
         fill: colorMap[n.label] || "#94a3b8",
         stroke: "rgba(15,23,42,0.4)",
@@ -2645,7 +2365,7 @@ function renderAdminGraphWithG6() {
   });
 
   const edges = (networkData.edges || []).map((e) => {
-    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "INCLUDE_POINT"].includes(e.type);
+    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "HAS_CATEGORY", "CONTAINS"].includes(e.type);
     return {
       source: e.source,
       target: e.target,
@@ -2663,9 +2383,11 @@ function renderAdminGraphWithG6() {
     width,
     height,
     layout: {
-      type: "radial",
-      unitRadius: 120,
-      linkDistance: 180,
+      type: "dagre",
+      rankdir: "LR",
+      nodesep: 40,
+      ranksep: 120,
+      controlPoints: true,
       preventOverlap: true,
       nodeSize: 30,
     },
@@ -2679,12 +2401,12 @@ function renderAdminGraphWithG6() {
       },
     },
     defaultEdge: {
-      type: "quadratic",
+      type: "polyline",
       labelCfg: {
         autoRotate: true,
         style: { fill: "#94a3b8", fontSize: 10 },
       },
-      style: { endArrow: false },
+      style: { endArrow: true },
     },
     animate: true,
   });
@@ -2692,12 +2414,19 @@ function renderAdminGraphWithG6() {
   adminG6Graph.data({ nodes, edges });
   adminG6Graph.on("node:click", (evt) => {
     const item = evt.item;
-    if (item) {
-      const id = item.getID();
-      handleGraphNodeSelection(id);
+    if (!item) return;
+    const id = item.getID();
+    const rawNode = nodesRaw.find((n) => n.key === id);
+    if (rawNode && rawNode.label === "Topic") {
+      if (expandedTopics.has(id)) expandedTopics.delete(id);
+      else expandedTopics.add(id);
+      renderAdminGraph();
+      return;
     }
+    handleGraphNodeSelection(id);
   });
   adminG6Graph.render();
+  adminG6Graph.fitView(20);
 }
 
 async function refreshAdminGraph() {
