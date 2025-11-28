@@ -2182,7 +2182,7 @@ function applyGraphDrawerTheme(mode) {
 }
 
 function renderAdminGraphNetwork() {
-  if (!adminGraphCanvas || !window.G6 || !window.GraphTransformer) {
+  if (!adminGraphCanvas || !window.G6) {
     return;
   }
 
@@ -2196,7 +2196,7 @@ function renderAdminGraphNetwork() {
   }
 
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  const treeData = window.GraphTransformer.transformToTree(networkData);
+  const treeData = buildTreeData(networkData);
   if (!treeData || !Array.isArray(treeData.children) || treeData.children.length === 0) {
     if (adminGraphStatus) {
       adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
@@ -2307,6 +2307,91 @@ function renderAdminGraphNetwork() {
       adminG6Graph.fitView(60);
     }
   });
+}
+
+function buildTreeData(network) {
+  const nodes = network && Array.isArray(network.nodes) ? network.nodes : [];
+  const edges = network && Array.isArray(network.edges) ? network.edges : [];
+  const nodeMap = new Map();
+  nodes.forEach((n) => {
+    const key = n.key || n.id || n.name;
+    if (!key) return;
+    nodeMap.set(key, {
+      id: key,
+      key,
+      name: n.title || n.name || key,
+      type: n.label || n.nodeType,
+      order: n.order || 0,
+      stage: n.stage || n.stageName,
+      topic: n.topic || n.topicName,
+      children: [],
+    });
+  });
+
+  const stages = [];
+  const topics = new Map();
+  const points = new Map();
+  nodeMap.forEach((node, key) => {
+    if (node.type === "Stage") stages.push(node);
+    else if (node.type === "Topic") topics.set(key, node);
+    else points.set(key, node);
+  });
+
+  const src = (e) => e.source || e.from;
+  const tgt = (e) => e.target || e.to;
+
+  edges.forEach((e) => {
+    if (e.type !== "CONTAIN_TOPIC") return;
+    const s = nodeMap.get(src(e));
+    const t = topics.get(tgt(e));
+    if (s && t) s.children.push(t);
+  });
+
+  edges.forEach((e) => {
+    if (e.type !== "INCLUDE_POINT" && e.type !== "HAS_TOPIC") return;
+    const t = topics.get(src(e));
+    const p = points.get(tgt(e));
+    if (t && p) t.children.push(p);
+  });
+
+  // Fallback by props
+  topics.forEach((t) => {
+    if (t.children.length === 0) {
+      points.forEach((p) => {
+        if ((p.topic && (p.topic === t.name || p.topic === t.key)) ||
+            (p.stage && (p.stage === t.stage || p.stage === t.stageName))) {
+          t.children.push(p);
+        }
+      });
+    }
+  });
+  if (stages.every((s) => s.children.length === 0)) {
+    topics.forEach((t) => {
+      const stageName = t.stage || t.stageName || (t.key || "").split(":")[1];
+      const s = stages.find((st) => st.name === stageName || st.key === `Stage:${stageName}`);
+      if (s) s.children.push(t);
+    });
+  }
+
+  stages.sort((a, b) => a.order - b.order || (a.name || "").localeCompare(b.name || ""));
+  topics.forEach((t) => {
+    t.children.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    t.collapsed = true;
+  });
+  stages.forEach((s) => {
+    s.children.sort((a, b) => (a.order || 0) - (b.order || 0));
+    s.collapsed = false;
+  });
+
+  const children = stages.length > 0 ? stages : Array.from(topics.values());
+  const rootChildren = children.length > 0 ? children : Array.from(points.values());
+
+  return {
+    id: "root",
+    name: "root",
+    collapsed: false,
+    children: rootChildren,
+  };
 }
 
 function renderAdminGraphWithG6() {
