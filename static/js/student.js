@@ -5,6 +5,7 @@ let isScenarioCollapsed = false;
 const RECOMMENDATION_SCORE_THRESHOLD = 80;
 let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
+let studentLessonGraphInstance = null;
 
 function sortLevelHierarchy(chapters) {
   if (!Array.isArray(chapters)) {
@@ -488,6 +489,269 @@ function ensureStudentGraphState() {
   }
 }
 
+function ensureCompassState() {
+  if (!state.studentCompass || typeof state.studentCompass !== "object") {
+    state.studentCompass = {
+      knowledgeMap: new Map(),
+      prereqMap: new Map(),
+      loaded: false,
+      currentLessonMap: new Map(),
+    };
+  }
+  if (!(state.studentCompass.knowledgeMap instanceof Map)) {
+    state.studentCompass.knowledgeMap = new Map();
+  }
+  if (!(state.studentCompass.prereqMap instanceof Map)) {
+    state.studentCompass.prereqMap = new Map();
+  }
+  if (!(state.studentCompass.currentLessonMap instanceof Map)) {
+    state.studentCompass.currentLessonMap = new Map();
+  }
+}
+
+function clearKnowledgeHighlights(container) {
+  if (!container) return;
+  const marks = container.querySelectorAll("[data-kp-highlight]");
+  marks.forEach((node) => {
+    const parent = node.parentNode;
+    if (!parent) return;
+    while (node.firstChild) {
+      parent.insertBefore(node.firstChild, node);
+    }
+    parent.removeChild(node);
+  });
+}
+
+function applyKnowledgeHighlights(container, knowledgePoints) {
+  if (!container || !Array.isArray(knowledgePoints)) return;
+  clearKnowledgeHighlights(container);
+  const names = knowledgePoints
+    .map((kp) => (kp && kp.name ? kp.name.trim() : ""))
+    .filter(Boolean);
+  if (names.length === 0) return;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.nodeValue && node.nodeValue.trim()) {
+      textNodes.push(node);
+    }
+  }
+  names.forEach((name) => {
+    const lower = name.toLowerCase();
+    for (const textNode of textNodes) {
+      const value = textNode.nodeValue || "";
+      const idx = value.toLowerCase().indexOf(lower);
+      if (idx >= 0) {
+        const range = document.createRange();
+        range.setStart(textNode, idx);
+        range.setEnd(textNode, idx + name.length);
+        const mark = document.createElement("span");
+        mark.dataset.kpHighlight = "true";
+        mark.dataset.kpName = name;
+        mark.className = "compass-highlight";
+        range.surroundContents(mark);
+        break;
+      }
+    }
+  });
+}
+
+function clearCompassHighlights(container) {
+  if (!container) return;
+  const marks = container.querySelectorAll("[data-compass-highlight]");
+  marks.forEach((el) => {
+    const parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+  });
+}
+
+function highlightInArticle(container, text) {
+  if (!container || !text) return;
+  clearCompassHighlights(container);
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let node;
+  const lower = text.toLowerCase();
+  while ((node = walker.nextNode())) {
+    const value = node.nodeValue || "";
+    const idx = value.toLowerCase().indexOf(lower);
+    if (idx >= 0) {
+      const range = document.createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, idx + text.length);
+      const mark = document.createElement("mark");
+      mark.dataset.compassHighlight = "true";
+      mark.className = "compass-highlight";
+      range.surroundContents(mark);
+      mark.scrollIntoView({ behavior: "smooth", block: "center" });
+      break;
+    }
+  }
+}
+
+function showStudentKnowledgeCard(name) {
+  if (!name) return;
+  ensureCompassState();
+  const kp = state.studentCompass.currentLessonMap.get(name) || { name };
+  const overlayId = "kp-viewer-overlay";
+  let overlay = document.getElementById(overlayId);
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = overlayId;
+    overlay.className = "kp-viewer-overlay";
+    const card = document.createElement("div");
+    card.className = "kp-viewer-card";
+    card.innerHTML = `
+      <button class="kp-viewer-close" aria-label="关闭">×</button>
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-lg font-semibold text-slate-900" data-kp-title></h3>
+        <span class="kp-viewer-chip">知识卡</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-600" data-kp-summary></p>
+      <div class="mt-3 text-sm text-slate-700 space-y-2" data-kp-body></div>
+      <p class="mt-3 text-xs text-slate-500" data-kp-prereq></p>
+      <div class="mt-4" data-kp-practices></div>
+    `;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay || e.target.classList.contains("kp-viewer-close")) {
+        overlay.remove();
+      }
+    });
+  }
+  const titleEl = overlay.querySelector("[data-kp-title]");
+  const summaryEl = overlay.querySelector("[data-kp-summary]");
+  const bodyEl = overlay.querySelector("[data-kp-body]");
+  const prereqEl = overlay.querySelector("[data-kp-prereq]");
+  const practiceEl = overlay.querySelector("[data-kp-practices]");
+  if (titleEl) titleEl.textContent = kp.title || kp.name || name;
+  if (summaryEl) summaryEl.textContent = kp.summary || "";
+  if (bodyEl) bodyEl.innerHTML = kp.bodyHtml || "";
+  const prereqs = Array.isArray(kp.prerequisites) ? kp.prerequisites : [];
+  if (prereqEl) prereqEl.textContent = prereqs.length ? `前置：${prereqs.join("、")}` : "";
+  overlay.style.display = "flex";
+
+  // 流式获取讲解
+  const lessonId = state.theory?.selectedLessonId;
+  if (bodyEl) {
+    bodyEl.textContent = "生成讲解中...";
+    fetchWithAuth("/api/knowledge/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, lessonId }),
+    })
+      .then((response) => {
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("无法读取流");
+        const decoder = new TextDecoder("utf-8");
+        let buf = "";
+        const pump = () =>
+          reader.read().then(({ value, done }) => {
+            if (done) {
+              if (buf) {
+                if (window.marked && window.DOMPurify) {
+                  bodyEl.innerHTML = window.DOMPurify.sanitize(window.marked.parse(buf));
+                } else {
+                  bodyEl.textContent = buf;
+                }
+              }
+              return;
+            }
+            buf += decoder.decode(value, { stream: true });
+            if (window.marked && window.DOMPurify) {
+              bodyEl.innerHTML = window.DOMPurify.sanitize(window.marked.parse(buf));
+            } else {
+              bodyEl.textContent = buf;
+            }
+            return pump();
+          });
+        return pump();
+      })
+      .catch(() => {
+        bodyEl.textContent = kp.bodyHtml || kp.summary || "暂时无法生成讲解，请稍后重试";
+      });
+  }
+
+  if (practiceEl) {
+    practiceEl.innerHTML = "";
+    fetchWithAuth(`/api/knowledge/practice-recs?name=${encodeURIComponent(name)}&limit=5`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data.practices) ? data.practices : [];
+        if (list.length === 0) return;
+        const title = document.createElement("p");
+        title.className = "text-xs text-slate-500";
+        title.textContent = "推荐练习";
+        practiceEl.appendChild(title);
+        const ul = document.createElement("ul");
+        ul.className = "mt-2 space-y-2";
+        list.forEach((p) => {
+          const li = document.createElement("li");
+          li.className =
+            "rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm";
+          li.textContent = p.title || p.id;
+          li.addEventListener("click", () => {
+            if (p.id && typeof startLevel === "function") {
+              // 如果有章节信息，可选择跳转；否则仅提示
+              startLevel(p.chapterId || "");
+            }
+          });
+          ul.appendChild(li);
+        });
+        practiceEl.appendChild(ul);
+      })
+      .catch(() => {});
+  }
+}
+
+function renderKnowledgeCompass(lessonDetail) {
+  if (!theoryCompassSection || !theoryCompassList || !theoryCompassStatus) return;
+  ensureCompassState();
+  state.studentCompass.currentLessonMap.clear();
+  const knowledgePoints = Array.isArray(lessonDetail?.knowledgePoints)
+    ? lessonDetail.knowledgePoints
+    : [];
+  if (knowledgePoints.length === 0) {
+    theoryCompassSection.classList.add("hidden");
+    return;
+  }
+  theoryCompassSection.classList.remove("hidden");
+  theoryCompassList.innerHTML = "";
+  theoryCompassStatus.textContent = "自动匹配本课的知识点，高亮正文并展示前置关系。";
+
+  knowledgePoints.forEach((kp) => {
+    const name = kp?.name || "";
+    if (!name) return;
+    state.studentCompass.currentLessonMap.set(name, kp);
+    const prereqs = Array.isArray(kp.prerequisites) ? kp.prerequisites : [];
+    const source = kp.source === "linked" ? "人工关联" : "自动检测";
+    const li = document.createElement("li");
+    li.className =
+      "rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-800 shadow-sm hover:border-emerald-300/60 transition cursor-pointer";
+    li.dataset.kpName = name;
+    li.innerHTML = `
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-semibold text-slate-900">${name}</span>
+        <span class="text-[11px] text-emerald-600">${source}${prereqs.length ? ` · 前置 ${prereqs.length}` : ""}</span>
+      </div>
+      ${kp.summary ? `<p class="mt-1 text-xs text-slate-600">${kp.summary}</p>` : ""}
+      ${
+        prereqs.length
+          ? `<p class="mt-1 text-[11px] text-slate-500">前置：${prereqs.join("、")}</p>`
+          : ""
+      }
+    `;
+    li.addEventListener("click", () => {
+      showStudentKnowledgeCard(name);
+      applyKnowledgeHighlights(theoryLessonContentEl, [{ name }]);
+    });
+    theoryCompassList.appendChild(li);
+  });
+}
+
 function findTheoryLessonContext(lessonId) {
   if (!lessonId) {
     return null;
@@ -698,6 +962,7 @@ function renderTheoryLessonContent(lessonDetail) {
     theoryLessonTitleEl.textContent = "请选择理论学习小节";
     theoryLessonCodeEl.textContent = "";
     theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">在左侧选择任意知识点即可查看内容。</p>";
+    renderKnowledgeCompass(null);
     if (theoryChallengeContainer) {
       theoryChallengeContainer.classList.add("hidden");
     }
@@ -719,7 +984,9 @@ function renderTheoryLessonContent(lessonDetail) {
     theoryLessonContentEl.innerHTML = "<p class=\"text-sm text-slate-400\">教师尚未填写详细内容。</p>";
   }
   attachChallengeBubbleHandlers(theoryLessonContentEl);
-
+  applyKnowledgeHighlights(theoryLessonContentEl, lessonDetail.knowledgePoints || []);
+  renderKnowledgeCompass(lessonDetail);
+  renderLessonSubgraph(lessonDetail.id || lessonDetail.lessonId);
   if (!theoryChallengeContainer || !theoryChallengeTitleEl) {
     return;
   }
@@ -742,6 +1009,7 @@ function refreshStudentTheorySelection() {
   if (!lessonId) {
     renderTheoryLessonContent(null);
     updateTheoryRelatedPractices(null);
+    renderLessonSubgraph(null);
     return;
   }
   const cache = state.theory.lessonCache instanceof Map ? state.theory.lessonCache : null;
@@ -752,6 +1020,24 @@ function refreshStudentTheorySelection() {
   } else {
     updateTheoryRelatedPractices(null);
   }
+}
+
+if (theoryLessonContentEl) {
+  theoryLessonContentEl.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-kp-highlight]");
+    if (target) {
+      const name = target.dataset.kpName || target.textContent || "";
+      showStudentKnowledgeCard(name);
+    }
+  });
+}
+
+if (studentLessonGraphRefresh) {
+  studentLessonGraphRefresh.addEventListener("click", () => {
+    if (state.theory?.selectedLessonId) {
+      renderLessonSubgraph(state.theory.selectedLessonId);
+    }
+  });
 }
 
 async function selectStudentTheoryLesson(lessonId) {
@@ -787,6 +1073,95 @@ async function selectStudentTheoryLesson(lessonId) {
     await updateTheoryRelatedPractices(lessonId);
   } else {
     updateTheoryRelatedPractices(null);
+  }
+}
+
+async function renderLessonSubgraph(lessonId) {
+  if (!studentLessonGraph) return;
+  if (studentLessonGraphInstance) {
+    studentLessonGraphInstance.destroy();
+    studentLessonGraphInstance = null;
+  }
+  if (!lessonId) {
+    studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>请选择课时以查看知识图谱</p>";
+    return;
+  }
+  studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>知识图谱加载中...</p>";
+  try {
+    const resp = await fetchWithAuth(`/api/graph/lesson-network?lessonId=${encodeURIComponent(lessonId)}&limit=800`);
+    if (!resp.ok) {
+      console.warn("[LessonSubgraph] fetch failed", resp.status);
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>知识图谱暂不可用</p>";
+      return;
+    }
+    const text = await resp.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (err) {
+      console.error("[LessonSubgraph] JSON parse error", err, text);
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>知识图谱数据异常</p>";
+      return;
+    }
+    const nodes = data.nodes || [];
+    const edges = data.edges || [];
+    const highlights = new Set(data.highlights || []);
+    console.log("[LessonSubgraph] nodes:", nodes.length, "edges:", edges.length, "highlights:", highlights.size);
+    if (nodes.length === 0) {
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>本课暂无关联或匹配的知识点</p>";
+      return;
+    }
+    if (!window.G6) {
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>G6 未加载</p>";
+      return;
+    }
+    studentLessonGraph.innerHTML = "";
+    studentLessonGraphInstance = new G6.Graph({
+      container: studentLessonGraph,
+      width: studentLessonGraph.clientWidth || 600,
+      height: studentLessonGraph.clientHeight || 300,
+      layout: { type: "force", preventOverlap: true, linkDistance: 200, nodeStrength: -360 },
+      modes: { default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }] },
+      defaultNode: {
+        labelCfg: { position: "bottom", style: { fill: "#0f172a", fontSize: 12, fontWeight: 600 } },
+        style: { fill: "#38bdf8", stroke: "#0ea5e9" },
+        stateStyles: { highlight: { shadowColor: "#22c55e", shadowBlur: 18, lineWidth: 2 } },
+      },
+      defaultEdge: {
+        type: "line",
+        style: { stroke: "rgba(148,163,184,0.5)", endArrow: true },
+      },
+      animate: true,
+      fitCenter: true,
+    });
+    studentLessonGraphInstance.node((n) => {
+      const type = n.nodeType || n.label;
+      if (type === "Stage") {
+        return { size: 46, style: { fill: "#3b82f6", stroke: "#2563eb" } };
+      }
+      if (type === "Topic") {
+        return { type: "rect", size: [36, 24], style: { fill: "#f97316", stroke: "#ea580c" } };
+      }
+      const highlighted = highlights.has(n.name) || highlights.has(n.id);
+      return {
+        size: highlighted ? 22 : 14,
+        style: { fill: highlighted ? "#22c55e" : "#94a3b8", stroke: highlighted ? "#16a34a" : "#64748b" },
+      };
+    });
+    studentLessonGraphInstance.data({ nodes, edges });
+    studentLessonGraphInstance.render();
+    studentLessonGraphInstance.fitView(40);
+    studentLessonGraphInstance.on("node:click", (evt) => {
+      const model = evt.item?.getModel();
+      if (!model) return;
+      if (model.label === "KnowledgePoint" || model.key || model.id) {
+        const name = model.name || model.id;
+        showStudentKnowledgeCard(name);
+      }
+    });
+  } catch (error) {
+    console.error("[LessonSubgraph]", error);
+    studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>加载失败</p>";
   }
 }
 
@@ -2591,6 +2966,3 @@ async function sendMessage() {
     chatInputEl.focus();
   }
 }
-
-
-

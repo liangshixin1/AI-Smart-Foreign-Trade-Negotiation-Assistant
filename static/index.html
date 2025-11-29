@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>外贸英语谈判实战互动 Beta 1</title>
+    <title>外贸英语谈判实战互动 Beta 2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -13,7 +13,21 @@
       href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css"
     />
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
-    <script src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js"></script>
+    <script
+      src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js"
+      onerror="console.error('[G6 CDN] ❌ 主CDN加载失败，尝试备用CDN...');
+               var script = document.createElement('script');
+               script.src = 'https://cdn.jsdelivr.net/npm/@antv/g6@4.8.17/dist/g6.min.js';
+               script.onerror = function() {
+                 console.error('[G6 CDN] ❌ 备用CDN也加载失败！知识图谱无法渲染。');
+                 console.error('[G6 CDN] 请检查网络连接或联系管理员。');
+               };
+               script.onload = function() {
+                 console.log('[G6 CDN] ✅ 备用CDN加载成功:', window.G6?.version);
+               };
+               document.head.appendChild(script);"
+      onload="console.log('[G6 CDN] ✅ 主CDN加载成功, G6版本:', window.G6?.version);"
+    ></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -754,6 +768,64 @@
       .theory-lesson-content ul,
       .theory-lesson-content ol {
         margin-top: 0.75rem;
+      }
+
+      .compass-highlight {
+        background: rgba(74, 222, 128, 0.25);
+        border-radius: 6px;
+        padding: 0 2px;
+        cursor: pointer;
+        border-bottom: 2px dashed #60a5fa;
+      }
+
+      #theory-knowledge-compass {
+        max-height: 320px;
+        overflow: auto;
+      }
+
+      .kp-viewer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+      }
+
+      .kp-viewer-card {
+        width: min(720px, 92vw);
+        background: linear-gradient(180deg, #f8fafc, #eef2ff);
+        border-radius: 18px;
+        box-shadow: 0 25px 60px -28px rgba(15, 23, 42, 0.35);
+        border: 1px solid rgba(99, 102, 241, 0.18);
+        padding: 20px 24px;
+        color: #0f172a;
+        position: relative;
+      }
+
+      .kp-viewer-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: transparent;
+        border: none;
+        color: #334155;
+        cursor: pointer;
+        font-size: 18px;
+      }
+
+      .kp-viewer-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #4338ca;
+        font-size: 12px;
+        border: 1px solid rgba(99, 102, 241, 0.24);
       }
 
       .app-hero {
@@ -2304,8 +2376,8 @@
     <header class="app-hero">
       <div class="app-hero__inner">
         <div class="app-hero__title">
-          <h1>外贸英语谈判实战互动 Beta 1</h1>
-          <p>AI Smart Foreign Trade Negotiation Platform Beta 1</p>
+          <h1>外贸英语谈判实战互动 Beta 2</h1>
+          <p>AI Smart Foreign Trade Negotiation Platform Beta 2</p>
         </div>
         <div class="app-hero__meta">
           <div id="user-status" class="app-hero__user">
@@ -2340,14 +2412,14 @@
             </button>
   </div>
 </div>
-<!-- 知识点详情抽屉 -->
+<!-- 知识点详情弹窗 -->
 <div
   id="graph-detail-overlay"
   class="fixed inset-0 z-40 hidden backdrop-blur-sm bg-slate-900/40 transition-opacity"
 ></div>
 <div
   id="graph-detail-drawer"
-  class="fixed bottom-0 left-0 right-0 z-50 hidden translate-y-full transform rounded-t-2xl border border-slate-800 bg-slate-900/95 p-6 text-slate-100 shadow-2xl transition-transform"
+  class="fixed left-1/2 top-1/2 z-50 hidden w-[min(820px,92vw)] -translate-x-1/2 -translate-y-1/2 transform rounded-2xl border border-slate-800 bg-slate-900/95 p-6 text-slate-100 shadow-2xl transition-transform"
 >
   <div class="flex items-center justify-between">
     <div>
@@ -2631,6 +2703,29 @@
                 <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-inner shadow-slate-950/20">
                   <div id="theory-lesson-html" class="prose-invert theory-lesson-content space-y-4 text-sm leading-relaxed"></div>
                 </article>
+                <div class="rounded-3xl border border-slate-200 bg-white p-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <p class="text-xs uppercase tracking-widest text-slate-500">Knowledge Graph</p>
+                      <h4 class="text-sm font-semibold text-slate-900">本课知识图谱</h4>
+                    </div>
+                    <button id="student-lesson-graph-refresh" class="text-xs text-emerald-600 rounded-lg border border-emerald-500/60 px-2 py-1 hover:border-emerald-500 hover:text-emerald-700">
+                      刷新
+                    </button>
+                  </div>
+                  <div id="student-lesson-graph" class="mt-3 h-72 w-full rounded-2xl border border-slate-200 bg-white"></div>
+                </div>
+                <aside
+                  id="theory-knowledge-compass"
+                  class="hidden rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-900"
+                >
+                  <div class="flex flex-col gap-1">
+                    <p class="text-[11px] uppercase tracking-widest text-slate-500">Knowledge Compass</p>
+                    <h4 class="text-base font-semibold text-slate-900">本课关联知识点</h4>
+                    <p id="theory-knowledge-compass-status" class="text-xs text-slate-500"></p>
+                  </div>
+                  <ul id="theory-knowledge-compass-list" class="mt-3 space-y-2"></ul>
+                </aside>
                 <div
                   id="theory-challenge"
                   class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-100 shadow-inner shadow-blue-500/10"
@@ -3566,9 +3661,9 @@
                       id="admin-graph-toggle-renderer"
                       type="button"
                       class="rounded-xl border border-slate-700/70 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-300 hover:text-emerald-100"
-                      title="G6 TreeGraph 渲染"
+                      title="Stage 环形开花布局"
                     >
-                      当前 TreeGraph
+                      当前 开花
                     </button>
                   </div>
                 </div>
@@ -3966,7 +4061,7 @@
     <footer class="border-t border-slate-800 bg-slate-950/70 py-4 text-center text-xs text-slate-500">
       © 2025 《AI赋能：智能时代的外贸谈判策略与实战》项目组
       <br />
-      梁诗忻 程序设计 · 基于 Flask 和 AI 技术构建
+      Contributed by Nantan Shen, Shixin Liang (Haoying Liang), Xiaoyan Quan, Yanli Zhou, Ting Wu, Xin Huang
     </footer>
 
     <div
@@ -4016,7 +4111,6 @@
     </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="/static/js/elements.js"></script>
     <script src="/static/js/state.js"></script>
     <script src="/static/js/api.js"></script>

@@ -131,7 +131,6 @@ function showGraphDetailDrawer(detail) {
   document.getElementById('graph-detail-close')?.addEventListener('click', hideGraphDetailDrawer);
   overlay.classList.remove('hidden');
   drawer.classList.remove('hidden');
-  setTimeout(() => drawer.classList.remove('translate-y-full'), 10);
   document.getElementById('graph-detail-title').textContent = detail?.title || '知识点详情';
   document.getElementById('graph-detail-subtitle').textContent = detail?.subtitle || '';
   const metaEl = document.getElementById('graph-detail-meta');
@@ -448,129 +447,216 @@ function applyGraphDrawerTheme(mode) {
 }
 
 function renderAdminGraphNetwork() {
-  if (!adminGraphCanvas || !window.G6) {
+  // === 调试信息：环境检查 ===
+  console.log('[G6 Render] 使用G6.Graph + dagre 布局渲染知识图谱');
+  console.log('[G6 Render] Canvas元素存在:', !!adminGraphCanvas);
+  console.log('[G6 Render] G6库已加载:', !!window.G6);
+
+  if (!adminGraphCanvas) {
+    console.error('[G6 Render] ❌ Canvas元素未找到: #admin-graph-canvas');
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "错误：Canvas元素未找到";
+    }
     return;
   }
 
+  if (!window.G6) {
+    console.error('[G6 Render] ❌ G6库未加载');
+    console.error('[G6 Render] 请检查以下CDN是否可访问:');
+    console.error('[G6 Render]   https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js');
+    console.error('[G6 Render] 或使用备用CDN:');
+    console.error('[G6 Render]   https://cdn.jsdelivr.net/npm/@antv/g6@4.8.17/dist/g6.min.js');
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "错误：G6可视化库加载失败，请检查网络连接";
+    }
+    return;
+  }
+
+  // === 清理Canvas上的其他实例 ===
+  console.log('[G6 Render] 清理Canvas...');
+
+  if (window.echarts && typeof window.echarts.getInstanceByDom === 'function') {
+    const echartsInstance = window.echarts.getInstanceByDom(adminGraphCanvas);
+    if (echartsInstance) {
+      console.warn('[G6 Render] 发现ECharts实例，正在清理...');
+      echartsInstance.dispose();
+      console.log('[G6 Render] ✅ ECharts实例已清理');
+    }
+  }
+
   if (adminGraphNetwork) {
+    console.log('[G6 Render] 清理旧的Network实例...');
     adminGraphNetwork.dispose();
     adminGraphNetwork = null;
   }
   if (adminG6Graph) {
+    console.log('[G6 Render] 清理旧的G6Graph实例...');
     adminG6Graph.destroy();
     adminG6Graph = null;
   }
 
+  adminGraphCanvas.innerHTML = '';
+  console.log('[G6 Render] ✅ Canvas已清空');
+
+  // === 数据准备 ===
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  const treeData = buildTreeData(networkData);
-  if (!treeData || !Array.isArray(treeData.children) || treeData.children.length === 0) {
+  const nodesRaw = Array.isArray(networkData.nodes) ? networkData.nodes : [];
+  const edgesRaw = Array.isArray(networkData.edges) ? networkData.edges : [];
+  console.log('[G6 Render] 原始数据:', {
+    nodes: nodesRaw.length,
+    edges: edgesRaw.length
+  });
+
+  if (nodesRaw.length === 0) {
     if (adminGraphStatus) {
-      adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
+      adminGraphStatus.textContent = "暂无可展示的节点，请先同步知识图谱数据";
     }
     return;
   }
-  const totalNodes = (networkData.nodes || []).length;
-  const totalEdges = (networkData.edges || []).length;
+
+  // === Canvas尺寸检查 ===
   const width = adminGraphCanvas.clientWidth || 960;
   const height = adminGraphCanvas.clientHeight || 820;
 
-  const stageColor = '#3b82f6';
-  const topicColor = '#f97316';
-  const pointColor = '#22c55e';
+  console.log('[G6 Render] Canvas尺寸:', { width, height });
 
-  adminG6Graph = new G6.TreeGraph({
-    container: adminGraphCanvas,
-    width,
-    height,
-    linkCenter: true,
-    fitView: true,
-    modes: {
-      default: ['drag-canvas', 'zoom-canvas'],
-    },
-    defaultNode: {
+  if (width === 0 || height === 0) {
+    console.error('[G6 Render] ❌ Canvas尺寸异常:', { width, height });
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "错误：Canvas尺寸异常";
+    }
+    return;
+  }
+
+  const colorMap = {
+    Stage: "#3b82f6",
+    Topic: "#f97316",
+    KnowledgeCategory: "#94a3b8",
+    KnowledgePoint: "#22c55e",
+    Skill: "#0ea5e9",
+    Terminology: "#475569",
+    Practice: "#0f766e",
+    TheoryLesson: "#9a3412",
+    ProcessStep: "#64748b",
+  };
+
+  // 使用原始关系数据渲染，不再注入虚拟root
+  const nodes = nodesRaw.map((n) => {
+    const labelVisible = ["Stage", "Topic", "KnowledgeCategory"].includes(n.label);
+    let size = 20;
+    if (n.label === "Stage") size = 46;
+    else if (n.label === "Topic") size = 34;
+    else if (n.label === "KnowledgeCategory") size = 26;
+    else if (["KnowledgePoint", "Skill", "Terminology"].includes(n.label)) size = 18;
+    return {
+      id: n.key || n.id,
+      label: labelVisible ? (n.title || n.name || n.key) : "",
+      originLabel: n.title || n.name || "",
+      type: ["Topic", "KnowledgeCategory"].includes(n.label) ? "rect" : "circle",
       style: {
-        radius: 8,
-        lineWidth: 1,
-      },
-      labelCfg: {
-        position: 'right',
-        offset: 8,
-        style: {
-          fontSize: 12,
-          fill: '#0f172a',
-        },
-      },
-    },
-    defaultEdge: {
-      type: 'cubic-horizontal',
-      style: {
-        stroke: 'rgba(148,163,184,0.8)',
+        fill: colorMap[n.label] || "#94a3b8",
+        stroke: "rgba(15,23,42,0.35)",
         lineWidth: 1.2,
       },
-    },
-    layout: {
-      type: 'compactBox',
-      direction: 'LR',
-      getId: (d) => d.id,
-      getHeight: () => 20,
-      getWidth: (d) => (d.type === 'Stage' ? 140 : d.type === 'Topic' ? 120 : 10),
-      getVGap: () => 18,
-      getHGap: () => 60,
-    },
-  });
-
-  adminG6Graph.node((node) => {
-    if (node.type === 'Stage') {
-      return {
-        type: 'rect',
-        size: [140, 36],
-        style: { fill: stageColor, stroke: '#2563eb', radius: 10, lineWidth: 1.4 },
-        labelCfg: { style: { fill: '#fff', fontWeight: 700, fontSize: 13 } },
-      };
-    }
-    if (node.type === 'Topic') {
-      return {
-        type: 'rect',
-        size: [120, 30],
-        style: { fill: topicColor, stroke: '#f59e0b', radius: 8, lineWidth: 1.2 },
-        labelCfg: { style: { fill: '#fff', fontWeight: 600, fontSize: 12 } },
-      };
-    }
-    return {
-      type: 'circle',
-      size: 8,
-      style: { fill: pointColor, stroke: '#16a34a', lineWidth: 1 },
-      labelCfg: { position: 'right', offset: 6, style: { fill: '#0f172a', fontSize: 11 } },
+      size,
+      nodeType: n.label,
     };
   });
 
-  adminG6Graph.data(treeData);
-  adminG6Graph.render();
-  adminG6Graph.fitView(60);
-
-  if (adminGraphStatus) {
-    adminGraphStatus.textContent = `节点 ${totalNodes} · 关系 ${totalEdges}`;
-  }
-
-  adminG6Graph.on('node:click', (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const model = item.getModel();
-    if (model.children && model.children.length) {
-      model.collapsed = !model.collapsed;
-      adminG6Graph.layout();
-      adminG6Graph.fitView(60);
-    } else if (model.key) {
-      handleGraphNodeSelection(model.key);
-    }
+  const edges = edgesRaw.map((e) => {
+    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "HAS_CATEGORY", "CONTAINS"].includes(e.type);
+    return {
+      source: e.source || e.from,
+      target: e.target || e.to,
+      label: showLabel ? (e.label || e.type) : "",
+      style: {
+        stroke: "rgba(148,163,184,0.5)",
+        lineWidth: 1.1,
+        endArrow: true,
+      },
+    };
   });
+
+  const useForce = edges.length > 200 || nodes.length > 200;
+  const layout = useForce
+    ? {
+        type: "force",
+        preventOverlap: true,
+        linkDistance: 160,
+        nodeStrength: -30,
+        edgeStrength: 0.1,
+      }
+    : {
+        type: "dagre",
+        rankdir: "LR",
+        nodesep: 40,
+        ranksep: 120,
+        controlPoints: true,
+        preventOverlap: true,
+        nodeSize: 30,
+      };
+
+  adminG6Graph = new G6.Graph({
+    container: adminGraphCanvas,
+    width,
+    height,
+    layout,
+    modes: {
+      default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }],
+    },
+    defaultNode: {
+      labelCfg: {
+        position: "bottom",
+        style: { fill: "#0f172a", fontSize: 12, opacity: 0.9 },
+      },
+    },
+    defaultEdge: {
+      type: useForce ? "line" : "polyline",
+      labelCfg: {
+        autoRotate: true,
+        style: { fill: "#94a3b8", fontSize: 10 },
+      },
+      style: { endArrow: true },
+    },
+    animate: true,
+  });
+
+  // === 渲染G6图谱 ===
+  console.log('[G6 Render] 开始渲染Graph...');
+
+  try {
+    adminG6Graph.data({ nodes, edges });
+    adminG6Graph.render();
+    adminG6Graph.fitView(40);
+
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length}`;
+    }
+
+    adminG6Graph.on('node:click', (evt) => {
+      const item = evt.item;
+      if (!item) return;
+      const id = item.getID();
+      handleGraphNodeSelection(id);
+    });
+
+    console.log('[G6 Render] ✅ 渲染成功！');
+  } catch (error) {
+    console.error('[G6 Render] ❌ 渲染失败:', error);
+    console.error('[G6 Render] 错误堆栈:', error.stack);
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = `渲染失败: ${error.message}`;
+    }
+    throw error;
+  }
 
   window.addEventListener('resize', () => {
     if (adminG6Graph) {
       const w = adminGraphCanvas?.clientWidth || 800;
       const h = adminGraphCanvas?.clientHeight || 820;
       adminG6Graph.changeSize(w, h);
-      adminG6Graph.fitView(60);
+      adminG6Graph.fitView(40);
+      console.log('[G6 Render] 画布已调整尺寸:', { w, h });
     }
   });
 }
@@ -661,19 +747,42 @@ function buildTreeData(network) {
 }
 
 function renderAdminGraphWithG6() {
-  if (!adminGraphCanvas) return;
+  console.log('[G6 Graph] 使用G6.Graph模式渲染（非TreeGraph）');
+
+  if (!adminGraphCanvas) {
+    console.error('[G6 Graph] ❌ Canvas元素未找到');
+    return;
+  }
+
+  if (!window.G6) {
+    console.error('[G6 Graph] ❌ G6库未加载');
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = "错误：G6可视化库加载失败";
+    }
+    return;
+  }
+
+  // 清理实例
   if (adminGraphNetwork) {
+    console.log('[G6 Graph] 清理旧Network实例...');
     adminGraphNetwork.dispose();
     adminGraphNetwork = null;
   }
   if (adminG6Graph) {
+    console.log('[G6 Graph] 清理旧G6Graph实例...');
     adminG6Graph.destroy();
     adminG6Graph = null;
   }
 
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
+  console.log('[G6 Graph] 数据:', {
+    nodes: networkData.nodes?.length,
+    edges: networkData.edges?.length
+  });
+
   const width = adminGraphCanvas.clientWidth || 800;
   const height = adminGraphCanvas.clientHeight || 420;
+  console.log('[G6 Graph] Canvas尺寸:', { width, height });
 
   adminGraphCanvas.innerHTML = "";
 
@@ -762,22 +871,36 @@ function renderAdminGraphWithG6() {
     animate: true,
   });
 
-  adminG6Graph.data({ nodes, edges });
-  adminG6Graph.on("node:click", (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const id = item.getID();
-    const rawNode = nodesRaw.find((n) => n.key === id);
-    if (rawNode && rawNode.label === "Topic") {
-      if (expandedTopics.has(id)) expandedTopics.delete(id);
-      else expandedTopics.add(id);
-      renderAdminGraph();
-      return;
+  try {
+    adminG6Graph.data({ nodes, edges });
+    adminG6Graph.render();
+    adminG6Graph.fitView(20);
+
+    console.log('[G6 Graph] ✅ 渲染成功！');
+
+    adminG6Graph.on("node:click", (evt) => {
+      const item = evt.item;
+      if (!item) return;
+      const id = item.getID();
+      const rawNode = nodesRaw.find((n) => n.key === id);
+      if (rawNode && rawNode.label === "Topic") {
+        if (expandedTopics.has(id)) expandedTopics.delete(id);
+        else expandedTopics.add(id);
+        renderAdminGraph();
+        return;
+      }
+      handleGraphNodeSelection(id);
+    });
+
+    console.log('[G6 Graph] 事件监听已绑定');
+
+  } catch (error) {
+    console.error('[G6 Graph] ❌ 渲染失败:', error);
+    console.error('[G6 Graph] 错误堆栈:', error.stack);
+    if (adminGraphStatus) {
+      adminGraphStatus.textContent = `渲染失败: ${error.message}`;
     }
-    handleGraphNodeSelection(id);
-  });
-  adminG6Graph.render();
-  adminG6Graph.fitView(20);
+  }
 }
 
 async function refreshAdminGraph() {

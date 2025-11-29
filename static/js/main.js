@@ -794,6 +794,23 @@ if (adminGraphRefresh) {
   });
 }
 
+if (typeof adminGraphSearch !== "undefined" && adminGraphSearch) {
+  adminGraphSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      refreshAdminGraph();
+    }
+  });
+}
+
+if (adminGraphToggleRenderer) {
+  adminGraphToggleRenderer.addEventListener("click", () => {
+    adminGraphRenderer = "burst";
+    adminGraphToggleRenderer.textContent = "当前 开花";
+    adminGraphToggleRenderer.title = "Stage 环形开花布局";
+    renderAdminGraphNetwork();
+  });
+}
+
 window.addEventListener("resize", updateExperienceLayout);
 updateExperienceLayout();
 

@@ -19,6 +19,8 @@ from neo4j.exceptions import IncompleteCommit, Neo4jError, ServiceUnavailable
 from openpyxl import Workbook, load_workbook
 
 import database
+from services import rag_matcher
+from services import rag_matcher
 
 
 LOGGER = logging.getLogger(__name__)
@@ -1208,6 +1210,104 @@ def get_lesson_detail(lesson_id: str) -> Dict[str, object]:
         "topicId": record.get("topicId"),
         "knowledgePoints": _normalize_knowledge_point_payloads(raw_knowledge),
     }
+
+
+def _list_knowledge_vocabulary_with_prereqs() -> List[Dict[str, object]]:
+    records = _execute_read(
+        """
+        MATCH (k:KnowledgePoint)
+        OPTIONAL MATCH (k)-[:REQUIRES]->(p:KnowledgePoint)
+        RETURN k.name AS name,
+               k.summary AS summary,
+               collect(DISTINCT p.name) AS prereqs
+        """
+    )
+    vocab: List[Dict[str, object]] = []
+    for rec in records:
+        name = rec.get("name")
+        if not name:
+            continue
+        vocab.append(
+            {
+                "name": str(name),
+                "summary": rec.get("summary") or "",
+                "prerequisites": [p for p in rec.get("prereqs") or [] if p],
+            }
+        )
+    return vocab
+
+
+def get_knowledge_prerequisite_map() -> Dict[str, List[str]]:
+    """Return a mapping of knowledge point name -> prerequisites (REQUIRES)."""
+    result: Dict[str, List[str]] = {}
+    for item in _list_knowledge_vocabulary_with_prereqs():
+        result[item["name"]] = item.get("prerequisites", [])
+    return result
+
+
+def detect_knowledge_points_in_text(html: str, max_results: int = 20) -> List[Dict[str, object]]:
+    """Detect knowledge points via RAG匹配（嵌入 + 分段）。"""
+    if not html:
+        return []
+
+    # 准备文本分段
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    chunks = rag_matcher.chunk_text(text, max_len=420)
+    if not chunks:
+        return []
+
+    # 知识库（含摘要/正文）
+    knowledge_cards = list_knowledge_points()
+    prereq_map = get_knowledge_prerequisite_map()
+
+    best_scores: Dict[str, float] = {}
+    best_meta: Dict[str, Dict[str, object]] = {}
+
+    for chunk in chunks:
+        best, score, _ = rag_matcher.match(chunk, knowledge_cards)
+        if not best:
+            continue
+        name = (best.get("name") or "").strip()
+        if not name:
+            continue
+        # 记录最高得分
+        if score <= best_scores.get(name, 0.0):
+            continue
+        best_scores[name] = float(score)
+        best_meta[name] = {
+          "name": name,
+          "summary": best.get("summary") or "",
+          "bodyHtml": best.get("bodyHtml") or "",
+          "prerequisites": prereq_map.get(name) or [],
+          "source": "detected",
+          "score": float(score),
+        }
+
+    ranked = sorted(best_meta.values(), key=lambda x: x.get("score", 0), reverse=True)
+    return ranked[:max_results]
+
+
+def get_practices_for_kp(name: str, limit: int = 5) -> List[Dict[str, object]]:
+    records = _execute_read(
+        """
+        MATCH (p:Practice)-[:TESTS]->(k:KnowledgePoint {name: $name})
+        OPTIONAL MATCH (c:Chapter)-[:HAS_PRACTICE]->(p)
+        RETURN p.id AS id, p.title AS title, p.description AS description, c.id AS chapterId
+        LIMIT $limit
+        """,
+        {"name": name, "limit": limit},
+    )
+    practices: List[Dict[str, object]] = []
+    for rec in records:
+        practices.append(
+            {
+                "id": rec.get("id"),
+                "title": rec.get("title") or rec.get("id"),
+                "description": rec.get("description") or "",
+                "chapterId": rec.get("chapterId"),
+            }
+        )
+    return practices
 
 
 def list_knowledge_points() -> List[Dict[str, object]]:
