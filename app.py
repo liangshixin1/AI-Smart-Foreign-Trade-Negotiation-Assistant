@@ -14,6 +14,7 @@ from routes import auth as auth_routes
 from routes import scenarios as scenario_routes
 from routes import theory as theory_routes
 from routes import graph as graph_routes
+from routes import knowledge as knowledge_routes
 
 
 def create_app() -> Flask:
@@ -32,6 +33,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_routes.bp)
     app.register_blueprint(theory_routes.bp)
     app.register_blueprint(graph_routes.bp)
+    app.register_blueprint(knowledge_routes.bp)
 
     @app.route("/")
     def index() -> str:

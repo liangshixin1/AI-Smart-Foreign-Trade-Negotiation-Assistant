@@ -4,7 +4,9 @@ let knowledgePointCardBlotRegistered = false;
 let adminGraphNetwork = null;
 let adminG6Graph = null;
 let adminGraphSelectionKey = null;
-let adminGraphRenderer = "g6-tree"; // 强制使用 G6 TreeGraph
+let adminGraphRenderer = "burst"; // 仅保留开花布局
+const expandedStages = new Set();
+const expandedTopics = new Set();
 const knowledgeCardModalState = {
   editingNode: null,
   selectedKnowledge: null,
@@ -2196,116 +2198,479 @@ function renderAdminGraphNetwork() {
   }
 
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  const treeData = buildTreeData(networkData);
-  if (!treeData || !Array.isArray(treeData.children) || treeData.children.length === 0) {
+  const nodesRaw = Array.isArray(networkData.nodes) ? networkData.nodes : [];
+  const edgesRaw = Array.isArray(networkData.edges) ? networkData.edges : [];
+
+  if (nodesRaw.length === 0) {
     if (adminGraphStatus) {
       adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
     }
     return;
   }
-  const totalNodes = (networkData.nodes || []).length;
-  const totalEdges = (networkData.edges || []).length;
+
   const width = adminGraphCanvas.clientWidth || 960;
   const height = adminGraphCanvas.clientHeight || 820;
 
-  const stageColor = '#3b82f6';
-  const topicColor = '#f97316';
-  const pointColor = '#22c55e';
+  // 仅保留开花模式
+  renderBurstGraph(nodesRaw, edgesRaw, width, height);
+  return;
 
-  adminG6Graph = new G6.TreeGraph({
-    container: adminGraphCanvas,
-    width,
-    height,
-    linkCenter: true,
-    fitView: true,
-    modes: {
-      default: ['drag-canvas', 'zoom-canvas'],
-    },
-    defaultNode: {
+  const colorMap = {
+    Stage: "#3b82f6",
+    Topic: "#f97316",
+    KnowledgeCategory: "#94a3b8",
+    KnowledgePoint: "#22c55e",
+    Skill: "#0ea5e9",
+    Terminology: "#475569",
+    Practice: "#0f766e",
+    TheoryLesson: "#9a3412",
+    ProcessStep: "#64748b",
+  };
+
+  const nodes = nodesRaw.map((n) => {
+    const labelVisible = ["Stage", "Topic", "KnowledgeCategory"].includes(n.label);
+    let size = 20;
+    if (n.label === "Stage") size = 46;
+    else if (n.label === "Topic") size = 34;
+    else if (n.label === "KnowledgeCategory") size = 26;
+    else if (["KnowledgePoint", "Skill", "Terminology"].includes(n.label)) size = 18;
+    return {
+      id: n.key || n.id,
+      label: labelVisible ? (n.title || n.name || n.key) : "",
+      originLabel: n.title || n.name || "",
+      type: ["Topic", "KnowledgeCategory"].includes(n.label) ? "rect" : "circle",
       style: {
-        radius: 8,
-        lineWidth: 1,
-      },
-      labelCfg: {
-        position: 'right',
-        offset: 8,
-        style: {
-          fontSize: 12,
-          fill: '#0f172a',
-        },
-      },
-    },
-    defaultEdge: {
-      type: 'cubic-horizontal',
-      style: {
-        stroke: 'rgba(148,163,184,0.8)',
+        fill: colorMap[n.label] || "#94a3b8",
+        stroke: "rgba(15,23,42,0.35)",
         lineWidth: 1.2,
       },
-    },
-    layout: {
-      type: 'compactBox',
-      direction: 'LR',
-      getId: (d) => d.id,
-      getHeight: () => 20,
-      getWidth: (d) => (d.type === 'Stage' ? 140 : d.type === 'Topic' ? 120 : 10),
-      getVGap: () => 18,
-      getHGap: () => 60,
-    },
-  });
-
-  adminG6Graph.node((node) => {
-    if (node.type === 'Stage') {
-      return {
-        type: 'rect',
-        size: [140, 36],
-        style: { fill: stageColor, stroke: '#2563eb', radius: 10, lineWidth: 1.4 },
-        labelCfg: { style: { fill: '#fff', fontWeight: 700, fontSize: 13 } },
-      };
-    }
-    if (node.type === 'Topic') {
-      return {
-        type: 'rect',
-        size: [120, 30],
-        style: { fill: topicColor, stroke: '#f59e0b', radius: 8, lineWidth: 1.2 },
-        labelCfg: { style: { fill: '#fff', fontWeight: 600, fontSize: 12 } },
-      };
-    }
-    return {
-      type: 'circle',
-      size: 8,
-      style: { fill: pointColor, stroke: '#16a34a', lineWidth: 1 },
-      labelCfg: { position: 'right', offset: 6, style: { fill: '#0f172a', fontSize: 11 } },
+      size,
+      nodeType: n.label,
     };
   });
 
-  adminG6Graph.data(treeData);
-  adminG6Graph.render();
-  adminG6Graph.fitView(60);
-
-  if (adminGraphStatus) {
-    adminGraphStatus.textContent = `节点 ${totalNodes} · 关系 ${totalEdges}`;
-  }
-
-  adminG6Graph.on('node:click', (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const model = item.getModel();
-    if (model.children && model.children.length) {
-      model.collapsed = !model.collapsed;
-      adminG6Graph.layout();
-      adminG6Graph.fitView(60);
-    } else if (model.key) {
-      handleGraphNodeSelection(model.key);
-    }
+  const edges = edgesRaw.map((e) => {
+    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "HAS_CATEGORY", "CONTAINS"].includes(e.type);
+    return {
+      source: e.source || e.from,
+      target: e.target || e.to,
+      label: showLabel ? (e.label || e.type) : "",
+      style: {
+        stroke: "rgba(148,163,184,0.5)",
+        lineWidth: 1.1,
+        endArrow: true,
+      },
+    };
   });
 
-  window.addEventListener('resize', () => {
+  const layout = createGraphLayout(adminGraphRenderer, nodes, edges);
+
+  adminG6Graph = new G6.Graph({
+    container: adminGraphCanvas,
+    width,
+    height,
+    layout,
+    modes: {
+      default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }],
+    },
+    defaultNode: {
+      labelCfg: {
+        position: "bottom",
+        style: { fill: "#0f172a", fontSize: 12, opacity: 0.9 },
+      },
+    },
+    defaultEdge: {
+      type: adminGraphRenderer === "force" ? "line" : "polyline",
+      labelCfg: {
+        autoRotate: true,
+        style: { fill: "#94a3b8", fontSize: 10 },
+      },
+      style: { endArrow: true },
+    },
+    animate: true,
+    minZoom: 0.25,
+    maxZoom: 2.8,
+    fitView: false,
+    fitCenter: true,
+    fitViewPadding: 40,
+  });
+
+  adminG6Graph.data({ nodes, edges });
+  adminG6Graph.render();
+  adminG6Graph.fitView(40);
+
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length}`;
+  }
+
+  adminG6Graph.on("node:click", (evt) => {
+    const item = evt.item;
+    if (!item) return;
+    const id = item.getID();
+    handleGraphNodeSelection(id);
+  });
+
+  window.addEventListener("resize", () => {
     if (adminG6Graph) {
       const w = adminGraphCanvas?.clientWidth || 800;
       const h = adminGraphCanvas?.clientHeight || 820;
       adminG6Graph.changeSize(w, h);
-      adminG6Graph.fitView(60);
+      adminG6Graph.fitView(40);
     }
+  });
+}
+
+function createGraphLayout(mode, nodes, edges) {
+  if (mode === "force") {
+    // 根据节点类型/边类型调整距离，避免堆叠
+    const linkDistance = (d) => {
+      const edgeType = d?.data?.type;
+      const source = nodes.find((n) => n.id === d.source);
+      const target = nodes.find((n) => n.id === d.target);
+      const isStageLine = source?.nodeType === "Stage" || target?.nodeType === "Stage";
+      const isTopicLine = source?.nodeType === "Topic" || target?.nodeType === "Topic";
+      if (isStageLine) return 240;
+      if (isTopicLine) return 180;
+      if (edgeType === "PRECEDES") return 200;
+      return 110;
+    };
+    const nodeStrength = (node) => {
+      if (node.nodeType === "Stage") return -600;
+      if (node.nodeType === "Topic") return -360;
+      return -120;
+    };
+    const edgeStrength = (edge) => {
+      if (edge.label === "PRECEDES") return 0.05;
+      if (edge.label === "CONTAIN_TOPIC" || edge.label === "HAS_CATEGORY") return 0.08;
+      return 0.02;
+    };
+    return {
+      type: "force",
+      preventOverlap: true,
+      nodeSpacing: 24,
+      linkDistance,
+      nodeStrength,
+      edgeStrength,
+      alpha: 0.8,
+      alphaDecay: 0.05,
+      collideStrength: 0.75,
+      onTick: () => {
+        // 控制缩放范围，避免突然奔溃到屏外
+        if (adminG6Graph) {
+          const zoom = adminG6Graph.getZoom();
+          if (zoom < 0.2) adminG6Graph.zoomTo(0.2);
+          if (zoom > 3) adminG6Graph.zoomTo(3);
+        }
+      },
+    };
+  }
+
+  return {
+    type: "dagre",
+    rankdir: "LR",
+    nodesep: 40,
+    ranksep: 160,
+    controlPoints: true,
+    preventOverlap: true,
+    nodeSize: 34,
+  };
+}
+
+function renderBurstGraph(nodesRaw, edgesRaw, width, height) {
+  const colorMap = {
+    Stage: "#3b82f6",
+    Topic: "#f97316",
+    KnowledgePoint: "#22c55e",
+    Skill: "#0ea5e9",
+    Terminology: "#475569",
+  };
+
+  const stages = nodesRaw.filter((n) => n.label === "Stage");
+  const topics = nodesRaw.filter((n) => n.label === "Topic" || n.label === "KnowledgeCategory");
+  const points = nodesRaw.filter((n) =>
+    ["KnowledgePoint", "Skill", "Terminology"].includes(n.label)
+  );
+
+  const topicMap = new Map(topics.map((t) => [t.key || t.id, t]));
+  const pointMap = new Map(points.map((p) => [p.key || p.id, p]));
+  const stageTopicCount = new Map();
+  const topicPointCount = new Map();
+  const topicParentStage = new Map();
+  const pointParentTopic = new Map();
+  const crossEdges = [];
+
+  const stageTopicEdges = edgesRaw.filter((e) => e.type === "CONTAIN_TOPIC");
+  const topicPointEdges = edgesRaw.filter(
+    (e) => e.type === "INCLUDE_POINT" || e.type === "HAS_TOPIC"
+  );
+
+  const stageToTopics = new Map();
+  stageTopicEdges.forEach((e) => {
+    const sid = e.source || e.from;
+    const tid = e.target || e.to;
+    if (!sid || !tid) return;
+    if (!stageToTopics.has(sid)) stageToTopics.set(sid, []);
+    stageToTopics.get(sid).push(tid);
+    stageTopicCount.set(sid, (stageTopicCount.get(sid) || 0) + 1);
+    topicParentStage.set(tid, sid);
+  });
+
+  const topicToPoints = new Map();
+  topicPointEdges.forEach((e) => {
+    const tid = e.source || e.from;
+    const pid = e.target || e.to;
+    if (!tid || !pid) return;
+    if (!topicToPoints.has(tid)) topicToPoints.set(tid, []);
+    topicToPoints.get(tid).push(pid);
+    topicPointCount.set(tid, (topicPointCount.get(tid) || 0) + 1);
+    pointParentTopic.set(pid, tid);
+  });
+
+  // 收集跨Stage或知识点间的边
+  edgesRaw.forEach((e) => {
+    const src = e.source || e.from;
+    const tgt = e.target || e.to;
+    if (!src || !tgt) return;
+    // 已经用于层级的边跳过
+    if (e.type === "CONTAIN_TOPIC" || e.type === "INCLUDE_POINT" || e.type === "HAS_TOPIC") {
+      return;
+    }
+    const srcStage = topicParentStage.get(src) || topicParentStage.get(pointParentTopic.get(src));
+    const tgtStage = topicParentStage.get(tgt) || topicParentStage.get(pointParentTopic.get(tgt));
+    const isCrossStage = srcStage && tgtStage && srcStage !== tgtStage;
+    const isPointToPoint =
+      ["KnowledgePoint", "Skill", "Terminology"].includes(pointMap.get(src)?.label) ||
+      ["KnowledgePoint", "Skill", "Terminology"].includes(pointMap.get(tgt)?.label);
+    if (isCrossStage || isPointToPoint) {
+      crossEdges.push({
+        source: src,
+        target: tgt,
+        label: e.type,
+        style: {
+          stroke: "rgba(148,163,184,0.35)",
+          lineWidth: 1,
+          lineDash: [5, 5],
+          endArrow: false,
+          opacity: 0.65,
+        },
+      });
+    }
+  });
+
+  // === 搜索匹配：自动展开并高亮 ===
+  const kw = (state.admin.graph.searchKeyword || "").trim().toLowerCase();
+  const highlighted = new Set();
+  const autoExpandedStages = new Set(expandedStages);
+  const autoExpandedTopics = new Set(expandedTopics);
+  if (kw) {
+    nodesRaw.forEach((n) => {
+      const text = (n.title || n.name || n.key || "").toLowerCase();
+      if (!text.includes(kw)) return;
+      const id = n.key || n.id;
+      if (!id) return;
+      highlighted.add(id);
+      if (n.label === "Topic") {
+        autoExpandedTopics.add(id);
+        const parentStage = topicParentStage.get(id);
+        if (parentStage) autoExpandedStages.add(parentStage);
+      } else if (["KnowledgePoint", "Skill", "Terminology"].includes(n.label)) {
+        const parentTopic = pointParentTopic.get(id);
+        if (parentTopic) {
+          autoExpandedTopics.add(parentTopic);
+          const parentStage = topicParentStage.get(parentTopic);
+          if (parentStage) autoExpandedStages.add(parentStage);
+        }
+      } else if (n.label === "Stage") {
+        autoExpandedStages.add(id);
+      }
+    });
+  }
+
+  const center = { x: width / 2, y: height / 2 };
+  const stageCount = stages.length || 1;
+  const maxTopicCount = Math.max(1, ...stageTopicCount.values(), 1);
+  const maxPointCount = Math.max(1, ...topicPointCount.values(), 1);
+  const stageRadius =
+    Math.max(200, Math.min(width, height) * 0.32) +
+    Math.min(120, maxTopicCount * 8 + maxPointCount * 4);
+  const topicRadialGap = 120;
+  const pointRadialGap = 90;
+
+  // 同步自动展开集合，便于后续点击保持状态
+  const searchMode = Boolean(kw);
+  if (searchMode) {
+    expandedStages.clear();
+    expandedTopics.clear();
+    autoExpandedStages.forEach((id) => expandedStages.add(id));
+    autoExpandedTopics.forEach((id) => expandedTopics.add(id));
+  }
+  const nodes = [];
+  const edges = [];
+
+  const placed = new Set();
+
+  const polar = (cx, cy, r, angle) => ({
+    x: cx + r * Math.cos(angle),
+    y: cy + r * Math.sin(angle),
+  });
+
+  stages.forEach((stage, idx) => {
+    const id = stage.key || stage.id;
+    if (!id) return;
+    const angle = (2 * Math.PI * idx) / stageCount;
+    const pos = polar(center.x, center.y, stageRadius, angle);
+    const stageHighlighted = highlighted.has(id);
+    nodes.push({
+      id,
+      label: stage.title || stage.name || id,
+      x: pos.x,
+      y: pos.y,
+      size: 46,
+      style: {
+        fill: colorMap.Stage,
+        stroke: stageHighlighted ? "#22c55e" : "#2563eb",
+        lineWidth: stageHighlighted ? 2 : 1.4,
+      },
+      nodeType: "Stage",
+    });
+    placed.add(id);
+
+    if (!autoExpandedStages.has(id)) {
+      return;
+    }
+    const topicIds =
+      stageToTopics.get(id) ||
+      topics
+        .filter((t) => t.stage === stage.name || t.stageName === stage.name)
+        .map((t) => t.key || t.id);
+    const topicCount = topicIds.length || 1;
+    const topicAngleSpan = Math.min(Math.PI / 2.2, 0.18 * topicCount); // tighter fan outward
+    const topicAngleStep = topicCount > 1 ? topicAngleSpan / (topicCount - 1) : 0;
+    topicIds.forEach((tid, tIdx) => {
+      const topic = topicMap.get(tid);
+      if (!topic) return;
+      const offset = topicAngleStep * (tIdx - (topicCount - 1) / 2);
+      const tAngle = angle + offset;
+      const topicRadius =
+        stageRadius +
+        topicRadialGap +
+        Math.min(80, (topicPointCount.get(tid) || 0) * 2); // push out heavy topics
+      const tPos = polar(center.x, center.y, topicRadius, tAngle);
+      const topicHighlighted = highlighted.has(tid);
+      nodes.push({
+        id: tid,
+        label: topic.title || topic.name || tid,
+        x: tPos.x,
+        y: tPos.y,
+        size: 32,
+        type: "rect",
+        style: {
+          fill: colorMap.Topic,
+          stroke: topicHighlighted ? "#22c55e" : "#f59e0b",
+          lineWidth: topicHighlighted ? 2 : 1.2,
+        },
+        nodeType: "Topic",
+      });
+      edges.push({
+        source: id,
+        target: tid,
+        style: { stroke: "rgba(148,163,184,0.45)", endArrow: true },
+      });
+      placed.add(tid);
+
+      if (!autoExpandedTopics.has(tid)) return;
+      const pointIds =
+        topicToPoints.get(tid) ||
+        points
+          .filter((p) => p.topic === topic.name || p.topicName === topic.name)
+          .map((p) => p.key || p.id);
+      const pointCount = pointIds.length || 1;
+      const pointAngleSpan = Math.min(Math.PI / 3.2, 0.16 * pointCount);
+      const pointAngleStep = pointCount > 1 ? pointAngleSpan / (pointCount - 1) : 0;
+      const basePointRadius =
+        topicRadius + pointRadialGap + Math.min(60, pointCount * 1.8); // more children, push further
+      pointIds.forEach((pid, pIdx) => {
+        const point = pointMap.get(pid);
+        if (!point) return;
+        const pOffset = pointAngleStep * (pIdx - (pointCount - 1) / 2);
+        const pAngle = tAngle + pOffset;
+        const pPos = polar(center.x, center.y, basePointRadius, pAngle);
+        const isHighlighted = highlighted.has(pid);
+        nodes.push({
+          id: pid,
+          label: point.title || point.name || pid,
+          x: pPos.x,
+          y: pPos.y,
+          size: 16,
+          style: {
+            fill: colorMap[point.label] || "#94a3b8",
+            stroke: isHighlighted ? "#22c55e" : "rgba(15,23,42,0.35)",
+            lineWidth: isHighlighted ? 1.8 : 1,
+          },
+          nodeType: point.label,
+        });
+        edges.push({
+          source: tid,
+          target: pid,
+          style: { stroke: "rgba(148,163,184,0.35)", endArrow: false },
+        });
+        placed.add(pid);
+      });
+    });
+  });
+
+  adminG6Graph = new G6.Graph({
+    container: adminGraphCanvas,
+    width,
+    height,
+    layout: { type: "none" },
+    modes: { default: ["drag-canvas", "zoom-canvas"] },
+    defaultNode: {
+      labelCfg: {
+        position: "bottom",
+        style: { fill: "#0f172a", fontSize: 12, opacity: 0.9 },
+      },
+    },
+    defaultEdge: {
+      type: "line",
+      labelCfg: { style: { fill: "#94a3b8", fontSize: 10 } },
+      style: { endArrow: true },
+    },
+    fitView: false,
+    minZoom: 0.3,
+    maxZoom: 3,
+    fitCenter: true,
+  });
+
+  // 叠加跨Stage/点的虚线边
+  const allEdges = edges.concat(crossEdges);
+
+  adminG6Graph.data({ nodes, edges: allEdges });
+  adminG6Graph.render();
+  adminG6Graph.fitView(40);
+
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length}`;
+  }
+
+  adminG6Graph.on("node:click", (evt) => {
+    const item = evt.item;
+    if (!item) return;
+    const model = item.getModel();
+    const nodeId = model.id;
+    if (model.nodeType === "Stage") {
+      if (expandedStages.has(nodeId)) expandedStages.delete(nodeId);
+      else expandedStages.add(nodeId);
+      renderAdminGraphNetwork();
+      return;
+    }
+    if (model.nodeType === "Topic") {
+      if (expandedTopics.has(nodeId)) expandedTopics.delete(nodeId);
+      else expandedTopics.add(nodeId);
+      renderAdminGraphNetwork();
+      return;
+    }
+    handleGraphNodeSelection(nodeId);
   });
 }
 
