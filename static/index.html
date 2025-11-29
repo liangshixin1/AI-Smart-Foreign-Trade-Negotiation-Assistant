@@ -13,7 +13,21 @@
       href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css"
     />
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
-    <script src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js"></script>
+    <script
+      src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g6-4.8.17/build/g6.min.js"
+      onerror="console.error('[G6 CDN] ❌ 主CDN加载失败，尝试备用CDN...');
+               var script = document.createElement('script');
+               script.src = 'https://cdn.jsdelivr.net/npm/@antv/g6@4.8.17/dist/g6.min.js';
+               script.onerror = function() {
+                 console.error('[G6 CDN] ❌ 备用CDN也加载失败！知识图谱无法渲染。');
+                 console.error('[G6 CDN] 请检查网络连接或联系管理员。');
+               };
+               script.onload = function() {
+                 console.log('[G6 CDN] ✅ 备用CDN加载成功:', window.G6?.version);
+               };
+               document.head.appendChild(script);"
+      onload="console.log('[G6 CDN] ✅ 主CDN加载成功, G6版本:', window.G6?.version);"
+    ></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -4016,7 +4030,6 @@
     </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="/static/js/elements.js"></script>
     <script src="/static/js/state.js"></script>
     <script src="/static/js/api.js"></script>
