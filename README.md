@@ -1,170 +1,452 @@
-# AI Smart Foreign Trade Negotiation Assistant
+# AI Smart Foreign Trade Negotiation Assistant (Beta 2)
 
-面向职业院校与高校外贸英语教学场景的智能谈判训练平台。系统结合 Flask 后端、SQLite 持久层与 DeepSeek 大语言模型，为教师与学生提供沉浸式的谈判任务、实时 AI 对手、自动化评估与教学分析能力。
+**AI智能外贸谈判助手** - 面向职业院校与高校外贸英语教学的智能训练平台
 
-## 核心功能
+基于Flask + DeepSeek + Neo4j技术栈，为教师和学生提供沉浸式的外贸谈判实战训练与知识图谱管理能力。
 
-- **沉浸式关卡式训练**：章节—小节情境地图，学生按需选择行业场景与难度，开启外贸谈判模拟。
-- **多模型协同生成**：分别配置场景生成、协作对话与评估批改的 DeepSeek Key，保证情境多样性、对话流畅度和学习反馈的专业性。
-- **教师工作台**：关卡蓝图编辑、作业布置、班级看板、学生画像与成绩明细查询。
-- **学生成长中心**：保存谈判会话、知识点与改进行动项，帮助学生形成可追踪的学习档案。
-- **知识图谱管理**：Neo4j 驱动的知识点节点/关系维护；支持批量导入 Excel、拖拽分类、图谱可视化。
-- **自动构建知识图谱 (Beta)**：上传教材 Word，一键生成草稿知识点，教师审核后写入图谱；后续可接入向量检索/异步任务。
-- **智能知识点匹配 (Beta)**：DeepSeek 精排或 RAG(Beta) 匹配，将选中文本自动关联到知识点并插入知识卡。
+---
 
-## 系统架构概览
+## ✨ Beta 2 核心功能
 
+### 🎯 沉浸式关卡式训练
+- **10章关卡地图** - 询盘、报盘、还盘、签约、备货、报检报关、装运、保险、结汇、纠纷处理
+- **3档难度系统** - balanced（标准）、challenging（挑战）、realistic（真实场景）
+- **AI场景生成** - DeepSeek自动生成多样化谈判情境
+- **实时AI对手** - 模拟真实外贸伙伴，支持流式对话
+- **智能评估** - 自动打分并提供改进建议
+
+### 🧠 知识图谱管理（核心亮点）
+- **Neo4j本地部署** - Docker一键启动，无云端依赖，<10ms延迟
+- **完整知识点CRUD** - Web UI + 13个REST API端点
+- **批量导入导出** - Excel模板，支持一次性导入100+知识点
+- **关系可视化** - AntV G6图谱，支持前置依赖、关联关系
+- **Beta功能**：
+  - **自动构建** - 上传Word教材 → AI生成知识点草稿 → 教师审核 → 写入图谱
+  - **智能匹配** - 选中课文片段 → DeepSeek精排/RAG匹配 → 自动插入知识卡
+
+### 👨‍🏫 教师工作台
+- **作业管理** - 布置作业、查看进度、批量导出成绩
+- **场景蓝图编辑** - 自定义关卡参数（公司、产品、市场、风险）
+- **班级分析** - Chart.js可视化学生能力分布、成长趋势
+- **学生名册导入** - Excel批量导入账号
+- **理论课时编辑** - 富文本编辑器，支持知识点关联
+- **知识图谱管理** - 可视化界面管理25+字段的知识点
+
+### 👨‍🎓 学生成长中心
+- **谈判会话存档** - 保存所有对话历史与评估结果
+- **知识点讲解** - DeepSeek生成个性化解释
+- **学习档案** - 能力雷达图、成长曲线
+- **练习推荐** - 基于知识图谱的个性化推荐
+
+---
+
+## 🏗️ 技术架构
+
+### 后端
 ```
-app.py                —— 应用工厂与蓝图注册
-routes/
-├── auth.py           —— 登录、个人信息维护接口
-├── scenarios.py      —— 关卡层级、场景蓝图、AI 场景生成
-├── assignments.py    —— 作业布置、会话流程、聊天与评估
-└── admin.py          —— 学生名册导入、班级分析、关卡配置
-
-services/
-├── auth_service.py           —— 鉴权装饰器与当前用户上下文
-├── scenario_generator.py     —— 难度画像、Prompt 渲染、AI 生成
-├── document_composer.py      —— 开场邮件/合同片段生成
-├── evaluation_service.py     —— 会话表现评估与结果入库
-├── llm_service.py            —— DeepSeek OpenAI 接口封装
-├── ai_matching.py            —— DeepSeek 精排知识点匹配
-├── rag_matcher.py            —— 轻量 RAG/相似度匹配（Beta）
-├── knowledge_generation.py   —— LLM 知识点草稿生成（Beta）
-└── knowledge_job_service.py  —— 知识图谱构建任务与草稿持久化
-
-utils/
-├── normalizers.py    —— 文本、公司、产品等清洗工具
-└── validators.py     —— 布尔转换、JSON 抽取、环境变量校验
-
-database.py           —— SQLite 持久层封装
-levels.py             —— 预置章节小节模板
-static/               —— 前端单页应用与静态资源
-docs/TODO.md          —— 待办清单
+Python 3.8+  Flask  SQLite  Neo4j 5.15  DeepSeek API (OpenAI兼容)
 ```
 
-## 快速开始
+### 前端
+```
+Vanilla JavaScript  Tailwind CSS  Chart.js  AntV G6
+```
 
-### 1. 克隆与环境准备
+### 数据库
+- **SQLite** (`app.db`) - 用户、会话、作业、课时等业务数据（13张表）
+- **Neo4j** (Docker) - 知识图谱（8种节点类型、12种关系类型）
 
+### 核心文件
+```
+AI-Smart-Foreign-Trade-Negotiation-Assistant/
+├── app.py                      # Flask应用入口
+├── database.py                 # SQLite持久层
+├── levels.py                   # 10章关卡配置 + Prompt模板
+├── routes/                     # 7个蓝图模块
+│   ├── auth.py                 # 登录、个人信息
+│   ├── scenarios.py            # 场景生成
+│   ├── assignments.py          # 作业与会话流程
+│   ├── admin.py                # 教师端管理
+│   ├── theory.py               # 理论课时
+│   ├── graph.py                # 知识图谱API (13个端点)
+│   └── knowledge.py            # 知识点讲解
+├── services/                   # 18个业务服务
+│   ├── llm_service.py          # DeepSeek API封装
+│   ├── scenario_generator.py  # 场景生成引擎
+│   ├── evaluation_service.py  # 会话评估
+│   ├── graph_service.py        # Neo4j核心服务 (115KB)
+│   ├── knowledge_service.py    # 知识点CRUD
+│   ├── knowledge_importer.py   # Excel批量导入导出
+│   ├── ai_matching.py          # DeepSeek精排知识点
+│   ├── rag_matcher.py          # RAG相似度匹配 (Beta)
+│   ├── docx_importer.py        # Word教材解析
+│   └── knowledge_job_service.py # 知识图谱构建任务
+├── static/
+│   ├── index.html              # 单页应用 (4124行)
+│   └── js/
+│       ├── main.js             # 路由控制
+│       ├── student.js          # 学生端功能 (95KB)
+│       ├── admin.js            # 管理端功能 (253KB)
+│       ├── graph-knowledge.js  # 知识图谱UI (56KB)
+│       └── admin/              # 模块化脚本 (8个文件)
+└── docs/                       # 完整文档
+```
+
+---
+
+## 🚀 快速开始
+
+### 前置要求
+- Python 3.8+
+- Docker 20.10+ (用于Neo4j)
+- DeepSeek API Key ([获取地址](https://platform.deepseek.com))
+
+### 1. 克隆项目
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows 使用 .venv\Scripts\activate
+git clone https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant.git
+cd AI-Smart-Foreign-Trade-Negotiation-Assistant
+```
+
+### 2. 启动Neo4j (Docker)
+```bash
+docker-compose -f docker-compose.neo4j.yml up -d
+
+# 验证启动成功（等待30秒）
+curl http://localhost:7474
+```
+
+### 3. 配置环境变量
+```bash
+cp .env.example .env
+vim .env
+```
+
+**必填配置**：
+```bash
+# Neo4j连接
+NEO4J_URI=neo4j://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=foreign-trade-2024
+
+# DeepSeek API Keys (多Key隔离不同功能)
+DEEPSEEK_GENERATOR_KEY=sk-xxx    # 场景生成
+DEEPSEEK_COLLAB_KEY=sk-xxx       # 对话
+DEEPSEEK_CRITIC_KEY=sk-xxx       # 评估
+DEEPSEEK_LECTURE_API_KEY=sk-xxx  # 讲解
+DEEPSEEK_KP_API_KEY=sk-xxx       # 知识点匹配
+
+# 或使用单个通用Key
+DEEPSEEK_API_KEY=sk-xxx
+```
+
+### 4. 安装依赖
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. 配置环境变量
-
-项目依赖 DeepSeek OpenAI 兼容 API，需分别配置以下 Key：
-
-| 变量名 | 用途 |
-| --- | --- |
-| `DEEPSEEK_GENERATOR_KEY` | 章节/小节情境生成 |
-| `DEEPSEEK_COLLAB_KEY` | 学生实时对话 AI 对手 |
-| `DEEPSEEK_CRITIC_KEY` | 会话结束后的评估打分 |
-
-可在项目根目录创建 `.env` 文件，示例：
-
-```
-DEEPSEEK_GENERATOR_KEY=sk-xxxxxxxx
-DEEPSEEK_COLLAB_KEY=sk-yyyyyyyy
-DEEPSEEK_CRITIC_KEY=sk-zzzzzzzz
-```
-
-启动时 `.env` 会被自动读取；缺失必需 Key 时，对应功能会返回提示错误。
-
-#### 知识图谱（Neo4j）配置
-
-知识图谱相关功能默认可选；若未配置 Neo4j，学生端的“相关练习/推荐课时”会自动回退为空列表。要启用完整体验，请：
-
-1. 安装并启动 Neo4j 5.x 服务，或使用 Docker 快速体验：
-
-   ```bash
-   docker run -it --rm \
-     -p7474:7474 -p7687:7687 \
-     -e NEO4J_AUTH=neo4j/testpass \
-     neo4j:5
-   ```
-
-2. 在 `.env` 中补充以下变量，指向可连接的 Bolt 地址与认证：
-
-   ```
-   NEO4J_URI=bolt://127.0.0.1:7687
-   NEO4J_USER=neo4j
-   NEO4J_PASSWORD=testpass
-   ```
-
-3. 首次启动 Flask 应用时会自动创建唯一约束并导入章节/理论课时等静态数据。若连接失败，可查看控制台日志，系统会临时禁用图谱查询并退回 SQLite 结果。
-
-### 3. 初始化数据库
-
-首次运行会在项目目录生成 `app.db`，并写入默认账户与预置章节。如果需要自定义路径，可设置环境变量 `DATABASE_PATH`。
-
-### 4. 启动应用
-
+### 5. 启动应用
 ```bash
 python app.py
+# 访问 http://localhost:5000
 ```
 
-默认在 `http://127.0.0.1:5000/` 提供界面与 API。部署生产环境时建议使用 `gunicorn` 等 WSGI 服务器并配置反向代理。
-
-## 默认账号
-
+### 6. 登录体验
 | 角色 | 用户名 | 密码 |
-| --- | --- | --- |
+|------|--------|------|
 | 学生 | `0000` | `0000` |
 | 教师 | `0001` | `0001` |
 
-登录后可在「修改密码」中更新个人密码。教师端可批量导入学生账号或手动创建。
+---
 
-## 主要 API 一览
+## 📖 主要功能演示
 
-| 路由 | 方法 | 说明 |
-| --- | --- | --- |
-| `/api/login` | POST | 用户登录获取 Token |
-| `/api/levels` | GET | 获取章节/小节层级及关卡元数据 |
-| `/api/generator/scenario` | POST | 教师/学生按章节生成候选情境 |
-| `/api/blueprints` | GET/POST/PUT/DELETE | 教师管理积木式场景蓝图 |
-| `/api/start_level` | POST | 学生选择关卡后生成场景并创建会话 |
-| `/api/assignments` | GET/POST | 教师布置作业并查看汇总 |
-| `/api/student/assignments` | GET | 学生查看个人作业与状态 |
-| `/api/assignments/<id>/start` | POST | 学生领取作业并进入对话 |
-| `/api/chat` | POST | 学生与 AI 对手对话，可选流式输出 |
-| `/api/admin/analytics` | GET | 教师端班级洞察与能力分析 |
-| `/api/sessions` | GET | 获取个人历史会话与评估结果 |
-| `/api/admin/students/import` | POST | Excel 导入学生账号 |
+### 学生端：谈判训练
+1. 选择章节（如"第一章 询盘"）→ 选择小节（如"1-1 产品询盘"）
+2. 选择难度 → 点击"开始训练"
+3. AI生成场景（开场邮件 + 对手信息）
+4. 实时对话（支持流式输出）
+5. 结束会话 → 查看评估结果与改进建议
 
-更多端点可参考 `routes/` 目录下各模块的蓝图定义。
+### 教师端：知识图谱管理
+1. 进入"知识图谱"标签页
+2. **方式1：手动创建**
+   - 点击"新增" → 填写知识点信息（名称、分类、难度等）
+   - 添加前置依赖和关联关系 → 保存
+3. **方式2：Excel批量导入**
+   - 下载模板 → 填写100+知识点 → 上传导入
+   - 系统显示导入统计（创建/更新/失败数量）
+4. **方式3：Word教材自动构建 (Beta)**
+   - 上传教材DOCX → AI生成知识点草稿
+   - 教师勾选审核通过 → 批量写入Neo4j
 
-## 前端体验亮点
+### 教师端：作业管理
+1. 进入"作业管理"标签页
+2. 点击"布置作业" → 选择章节、难度、截止时间
+3. 选择学生名单 → 发布
+4. 查看学生完成进度 → 导出成绩Excel
 
-- Tailwind CSS 打造的玻璃拟态界面，支持暗色调视觉。
-- 学生端含任务导航、关卡地图、谈判经验区与成长档案。
-- 教师端提供学生进度、作业管理、蓝图编辑、班级分析等多个仪表板。
-- Chart.js 用于课堂数据与能力趋势可视化。
+---
 
-## 部署建议
+## 🧩 知识图谱Schema
 
-- 使用 `pip install gunicorn` 并通过 `gunicorn app:app` 部署生产环境。
-- 配合 `supervisor` 或 systemd 守护进程保证高可用。
-- 将 `app.db` 存放于持久化卷或外部数据库，定期备份。
-- 对公网部署时，请通过 HTTPS 代理加密流量并在前端增加访问控制（如学校 OAuth 或 SSO）。
+### 节点类型 (8种)
+```cypher
+KnowledgePoint      # 知识点（25+属性：name, category, difficulty, tags等）
+KnowledgeCategory   # 知识分类（三级分类体系）
+Stage               # 谈判阶段（询盘、报盘、还盘等）
+Topic               # 理论主题
+Practice            # 实战练习
+TheoryLesson        # 理论课时
+ProcessStep         # 流程步骤
+Terminology         # 术语 (FOB, CIF等)
+```
 
-### 常见线上故障排查
+### 关系类型 (12种)
+```cypher
+REQUIRES            # 前置依赖 (strict: true/false)
+RELATES_TO          # 关联 (prerequisite/similar/contrast/extension)
+BELONGS_TO          # 属于分类
+PARENT_OF           # 分类层级
+APPLIES_TO          # 应用到流程
+COVERS_PROCESS      # 覆盖流程
+HAS_PRACTICE        # 包含练习
+HAS_TOPIC           # 包含主题
+HAS_LESSON          # 包含课时
+TESTS               # 考察知识点
+EXPLAINS            # 解释知识点
+NEXT_STEP           # 流程顺序
+```
 
-- **Nginx 日志出现 `connect() failed (111: Connection refused)`**：说明反向代理尝试转发到 `127.0.0.1:<端口>` 的后端进程但未成功。请确认 Gunicorn/Uvicorn 是否已启动、监听端口与 Nginx `proxy_pass` 配置一致，并检查防火墙或 SELinux 是否阻断了本地环回访问。
-- **持续请求 `.env` 等敏感路径**：公网环境会遭遇扫描器探测。务必禁用将 `.env` 等配置文件通过 Nginx 暴露的路由，确保服务器返回 404 并限制只读权限，避免被下载到密钥。
-- **上传 Excel 导入名册后无响应**：后端依赖 `openpyxl` 解析 `.xlsx`。确认部署环境的虚拟环境中已安装 `openpyxl`，并使用支持的 Excel 格式；如仍失败，请检查 Gunicorn/Flask 日志中的异常堆栈定位原因。
+### 典型查询示例
+```cypher
+// 查找知识点的学习路径
+MATCH path = (k:KnowledgePoint {name: '信用证操作'})<-[:REQUIRES*]-(pre)
+RETURN path ORDER BY length(path);
 
-## 贡献指南
+// 按分类浏览知识点
+MATCH (k:KnowledgePoint)-[:BELONGS_TO]->(c:KnowledgeCategory {id: 'incoterms'})
+RETURN k.name, k.difficulty, k.importance;
 
-欢迎提交 Issue 与 Pull Request：
+// 查看谈判流程骨架
+MATCH (s:Stage)-[:NEXT_STEP]->(next:Stage)
+RETURN s.name, next.name;
+```
 
-1. Fork 仓库并创建特性分支。
-2. 遵循项目现有的代码风格，优先在局部复用已有工具函数。
-3. 增补必要的单元测试或交互录屏说明。
-4. 提交前请运行本地测试，确保数据库迁移与接口兼容性。
+---
 
-## 版权说明
+## 🔌 API接口示例
 
-© 2025 《AI赋能：智能时代的外贸谈判策略与实战》项目组。梁诗忻 程序设计 · 基于 Flask 和 AI 技术构建。
+### 知识点管理API (13个端点)
+```bash
+# 获取知识点列表（支持过滤）
+GET /api/graph/knowledge-points/enhanced?category=贸易术语&difficulty=beginner
+
+# 创建知识点
+POST /api/graph/knowledge-points
+Content-Type: application/json
+{
+  "name": "FOB价格计算",
+  "category": "贸易术语",
+  "difficulty": "beginner",
+  "importance": "required",
+  "summary": "FOB价格的构成及计算方法",
+  "tags": ["FOB", "价格", "计算"]
+}
+
+# 更新知识点
+PUT /api/graph/knowledge-points/FOB价格计算
+
+# 删除知识点
+DELETE /api/graph/knowledge-points/FOB价格计算
+
+# 添加前置依赖
+POST /api/graph/knowledge-points/信用证操作/prerequisites
+{"prerequisite_name": "国际支付工具", "is_strict": true}
+
+# Excel导入导出
+GET  /api/graph/import/template      # 下载模板
+POST /api/graph/import/excel         # 导入
+GET  /api/graph/export/excel         # 导出
+```
+
+### 场景生成API
+```bash
+POST /api/generator/scenario
+{
+  "chapter_id": "chapter-1",
+  "section_id": "section-1-1",
+  "difficulty": "balanced",
+  "custom_params": {
+    "student_company": "XX进出口公司",
+    "target_product": "儿童玩具"
+  }
+}
+```
+
+### 聊天API
+```bash
+POST /api/chat
+{
+  "session_id": "session-xxx",
+  "message": "Hello, I'm interested in your toy products.",
+  "stream": true  # 流式输出
+}
+```
+
+完整API文档请查看 `routes/` 目录下的蓝图定义。
+
+---
+
+## 📊 系统对比 (Beta 1 → Beta 2)
+
+| 功能 | Beta 1 | Beta 2 |
+|------|--------|--------|
+| 知识图谱部署 | Neo4j Aura云端（不稳定） | Docker本地部署（<10ms） |
+| 知识点属性 | 1个 (name) | 25+ 个 |
+| 知识图谱可视化 | ECharts | AntV G6 |
+| 知识点管理 | 无UI | 完整Web UI + 13个API |
+| 批量导入 | 无 | Excel/CSV批量导入 |
+| 自动构建图谱 | 无 | ✅ Word教材自动解析 (Beta) |
+| 智能匹配 | 无 | ✅ DeepSeek精排 + RAG (Beta) |
+| 关系类型 | 7种 | 12种 |
+| 节点类型 | 5种 | 8种 |
+| 前端模块化 | 单文件 | 8个模块化脚本 |
+
+---
+
+## 📁 重要文档
+
+| 文档 | 说明 |
+|------|------|
+| [快速开始指南](QUICK_START.md) | 5分钟快速部署 |
+| [Neo4j本地部署](docs/NEO4J_LOCAL_SETUP.md) | Docker配置详解 |
+| [知识图谱Schema](docs/KNOWLEDGE_GRAPH_SCHEMA.md) | 节点/关系设计 |
+| [知识点管理UI使用指南](docs/知识点管理UI使用指南.md) | 教师操作手册 |
+| [智能批量导入指南](docs/智能批量导入使用指南.md) | Excel批量操作 |
+| [故障排查](TROUBLESHOOTING.md) | 常见问题解决 |
+| [TODO](docs/TODO.md) | 未来规划 |
+
+---
+
+## 🛠️ 生产环境部署
+
+### 1. 使用Gunicorn
+```bash
+pip install gunicorn
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
+```
+
+### 2. Nginx反向代理
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 禁止访问敏感文件
+    location ~ /\. {
+        deny all;
+    }
+    location ~ \.env$ {
+        deny all;
+    }
+}
+```
+
+### 3. 数据备份
+```bash
+# SQLite备份
+cp app.db backups/app-$(date +%Y%m%d).db
+
+# Neo4j备份
+docker exec foreign-trade-neo4j neo4j-admin database dump neo4j \
+  --to-path=/data/backups/backup-$(date +%Y%m%d).dump
+```
+
+### 4. 安全加固
+- 修改默认账号密码（0000/0001）
+- 修改Neo4j默认密码
+- 启用HTTPS
+- 限制Neo4j远程访问（127.0.0.1:7687）
+- 定期更新依赖包
+
+---
+
+## 🔧 故障排查
+
+### 问题1：Neo4j连接失败
+```bash
+# 检查Neo4j是否运行
+docker ps | grep neo4j
+
+# 查看日志
+docker-compose -f docker-compose.neo4j.yml logs neo4j
+
+# 重启Neo4j
+docker-compose -f docker-compose.neo4j.yml restart
+```
+
+### 问题2：DeepSeek API调用失败
+- 检查API Key是否正确
+- 检查账户余额
+- 检查网络连接
+- 查看后端日志：`tail -f app.log`
+
+### 问题3：理论内容无法创建（401错误）
+详见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
+---
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request：
+
+1. Fork项目
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交Pull Request
+
+**代码规范**：
+- 遵循现有代码风格
+- 添加必要的注释
+- 更新相关文档
+
+---
+
+## 📜 开源协议
+
+MIT License
+
+---
+
+## 👥 致谢
+
+**项目组成员**：
+- 梁诗忻 - 程序设计与实现
+
+**技术栈**：
+- [Flask](https://flask.palletsprojects.com/) - Web框架
+- [Neo4j](https://neo4j.com/) - 图数据库
+- [DeepSeek](https://www.deepseek.com/) - 大语言模型
+- [AntV G6](https://g6.antv.antgroup.com/) - 图可视化
+- [Tailwind CSS](https://tailwindcss.com/) - UI框架
+
+**教材参考**：
+《AI赋能：智能时代的外贸谈判策略与实战》
+
+---
+
+## 📞 联系方式
+
+- GitHub Issues: [提交问题](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant/issues)
+- 项目地址: https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant
+
+---
+
+**© 2025 AI赋能：智能时代的外贸谈判策略与实战 项目组**
