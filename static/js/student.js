@@ -7,6 +7,13 @@ let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
 let studentLessonGraphInstance = null;
 
+// Fallback DOM refs (防止未定义报错)
+const theoryCompassSection = typeof window !== "undefined" && window.theoryCompassSection ? window.theoryCompassSection : document.getElementById("theory-knowledge-compass");
+const theoryCompassStatus = typeof window !== "undefined" && window.theoryCompassStatus ? window.theoryCompassStatus : document.getElementById("theory-knowledge-compass-status");
+const theoryCompassList = typeof window !== "undefined" && window.theoryCompassList ? window.theoryCompassList : document.getElementById("theory-knowledge-compass-list");
+const studentLessonGraph = typeof window !== "undefined" && window.studentLessonGraph ? window.studentLessonGraph : document.getElementById("student-lesson-graph");
+const studentLessonGraphRefresh = typeof window !== "undefined" && window.studentLessonGraphRefresh ? window.studentLessonGraphRefresh : document.getElementById("student-lesson-graph-refresh");
+
 function sortLevelHierarchy(chapters) {
   if (!Array.isArray(chapters)) {
     return [];
@@ -1104,7 +1111,9 @@ async function renderLessonSubgraph(lessonId) {
       return;
     }
     const nodes = data.nodes || [];
-    const edges = data.edges || [];
+    const edgesRaw = Array.isArray(data.edges) ? data.edges : [];
+    const nodeIds = new Set((nodes || []).map((n) => n.id || n.key || n.name));
+    const edges = edgesRaw.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
     const highlights = new Set(data.highlights || []);
     console.log("[LessonSubgraph] nodes:", nodes.length, "edges:", edges.length, "highlights:", highlights.size);
     if (nodes.length === 0) {
