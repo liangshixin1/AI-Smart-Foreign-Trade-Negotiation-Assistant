@@ -1387,7 +1387,7 @@ def get_related_lessons_for_practice(practice_id: str) -> List[Dict[str, object]
 
 
 def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
-    _refresh_node_type_labels()
+    # _refresh_node_type_labels()  # 高频读接口避免触发全库写入导致锁/性能问题
 
     allowed_labels = [
         "Stage",
