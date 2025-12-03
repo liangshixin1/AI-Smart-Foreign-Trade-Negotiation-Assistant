@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Dict, List
+from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
@@ -12,7 +13,7 @@ import database
 from services import graph_service, llm_service
 from services.graph_service import GraphUnavailableError
 from services.auth_service import require_role
-from services.lesson_graph_service import build_lesson_subgraph
+from services.lesson_graph_service import build_lesson_network_view, build_lesson_subgraph
 from database import get_theory_lesson
 
 bp = Blueprint("knowledge", __name__)
@@ -105,7 +106,24 @@ def lesson_subgraph():
   if not lesson_id:
     return jsonify({"error": "lessonId is required"}), 400
   try:
-    payload = build_lesson_subgraph(lesson_id)
+    cached = graph_service.get_cached_lesson_graph_payload(lesson_id) or {}
+    payload = cached.get("subgraph")
+    if not payload:
+      payload = build_lesson_subgraph(lesson_id)
+      # 缓存缺失时仅用图谱数据，不触发检测
+      try:
+        graph_service.cache_lesson_graph_payload(
+          lesson_id,
+          {
+            "lessonId": lesson_id,
+            "subgraph": payload,
+            "network": cached.get("network"),
+            "knowledgePoints": cached.get("knowledgePoints"),
+            "updatedAt": datetime.utcnow().isoformat() + "Z",
+          },
+        )
+      except Exception:
+        pass
     return jsonify(payload)
   except GraphUnavailableError:
     return jsonify({"error": "Graph unavailable"}), 503
@@ -119,119 +137,32 @@ def lesson_network():
   if not lesson_id:
     return jsonify({"error": "lessonId is required"}), 400
   try:
+    cached = graph_service.get_cached_lesson_graph_payload(lesson_id) or {}
+    if cached.get("network"):
+      return jsonify(cached["network"])
+
     detail = graph_service.get_lesson_detail(lesson_id)
-    lesson_record = get_theory_lesson(lesson_id, include_unpublished=False)
-    html = lesson_record.get("contentHtml") if lesson_record else ""
-    detected = graph_service.detect_knowledge_points_in_text(html)
-    highlight = set()
-    for kp in detail.get("knowledgePoints") or []:
-      name = (kp.get("name") or "").strip()
-      if name:
-        highlight.add(name)
-    for kp in detected:
-      name = (kp.get("name") or "").strip()
-      if name:
-        highlight.add(name)
+    highlight = { (kp.get("name") or "").strip() for kp in detail.get("knowledgePoints") or [] if kp.get("name") }
     snapshot = graph_service.fetch_graph_snapshot(limit=limit)
-    nodes_raw = snapshot.get("nodes") or []
-    edges_raw = snapshot.get("edges") or []
-
-    allowed_labels = {
-      "Stage",
-      "Topic",
-      "KnowledgeCategory",
-      "KnowledgePoint",
-      "Skill",
-      "Terminology",
-      "Practice",
-      "ProcessStep",
-    }
-
-    def _node_id(node: dict) -> str:
-      for key in ("id", "key", "name", "title"):
-        val = node.get(key)
-        if val:
-          return str(val)
-      return ""
-
-    def _node_label(node: dict) -> str:
-      lbl = node.get("label") or node.get("nodeType")
-      if lbl:
-        return lbl
-      lbls = node.get("labels") or []
-      if isinstance(lbls, list):
-        for candidate in lbls:
-          if candidate in allowed_labels:
-            return candidate
-      return ""
-
-    # 过滤节点类型
-    filtered_nodes = []
-    id_to_node = {}
-    for n in nodes_raw:
-      label = _node_label(n)
-      nid = _node_id(n)
-      if not nid or label not in allowed_labels:
-        continue
-      node_copy = dict(n)
-      node_copy["nodeType"] = label  # 保存类型
-      node_copy["id"] = nid  # 确保有id
-      display = n.get("title") or n.get("name") or n.get("id") or n.get("key") or label
-      node_copy["label"] = display  # 用于前端展示
-      node_copy["name"] = display
-      id_to_node[nid] = node_copy
-      filtered_nodes.append(node_copy)
-
-    # 过滤边到有效节点
-    filtered_edges = []
-    for e in edges_raw:
-      src = str(e.get("source") or e.get("from") or "")
-      tgt = str(e.get("target") or e.get("to") or "")
-      if src in id_to_node and tgt in id_to_node:
-        edge_copy = dict(e)
-        edge_copy["source"] = src
-        edge_copy["target"] = tgt
-        filtered_edges.append(edge_copy)
-
-    # 高亮 id
-    highlight_ids = set()
-    for nid in highlight:
-      if nid in id_to_node:
-        highlight_ids.add(nid)
-      else:
-        # 尝试按 name/title 匹配
-        for candidate_id, node in id_to_node.items():
-          if (node.get("name") or node.get("title") or "") == nid:
-            highlight_ids.add(candidate_id)
-
-    # 扩大上下文（与高亮点相连的节点，最多 2 层）；若无高亮，保留全部 Stage 以便全局视角
-    kept = set(highlight_ids)
-    if not kept:
-      stage_ids = [nid for nid, n in id_to_node.items() if n.get("nodeType") == "Stage"]
-      kept.update(stage_ids)
-    for _ in range(2):
-      new_nodes = set()
-      for e in filtered_edges:
-        s = e.get("source")
-        t = e.get("target")
-        if s in kept or t in kept:
-          new_nodes.add(s)
-          new_nodes.add(t)
-      kept.update(new_nodes)
-
-    # 如果依然只有少量节点，增加前 N 个 Stage 作为背景
-    if len(kept) < 10:
-      stage_ids = [nid for nid, n in id_to_node.items() if n.get("nodeType") == "Stage"]
-      kept.update(stage_ids[:10])
-
-    nodes_final = [id_to_node[nid] for nid in kept if nid in id_to_node]
-    edges_final = [e for e in filtered_edges if e.get("source") in kept and e.get("target") in kept]
-
-    payload = {
-      "nodes": nodes_final,
-      "edges": edges_final,
-      "highlights": list(highlight_ids),
-    }
+    payload = build_lesson_network_view(
+      lesson_id,
+      snapshot=snapshot,
+      highlight_names=highlight,
+      limit=limit,
+    )
+    try:
+      graph_service.cache_lesson_graph_payload(
+        lesson_id,
+        {
+          "lessonId": lesson_id,
+          "subgraph": cached.get("subgraph"),
+          "network": payload,
+          "knowledgePoints": list(highlight),
+          "updatedAt": datetime.utcnow().isoformat() + "Z",
+        },
+      )
+    except Exception:
+      pass
     return jsonify(payload)
   except GraphUnavailableError:
     return jsonify({"error": "Graph unavailable"}), 503

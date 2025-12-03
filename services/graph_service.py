@@ -41,6 +41,7 @@ _DEFAULT_CATEGORIES_CACHE: Optional[Sequence[Dict[str, object]]] = None
 
 
 INITIALIZATION_SETTING_KEY = "knowledge_graph.initialization"
+LESSON_GRAPH_CACHE_PREFIX = "knowledge_graph.lesson_cache."
 
 
 def _default_categories() -> Sequence[Dict[str, object]]:
@@ -160,6 +161,24 @@ def reset_initialization_status() -> None:
     """Clear the initialization status flag."""
 
     database.delete_app_setting(INITIALIZATION_SETTING_KEY)
+
+
+def _lesson_cache_key(lesson_id: str) -> str:
+    return f"{LESSON_GRAPH_CACHE_PREFIX}{lesson_id}"
+
+
+def cache_lesson_graph_payload(lesson_id: str, payload: Dict[str, object]) -> None:
+    """Persist precomputed lesson graph payload for student-side fast load."""
+
+    database.set_app_setting(_lesson_cache_key(lesson_id), payload)
+
+
+def get_cached_lesson_graph_payload(lesson_id: str) -> Optional[Dict[str, object]]:
+    return database.get_app_setting(_lesson_cache_key(lesson_id))
+
+
+def invalidate_lesson_graph_cache(lesson_id: str) -> None:
+    database.delete_app_setting(_lesson_cache_key(lesson_id))
 
 
 def get_initialization_defaults_preview() -> Dict[str, object]:
@@ -1285,6 +1304,75 @@ def detect_knowledge_points_in_text(html: str, max_results: int = 20) -> List[Di
 
     ranked = sorted(best_meta.values(), key=lambda x: x.get("score", 0), reverse=True)
     return ranked[:max_results]
+
+
+def compute_lesson_knowledge_and_graph(
+    lesson_id: str,
+    *,
+    include_unpublished: bool = True,
+    snapshot_limit: int = 800,
+) -> Dict[str, object]:
+    """Detect + persist lesson knowledge points, then cache subgraph/network."""
+
+    lesson = database.get_theory_lesson(lesson_id, include_unpublished=include_unpublished)
+    if not lesson:
+        raise GraphEntityNotFoundError(f"Theory lesson {lesson_id} not found")
+
+    html = lesson.get("contentHtml") or ""
+
+    # 取当前图谱中的已关联知识点，防止覆盖教师手动配置
+    existing_points: List[Dict[str, object]] = []
+    try:
+        detail = get_lesson_detail(lesson_id)
+        existing_points = detail.get("knowledgePoints") or []
+    except GraphUnavailableError:
+        existing_points = []
+
+    try:
+        detected_points = detect_knowledge_points_in_text(html)
+    except GraphUnavailableError:
+        detected_points = []
+    merged_points = _normalize_knowledge_point_payloads([*existing_points, *detected_points])
+    detected_names = [p.get("name") for p in detected_points if isinstance(p, dict)]
+
+    try:
+        set_lesson_knowledge_points(lesson_id, merged_points)
+    except GraphUnavailableError:
+        LOGGER.warning("Graph unavailable when persisting lesson %s knowledge; cache only", lesson_id)
+
+    # 构建学生端需要的子图/网络视图（无需二次检测）
+    from services import lesson_graph_service  # lazy import to avoid circular dependency
+
+    subgraph = lesson_graph_service.build_lesson_subgraph(
+        lesson_id, detected_names=detected_names
+    )
+
+    highlight_names = [p.get("name") for p in merged_points if isinstance(p, dict) and p.get("name")]
+    try:
+        network_view = lesson_graph_service.build_lesson_network_view(
+            lesson_id,
+            highlight_names=highlight_names,
+            limit=snapshot_limit,
+        )
+    except GraphUnavailableError:
+        network_view = {"nodes": [], "edges": [], "highlights": []}
+
+    payload = {
+        "lessonId": lesson_id,
+        "knowledgePoints": highlight_names,
+        "detected": detected_points,
+        "merged": merged_points,
+        "subgraph": subgraph,
+        "network": network_view,
+        "updatedAt": datetime.utcnow().isoformat() + "Z",
+    }
+
+    try:
+        cache_lesson_graph_payload(lesson_id, payload)
+    except Exception as exc:  # pragma: no cover - cache must not break flow
+        LOGGER.warning("Failed to cache lesson graph for %s: %s", lesson_id, exc)
+
+    return payload
 
 
 def get_practices_for_kp(name: str, limit: int = 5) -> List[Dict[str, object]]:

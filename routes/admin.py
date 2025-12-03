@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from concurrent.futures import TimeoutError
 from itertools import chain
@@ -119,6 +120,35 @@ def _set_lesson_knowledge_points(
         current_app.logger.exception(
             "Failed to synchronize lesson knowledge points: %s", exc
         )
+
+
+def _precompute_lesson_graph_async(lesson_id: str, *, allow_unpublished: bool = False) -> None:
+    """Precompute KP detection + lesson graph cache in background."""
+
+    if not graph_service.is_configured():
+        current_app.logger.debug("Knowledge graph not configured, skip lesson precompute")
+        return
+
+    def _worker():
+        try:
+            graph_service.compute_lesson_knowledge_and_graph(
+                lesson_id,
+                include_unpublished=allow_unpublished,
+            )
+            current_app.logger.info("Lesson graph precomputed for %s", lesson_id)
+        except graph_service.GraphUnavailableError as exc:
+            current_app.logger.warning("Graph unavailable during lesson precompute: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive log
+            current_app.logger.exception("Failed to precompute lesson graph: %s", exc)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _invalidate_lesson_graph_cache(lesson_id: str) -> None:
+    try:
+        graph_service.invalidate_lesson_graph_cache(lesson_id)
+    except Exception:
+        current_app.logger.debug("Lesson cache invalidation skipped for %s", lesson_id)
 
 
 @bp.post("/api/admin/students/import")
@@ -789,7 +819,13 @@ def create_admin_theory_lesson():
         if knowledge_points:
             _set_lesson_knowledge_points(lesson.get("id"), knowledge_points)
         _sync_graph_background()
-        return jsonify({"lesson": lesson}), 201
+        precompute_triggered = False
+        if lesson.get("isPublished"):
+            precompute_triggered = True
+            _precompute_lesson_graph_async(lesson.get("id"), allow_unpublished=True)
+        else:
+            _invalidate_lesson_graph_cache(lesson.get("id"))
+        return jsonify({"lesson": lesson, "precomputeTriggered": precompute_triggered}), 201
     except Exception as exc:
         current_app.logger.exception(f"Unexpected error creating theory lesson: {exc}")
         return jsonify({"error": "Internal server error", "detail": str(exc)}), 500
@@ -843,7 +879,13 @@ def update_admin_theory_lesson(lesson_id: str):
             lesson_id, knowledge_points_payload, allow_empty=True
         )
     _sync_graph_background()
-    return jsonify({"lesson": lesson})
+    precompute_triggered = False
+    if lesson.get("isPublished"):
+        precompute_triggered = True
+        _precompute_lesson_graph_async(lesson_id, allow_unpublished=True)
+    else:
+        _invalidate_lesson_graph_cache(lesson_id)
+    return jsonify({"lesson": lesson, "precomputeTriggered": precompute_triggered})
 
 
 @bp.delete("/api/admin/theory/lessons/<lesson_id>")
@@ -854,4 +896,5 @@ def delete_admin_theory_lesson(lesson_id: str):
         return jsonify({"error": "Lesson not found"}), 404
     database.delete_theory_lesson(lesson_id)
     _sync_graph_background()
+    _invalidate_lesson_graph_cache(lesson_id)
     return ("", 204)

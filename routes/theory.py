@@ -43,13 +43,9 @@ def get_theory_lesson(lesson_id: str):
         linked_kp = []
         prereq_map = {}
 
-    detected_kp: List[Dict[str, object]] = []
-    try:
-        detected_kp = graph_service.detect_knowledge_points_in_text(
-            lesson.get("contentHtml") or ""
-        )
-    except GraphUnavailableError:
-        detected_kp = []
+    cached = graph_service.get_cached_lesson_graph_payload(lesson_id) or {}
+    detected_kp: List[Dict[str, object]] = cached.get("detected") or []
+    # 运行时检测已停用，避免学生端高并发拖垮服务器
 
     merged: Dict[str, Dict[str, object]] = {}
 
