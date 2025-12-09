@@ -976,6 +976,30 @@
         border-radius: 1rem;
         box-shadow: 0 14px 30px rgba(255, 64, 64, 0.12);
       }
+      .review-doc {
+        font-family: "Noto Sans SC", "Segoe UI", sans-serif;
+        line-height: 1.7;
+        letter-spacing: 0.01em;
+      }
+      .review-doc h1,
+      .review-doc h2,
+      .review-doc h3 {
+        font-weight: 700;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .review-doc p {
+        margin: 0.35rem 0;
+      }
+      .review-doc mark[data-review-annotation-id] {
+        background: rgba(252, 211, 77, 0.35);
+        border-bottom: 1px solid rgba(234, 179, 8, 0.8);
+        padding: 0.15rem 0.2rem;
+        border-radius: 0.25rem;
+      }
+      .review-doc .review-highlight-pending {
+        background: rgba(59, 130, 246, 0.15);
+      }
 
       .bubble-assistant {
         background: linear-gradient(135deg, var(--primary-color), var(--primary-soft));
@@ -2907,6 +2931,85 @@
               </div>
             </section>
 
+            <section
+              id="review-module"
+              data-experience-module="review"
+              class="hidden min-h-[520px] flex-col rounded-3xl border border-slate-800 bg-white"
+            >
+              <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                <div>
+                  <p class="text-xs uppercase tracking-wider text-slate-500">Document Review</p>
+                  <p class="text-base font-semibold text-slate-800">单证审核工作台</p>
+                </div>
+                <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">划词批注 · 单证比对</span>
+              </div>
+              <div class="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,0.62fr)_minmax(320px,0.48fr)]">
+                <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-inner">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-xs uppercase tracking-wider text-slate-500">Document Surface</p>
+                      <p class="text-sm font-semibold text-slate-800">左侧为仿真单证，可划词高亮</p>
+                    </div>
+                    <span class="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-semibold text-blue-800">预览模式</span>
+                  </div>
+                  <div
+                    id="review-document"
+                    class="review-doc surface-scroll prose prose-sm max-w-none flex-1 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-800 shadow-sm"
+                  >
+                    <p class="text-sm text-slate-500">等待加载单证...</p>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
+                  <div class="space-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <p class="text-xs uppercase tracking-wider text-slate-500">选中内容</p>
+                    <p id="review-selection" class="text-sm text-slate-800 line-clamp-3">尚未划词</p>
+                    <div class="grid gap-3 md:grid-cols-2">
+                      <label class="flex flex-col gap-1 text-sm text-slate-700">
+                        错误原因
+                        <input
+                          id="review-issue"
+                          type="text"
+                          class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none"
+                          placeholder="例：交货期与合同不符"
+                        />
+                      </label>
+                      <label class="flex flex-col gap-1 text-sm text-slate-700">
+                        修改意见
+                        <input
+                          id="review-fix"
+                          type="text"
+                          class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+                          placeholder="例：调整为 2024-11-20 装船"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      id="review-save"
+                      type="button"
+                      class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      记录批注
+                    </button>
+                  </div>
+                  <div class="space-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-sm font-semibold text-slate-800">批注列表</p>
+                      <span class="text-xs text-slate-500">点击条目聚焦高亮</span>
+                    </div>
+                    <ul id="review-annotations" class="space-y-2 text-sm text-slate-700"></ul>
+                  </div>
+                  <div class="space-y-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <p class="text-sm font-semibold text-blue-900">AI 辅助字段</p>
+                    <ul id="review-context" class="space-y-1 text-xs text-blue-800"></ul>
+                  </div>
+                  <div class="space-y-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                    <p class="text-sm font-semibold text-amber-900">埋点提示</p>
+                    <ul id="review-hints" class="space-y-1 text-xs text-amber-800"></ul>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <aside
               data-experience-module="evaluation"
               class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
@@ -2974,6 +3077,14 @@
               aria-controls="chat-body"
             >
               <span>模拟实训</span>
+            </button>
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="review"
+              aria-controls="review-module"
+            >
+              <span>单证审核</span>
             </button>
             <button
               type="button"

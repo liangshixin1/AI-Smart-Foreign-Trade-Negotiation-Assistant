@@ -13,6 +13,7 @@ from utils.normalizers import (
     extract_numeric_value,
     format_currency,
     normalize_text,
+    normalize_text_list,
     resolve_company_name,
 )
 
@@ -228,6 +229,114 @@ DOCUMENT_OPENING_BUILDERS: Dict[str, Callable[[Dict[str, object]], str]] = {
 }
 
 
+def _compose_lc_review_document(scenario: Dict[str, object]) -> str:
+    ai_company = resolve_company_name(scenario.get("ai_company") or {}, "Issuing Bank")
+    student_company = resolve_company_name(scenario.get("student_company") or {}, "Beneficiary")
+    product, product_name, product_specs, quantity_text, _ = _resolve_product_context(scenario)
+    shipment_window = normalize_text(scenario.get("timeline")) or "To be advised"
+    logistics = normalize_text(scenario.get("logistics")) or "FOB main China port"
+    red_flags = normalize_text_list(scenario.get("compliance_red_flags"))
+    issues = normalize_text_list(scenario.get("issues_to_verify"))
+    payment_matrix = scenario.get("payment_terms_matrix")
+    payment_note = normalize_text(payment_matrix) if isinstance(payment_matrix, str) else ""
+
+    lines = [
+        "MT700 – Documentary Credit (Draft)",
+        f"issuing_bank: {ai_company}",
+        f"beneficiary: {student_company}",
+        "",
+        "40A: FORM OF DOC. CREDIT",
+        "IRREVOCABLE TRANSFERABLE",
+        "",
+        "50: APPLICANT",
+        normalize_text(product.get("buyer")) or "Applicant pending",
+        "",
+        "59: BENEFICIARY",
+        student_company,
+        "",
+        "32B: CURRENCY CODE, AMOUNT",
+        format_currency(extract_numeric_value(product.get("price_expectation", {}).get("ai_bottom_line")) or 0)
+        or "USD TBD",
+        "",
+        "45A: DESCRIPTION OF GOODS",
+        f"{product_name} ({product_specs or 'specifications TBD'})",
+        f"Quantity: {quantity_text or 'to confirm'}",
+        "",
+        "44C: LATEST DATE OF SHIPMENT",
+        shipment_window,
+        "44E: PORT OF LOADING",
+        logistics,
+        "",
+        "46A: DOCUMENTS REQUIRED",
+        "- Commercial Invoice in triplicate",
+        "- Packing List",
+        "- Full set of clean on board ocean B/L marked freight prepaid",
+        "- Insurance Policy/Certificate (buyer to arrange unless otherwise noted)",
+    ]
+
+    if payment_note:
+        lines.extend(["", "PAYMENT TERMS MATRIX", payment_note])
+
+    if issues:
+        lines.extend(["", "CHECKLIST – Verify consistency:", *[f"- {item}" for item in issues]])
+
+    if red_flags:
+        lines.extend(["", "SOFT CLAUSES TO SPOT:", *[f"- {item}" for item in red_flags]])
+
+    return "\n".join(lines)
+
+
+def _compose_packaging_document(scenario: Dict[str, object]) -> str:
+    product, product_name, product_specs, quantity_text, _ = _resolve_product_context(scenario)
+    packaging_snapshot = scenario.get("packaging_snapshot") or scenario.get("document_snapshot") or ""
+    logistics_constraints = normalize_text(scenario.get("logistics_constraints"))
+    shipping_mark_gaps = normalize_text_list(scenario.get("shipping_mark_gaps"))
+    operation_timeline = normalize_text(scenario.get("operation_timeline"))
+
+    lines = [
+        "Commercial Invoice & Packing Instruction",
+        f"Product: {product_name} ({product_specs or 'specs pending'})",
+        f"Quantity: {quantity_text or 'TBD'}",
+        "",
+        "Shipping Marks:",
+        "[ ] Consignee",
+        "[ ] PO / Reference",
+        "[ ] Carton No.",
+        "[ ] Gross / Net Weight",
+    ]
+
+    if shipping_mark_gaps:
+        lines.append("")
+        lines.append("Missing marks to fill:")
+        lines.extend([f"- {item}" for item in shipping_mark_gaps])
+
+    if packaging_snapshot:
+        lines.extend(["", "Suggested packaging:", normalize_text(packaging_snapshot)])
+
+    if logistics_constraints:
+        lines.extend(["", f"Logistics constraint: {logistics_constraints}"])
+    if operation_timeline:
+        lines.extend(["", f"Operation timeline: {operation_timeline}"])
+
+    lines.extend(
+        [
+            "",
+            "Fill the blanks and ensure alignment with PI/contract.",
+            "Mark problematic clauses and propose corrections.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+REVIEW_DOCUMENT_BUILDERS: Dict[str, Callable[[Dict[str, object]], str]] = {
+    "chapter-4-section-1": _compose_quotation_review_opening,
+    "chapter-4-section-2": _compose_proforma_invoice_opening,
+    "chapter-4-section-5": _compose_final_contract_opening,
+    "chapter-5-section-4": _compose_packaging_document,
+    "chapter-6-section-1": _compose_lc_review_document,
+}
+
+
 def _compose_default_opening(scenario: Dict[str, object]) -> str:
     ai_role = normalize_text(scenario.get("ai_role")) or "your negotiation partner"
     ai_company = scenario.get("ai_company") or {}
@@ -302,6 +411,24 @@ def generate_opening_message(section_id: Optional[str], scenario: Dict[str, obje
 
     fallback = _compose_default_opening(scenario)
     return fallback or "Hello, this is your negotiation partner. Let's begin our discussion in English."
+
+
+def compose_review_document(section_id: Optional[str], scenario: Dict[str, object]) -> str:
+    """Build a static review document draft for review-mode sections."""
+
+    if not section_id:
+        return ""
+    builder = REVIEW_DOCUMENT_BUILDERS.get(section_id)
+    if not builder:
+        snapshot = scenario.get("document_snapshot")
+        if isinstance(snapshot, str):
+            return snapshot.strip()
+        return ""
+    try:
+        doc = builder(scenario)
+    except Exception:
+        return ""
+    return doc.strip()
 
 
 def build_transcript(history: List[Dict[str, str]], scenario: Dict[str, object]) -> str:

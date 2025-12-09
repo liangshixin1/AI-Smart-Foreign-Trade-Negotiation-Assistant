@@ -36,6 +36,14 @@ if (chatInputEl) {
   });
 }
 
+if (reviewDocumentEl) {
+  reviewDocumentEl.addEventListener("mouseup", captureReviewSelection);
+}
+
+if (reviewSaveBtn) {
+  reviewSaveBtn.addEventListener("click", saveReviewAnnotation);
+}
+
 if (theoryTree) {
   theoryTree.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-theory-lesson-id]");

@@ -29,6 +29,7 @@ except ImportError:
 
 from services import knowledge_service
 from services.graph_service import GraphService
+from services import graph_service
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1473,6 +1474,7 @@ class KnowledgeGraphBatchImporter:
             try:
                 # 提取name
                 point_name = clean_point.pop("name")
+                node_type_label = self._determine_node_type(clean_point.get("type"))
 
                 # 字段映射和过滤：只保留 create_knowledge_point 支持的字段
                 supported_fields = {
@@ -1511,6 +1513,9 @@ class KnowledgeGraphBatchImporter:
                 else:
                     knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
+
+                # 补打节点类型与标签，便于学生端按技能/术语/知识分组
+                self._apply_node_type_label(point_name, node_type_label)
 
                 # 生成ID（用name的hash作为唯一标识）
                 point_id = self._generate_point_id(point_name)
@@ -1761,6 +1766,7 @@ class KnowledgeGraphBatchImporter:
                 mapped_key = field_mapping.get(key, key)
                 if mapped_key in allowed_fields:
                     filtered_point[mapped_key] = value
+            node_type_label = self._determine_node_type(raw_type)
 
             if not point_name:
                 LOGGER.warning("跳过缺少名称的知识点行")
@@ -1779,6 +1785,9 @@ class KnowledgeGraphBatchImporter:
                 else:
                     knowledge_service.create_knowledge_point(point_name, **filtered_point)
                     points_stats.created += 1
+
+                # 标注节点类型与标签
+                self._apply_node_type_label(point_name, node_type_label)
 
                 point_name_map[point_name] = {"stage": stage_name, "topic": topic_name}
                 if topic_name:
@@ -2010,6 +2019,39 @@ class KnowledgeGraphBatchImporter:
             if normalized in CATEGORY_NAME_ALIASES:
                 return CATEGORY_NAME_ALIASES[normalized]
         return "知识"
+
+    def _determine_node_type(self, raw_type: Optional[str]) -> str:
+        """根据导入列推断节点类型标签，默认为 KnowledgePoint。"""
+        if raw_type is None:
+            return "KnowledgePoint"
+        text = str(raw_type).strip().lower()
+        if text in {"skill", "技能", "技能型", "业务流程", "流程"}:
+            return "Skill"
+        if text in {"terminology", "term", "术语", "概念", "concept"}:
+            return "Terminology"
+        return "KnowledgePoint"
+
+    def _apply_node_type_label(self, name: str, node_type: str) -> None:
+        """在 Neo4j 为知识点补打 nodeType 属性与标签（Skill/Terminology）。"""
+        try:
+            driver = graph_service._get_driver()
+        except Exception:
+            return
+        label_clause = ""
+        if node_type == "Skill":
+            label_clause = "SET k:Skill "
+        elif node_type == "Terminology":
+            label_clause = "SET k:Terminology "
+        with driver.session() as session:
+            session.run(
+                f"""
+                MATCH (k:KnowledgePoint {{name: $name}})
+                {label_clause}
+                SET k.nodeType = $nodeType,
+                    k.updatedAt = datetime()
+                """,
+                {"name": name, "nodeType": node_type},
+            )
 
     def _generate_point_id(self, name: str) -> str:
         """生成知识点ID（基于名称的hash）"""

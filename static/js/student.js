@@ -6,6 +6,13 @@ const RECOMMENDATION_SCORE_THRESHOLD = 80;
 let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
 let studentLessonGraphInstance = null;
+const REVIEW_SECTION_IDS = new Set([
+  "chapter-4-section-1",
+  "chapter-4-section-2",
+  "chapter-4-section-5",
+  "chapter-5-section-4",
+  "chapter-6-section-1",
+]);
 
 // Fallback DOM refs (防止未定义报错)
 const theoryCompassSection = typeof window !== "undefined" && window.theoryCompassSection ? window.theoryCompassSection : document.getElementById("theory-knowledge-compass");
@@ -596,6 +603,256 @@ function highlightInArticle(container, text) {
       break;
     }
   }
+}
+
+function isReviewSection(sectionId) {
+  return !!sectionId && REVIEW_SECTION_IDS.has(sectionId);
+}
+
+function ensureReviewState() {
+  if (!state.review) {
+    state.review = {
+      documentText: "",
+      hints: null,
+      annotations: [],
+      pendingSelection: null,
+    };
+  }
+}
+
+function resetReviewState() {
+  ensureReviewState();
+  state.review.documentText = "";
+  state.review.hints = null;
+  state.review.annotations = [];
+  state.review.pendingSelection = null;
+  renderReviewWorkbench();
+}
+
+function renderReviewDocument() {
+  if (!reviewDocumentEl) return;
+  ensureReviewState();
+  reviewDocumentEl.innerHTML = "";
+  const text = (state.review.documentText || "").trim();
+  if (!text) {
+    reviewDocumentEl.innerHTML = '<p class="text-sm text-slate-500">暂无单证内容。</p>';
+    return;
+  }
+  const pre = document.createElement("pre");
+  pre.className = "text-sm whitespace-pre-wrap leading-7 text-slate-800";
+  pre.textContent = text;
+  reviewDocumentEl.appendChild(pre);
+}
+
+function renderReviewHints() {
+  if (!reviewHintList || !reviewContextList) return;
+  ensureReviewState();
+  reviewHintList.innerHTML = "";
+  reviewContextList.innerHTML = "";
+  const hints = state.review.hints || {};
+  const hintItems = [];
+  if (Array.isArray(hints.complianceRedFlags) && hints.complianceRedFlags.length > 0) {
+    hints.complianceRedFlags.forEach((item) => hintItems.push(`⚠️ ${item}`));
+  }
+  if (Array.isArray(hints.issuesToVerify) && hints.issuesToVerify.length > 0) {
+    hints.issuesToVerify.forEach((item) => hintItems.push(`检查：${item}`));
+  }
+  if (hintItems.length === 0) {
+    const li = document.createElement("li");
+    li.className = "text-xs text-amber-500";
+    li.textContent = "暂无预置风险点，仍需仔细检查条款。";
+    reviewHintList.appendChild(li);
+  } else {
+    hintItems.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900";
+      li.textContent = item;
+      reviewHintList.appendChild(li);
+    });
+  }
+
+  const ctxItems = [];
+  if (hints.paymentTermsMatrix) {
+    ctxItems.push(`付款矩阵：${hints.paymentTermsMatrix}`);
+  }
+  if (hints.documentType) {
+    ctxItems.push(`单据类型：${hints.documentType}`);
+  }
+  if (hints.documentSnapshot) {
+    ctxItems.push(`基线：${hints.documentSnapshot}`);
+  }
+  const scenario = state.currentScenario || {};
+  const product = scenario.product || {};
+  if (product.price_expectation?.ai_bottom_line) {
+    ctxItems.push(`AI 底线：${product.price_expectation.ai_bottom_line}`);
+  }
+  if (product.price_expectation?.student_target) {
+    ctxItems.push(`学生目标：${product.price_expectation.student_target}`);
+  }
+
+  if (ctxItems.length === 0) {
+    const li = document.createElement("li");
+    li.className = "text-xs text-blue-700";
+    li.textContent = "暂无额外比对参数。";
+    reviewContextList.appendChild(li);
+  } else {
+    ctxItems.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "rounded-lg bg-blue-100 px-3 py-2 text-xs font-medium text-blue-900";
+      li.textContent = item;
+      reviewContextList.appendChild(li);
+    });
+  }
+}
+
+function renderReviewAnnotations() {
+  if (!reviewAnnotationsList) return;
+  ensureReviewState();
+  reviewAnnotationsList.innerHTML = "";
+  const annotations = Array.isArray(state.review.annotations) ? state.review.annotations : [];
+  if (annotations.length === 0) {
+    const li = document.createElement("li");
+    li.className = "text-xs text-slate-500";
+    li.textContent = "暂无批注，划词后填写错误原因与修改意见。";
+    reviewAnnotationsList.appendChild(li);
+    return;
+  }
+  annotations.forEach((note) => {
+    const li = document.createElement("li");
+    li.className =
+      "rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-sm";
+    li.innerHTML = `
+      <p class="font-semibold text-slate-900">${note.quote || "未记录选中内容"}</p>
+      <p class="mt-1 text-slate-700">错误原因：${note.issue || "未填写"}</p>
+      <p class="text-slate-700">修改意见：${note.fix || "未填写"}</p>
+      <div class="mt-2 flex items-center gap-3">
+        <button data-review-focus="${note.id}" class="text-blue-600 hover:underline">定位</button>
+        <button data-review-remove="${note.id}" class="text-rose-600 hover:underline">删除</button>
+      </div>
+    `;
+    reviewAnnotationsList.appendChild(li);
+  });
+
+  reviewAnnotationsList.querySelectorAll("[data-review-focus]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-review-focus");
+      if (!id || !reviewDocumentEl) return;
+      const target = reviewDocumentEl.querySelector(`[data-review-annotation-id="${id}"]`);
+      if (target && typeof target.scrollIntoView === "function") {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  });
+
+  reviewAnnotationsList.querySelectorAll("[data-review-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-review-remove");
+      removeReviewAnnotation(id);
+    });
+  });
+}
+
+function clearReviewSelectionPreview() {
+  ensureReviewState();
+  state.review.pendingSelection = null;
+  if (reviewSelectionPreview) {
+    reviewSelectionPreview.textContent = "尚未划词";
+  }
+  if (reviewIssueInput) reviewIssueInput.value = "";
+  if (reviewFixInput) reviewFixInput.value = "";
+}
+
+function captureReviewSelection() {
+  if (!reviewDocumentEl) return;
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) {
+    clearReviewSelectionPreview();
+    return;
+  }
+  const range = selection.getRangeAt(0).cloneRange();
+  if (!reviewDocumentEl.contains(range.commonAncestorContainer)) {
+    clearReviewSelectionPreview();
+    return;
+  }
+  const text = selection.toString().trim();
+  if (!text) {
+    clearReviewSelectionPreview();
+    return;
+  }
+  ensureReviewState();
+  state.review.pendingSelection = { range, text };
+  if (reviewSelectionPreview) {
+    reviewSelectionPreview.textContent = text.length > 160 ? `${text.slice(0, 160)}…` : text;
+  }
+}
+
+function unwrapAnnotationMarks(id) {
+  if (!reviewDocumentEl || !id) return;
+  const marks = reviewDocumentEl.querySelectorAll(`[data-review-annotation-id="${CSS.escape(id)}"]`);
+  marks.forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) {
+      parent.insertBefore(mark.firstChild, mark);
+    }
+    parent.removeChild(mark);
+  });
+}
+
+function removeReviewAnnotation(id) {
+  ensureReviewState();
+  if (!id) return;
+  unwrapAnnotationMarks(id);
+  state.review.annotations = state.review.annotations.filter((item) => item.id !== id);
+  renderReviewAnnotations();
+}
+
+function saveReviewAnnotation() {
+  ensureReviewState();
+  const pending = state.review.pendingSelection;
+  if (!pending || !pending.range || !pending.text) {
+    alert("请先在左侧单证中划词选择要批注的内容。");
+    return;
+  }
+  const issue = reviewIssueInput ? reviewIssueInput.value.trim() : "";
+  const fix = reviewFixInput ? reviewFixInput.value.trim() : "";
+  const id = `note-${Date.now()}`;
+  const mark = document.createElement("mark");
+  mark.dataset.reviewAnnotationId = id;
+  mark.className = "review-highlight";
+  try {
+    pending.range.surroundContents(mark);
+  } catch (err) {
+    console.warn("无法包裹选区", err);
+    clearReviewSelectionPreview();
+    return;
+  }
+  state.review.annotations.push({
+    id,
+    quote: pending.text,
+    issue,
+    fix,
+  });
+  state.review.pendingSelection = null;
+  if (reviewIssueInput) reviewIssueInput.value = "";
+  if (reviewFixInput) reviewFixInput.value = "";
+  if (reviewSelectionPreview) reviewSelectionPreview.textContent = "已记录";
+  renderReviewAnnotations();
+}
+
+function renderReviewWorkbench() {
+  if (!reviewModule) return;
+  ensureReviewState();
+  const sectionId = state.activeLevel?.sectionId;
+  const hasDoc = isReviewSection(sectionId) && !!(state.review.documentText || "").trim();
+  if (!hasDoc) {
+    reviewModule.classList.add("hidden");
+    return;
+  }
+  reviewModule.classList.remove("hidden");
+  renderReviewDocument();
+  renderReviewHints();
+  renderReviewAnnotations();
 }
 
 function showStudentKnowledgeCard(name) {
@@ -1380,13 +1637,19 @@ function showExperience() {
     theoryPanel.classList.add("hidden");
   }
   experienceSection.classList.remove("hidden");
-  setActiveExperienceModule("chat");
+  ensureReviewState();
+  const reviewModeActive =
+    isReviewSection(state.activeLevel?.sectionId) &&
+    !!(state.review && state.review.documentText && state.review.documentText.trim());
+  setActiveExperienceModule(reviewModeActive ? "review" : "chat");
   if (chatInputEl) {
-    chatInputEl.disabled = false;
-    chatInputEl.focus();
+    chatInputEl.disabled = reviewModeActive;
+    if (!reviewModeActive) {
+      chatInputEl.focus();
+    }
   }
   if (sendMessageBtn) {
-    sendMessageBtn.disabled = false;
+    sendMessageBtn.disabled = reviewModeActive;
   }
   state.studentActiveView = "practice";
 }
@@ -1456,6 +1719,7 @@ function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
   renderChat();
   renderScenario({});
   resetEvaluation();
+  resetReviewState();
   hideExperience();
   if (showPanel) {
     expandLevelSelection();
@@ -2056,6 +2320,12 @@ function setActiveExperienceModule(moduleId) {
   if (modules.length === 0) {
     return;
   }
+  const reviewModeActive =
+    isReviewSection(state.activeLevel?.sectionId) &&
+    !!(state.review && state.review.documentText && state.review.documentText.trim());
+  if (reviewModeActive) {
+    moduleId = "review";
+  }
   const exists = modules.some((module) => module.dataset.experienceModule === moduleId);
   if (!exists) {
     return;
@@ -2069,9 +2339,20 @@ function updateExperienceLayout() {
   if (modules.length === 0) {
     return;
   }
+  const reviewModeActive =
+    isReviewSection(state.activeLevel?.sectionId) &&
+    !!(state.review && state.review.documentText && state.review.documentText.trim());
   const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
   modules.forEach((module) => {
     if (!module.dataset.experienceModule) {
+      return;
+    }
+    if (module.dataset.experienceModule === "review" && !reviewModeActive) {
+      module.classList.add("hidden");
+      return;
+    }
+    if (module.dataset.experienceModule === "chat" && reviewModeActive) {
+      module.classList.add("hidden");
       return;
     }
     if (isDesktop) {
@@ -2258,7 +2539,7 @@ function renderStudentInsights(insights) {
 }
 
 function renderScenario(scenario) {
-  state.scenario = scenario;
+  state.currentScenario = scenario;
   scenarioTitleEl.textContent = scenario.title || "";
   scenarioSummaryEl.textContent = scenario.summary || "";
   studentRoleEl.textContent = scenario.studentRole || "";
@@ -2574,10 +2855,19 @@ async function loadStudentSession(sessionId) {
       chapterId: state.activeLevel.chapterId,
       sectionId: state.activeLevel.sectionId,
     };
+    ensureReviewState();
+    state.review.documentText =
+      data.session.scenario?.documentText ||
+      data.session.scenario?.document_text ||
+      "";
+    state.review.hints = data.session.scenario?.reviewHints || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
     updateSessionControls();
     renderScenario(data.session.scenario || {});
     renderChat();
     renderEvaluation(data.evaluation);
+    renderReviewWorkbench();
     collapseLevelSelection();
     updateSelectedLevelDetail();
     showExperience();
@@ -2634,18 +2924,28 @@ async function startAssignmentSession(assignmentId) {
     const data = await response.json();
     state.sessionId = data.sessionId;
     state.messages = [];
+    const fallbackChapter = state.selectedLevel?.chapterId || null;
+    const fallbackSection = state.selectedLevel?.sectionId || null;
     state.activeLevel = {
-      chapterId: data.chapterId || null,
-      sectionId: data.sectionId || null,
+      chapterId: data.chapterId || fallbackChapter,
+      sectionId: data.sectionId || fallbackSection,
       difficulty: data.difficulty || "balanced",
     };
     state.selectedLevel = {
-      chapterId: data.chapterId || null,
-      sectionId: data.sectionId || null,
+      chapterId: data.chapterId || fallbackChapter,
+      sectionId: data.sectionId || fallbackSection,
     };
     updateSessionControls();
+    ensureReviewState();
+    state.review.documentText =
+      data.documentText || (data.scenario && data.scenario.documentText) || "";
+    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+
     renderScenario(data.scenario || {});
     resetEvaluation();
+    renderReviewWorkbench();
     highlightSelectedLevel();
     updateSelectedLevelDetail();
     if (data.openingMessage) {
@@ -2733,8 +3033,16 @@ async function startLevel() {
     state.activeLevel = { chapterId, sectionId, difficulty };
     updateSessionControls();
 
+    ensureReviewState();
+    state.review.documentText =
+      data.documentText || (data.scenario && data.scenario.documentText) || "";
+    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+
     renderScenario(data.scenario || {});
     resetEvaluation();
+    renderReviewWorkbench();
 
     const opening = data.openingMessage;
     if (opening) {

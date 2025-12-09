@@ -316,7 +316,7 @@ def prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         or DEFAULT_DIFFICULTY
     )
     profile = get_difficulty_profile(difficulty_key)
-    return {
+    payload = {
         "title": normalized.get("scenario_title", ""),
         "summary": normalized.get("scenario_summary", ""),
         "studentRole": normalized.get("student_role", ""),
@@ -339,6 +339,22 @@ def prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "difficultyDescription": normalized.get("difficulty_description")
         or profile["description"],
     }
+
+    document_text = normalized.get("document_text") or normalized.get("documentText") or ""
+    if document_text:
+        payload["documentText"] = document_text
+
+    review_hints = {
+        "documentType": normalized.get("document_type") or normalized.get("documentType") or "",
+        "issuesToVerify": normalized.get("issues_to_verify") or normalized.get("issuesToVerify") or [],
+        "complianceRedFlags": normalized.get("compliance_red_flags") or normalized.get("complianceRedFlags") or [],
+        "paymentTermsMatrix": normalized.get("payment_terms_matrix") or normalized.get("paymentTermsMatrix") or "",
+        "documentSnapshot": normalized.get("document_snapshot") or normalized.get("documentSnapshot") or "",
+    }
+    if any(review_hints.values()):
+        payload["reviewHints"] = review_hints
+
+    return payload
 
 
 def infer_student_trade_role(section: Dict[str, object]) -> str:

@@ -11,7 +11,7 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 import database
 from services.auth_service import current_user, require_role
-from services.document_composer import generate_opening_message
+from services.document_composer import compose_review_document, generate_opening_message
 from services.evaluation_service import evaluate_session
 from services.llm_service import complete_chat, stream_chat
 from services.scenario_generator import (
@@ -74,6 +74,28 @@ def _ensure_english_reply(collab_key: str, reply: str) -> str:
     )
 
 
+REVIEW_SECTION_IDS = {
+    "chapter-4-section-1",
+    "chapter-4-section-2",
+    "chapter-4-section-5",
+    "chapter-5-section-4",
+    "chapter-6-section-1",
+}
+
+
+def _attach_review_document(section_id: Optional[str], scenario: Dict[str, object]) -> Optional[str]:
+    """Generate and persist a review document into the scenario payload when applicable."""
+    if not section_id or not scenario or section_id not in REVIEW_SECTION_IDS:
+        return None
+    existing = scenario.get("document_text") or scenario.get("documentText")
+    if isinstance(existing, str) and existing.strip():
+        return existing
+    doc = compose_review_document(section_id, scenario)
+    if doc:
+        scenario["document_text"] = doc
+    return doc
+
+
 def _serialize_assignment(record: Dict[str, object]) -> Dict[str, object]:
     scenario_data = record.get("scenario", {}) or {}
     payload = {
@@ -133,6 +155,7 @@ def start_level():
     except Exception as exc:
         return jsonify({"error": f"Failed to generate scenario: {exc}"}), 500
 
+    document_text = _attach_review_document(section_id, scenario)
     conversation_prompt, evaluation_prompt = render_prompts_from_section(
         section, scenario, difficulty_key, difficulty_profile
     )
@@ -159,6 +182,8 @@ def start_level():
         "scenario": prepare_scenario_payload(scenario),
         "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "documentText": document_text or scenario.get("document_text") or "",
+        "reviewHints": scenario.get("review_hints") or {},
         "chapterId": chapter_id,
         "sectionId": section_id,
         "difficulty": difficulty_key,
@@ -279,6 +304,7 @@ def start_assignment(assignment_id: str):
 
     scenario = record.get("scenario") or {}
     difficulty_key = record.get("difficulty") or DEFAULT_DIFFICULTY
+    document_text = _attach_review_document(record.get("sectionId"), scenario)
     if record.get("sessionId"):
         session = database.get_session(record["sessionId"])
         if session and int(session["user_id"]) == user.id:
@@ -291,6 +317,8 @@ def start_assignment(assignment_id: str):
                 "assignmentId": assignment_id,
                 "knowledgePoints": scenario.get("knowledge_points", []) or [],
                 "openingMessage": record.get("openingMessage", ""),
+                "documentText": document_text or scenario.get("document_text") or "",
+                "reviewHints": scenario.get("review_hints") or {},
                 "difficulty": difficulty_key,
             }
             inject_difficulty_metadata(payload)
@@ -333,6 +361,8 @@ def start_assignment(assignment_id: str):
         "assignmentId": assignment_id,
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
         "openingMessage": opening_message or "",
+        "documentText": document_text or scenario.get("document_text") or "",
+        "reviewHints": scenario.get("review_hints") or {},
         "difficulty": difficulty_key,
     }
     inject_difficulty_metadata(payload)
@@ -478,13 +508,15 @@ def get_session_detail(session_id: str):
 
     history = database.get_messages(session_id)
     evaluation = database.get_latest_evaluation(session_id)
+    scenario_raw = session["scenario"]
+    _attach_review_document(session.get("section_id"), scenario_raw)
 
     payload = {
         "session": {
             "id": session["id"],
             "chapterId": session["chapter_id"],
             "sectionId": session["section_id"],
-            "scenario": prepare_scenario_payload(session["scenario"]),
+            "scenario": prepare_scenario_payload(scenario_raw),
             "expectsBargaining": session["expects_bargaining"],
             "difficulty": session.get("difficulty"),
         },
@@ -505,6 +537,7 @@ def reset_session(session_id: str):
 
     database.reset_session(session_id)
     scenario = session["scenario"]
+    _attach_review_document(session.get("section_id"), scenario)
     opening_message = generate_opening_message(session.get("section_id"), scenario)
     if opening_message:
         database.add_message(session_id, "assistant", opening_message)
@@ -514,6 +547,8 @@ def reset_session(session_id: str):
         "scenario": prepare_scenario_payload(scenario),
         "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "documentText": scenario.get("document_text") or "",
+        "reviewHints": scenario.get("review_hints") or {},
         "chapterId": session["chapter_id"],
         "sectionId": session["section_id"],
         "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,

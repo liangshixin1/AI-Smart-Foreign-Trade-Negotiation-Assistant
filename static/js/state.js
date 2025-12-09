@@ -52,6 +52,13 @@ function createInitialState() {
     studentInsights: null,
     studentAssignments: [],
     levelVictories: new Set(),
+    review: {
+      documentText: "",
+      hints: null,
+      annotations: [],
+      pendingSelection: null,
+    },
+    currentScenario: null,
   };
 }
 
