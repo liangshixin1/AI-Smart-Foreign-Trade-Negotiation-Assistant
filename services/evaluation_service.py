@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from typing import Dict, Iterable, List, Optional, Set
 
+import logging
 import database
 from services import embedding_service, graph_service, rag_matcher
 from services.document_composer import build_transcript
 from services.llm_service import complete_chat
-from utils.validators import MissingKeyError, extract_json_block, require_key
+from utils.validators import extract_json_block
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _normalize_names(candidates: Iterable[object]) -> List[str]:
@@ -38,10 +42,20 @@ def _match_to_existing_knowledge(
 ) -> Dict[str, object]:
     """Map model-suggested names to existing graph nodes; return grouped + flat list."""
 
+    def _placeholder_payload() -> Dict[str, object]:
+        return {
+            "label": "暂未匹配到知识点",
+            "name": "暂未匹配到知识点",
+            "summary": "",
+            "category": "KnowledgePoint",
+            "matchScore": 0.0,
+        }
+
     normalized = _normalize_names(names)
     if not normalized:
-        empty = {"KnowledgePoint": [], "Skill": [], "Terminology": []}
-        return {"grouped": empty, "flat": []}
+        placeholder = _placeholder_payload()
+        empty = {"KnowledgePoint": [placeholder], "Skill": [], "Terminology": []}
+        return {"grouped": empty, "flat": [placeholder]}
 
     try:
         all_candidates = graph_service.list_knowledge_points()
@@ -181,18 +195,7 @@ def _match_to_existing_knowledge(
                 payload = _node_to_payload(name_to_node.get(best_name, {}), score_best)
                 if not any(item.get("name") == payload["name"] for item in matched[best_type]):
                     matched[best_type].append(payload)
-            else:
-                # 未匹配到图谱节点时，保留原始名称
-                matched.setdefault("KnowledgePoint", [])
-                matched["KnowledgePoint"].append(
-                    {
-                        "label": target,
-                        "name": target,
-                        "summary": "",
-                        "category": "KnowledgePoint",
-                        "matchScore": 0.0,
-                    }
-                )
+            # 若未找到高于阈值的匹配，则忽略该名称，避免保留大模型原始输出
 
     # 限制总量，优先保留已有精确匹配
     for key, items in matched.items():
@@ -202,13 +205,26 @@ def _match_to_existing_knowledge(
     for key, items in matched.items():
         flat.extend(items)
 
+    if not flat:
+        placeholder = _placeholder_payload()
+        matched = {"KnowledgePoint": [placeholder], "Skill": [], "Terminology": []}
+        flat = [placeholder]
+
     return {"grouped": matched, "flat": flat}
 
 
 def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
-    try:
-        critic_key = require_key("DEEPSEEK_CRITIC_KEY")
-    except MissingKeyError:
+    score_key = (
+        os.getenv("DEEPSEEK_CRITIC_SCORE_KEY")
+        or os.getenv("DEEPSEEK_CRITIC_KEY")
+        or os.getenv("DEEPSEEK_API_KEY")
+    )
+    detail_key = (
+        os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY")
+        or os.getenv("DEEPSEEK_CRITIC_KEY")
+        or os.getenv("DEEPSEEK_API_KEY")
+    )
+    if not score_key and not detail_key:
         scenario = session.get("scenario", {}) if session else {}
         return {
             "score": None,
@@ -233,18 +249,55 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     if scenario_mode == "email":
         evaluation_prompt = f"{evaluation_prompt}\n\n[Email Mode Focus]\n- 请优先评估邮件格式规范（Subject/Salutation/Closing/Signature）。\n- 检查正文逻辑、礼貌度与条款完整性。\n- 简明指出格式缺失或不当之处。"
 
-    messages = [
+    base_messages = [
         {"role": "system", "content": str(evaluation_prompt)},
-        {
-            "role": "user",
-            "content": transcript,
-        },
+        {"role": "user", "content": transcript},
     ]
 
-    try:
-        raw = complete_chat(critic_key, messages, temperature=0.2)
-        data = extract_json_block(raw)
-    except Exception:  # pragma: no cover - 容忍评估失败
+    # 1) 分数通道：只返回 score/score_label
+    score_data: Dict[str, object] = {}
+    if score_key:
+        score_messages = [
+            base_messages[0],
+            {
+                "role": "user",
+                "content": (
+                    f"{transcript}\n\n"
+                    "[Scoring Only]\n"
+                    "- 仅计算整体得分 (0-100)。\n"
+                    "- 可选返回 score_label 对分数的简短评级。\n"
+                    '- 仅以 JSON 返回：{\"score\": <number>, \"score_label\": \"...\"}。\n'
+                    "- 不要返回其他字段或解释。"
+                ),
+            },
+        ]
+        try:
+            raw_score = complete_chat(score_key, score_messages, temperature=0.1)
+            score_data = extract_json_block(raw_score) or {}
+        except Exception:
+            LOGGER.exception("Score channel failed")
+
+    # 2) 详情通道：评语/行动项/知识点/胜率，不返回分数
+    detail_data: Dict[str, object] = {}
+    if detail_key:
+        detail_prompt = (
+            f"{evaluation_prompt}\n\n"
+            "[Detail Only]\n"
+            "- 请输出评语、行动项、knowledge_points、bargaining_win_rate（如有）。\n"
+            "- 不要返回 score 或 score_label。\n"
+            "- 输出 JSON。"
+        )
+        detail_messages = [
+            {"role": "system", "content": detail_prompt},
+            {"role": "user", "content": transcript},
+        ]
+        try:
+            raw_detail = complete_chat(detail_key, detail_messages, temperature=0.2)
+            detail_data = extract_json_block(raw_detail) or {}
+        except Exception:
+            LOGGER.exception("Detail channel failed")
+
+    if not score_data and not detail_data:
         return {
             "score": None,
             "scoreLabel": None,
@@ -254,15 +307,19 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
             "bargainingWinRate": None,
         }
 
-    score = data.get("score")
-    score_label = data.get("score_label")
-    action_items = data.get("action_items", []) or []
-    knowledge_points_raw = data.get("knowledge_points", []) or scenario_knowledge
+    score = score_data.get("score")
+    score_label = score_data.get("score_label") or score_data.get("scoreLabel")
+    action_items = detail_data.get("action_items", []) or []
+    knowledge_points_raw = detail_data.get("knowledge_points", []) or scenario_knowledge
     if not isinstance(action_items, list):
         action_items = [action_items]
     if not isinstance(knowledge_points_raw, list):
         knowledge_points_raw = [knowledge_points_raw] if knowledge_points_raw else []
-    bargaining_win_rate = data.get("bargaining_win_rate") if session.get("expects_bargaining") else None
+    bargaining_win_rate = detail_data.get("bargaining_win_rate") if session.get("expects_bargaining") else None
+    if score is None and detail_data:
+        score = detail_data.get("score")
+    if score_label is None and detail_data:
+        score_label = detail_data.get("score_label") or detail_data.get("scoreLabel")
 
     # 将模型返回的知识点映射到真实图谱节点，并按类型分组
     scenario_text = scenario.get("scenario_summary") or scenario.get("description") or scenario.get("scenario_title") or ""
@@ -277,8 +334,32 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         )
     )
 
+    # 使用向量索引将模型返回的知识点名称映射到真实图谱节点名称，过滤掉幻觉
+    raw_candidates = knowledge_points_raw or scenario_knowledge or []
+    LOGGER.info("LLM knowledge_points (raw): %s", raw_candidates)
+    grounded_names: List[str] = []
+    match_debug: List[Dict[str, object]] = []
+    for kp in raw_candidates:
+        if isinstance(kp, dict):
+            candidate = kp.get("name") or kp.get("label") or kp.get("title") or ""
+        else:
+            candidate = str(kp) if kp is not None else ""
+        linked, score, best_name = rag_matcher.link_knowledge(candidate, return_score=True)
+        match_debug.append(
+            {
+                "raw": candidate,
+                "bestCandidate": best_name or "",
+                "score": float(score or 0.0),
+                "matched": linked or "",
+            }
+        )
+        if linked and linked not in grounded_names:
+            grounded_names.append(linked)
+    if match_debug:
+        LOGGER.info("Knowledge grounding results: %s", match_debug)
+
     matched = _match_to_existing_knowledge(
-        knowledge_points_raw,
+        grounded_names,
         limit=8,
         use_rag=True,
         context_text=context_text,
@@ -296,7 +377,7 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     result = {
         "score": score,
         "scoreLabel": score_label,
-        "commentary": data.get("commentary", ""),
+        "commentary": (detail_data.get("commentary") or detail_data.get("comment") or ""),
         "actionItems": action_items,
         "knowledgePoints": knowledge_points,
         "knowledgePointsGrouped": matched.get("grouped", {}),  # 便于前端分栏展示

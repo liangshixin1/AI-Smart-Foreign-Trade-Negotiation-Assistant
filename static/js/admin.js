@@ -1,12 +1,18 @@
+// -------------------- 全局状态与编辑器实例 --------------------
+// adminTheoryLessonEditor：后台理论课 Quill 编辑器实例，承载知识卡、挑战气泡等富文本组件。
 let adminTheoryLessonEditor = null;
+// 是否已注册 Quill 自定义 blots，避免重复注册。
 let challengeBubbleBlotRegistered = false;
 let knowledgePointCardBlotRegistered = false;
+// 图谱渲染相关实例（G6/vis-network 均可能使用）。
 let adminGraphNetwork = null;
 let adminG6Graph = null;
 let adminGraphSelectionKey = null;
+// 后台知识图谱渲染模式，默认采用开花布局。
 let adminGraphRenderer = "burst"; // 仅保留开花布局
 const expandedStages = new Set();
 const expandedTopics = new Set();
+// 知识卡弹窗的本地状态缓存，记录当前编辑节点、选中知识点等。
 const knowledgeCardModalState = {
   editingNode: null,
   selectedKnowledge: null,
@@ -14,6 +20,8 @@ const knowledgeCardModalState = {
   indexRecords: [],
 };
 
+// -------------------- 知识卡模板与数据规范化 --------------------
+// 清洗知识卡 HTML，防止 XSS，同时允许正常的富文本标签。
 function sanitizeKnowledgeCardHtml(html) {
   const value = typeof html === "string" ? html : "";
   if (typeof window !== "undefined" && window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
@@ -22,6 +30,7 @@ function sanitizeKnowledgeCardHtml(html) {
   return value;
 }
 
+// 将知识卡 payload 渲染为可直接插入页面的 HTML 结构。
 function buildKnowledgeCardMarkup(payload = {}) {
   const title = escapeHtmlText(payload.name || payload.title || "关键知识点");
   const summary = escapeHtmlText(payload.summary || "");
@@ -58,6 +67,7 @@ function buildKnowledgeCardMarkup(payload = {}) {
   `;
 }
 
+// 统一知识卡的字段命名与默认值，方便存储和渲染。
 function normalizeKnowledgeCardPayload(rawValue) {
   const source = rawValue && typeof rawValue === "object" ? { ...rawValue } : {};
   const payload = {
@@ -84,6 +94,7 @@ function normalizeKnowledgeCardPayload(rawValue) {
   return payload;
 }
 
+// 将知识卡注册为 Quill 的自定义 BlockEmbed，支持在富文本中插入知识卡节点。
 function registerKnowledgePointCardBlot() {
   if (knowledgePointCardBlotRegistered) {
     return;
@@ -143,6 +154,7 @@ function registerKnowledgePointCardBlot() {
   knowledgePointCardBlotRegistered = true;
 }
 
+// 将关卡跳转气泡注册为 Quill 的嵌入元素。
 function registerChallengeBubbleBlot() {
   if (challengeBubbleBlotRegistered) {
     return;
@@ -191,6 +203,7 @@ function registerChallengeBubbleBlot() {
   challengeBubbleBlotRegistered = true;
 }
 
+// 纯文本转义，避免富文本渲染时出现 HTML 注入。
 function escapeHtmlText(value) {
   return (value || "")
     .replace(/&/g, "&amp;")
@@ -198,6 +211,7 @@ function escapeHtmlText(value) {
     .replace(/>/g, "&gt;");
 }
 
+// HTML 属性转义，覆盖单双引号等字符。
 function escapeHtmlAttribute(value) {
   return (value || "")
     .replace(/&/g, "&amp;")
@@ -207,6 +221,7 @@ function escapeHtmlAttribute(value) {
     .replace(/'/g, "&#39;");
 }
 
+// 尝试从任意形态的知识点对象/字符串中提取名称，作为唯一标识。
 function extractKnowledgeName(entry) {
   if (!entry) {
     return "";
@@ -221,6 +236,7 @@ function extractKnowledgeName(entry) {
   return String(entry).trim();
 }
 
+// 将两个知识点 payload 合并（优先已有字段，补足缺失字段、合并标签）。
 function mergeKnowledgePayload(target, source) {
   if (!source) {
     return target;
@@ -259,6 +275,7 @@ function mergeKnowledgePayload(target, source) {
   return target;
 }
 
+// 批量规范化知识点列表，并按名称去重聚合。
 function normalizeKnowledgePayloadList(list) {
   if (!Array.isArray(list)) {
     return [];
@@ -281,6 +298,7 @@ function normalizeKnowledgePayloadList(list) {
   return Array.from(map.values());
 }
 
+// 从 DOM 节点中读取知识卡 payload，兼容 data-payload 与回退解析。
 function readKnowledgeCardNodePayload(node) {
   if (!node) {
     return null;
@@ -315,6 +333,7 @@ function readKnowledgeCardNodePayload(node) {
   }
 }
 
+// 将最新的 payload 写回 DOM 节点并重建内部 HTML。
 function updateKnowledgeCardNode(node, payload) {
   if (!node) {
     return;
@@ -326,6 +345,7 @@ function updateKnowledgeCardNode(node, payload) {
   node.innerHTML = buildKnowledgeCardMarkup(normalized);
 }
 
+// 收集当前富文本中的所有知识卡节点，汇总为 payload 列表。
 function collectKnowledgePointPayloadsFromEditor() {
   if (!adminTheoryLessonEditor) {
     return [];
@@ -341,6 +361,7 @@ function collectKnowledgePointPayloadsFromEditor() {
   return normalizeKnowledgePayloadList(payloads);
 }
 
+// 将编辑器中的知识卡列表同步到隐藏域和缓存，便于提交或后续展示。
 function syncKnowledgePointsFromEditor({ updateCache = true } = {}) {
   if (!adminTheoryLessonEditor) {
     return [];
@@ -358,6 +379,7 @@ function syncKnowledgePointsFromEditor({ updateCache = true } = {}) {
   return payloads;
 }
 
+// 根据 anchorId 平滑滚动到对应知识卡节点，并闪烁高亮。
 function scrollToKnowledgeCardAnchor(anchorId) {
   const targetId = typeof anchorId === "string" ? anchorId.trim() : "";
   if (!targetId) {
@@ -388,6 +410,7 @@ function scrollToKnowledgeCardAnchor(anchorId) {
   return true;
 }
 
+// 构建知识点索引列表，用于弹窗搜索和展示统计信息。
 function getAdminKnowledgeIndexRecords() {
   const rawList =
     state.admin &&
@@ -410,6 +433,7 @@ function getAdminKnowledgeIndexRecords() {
     .filter((record) => record.name);
 }
 
+// 渲染知识卡搜索列表，可根据关键词过滤并高亮当前选中项。
 function renderKnowledgeCardList({ keyword = "", selectedName = "" } = {}) {
   if (!knowledgeCardList) {
     return;
@@ -451,6 +475,7 @@ function renderKnowledgeCardList({ keyword = "", selectedName = "" } = {}) {
   knowledgeCardList.appendChild(fragment);
 }
 
+// 重置/预填知识卡编辑表单，包括名称、摘要、标签、正文与配图。
 function resetKnowledgeCardForm(payload = null) {
   const basePayload = payload ? normalizeKnowledgeCardPayload(payload) : null;
   const selectedPayload = knowledgeCardModalState.selectedKnowledge
@@ -493,6 +518,7 @@ function resetKnowledgeCardForm(payload = null) {
   }
 }
 
+// 打开知识卡弹窗，准备索引数据、选中项并聚焦输入框。
 function openKnowledgeCardModal(payload = null, node = null) {
   if (!knowledgeCardModal) {
     return;
@@ -525,6 +551,7 @@ function openKnowledgeCardModal(payload = null, node = null) {
   }
 }
 
+// 关闭知识卡弹窗并清理本地状态缓存。
 function closeKnowledgeCardModal() {
   if (!knowledgeCardModal) {
     return;
@@ -536,6 +563,7 @@ function closeKnowledgeCardModal() {
   knowledgeCardModalState.indexRecords = [];
 }
 
+// 搜索框输入时实时刷新列表并保持选中态。
 function handleKnowledgeCardSearchInput() {
   if (!knowledgeCardSearch) {
     return;
@@ -551,6 +579,7 @@ function handleKnowledgeCardSearchInput() {
   });
 }
 
+// 选中列表中的知识点后，填充表单并刷新列表选中状态。
 function applyKnowledgeCardSelection(record) {
   if (!record) {
     return;
@@ -563,6 +592,7 @@ function applyKnowledgeCardSelection(record) {
   });
 }
 
+// 列表点击事件代理，读取 dataset 后调用 applyKnowledgeCardSelection。
 function handleKnowledgeCardListClick(event) {
   const button = event.target.closest(".knowledge-modal__item");
   if (!button) {
@@ -578,6 +608,7 @@ function handleKnowledgeCardListClick(event) {
   }
 }
 
+// 切换到“新增知识点”状态，清空表单和状态提示。
 function handleKnowledgeCardNew() {
   knowledgeCardModalState.selectedKnowledge = null;
   knowledgeCardModalState.imageDataUrl = "";
@@ -588,6 +619,7 @@ function handleKnowledgeCardNew() {
   }
 }
 
+// 监听图片上传，转为 dataURL 预览并写回表单。
 function handleKnowledgeCardImageChange(event) {
   const files = event && event.target && event.target.files ? event.target.files : null;
   if (!files || files.length === 0) {
@@ -605,11 +637,13 @@ function handleKnowledgeCardImageChange(event) {
   reader.readAsDataURL(file);
 }
 
+// 移除已选图片并刷新表单预览。
 function handleKnowledgeCardRemoveImage() {
   knowledgeCardModalState.imageDataUrl = "";
   resetKnowledgeCardForm(knowledgeCardModalState.selectedKnowledge || null);
 }
 
+// 在正文区域插入示例表格，方便整理知识点要点。
 function handleKnowledgeCardInsertTable() {
   if (!knowledgeCardBodyEditor) {
     return;
@@ -637,6 +671,7 @@ function handleKnowledgeCardInsertTable() {
   knowledgeCardBodyEditor.insertAdjacentHTML("beforeend", tableHtml);
 }
 
+// 清空知识卡正文区域。
 function handleKnowledgeCardClearBody() {
   if (!knowledgeCardBodyEditor) {
     return;
@@ -644,6 +679,7 @@ function handleKnowledgeCardClearBody() {
   knowledgeCardBodyEditor.innerHTML = "";
 }
 
+// 汇总弹窗表单内容与选中记录，生成标准化 payload。
 function readKnowledgeCardForm() {
   const basePayload = knowledgeCardModalState.editingNode
     ? readKnowledgeCardNodePayload(knowledgeCardModalState.editingNode)
@@ -682,6 +718,7 @@ function readKnowledgeCardForm() {
   return payload;
 }
 
+// 将知识卡插入到 Quill 编辑器（或替换已有节点），并同步缓存。
 function insertKnowledgeCardIntoEditor(payload, { replaceNode = null } = {}) {
   const normalized = normalizeKnowledgeCardPayload(payload);
   if (adminTheoryLessonEditor) {
@@ -721,6 +758,7 @@ function insertKnowledgeCardIntoEditor(payload, { replaceNode = null } = {}) {
   }
 }
 
+// 根据最新 payload 刷新编辑器中已存在的知识卡节点（以锚点或名称匹配）。
 function refreshKnowledgeCardNodesFromPayloads(payloads) {
   if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
     return;
@@ -756,6 +794,7 @@ function refreshKnowledgeCardNodesFromPayloads(payloads) {
   });
 }
 
+// 点击“确定”时校验名称、写入编辑器并关闭弹窗。
 function handleKnowledgeCardConfirm() {
   if (knowledgeCardStatus) {
     knowledgeCardStatus.textContent = "";
@@ -772,6 +811,7 @@ function handleKnowledgeCardConfirm() {
   closeKnowledgeCardModal();
 }
 
+// 获取编辑器当前选中 HTML/纯文本，用于预填知识卡或匹配。
 function getEditorSelectionContent() {
   if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
     return null;
@@ -795,6 +835,7 @@ function getEditorSelectionContent() {
   return { html, text };
 }
 
+// 从用户选中内容快速打开知识卡弹窗，并用选中文本填充摘要/正文。
 function openKnowledgeCardFromSelection() {
   const selection = getEditorSelectionContent();
   if (!selection) {
@@ -812,6 +853,7 @@ function openKnowledgeCardFromSelection() {
   }
 }
 
+// 计算当前选中区域在视口中的位置，为展示浮动操作气泡。
 function getSelectionRectWithinEditor() {
   if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) {
     return null;
@@ -835,6 +877,7 @@ function getSelectionRectWithinEditor() {
   return rect;
 }
 
+// 归一化文本以便匹配（去除标签、压缩空格、转小写）。
 function normalizeMatchText(value) {
   return (value || "")
     .toString()
@@ -844,6 +887,7 @@ function normalizeMatchText(value) {
     .toLowerCase();
 }
 
+// 将选中文本切分成关键词列表，用于启发式匹配。
 function extractMatchTokens(selectionText) {
   const normalized = normalizeMatchText(selectionText);
   if (!normalized) {
@@ -854,6 +898,7 @@ function extractMatchTokens(selectionText) {
   return Array.from(new Set(filtered)).slice(0, 30);
 }
 
+// 判断是否用选中的长文本覆盖知识卡正文（用于智能匹配回填）。
 function shouldOverrideBodyWithSelection(payloadBody, payloadSummary, selection) {
   const selectionText = selection ? normalizeMatchText(selection.html || selection.text || "") : "";
   if (!selectionText || selectionText.length < 6) {
@@ -868,6 +913,7 @@ function shouldOverrideBodyWithSelection(payloadBody, payloadSummary, selection)
   return isBodyMissing || isBodySameAsSummary || selectionMuchLonger;
 }
 
+// 如果匹配结果正文缺失，则从选中文本中补齐正文/摘要。
 function ensureBodyFromSelection(payload, selection) {
   if (!selection || !payload) {
     return payload;
@@ -881,6 +927,7 @@ function ensureBodyFromSelection(payload, selection) {
   return payload;
 }
 
+// 组装当前选中理论课的上下文（课程/主题/章节），便于后端匹配引用。
 function getLessonContextPayload() {
   if (!state.admin || !state.admin.theory || !state.admin.theory.selectedLessonId) {
     return null;
@@ -897,6 +944,7 @@ function getLessonContextPayload() {
   };
 }
 
+// 根据简单打分规则对知识点进行本地预筛选，辅助匹配失败时展示调试信息。
 function computeHeuristicKnowledgeScores(selectionText, knowledgeList, { topK = 6 } = {}) {
   const tokens = extractMatchTokens(selectionText);
   const selectionNormalized = normalizeMatchText(selectionText);
@@ -957,6 +1005,7 @@ function computeHeuristicKnowledgeScores(selectionText, knowledgeList, { topK = 
   return { tokens, scored };
 }
 
+// 将匹配调试信息（本地启发式 + 后端返回）渲染到调试区域。
 function renderKnowledgeMatchDebug({ selection, heuristics, backend, label = "知识点匹配调试" } = {}) {
   if (!adminTheoryMatchDebug) {
     return;
@@ -1021,6 +1070,7 @@ function renderKnowledgeMatchDebug({ selection, heuristics, backend, label = "�
   adminTheoryMatchDebug.classList.remove("hidden");
 }
 
+// 清空调试区域并隐藏。
 function clearKnowledgeMatchDebug() {
   if (!adminTheoryMatchDebug) {
     return;
@@ -1031,6 +1081,7 @@ function clearKnowledgeMatchDebug() {
 
 let knowledgeBubbleEl = null;
 
+// 隐藏选中文本旁的快捷操作气泡。
 function hideKnowledgeSelectionBubble() {
   if (knowledgeBubbleEl) {
     knowledgeBubbleEl.remove();
@@ -1038,6 +1089,7 @@ function hideKnowledgeSelectionBubble() {
   }
 }
 
+// 点击气泡后尝试自动匹配知识点，若失败则回退到手动弹窗。
 async function handleBubbleMatchClick() {
   const selection = getEditorSelectionContent();
   if (!selection) {
@@ -1121,6 +1173,7 @@ async function handleBubbleMatchClick() {
   }
 }
 
+// 在选中文本附近展示“关联知识点”的悬浮按钮。
 function showKnowledgeSelectionBubble() {
   hideKnowledgeSelectionBubble();
   const rect = getSelectionRectWithinEditor();
@@ -1150,6 +1203,7 @@ function showKnowledgeSelectionBubble() {
   knowledgeBubbleEl = bubble;
 }
 
+// 监听编辑器内的选区变化/滚动，决定是否展示或隐藏气泡。
 function bindKnowledgeSelectionWatcher() {
   if (!adminTheoryLessonEditor || !adminTheoryLessonEditor.root) return;
   const root = adminTheoryLessonEditor.root;
@@ -1173,6 +1227,7 @@ function bindKnowledgeSelectionWatcher() {
   });
 }
 
+// 显式触发自动匹配（若无选区则直接打开弹窗）。
 function triggerAutoKnowledgeMatch() {
   const selection = getEditorSelectionContent();
   if (selection && selection.text && selection.text.length > 0) {
@@ -1182,6 +1237,7 @@ function triggerAutoKnowledgeMatch() {
   }
 }
 
+// 使用 RAG Beta 接口进行知识点匹配，优先展示后端推理结果。
 async function triggerRagMatchBeta() {
   const selection = getEditorSelectionContent();
   if (!selection || !selection.text) {
@@ -1262,6 +1318,7 @@ async function triggerRagMatchBeta() {
   }
 }
 
+// 处理导入 DOCX 生成知识点草稿的上传逻辑，并展示生成进度。
 async function handleAutoBuildGraphUpload() {
   if (!autoBuildGraphInput || autoBuildGraphInput.files.length === 0) {
     return;
@@ -1296,6 +1353,7 @@ async function handleAutoBuildGraphUpload() {
   }
 }
 
+// 批量审核并写入通过的草稿知识点。
 async function approveAutoBuildDrafts(selectedIds) {
   if (!Array.isArray(selectedIds) || selectedIds.length === 0) {
     return;
@@ -1322,6 +1380,7 @@ async function approveAutoBuildDrafts(selectedIds) {
   }
 }
 
+// 渲染 AI 自动生成的知识点草稿列表，并附带批量通过按钮。
 function renderAutoBuildDrafts(drafts) {
   if (!autoBuildGraphDraftList) return;
   if (!drafts || drafts.length === 0) {
@@ -1360,6 +1419,7 @@ function renderAutoBuildDrafts(drafts) {
   autoBuildGraphDraftList.appendChild(btn);
 }
 
+// 渲染学生列表，支持选中态高亮与“查看”按钮。
 function renderAdminStudentList() {
   adminStudentList.innerHTML = "";
   if (!state.admin.students || state.admin.students.length === 0) {
@@ -1401,6 +1461,7 @@ function renderAdminStudentList() {
   });
 }
 
+// 展示指定学生的元信息与会话列表；为空则清空右侧区域。
 function renderAdminStudentDetail(detail) {
   if (!detail) {
     adminStudentMeta.innerHTML = '<p class="text-slate-400">请选择学生查看详情</p>';
@@ -1459,6 +1520,7 @@ function renderAdminStudentDetail(detail) {
   renderAdminSessionDetail(null);
 }
 
+// 展示会话详情，包括情景设定、对话记录与评估信息。
 function renderAdminSessionDetail(data) {
   if (!data) {
     adminSessionScenario.innerHTML = "";
@@ -1510,6 +1572,7 @@ function renderAdminSessionDetail(data) {
   }
 }
 
+// 将多行文本拆分为行数组并去除空行。
 function splitLines(value) {
   return (value || "")
     .split(/\r?\n/)
@@ -1517,10 +1580,12 @@ function splitLines(value) {
     .filter((line) => line);
 }
 
+// 将字符串数组合并为以换行分隔的文本。
 function joinLines(list) {
   return Array.isArray(list) ? list.join("\n") : "";
 }
 
+// 从文本域读取知识点列表（逐行存储）。
 function readKnowledgeFromTextarea(element) {
   if (!element) {
     return [];
@@ -1528,6 +1593,7 @@ function readKnowledgeFromTextarea(element) {
   return splitLines(element.value);
 }
 
+// 将知识点数组写回文本域，自动按行格式化。
 function writeKnowledgeToTextarea(element, points) {
   if (!element) {
     return;
@@ -1540,6 +1606,7 @@ function writeKnowledgeToTextarea(element, points) {
   element.value = joinLines(names);
 }
 
+// 清空或删除指定关卡的知识点缓存。
 function clearPracticeKnowledgeCache(targetIds = null) {
   const cache = state.admin.graph && state.admin.graph.practiceKnowledge;
   if (!cache || typeof cache !== "object") {
@@ -1562,6 +1629,7 @@ function clearPracticeKnowledgeCache(targetIds = null) {
     });
 }
 
+// 清空或删除指定理论课的知识点缓存。
 function clearLessonKnowledgeCache(targetIds = null) {
   const cache = state.admin.graph && state.admin.graph.lessonKnowledge;
   if (!cache || typeof cache !== "object") {
@@ -1584,6 +1652,7 @@ function clearLessonKnowledgeCache(targetIds = null) {
     });
 }
 
+// 读取关卡关联的知识点，带缓存且可强制刷新。
 async function fetchPracticeKnowledge(practiceId, { forceRefresh = false } = {}) {
   if (!practiceId || !state.auth.user || state.auth.user.role !== "teacher") {
     return [];
@@ -1612,6 +1681,7 @@ async function fetchPracticeKnowledge(practiceId, { forceRefresh = false } = {})
   }
 }
 
+// 将编辑后的知识点列表提交到后端并更新缓存。
 async function persistPracticeKnowledge(practiceId, knowledgePoints) {
   if (!practiceId || !state.auth.user || state.auth.user.role !== "teacher") {
     return [];
@@ -1642,6 +1712,7 @@ async function persistPracticeKnowledge(practiceId, knowledgePoints) {
   }
 }
 
+// 读取理论课程的知识点，按需刷新缓存。
 async function fetchLessonKnowledge(lessonId, { forceRefresh = false } = {}) {
   if (!lessonId || !state.auth.user || state.auth.user.role !== "teacher") {
     return [];
@@ -1670,6 +1741,7 @@ async function fetchLessonKnowledge(lessonId, { forceRefresh = false } = {}) {
   }
 }
 
+// 更新理论课程的知识点列表并写入缓存。
 async function persistLessonKnowledge(lessonId, knowledgePoints) {
   if (!lessonId || !state.auth.user || state.auth.user.role !== "teacher") {
     return [];
@@ -1703,6 +1775,7 @@ async function persistLessonKnowledge(lessonId, knowledgePoints) {
   }
 }
 
+// 将后台缓存的关卡知识点填充到表单文本域。
 async function hydrateSectionKnowledge(sectionId) {
   if (!sectionEditorKnowledge) {
     return;
@@ -1718,6 +1791,7 @@ async function hydrateSectionKnowledge(sectionId) {
   writeKnowledgeToTextarea(sectionEditorKnowledge, knowledge);
 }
 
+// 将后台缓存的理论课知识点填充到表单，并刷新已插入的卡片。
 async function hydrateLessonKnowledge(lessonId) {
   if (!adminTheoryLessonKnowledge) {
     return;
@@ -1734,6 +1808,7 @@ async function hydrateLessonKnowledge(lessonId) {
   refreshKnowledgeCardNodesFromPayloads(knowledge);
 }
 
+// 将节点 key 解析为 {label, id} 结构，便于后续匹配。
 function describeGraphNodeKey(key) {
   if (typeof key !== "string") {
     return { label: "", id: "" };
@@ -1742,6 +1817,7 @@ function describeGraphNodeKey(key) {
   return { label: label || "", id: rest.join(":") };
 }
 
+// 渲染后台左侧“知识点分层列表”，按 Stage 分组展示节点。
 function renderAdminGraphKnowledgeList() {
   if (!adminGraphKnowledgeList) {
     return;
@@ -1821,6 +1897,7 @@ function renderAdminGraphKnowledgeList() {
   });
 }
 
+// 在侧边栏展示当前选中节点的标题/元数据。
 function renderAdminGraphSelection(detail) {
   showGraphDetailDrawer(detail);
   if (!adminGraphSelection) {
@@ -1856,6 +1933,7 @@ function renderAdminGraphSelection(detail) {
   }
 }
 
+// 打开底部抽屉详情，展示知识点正文或表单编辑区域。
 function showGraphDetailDrawer(detail) {
   const overlay = document.getElementById('graph-detail-overlay');
   const drawer = document.getElementById('graph-detail-drawer');
@@ -1906,6 +1984,7 @@ function showGraphDetailDrawer(detail) {
   }
 }
 
+// 关闭抽屉详情，并解绑遮罩点击事件。
 function hideGraphDetailDrawer() {
   const overlay = document.getElementById('graph-detail-overlay');
   const drawer = document.getElementById('graph-detail-drawer');
@@ -1921,6 +2000,7 @@ function hideGraphDetailDrawer() {
   }, 180);
 }
 
+// 加载关卡节点详情及其关联的理论课程，用于图谱点击展示。
 async function loadPracticeGraphDetail(practiceId) {
   try {
     const response = await fetchWithAuth(`/api/graph/practices/${practiceId}/related-lessons`);
@@ -1954,6 +2034,7 @@ async function loadPracticeGraphDetail(practiceId) {
   }
 }
 
+// 加载理论课程节点详情及其关联的实战关卡。
 async function loadLessonGraphDetail(lessonId) {
   try {
     const response = await fetchWithAuth(`/api/graph/theory-lessons/${lessonId}/related-practices`);
@@ -1982,6 +2063,7 @@ async function loadLessonGraphDetail(lessonId) {
   }
 }
 
+// 根据知识点名称构造简易详情（关联数量/摘要），用于列表点击展示。
 function buildKnowledgePointDetail(name) {
   const record = Array.isArray(state.admin.graph.knowledgePoints)
     ? state.admin.graph.knowledgePoints.find((item) => item.name === name)
@@ -1996,6 +2078,7 @@ function buildKnowledgePointDetail(name) {
   };
 }
 
+// 根据章节 ID 构造详情摘要，包含章节标题与统计。
 function buildChapterDetail(chapterId) {
   const chapter = findAdminChapter(chapterId);
   if (!chapter) {
@@ -2010,6 +2093,7 @@ function buildChapterDetail(chapterId) {
   };
 }
 
+// 构造流程节点详情（流程/阶段节点用 key=ProcessStep:xxx 存储）。
 function buildProcessDetail(processId) {
   const node = (state.admin.graph.network && state.admin.graph.network.nodes || []).find(
     (item) => item.key === `ProcessStep:${processId}`,
@@ -2020,6 +2104,7 @@ function buildProcessDetail(processId) {
   };
 }
 
+// 打开知识点编辑表单（底部抽屉），并在选择一致时填充后端数据。
 async function openKnowledgePointEditor(name, selectionKey = null) {
   if (!name || typeof window === "undefined" || typeof window.showKnowledgeGraphForm !== "function") {
     return;
@@ -2052,6 +2137,7 @@ async function openKnowledgePointEditor(name, selectionKey = null) {
   }
 }
 
+// 处理图谱点击事件：根据节点类型加载不同的详情或编辑表单。
 async function handleGraphNodeSelection(nodeKey) {
   adminGraphSelectionKey = nodeKey;
   if (!nodeKey) {
@@ -2085,6 +2171,7 @@ async function handleGraphNodeSelection(nodeKey) {
   }
 }
 
+// 注入浅色主题样式，供知识点编辑表单切换至“阅读模式”时使用。
 function ensureGraphDrawerLightStyles() {
   if (document.getElementById('graph-drawer-light-style')) return;
   const style = document.createElement('style');
@@ -2170,6 +2257,7 @@ function ensureGraphDrawerLightStyles() {
   document.head.appendChild(style);
 }
 
+// 切换图谱详情抽屉的明暗主题。
 function applyGraphDrawerTheme(mode) {
   const drawer = document.getElementById('graph-detail-drawer');
   if (!drawer) return;
@@ -2183,6 +2271,7 @@ function applyGraphDrawerTheme(mode) {
   }
 }
 
+// 渲染后台知识图谱（当前默认走开花布局）。
 function renderAdminGraphNetwork() {
   if (!adminGraphCanvas || !window.G6) {
     return;
@@ -2320,6 +2409,7 @@ function renderAdminGraphNetwork() {
   });
 }
 
+// 根据不同渲染模式生成 G6 布局配置。
 function createGraphLayout(mode, nodes, edges) {
   if (mode === "force") {
     // 根据节点类型/边类型调整距离，避免堆叠
@@ -2376,6 +2466,7 @@ function createGraphLayout(mode, nodes, edges) {
   };
 }
 
+// 使用自定义“开花”布局渲染图谱，强调阶段/知识点放射结构。
 function renderBurstGraph(nodesRaw, edgesRaw, width, height) {
   const colorMap = {
     Stage: "#3b82f6",
@@ -2674,6 +2765,7 @@ function renderBurstGraph(nodesRaw, edgesRaw, width, height) {
   });
 }
 
+// 将原始 network 数据转换为层级树，供 G6 mini-map/树形使用。
 function buildTreeData(network) {
   const nodes = network && Array.isArray(network.nodes) ? network.nodes : [];
   const edges = network && Array.isArray(network.edges) ? network.edges : [];
@@ -2759,6 +2851,7 @@ function buildTreeData(network) {
   };
 }
 
+// 采用 G6 渲染（树形 + mini map），用于另一种视图模式。
 function renderAdminGraphWithG6() {
   if (!adminGraphCanvas) return;
   if (adminGraphNetwork) {
@@ -2947,6 +3040,7 @@ async function refreshAdminGraph() {
   }
 }
 
+// 重置任务模版（blueprint）表单，可传入已有数据进行回填。
 function resetBlueprintForm(blueprint = null) {
   if (!adminBlueprintForm) return;
   const blueprintData = blueprint || {};
@@ -3005,6 +3099,7 @@ function resetBlueprintForm(blueprint = null) {
   updateInlineStatus(adminBlueprintGeneratorStatus, "");
 }
 
+// 选择某个 Blueprint 以回填表单并高亮列表。
 function selectAdminBlueprint(blueprintId) {
   const blueprint = findAdminBlueprint(blueprintId);
   if (!blueprint) {
@@ -3018,6 +3113,7 @@ function selectAdminBlueprint(blueprintId) {
   }
 }
 
+// 从 Blueprint 表单读取字段并组装提交 payload。
 function buildBlueprintPayloadFromForm() {
   return {
     scenarioTitle: adminBlueprintTitle.value.trim(),
@@ -3054,6 +3150,7 @@ function buildBlueprintPayloadFromForm() {
   };
 }
 
+// 渲染 Blueprint 列表卡片，展示难度、关联章节等信息。
 function renderBlueprintList() {
   if (!adminBlueprintList) return;
   adminBlueprintList.innerHTML = "";
@@ -3098,6 +3195,7 @@ function renderBlueprintList() {
   });
 }
 
+// 初始化作业表单的章节下拉选项（过滤掉没有关卡的章节）。
 function populateAssignmentChapterOptions() {
   if (!adminAssignmentChapter) return;
   const selected = adminAssignmentChapter.value;
@@ -3114,6 +3212,7 @@ function populateAssignmentChapterOptions() {
   updateAssignmentSectionOptions();
 }
 
+// 根据章节选择刷新对应的关卡下拉框。
 function updateAssignmentSectionOptions() {
   if (!adminAssignmentSection) return;
   const chapterId = adminAssignmentChapter ? adminAssignmentChapter.value : "";
@@ -3135,6 +3234,7 @@ function updateAssignmentSectionOptions() {
   });
 }
 
+// 填充作业表单的 Blueprint 选项，便于复用模版。
 function populateAssignmentBlueprintOptions() {
   if (!adminAssignmentBlueprint) return;
   const selected = adminAssignmentBlueprint.value;
@@ -3156,6 +3256,7 @@ function populateAssignmentBlueprintOptions() {
   });
 }
 
+// 填充 Blueprint 表单中的章节下拉框。
 function populateBlueprintChapterOptions() {
   if (!adminBlueprintChapter) return;
   const selected = adminBlueprintChapter.value;
@@ -3172,6 +3273,7 @@ function populateBlueprintChapterOptions() {
   updateBlueprintSectionOptions();
 }
 
+// 根据章节选择刷新 Blueprint 的关卡下拉框。
 function updateBlueprintSectionOptions() {
   if (!adminBlueprintSection) return;
   const chapterId = adminBlueprintChapter ? adminBlueprintChapter.value : "";
@@ -3215,6 +3317,7 @@ async function requestGeneratedScenario({ chapterId, sectionId, difficulty }) {
   return data;
 }
 
+// 将选定场景信息写入作业表单（标题/角色/难度等）。
 function applyScenarioToAssignmentFields(scenario, difficultyKey) {
   if (!scenario) return;
   if (adminAssignmentTitle && !adminAssignmentTitle.value) {
@@ -3228,6 +3331,7 @@ function applyScenarioToAssignmentFields(scenario, difficultyKey) {
   }
 }
 
+// 将场景信息回填到 Blueprint 编辑表单。
 function applyScenarioToBlueprintFormFields(scenario, difficultyKey) {
   if (!scenario) return;
   adminBlueprintTitle.value = scenario.scenario_title || "";
@@ -3355,6 +3459,7 @@ async function handleBlueprintScenarioGeneration() {
   }
 }
 
+// 渲染学生选取列表，支持全选、搜索和已分配标识。
 function renderAssignmentStudents(options = {}) {
   if (!adminAssignmentStudents) return;
   const existingChecked = Array.from(
@@ -3391,6 +3496,7 @@ function renderAssignmentStudents(options = {}) {
   });
 }
 
+// 渲染已创建的作业列表卡片。
 function renderAssignmentList() {
   if (!adminAssignmentList) return;
   adminAssignmentList.innerHTML = "";
@@ -3424,6 +3530,7 @@ function renderAssignmentList() {
   });
 }
 
+// 将指定作业数据填充到表单，便于编辑。
 function populateAssignmentForm(assignment) {
   updateInlineStatus(adminAssignmentGeneratorStatus, "");
   if (!assignment || !adminAssignmentForm) {
@@ -3476,6 +3583,7 @@ function populateAssignmentForm(assignment) {
   renderAssignmentStudents({ selectedIds: assignment.studentIds || [] });
 }
 
+// 选中并加载某个作业，刷新表单与学生名单。
 function selectAdminAssignment(assignmentId) {
   const assignment = findAdminAssignment(assignmentId);
   if (!assignment) {
@@ -3489,6 +3597,7 @@ function selectAdminAssignment(assignmentId) {
   }
 }
 
+// 在“学生视角”区域渲染已分配的作业及完成状态。
 function renderStudentAssignments() {
   if (!studentAssignmentListEl) return;
   studentAssignmentListEl.innerHTML = "";
@@ -3591,6 +3700,7 @@ function renderStudentAssignments() {
   });
 }
 
+// 通用渲染函数：将统计数据数组转成列表 DOM。
 function renderAnalyticsList(container, items, formatItem, emptyText) {
   if (!container) return;
   container.innerHTML = "";
@@ -3610,6 +3720,7 @@ function renderAnalyticsList(container, items, formatItem, emptyText) {
   });
 }
 
+// 展示后台仪表盘的关键统计（练习、评估、反馈等）。
 function renderAdminAnalytics(analytics) {
   state.admin.analytics = analytics || null;
   renderAnalyticsList(
@@ -3647,6 +3758,7 @@ function renderAdminAnalytics(analytics) {
   );
 }
 
+// 工具：根据 ID 获取章节对象。
 function findAdminChapter(chapterId) {
   const chapters = state.admin.levels || [];
   for (let index = 0; index < chapters.length; index += 1) {
@@ -3658,6 +3770,7 @@ function findAdminChapter(chapterId) {
   return null;
 }
 
+// 工具：根据 ID 获取作业对象。
 function findAdminAssignment(assignmentId) {
   const assignments = state.admin.assignments || [];
   for (let index = 0; index < assignments.length; index += 1) {
@@ -3669,6 +3782,7 @@ function findAdminAssignment(assignmentId) {
   return null;
 }
 
+// 工具：根据 ID 获取 Blueprint 对象。
 function findAdminBlueprint(blueprintId) {
   const blueprints = state.admin.blueprints || [];
   for (let index = 0; index < blueprints.length; index += 1) {
@@ -3680,6 +3794,7 @@ function findAdminBlueprint(blueprintId) {
   return null;
 }
 
+// 工具：根据章节/关卡 ID 获取关卡对象。
 function findAdminSection(chapterId, sectionId) {
   const chapter = findAdminChapter(chapterId);
   if (!chapter) {
@@ -3695,6 +3810,7 @@ function findAdminSection(chapterId, sectionId) {
   return null;
 }
 
+// 渲染等级配置（章节/关卡）树状列表，支持展开/折叠。
 function renderAdminLevelList() {
   if (!levelChapterList) {
     return;
@@ -3762,6 +3878,7 @@ function renderAdminLevelList() {
   });
 }
 
+// 将当前章节数据回填到编辑表单。
 function updateChapterForm() {
   if (!chapterEditorForm || !levelChapterStatus) {
     return;
@@ -3795,6 +3912,7 @@ function updateChapterForm() {
   if (levelSaveChapterBtn) levelSaveChapterBtn.disabled = false;
 }
 
+// 将当前关卡数据回填到编辑表单，包括知识点。
 function updateSectionForm() {
   if (!sectionEditorForm || !levelSectionStatus) {
     return;
@@ -3868,6 +3986,7 @@ function updateSectionForm() {
   if (levelDeleteSectionBtn) levelDeleteSectionBtn.disabled = false;
 }
 
+// 在关卡编辑页选择章节，刷新关卡列表和表单。
 function selectEditorChapter(chapterId) {
   state.admin.selectedEditorChapterId = chapterId;
   const chapter = findAdminChapter(chapterId);
@@ -3887,6 +4006,7 @@ function selectEditorChapter(chapterId) {
   updateSectionForm();
 }
 
+// 在关卡编辑页选择关卡，填充表单并加载知识点缓存。
 function selectEditorSection(sectionId) {
   state.admin.selectedEditorSectionId = sectionId;
   renderAdminLevelList();
@@ -3944,6 +4064,7 @@ async function loadAdminLevels(options = {}) {
   }
 }
 
+// 确保后台理论编辑区域的状态对象存在，防止空引用。
 function ensureAdminTheoryState() {
   if (!state.admin || typeof state.admin !== "object") {
     state.admin = {};
@@ -3961,6 +4082,7 @@ function ensureAdminTheoryState() {
   }
 }
 
+// 填充理论编辑区的章节下拉框。
 function populateAdminTheoryChapterOptions() {
   if (!adminTheoryTopicChapter) {
     return;
@@ -3984,6 +4106,7 @@ function populateAdminTheoryChapterOptions() {
   });
 }
 
+// 根据章节刷新理论编辑区的关卡下拉框。
 function populateAdminTheorySectionOptions() {
   if (!adminTheoryLessonSection) {
     return;
@@ -4006,6 +4129,7 @@ function populateAdminTheorySectionOptions() {
   });
 }
 
+// 对长文本生成预览摘要，截断并附加省略号。
 function summarizePreviewText(value, limit = 80) {
   const text = typeof value === "string" ? value : value && value.toString ? value.toString() : "";
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -4018,6 +4142,7 @@ function summarizePreviewText(value, limit = 80) {
   return `${normalized.slice(0, limit - 1).trim()}…`;
 }
 
+// 更新 Docx 导入进度条显示文案。
 function setAdminTheoryDocxProgress({ total = 0, completed = 0, actionVerb = "已完成" } = {}) {
   if (!adminTheoryDocxProgress || !adminTheoryDocxProgressBar) {
     return;
@@ -4045,6 +4170,7 @@ function setAdminTheoryDocxProgress({ total = 0, completed = 0, actionVerb = "�
   }
 }
 
+// 渲染 Docx 导入的章节/关卡预览树。
 function renderAdminTheoryDocxPreview(importData = null) {
   if (!adminTheoryDocxPreview) {
     return;
@@ -4133,6 +4259,7 @@ function renderAdminTheoryDocxPreview(importData = null) {
   }
 }
 
+// 清空 Docx 导入数据与相关 UI 状态。
 function clearAdminTheoryDocxImport(options = {}) {
   ensureAdminTheoryState();
   state.admin.theory.pendingImport = null;
@@ -4429,6 +4556,7 @@ async function applyAdminTheoryDocxImport({ publish = false } = {}) {
   }
 }
 
+// 将章节/主题/课程组合成树结构，方便渲染导航树。
 function collectAdminTheoryTopics() {
   ensureAdminTheoryState();
   const chapters = Array.isArray(state.admin.theory.tree) ? state.admin.theory.tree : [];
@@ -4442,6 +4570,7 @@ function collectAdminTheoryTopics() {
   return items;
 }
 
+// 根据 ID 查找后台缓存的理论主题。
 function findAdminTheoryTopic(topicId) {
   if (!topicId) {
     return null;
@@ -4459,6 +4588,7 @@ function findAdminTheoryTopic(topicId) {
   return null;
 }
 
+// 根据 ID 查找后台缓存的理论课程。
 function findAdminTheoryLesson(lessonId) {
   if (!lessonId) {
     return null;
@@ -4479,6 +4609,7 @@ function findAdminTheoryLesson(lessonId) {
   return null;
 }
 
+// 渲染课程详情头部信息（主题/章节/课程标题）。
 function renderAdminTheoryLessonHeading(lessonContext) {
   if (!adminTheoryLessonHeading) {
     return;
@@ -4535,6 +4666,7 @@ function renderAdminTheoryLessonHeading(lessonContext) {
   adminTheoryLessonHeading.appendChild(lessonLine);
 }
 
+// 渲染理论知识树，包含章节、主题、课程节点及创建按钮。
 function renderAdminTheoryTree() {
   if (!adminTheoryTree) {
     return;
@@ -5037,6 +5169,7 @@ async function deleteAdminTheoryLessonInline(lessonId) {
   }
 }
 
+// 初始化理论课 Quill 编辑器，注册知识卡/挑战气泡并绑定事件。
 function initAdminTheoryLessonEditor() {
   if (!adminTheoryLessonEditorHost || adminTheoryLessonEditor) {
     return;
@@ -5111,6 +5244,7 @@ function initAdminTheoryLessonEditor() {
   }
 }
 
+// 将 HTML 写入理论课编辑器（或隐藏 textarea 兜底）。
 function setAdminTheoryEditorContent(html) {
   const content = typeof html === "string" ? html : "";
   if (adminTheoryLessonEditor) {
@@ -5121,6 +5255,7 @@ function setAdminTheoryEditorContent(html) {
   }
 }
 
+// 读取理论课编辑器内容（若无实例则从隐藏域读取）。
 function getAdminTheoryEditorContent() {
   if (adminTheoryLessonEditor) {
     return adminTheoryLessonEditor.root.innerHTML;
@@ -5131,10 +5266,12 @@ function getAdminTheoryEditorContent() {
   return "";
 }
 
+// 从全局 levels 结构中提取章节数组。
 function getAdminLevelChapters() {
   return Array.isArray(state.admin.levels) ? state.admin.levels : [];
 }
 
+// 填充挑战选择器的关卡列表。
 function populateChallengeSelectorSections(chapterId, selectedSectionId) {
   if (!challengeSelectorSection) {
     return;
@@ -5162,6 +5299,7 @@ function populateChallengeSelectorSections(chapterId, selectedSectionId) {
   }
 }
 
+// 填充挑战选择器的章节列表并联动关卡下拉。
 function populateChallengeSelectorChapters(selectedChapterId, selectedSectionId) {
   if (!challengeSelectorChapter) {
     return;
@@ -5187,6 +5325,7 @@ function populateChallengeSelectorChapters(selectedChapterId, selectedSectionId)
   populateChallengeSelectorSections(targetChapterId || "", selectedSectionId || "");
 }
 
+// 根据当前选择更新预览文本。
 function updateChallengeSelectorPreview() {
   if (!challengeSelectorPreview) {
     return;
@@ -5210,6 +5349,7 @@ function updateChallengeSelectorPreview() {
   challengeSelectorPreview.appendChild(bubble);
 }
 
+// 打开挑战选择器弹窗，并尝试预选当前课程关联的关卡。
 function openChallengeSelectorModal(preferredSectionId = null) {
   if (!challengeSelectorModal) {
     return;
@@ -5248,6 +5388,7 @@ function openChallengeSelectorModal(preferredSectionId = null) {
   challengeSelectorModal.classList.remove("hidden");
 }
 
+// 关闭挑战选择器弹窗并清理状态。
 function closeChallengeSelectorModal() {
   if (!challengeSelectorModal) {
     return;
@@ -5255,6 +5396,7 @@ function closeChallengeSelectorModal() {
   challengeSelectorModal.classList.add("hidden");
 }
 
+// 将关卡挑战气泡插入富文本编辑器，便于学生端跳转。
 function insertChallengeBubbleIntoEditor(chapterId, sectionId, label) {
   if (!chapterId || !sectionId) {
     return;
@@ -5287,6 +5429,7 @@ function insertChallengeBubbleIntoEditor(chapterId, sectionId, label) {
   }
 }
 
+// 刷新理论编辑相关表单（章节/关卡下拉、知识点缓存）。
 function updateAdminTheoryForms() {
   ensureAdminTheoryState();
   if (adminTheoryTopicForm) {
@@ -5378,6 +5521,7 @@ function updateAdminTheoryForms() {
   }
 }
 
+// 进入“新增主题”模式，清空课程表单并预选章节。
 function enterAdminTheoryTopicCreateMode(preferredChapterId = null) {
   ensureAdminTheoryState();
   if (!adminTheoryTopicForm) {
@@ -5391,6 +5535,7 @@ function enterAdminTheoryTopicCreateMode(preferredChapterId = null) {
   updateAdminTheoryForms();
 }
 
+// 进入“新增课程”模式，清空表单并预选主题。
 function enterAdminTheoryLessonCreateMode(preferredTopicId = null) {
   ensureAdminTheoryState();
   const targetTopicId = (preferredTopicId || state.admin.theory.selectedTopicId || "").trim();
@@ -5401,6 +5546,7 @@ function enterAdminTheoryLessonCreateMode(preferredTopicId = null) {
   createAdminTheoryLessonInline(targetTopicId);
 }
 
+// 切换选择的主题，刷新课程列表与表单。
 function selectAdminTheoryTopic(topicId) {
   ensureAdminTheoryState();
   state.admin.theory.selectedTopicId = topicId;
@@ -5418,6 +5564,7 @@ function selectAdminTheoryTopic(topicId) {
   updateAdminTheoryForms();
 }
 
+// 选择课程，填充表单、加载知识点并更新编辑器。
 function selectAdminTheoryLesson(lessonId) {
   ensureAdminTheoryState();
   state.admin.theory.selectedLessonId = lessonId;
@@ -6415,6 +6562,7 @@ const PROMPT_TOKEN_GROUPS = [
 
 const tokenEditors = {};
 
+// TokenEditor：用于编辑包含占位符的系统提示词，提供 token 插入、拖拽、格式化等体验。
 class TokenEditor {
   constructor({ container, textarea, definitions, groups, placeholder }) {
     this.container = container;
@@ -6993,6 +7141,7 @@ class TokenEditor {
   }
 }
 
+// 当富文本 token 编辑器无法加载时，回退为普通 textarea 编辑模式。
 function activateTokenEditorFallback(textarea, host) {
   if (host && !host.dataset.fallbackMessage) {
     host.dataset.fallbackMessage = "true";
@@ -7019,8 +7168,7 @@ function activateTokenEditorFallback(textarea, host) {
   }
 }
 
-
-
+// 初始化章节/客服等模板的 TokenEditor 组件，失败则降级为回退模式。
 function initTokenEditors() {
   const definitions = PROMPT_TOKEN_DEFINITIONS;
   const groups = PROMPT_TOKEN_GROUPS;

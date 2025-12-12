@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import random
+import uuid
 from typing import Dict, List, Optional, Tuple
 
 from levels import CHAPTERS, STATIC_SCENARIO_MARKER, flatten_scenario_for_template
 from models.scenario import Scenario
 from utils.normalizers import normalize_company, normalize_product, normalize_text_list
-from utils.validators import MissingKeyError, extract_json_block, first_non_empty, require_key
+from utils.validators import MissingKeyError, extract_json_block, first_non_empty
 
 from services.llm_service import complete_chat
 
@@ -239,6 +242,31 @@ class TemplateContext(dict):
         return "{" + key + "}"
 
 
+def generate_background_sessions() -> List[Dict[str, str]]:
+    """构造 1-4 个辅助会话，提供拟真并发体验。"""
+    names = ["Forwarder", "QC", "Legacy Client", "Finance", "Logistics Lead"]
+    topics = [
+        "跟进货代节点",
+        "质检报告摘要",
+        "催款与历史信用",
+        "付款条款确认",
+        "舱位与截关时间",
+    ]
+    sessions: List[Dict[str, str]] = []
+    count = random.randint(1, 4)
+    for i in range(count):
+        label = names[i % len(names)]
+        sessions.append(
+          {
+              "id": f"bg-{uuid.uuid4().hex[:8]}",
+              "title": f"{label} Channel",
+              "ai_role": label,
+              "opening_message": f"{label}: {topics[i % len(topics)]}，稍后同步细节。",
+          }
+        )
+    return sessions
+
+
 def format_template(template: object, context: Dict[str, str]) -> str:
     if not isinstance(template, str):
         return ""
@@ -324,6 +352,7 @@ def prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
         "aiRole": normalized.get("ai_role", ""),
         "aiCompany": normalized.get("ai_company", {}) or {},
         "aiRules": normalized.get("ai_rules", []) or [],
+        "mode": normalized.get("mode", "") or "",
         "product": normalized.get("product", {}) or {},
         "marketLandscape": normalized.get("market_landscape", ""),
         "timeline": normalized.get("timeline", ""),
@@ -343,6 +372,23 @@ def prepare_scenario_payload(raw: Dict[str, object]) -> Dict[str, object]:
     document_text = normalized.get("document_text") or normalized.get("documentText") or ""
     if document_text:
         payload["documentText"] = document_text
+
+    backgrounds = normalized.get("background_sessions") or normalized.get("backgroundSessions") or []
+    if isinstance(backgrounds, list):
+        prepared_sessions: List[Dict[str, object]] = []
+        for item in backgrounds:
+            if not isinstance(item, dict):
+                continue
+            prepared_sessions.append(
+                {
+                    "id": item.get("id") or f"bg-{uuid.uuid4().hex[:6]}",
+                    "title": item.get("title") or item.get("name") or "辅助会话",
+                    "aiRole": item.get("ai_role") or item.get("aiRole") or "",
+                    "openingMessage": item.get("opening_message") or item.get("openingMessage") or "",
+                    "mode": item.get("mode") or "",
+                }
+            )
+        payload["backgroundSessions"] = prepared_sessions
 
     review_hints = {
         "documentType": normalized.get("document_type") or normalized.get("documentType") or "",
@@ -411,6 +457,16 @@ def render_prompts_from_section(
     evaluation_prompt = format_template(
         section.get("evaluation_prompt_template"), flat_context
     ).strip()
+    evaluation_prompt = (
+        f"{evaluation_prompt}\n\n"
+        "[结构化输出要求]\n"
+        "- JSON 必须包含 highlights（1-2 条）、risks（1-3 条）、suggestions（2-4 条）三个数组字段，"
+        "每项均为对象，包含 title 与 detail，句子要短且可读。\n"
+        "- 继续返回 score、score_label、commentary、knowledge_points（如无本地匹配可为空数组）。\n"
+        "- knowledge_points 数组元素为对象：{{\"label\": 知识点名称, \"category\": \"skill\"|\"knowledge\"|\"term\", \"summary\": 简要说明}}，"
+        "优先映射本地知识点；无法映射时保持字段为空数组。\n"
+        "- 避免长篇大论，只给精简可执行的信息。"
+    )
     return conversation_prompt, evaluation_prompt
 
 
@@ -537,10 +593,14 @@ def generate_scenario_for_section(section: Dict[str, object], difficulty_key: st
             raise MissingKeyError(f"Invalid static scenario JSON: {exc}") from exc
         scenario_obj = Scenario.from_dict(scenario_raw)
         scenario_dict = scenario_obj.to_dict()
+        if not isinstance(scenario_dict.get("background_sessions"), list):
+            scenario_dict["background_sessions"] = generate_background_sessions()
         scenario_dict, profile = apply_difficulty_profile(scenario_dict, difficulty_key)
         return scenario_dict, profile
 
-    generator_key = require_key("DEEPSEEK_GENERATOR_KEY")
+    generator_key = os.getenv("DEEPSEEK_GENERATOR_KEY") or os.getenv("DEEPSEEK_API_KEY")
+    if not generator_key:
+        raise MissingKeyError("Missing environment variable: DEEPSEEK_GENERATOR_KEY or DEEPSEEK_API_KEY")
     system_prompt = section.get("environment_prompt_template")
     user_prompt = section.get("environment_user_message")
     if not system_prompt or not user_prompt:
@@ -571,5 +631,7 @@ def generate_scenario_for_section(section: Dict[str, object], difficulty_key: st
     scenario_obj = Scenario.from_dict(scenario)
     scenario_obj.ensure_chinese_role(trade_role)
     scenario_dict = scenario_obj.to_dict()
+    if not isinstance(scenario_dict.get("background_sessions"), list):
+        scenario_dict["background_sessions"] = generate_background_sessions()
     scenario_dict, profile = apply_difficulty_profile(scenario_dict, difficulty_key)
     return scenario_dict, profile

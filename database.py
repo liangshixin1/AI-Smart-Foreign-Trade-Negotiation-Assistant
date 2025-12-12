@@ -156,6 +156,7 @@ def init_database() -> None:
                 chapter_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
+                mode TEXT DEFAULT '',
                 environment_prompt_template TEXT NOT NULL,
                 environment_user_message TEXT NOT NULL,
                 conversation_prompt_template TEXT NOT NULL,
@@ -328,6 +329,10 @@ def ensure_schema() -> None:
             conn.execute(
                 "ALTER TABLE level_sections ADD COLUMN order_index INTEGER DEFAULT 0"
             )
+        if section_columns and "mode" not in section_columns:
+            conn.execute(
+                "ALTER TABLE level_sections ADD COLUMN mode TEXT DEFAULT ''"
+            )
 
         lesson_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(theory_lessons)").fetchall()
@@ -402,17 +407,18 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                     conn.execute(
                         """
                         INSERT INTO level_sections (
-                            id, chapter_id, title, description,
+                            id, chapter_id, title, description, mode,
                             environment_prompt_template, environment_user_message,
                             conversation_prompt_template, evaluation_prompt_template,
                             expects_bargaining, order_index, is_default
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                         """,
                         (
                             section.id,
                             chapter.id,
                             section.title,
                             section.description,
+                            getattr(section, "mode", "") if section else "",
                             section.environment_prompt_template,
                             section.environment_user_message,
                             section.conversation_prompt_template,
@@ -431,6 +437,10 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                             "UPDATE level_sections SET order_index = ? WHERE id = ?",
                             (section_order, section.id),
                         )
+                conn.execute(
+                    "UPDATE level_sections SET mode = ? WHERE id = ?",
+                    (getattr(section, "mode", "") if section else "", section.id),
+                )
         conn.commit()
 
 
@@ -450,6 +460,7 @@ def list_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object
                 chapter_id,
                 title,
                 description,
+                mode,
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -482,6 +493,7 @@ def list_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object
             "chapterId": section["chapter_id"],
             "title": section["title"],
             "description": section["description"],
+            "mode": section["mode"] or "",
             "expectsBargaining": bool(section["expects_bargaining"]),
             "orderIndex": section["order_index"],
             "isDefault": bool(section["is_default"]),
@@ -533,6 +545,7 @@ def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str,
                 chapter_id,
                 title,
                 description,
+                mode,
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -552,6 +565,7 @@ def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str,
             "chapter_id": row["chapter_id"],
             "title": row["title"],
             "description": row["description"],
+            "mode": row["mode"] or "",
             "environment_prompt_template": row["environment_prompt_template"],
             "environment_user_message": row["environment_user_message"],
             "conversation_prompt_template": row["conversation_prompt_template"],
@@ -659,17 +673,18 @@ def create_section(
         conn.execute(
             """
             INSERT INTO level_sections (
-                id, chapter_id, title, description,
+                id, chapter_id, title, description, mode,
                 environment_prompt_template, environment_user_message,
                 conversation_prompt_template, evaluation_prompt_template,
                 expects_bargaining, order_index, is_default
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 section_id,
                 chapter_id,
                 title,
                 description,
+                "",
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -693,6 +708,7 @@ def update_section(
     conversation_prompt_template: Optional[str] = None,
     evaluation_prompt_template: Optional[str] = None,
     expects_bargaining: Optional[bool] = None,
+    mode: Optional[str] = None,
     order_index: Optional[int] = None,
 ) -> Optional[Dict[str, object]]:
     section = get_section(section_id)
@@ -733,6 +749,9 @@ def update_section(
         if expects_bargaining is not None:
             updates.append("expects_bargaining = ?")
             params.append(1 if expects_bargaining else 0)
+        if mode is not None:
+            updates.append("mode = ?")
+            params.append(mode)
         target_chapter_id = chapter_id if chapter_id is not None else section["chapter_id"]
         if order_index is not None:
             updates.append("order_index = ?")
@@ -1714,16 +1733,24 @@ def get_student_dashboard(user_id: int) -> Dict[str, object]:
             }
         )
 
+        def _kp_name(item: object) -> str:
+            if isinstance(item, dict):
+                return (item.get("name") or item.get("label") or item.get("title") or "").strip()
+            return str(item).strip() if item is not None else ""
+
         for kp in knowledge:
-            stats = knowledge_totals[kp]
+            name = _kp_name(kp)
+            if not name:
+                continue
+            stats = knowledge_totals[name]
             stats["count"] += 1
             if score_for_skill is not None:
                 stats["score_sum"] += score_for_skill
                 stats["score_count"] += 1
 
-            latest = knowledge_latest.get(kp)
+            latest = knowledge_latest.get(name)
             if not latest or row["created_at"] >= latest.get("created_at", ""):
-                knowledge_latest[kp] = {
+                knowledge_latest[name] = {
                     "latest_score": score_for_skill,
                     "created_at": row["created_at"],
                 }

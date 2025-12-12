@@ -8,9 +8,11 @@ from flask import Flask, send_from_directory
 import database
 from levels import CHAPTERS
 from services import graph_service
+from services import rag_matcher
 from routes import admin as admin_routes
 from routes import assignments as assignment_routes
 from routes import auth as auth_routes
+from routes import assistants as assistants_routes
 from routes import scenarios as scenario_routes
 from routes import theory as theory_routes
 from routes import graph as graph_routes
@@ -23,6 +25,11 @@ def create_app() -> Flask:
     database.init_database()
     database.seed_default_levels(CHAPTERS)
     graph_service.bootstrap_graph()
+    try:
+        rag_matcher.refresh_knowledge_index()
+    except Exception:
+        # 索引预热失败不影响应用启动
+        pass
 
     app = Flask(__name__, static_folder="static")
 
@@ -30,6 +37,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_routes.bp)
     app.register_blueprint(scenario_routes.bp)
     app.register_blueprint(assignment_routes.bp)
+    app.register_blueprint(assistants_routes.bp)
     app.register_blueprint(admin_routes.bp)
     app.register_blueprint(theory_routes.bp)
     app.register_blueprint(graph_routes.bp)

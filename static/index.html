@@ -971,10 +971,121 @@
       }
 
       .chat-bubble {
-        max-width: 80%;
-        padding: 0.75rem 1rem;
+        max-width: 78%;
+        padding: 0.8rem 1rem;
+        border-radius: 1.1rem;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.35);
+        line-height: 1.6;
+      }
+      .bubble-assistant {
+        background: #fff;
+        color: #0f172a;
+      }
+      .bubble-user {
+        background: #10b981;
+        color: #ecfdf3;
+        border-color: rgba(16, 185, 129, 0.4);
+        box-shadow: 0 12px 28px -16px rgba(16, 185, 129, 0.5);
+      }
+      .email-card {
+        border: 1px solid rgba(148, 163, 184, 0.4);
         border-radius: 1rem;
-        box-shadow: 0 14px 30px rgba(255, 64, 64, 0.12);
+        background: #fff;
+        box-shadow: 0 10px 30px -20px rgba(15, 23, 42, 0.45);
+        padding: 1rem 1.2rem;
+      }
+      .email-card__meta {
+        font-size: 12px;
+        color: #475569;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .email-card__subject {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.4rem;
+      }
+      .email-card__body {
+        font-size: 14px;
+        color: #1f2937;
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+      .email-card--user {
+        border-color: rgba(16, 185, 129, 0.35);
+        background: #ecfdf3;
+      }
+      .email-card--assistant {
+        border-color: rgba(59, 130, 246, 0.35);
+        background: #eef2ff;
+      }
+      .copilot-fab {
+        position: fixed;
+        right: 1.25rem;
+        bottom: 6.5rem;
+        z-index: 50;
+        display: none;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.75rem 1rem;
+        border-radius: 9999px;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+        font-weight: 600;
+        box-shadow: 0 15px 35px -18px rgba(37, 99, 235, 0.65);
+        cursor: pointer;
+      }
+      .copilot-panel {
+        position: fixed;
+        right: 1rem;
+        bottom: 6rem;
+        z-index: 60;
+        width: min(420px, 92vw);
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: #0f172a;
+        color: #e2e8f0;
+        box-shadow: 0 25px 45px -20px rgba(15, 23, 42, 0.6);
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .copilot-panel__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 12px 14px;
+        background: rgba(37, 99, 235, 0.08);
+        border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+      }
+      .copilot-panel__body {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .copilot-panel textarea {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.8);
+        color: #e2e8f0;
+        padding: 10px 12px;
+        min-height: 96px;
+      }
+      .copilot-suggestion {
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 10px 12px;
+        min-height: 64px;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
       }
       .review-doc {
         font-family: "Noto Sans SC", "Segoe UI", sans-serif;
@@ -2376,6 +2487,253 @@
         display: block;
       }
 
+      .glass-loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: radial-gradient(circle at 50% 50%, rgba(20, 20, 20, 0.8), #000);
+        backdrop-filter: blur(12px);
+      }
+
+      .glass-loader {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.8rem 2rem;
+        border-radius: 9999px;
+        color: #f3f4f6;
+        font-weight: 500;
+        font-size: 1rem;
+        letter-spacing: 0.02em;
+        text-transform: none;
+        background: linear-gradient(
+          180deg,
+          rgba(30, 30, 30, 0.6) 0%,
+          rgba(0, 0, 0, 0.8) 100%
+        );
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow:
+          inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
+          inset 0 -1px 0 0 rgba(255, 255, 255, 0.03),
+          0 0 0 1px rgba(0, 0, 0, 0.4),
+          0 10px 30px -10px rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        overflow: hidden;
+        isolation: isolate;
+      }
+
+      .glass-loader::after {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        opacity: 0.6;
+      }
+
+      .glass-shimmer {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .glass-shimmer::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+        transform: skewX(-20deg);
+        animation: glass-sheen 3s ease-in-out infinite;
+      }
+
+      .glass-stars {
+        display: inline-flex;
+        gap: 0.18rem;
+        font-size: 1rem;
+        color: #9ca3af;
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+        animation: glass-pulse 2s ease-in-out infinite;
+        position: relative;
+        z-index: 2;
+      }
+
+      .glass-stars-alt {
+        animation-delay: 0.8s;
+      }
+
+      .glass-text {
+        position: relative;
+        z-index: 2;
+        font-size: 1.05rem;
+      }
+
+      .glass-loader--compact {
+        padding: 0.65rem 1.6rem;
+        gap: 0.6rem;
+        font-size: 0.95rem;
+      }
+
+      .evaluation-animate {
+        opacity: 0;
+        transform: translateY(8px);
+        animation: evaluation-float-in 0.35s ease forwards;
+      }
+
+      @keyframes evaluation-float-in {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .evaluation-panel {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .evaluation-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(6px);
+        transition: opacity 0.2s ease;
+      }
+
+      .evaluation-loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .evaluation-loading:not(.hidden) {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .score-ring {
+        width: 140px;
+        height: 140px;
+      }
+
+      .score-ring circle {
+        transition: stroke-dashoffset 0.4s ease, stroke 0.2s ease;
+      }
+
+      .score-card {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .feedback-card {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: #fff;
+        border-radius: 0.9rem;
+        padding: 0.85rem 0.95rem;
+        box-shadow: 0 12px 28px -20px rgba(15, 23, 42, 0.45);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      .feedback-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 36px -22px rgba(15, 23, 42, 0.5);
+      }
+
+      .feedback-card__title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-weight: 700;
+      }
+
+      .feedback-card__body {
+        margin-top: 0.35rem;
+        color: #475569;
+        line-height: 1.5;
+        display: none;
+      }
+
+      .feedback-card.active .feedback-card__body {
+        display: block;
+      }
+
+      .knowledge-pill {
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: #f8fafc;
+        color: #0f172a;
+        border-radius: 999px;
+        padding: 0.4rem 0.85rem;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .knowledge-pill:hover {
+        border-color: #2563eb;
+        background: #e0f2fe;
+      }
+
+      .knowledge-peek {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(6px);
+        z-index: 120;
+      }
+
+      .knowledge-peek.active {
+        display: flex;
+      }
+
+      .knowledge-peek__card {
+        width: min(960px, 96vw);
+        border-radius: 18px;
+        background: linear-gradient(180deg, #f8fafc, #eef2ff);
+        color: #0f172a;
+        border: 1px solid rgba(99, 102, 241, 0.18);
+        box-shadow: 0 25px 60px -28px rgba(15, 23, 42, 0.35);
+        padding: 20px 24px;
+      }
+
+      @keyframes glass-sheen {
+        0% {
+          left: -100%;
+        }
+        100% {
+          left: 200%;
+        }
+      }
+
+      @keyframes glass-pulse {
+        0%,
+        100% {
+          opacity: 0.6;
+          text-shadow: none;
+        }
+        50% {
+          opacity: 1;
+          text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+        }
+      }
+
       @keyframes floaty {
         0% {
           transform: translateY(0px);
@@ -2527,7 +2885,7 @@
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl space-y-6 px-3 py-8 sm:px-4">
+    <main class="w-full space-y-6 px-3 py-8 sm:px-4">
       <section id="auth-panel" class="surface-card p-5 sm:p-6">
         <div class="grid gap-6 md:grid-cols-2">
           <div class="space-y-4">
@@ -2788,129 +3146,82 @@
 
         <section
           id="loading-panel"
-          class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center text-blue-800"
+          class="glass-loading-overlay hidden"
+          role="status"
+          aria-live="polite"
+          aria-label="场景生成中"
         >
-          <div class="mx-auto flex max-w-md flex-col items-center gap-4">
-            <div class="h-12 w-12 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
-            <p class="text-lg font-semibold text-blue-900">场景生成中...</p>
-            <p class="text-sm text-blue-700">构建背景中，请稍后。</p>
-            <div class="w-full space-y-2 rounded-2xl bg-slate-900/60 p-4 text-left text-sm text-slate-300">
-              <p>AI：正在读取贸易数据库...</p>
-              <p>AI：匹配行业案例...</p>
-              <p>AI：生成角色设定与谈判目标...</p>
-            </div>
+          <div class="glass-loader">
+            <span class="glass-stars" aria-hidden="true">✦</span>
+            <span class="glass-text">Generating</span>
+            <span class="glass-stars glass-stars-alt" aria-hidden="true">✧</span>
+            <div class="glass-shimmer" aria-hidden="true"></div>
           </div>
         </section>
 
       </section>
 
-      <section id="experience" class="hidden pb-24 lg:pb-0">
-        <div class="space-y-6">
-          <section
-            id="scenario-panel"
-            data-experience-module="scenario"
-            class="surface-card shadow-xl"
-          >
-            <div class="flex items-start justify-between gap-4 px-6 py-5">
-              <div>
-                <p class="text-xs uppercase tracking-widest text-slate-500">
-                  Scenario Briefing
-                </p>
-                <h2 id="scenario-title" class="mt-2 text-xl font-semibold text-white"></h2>
-                <p id="scenario-summary" class="mt-3 text-sm text-slate-300"></p>
+      <section id="experience" class="hidden h-[calc(100vh-120px)] bg-slate-50 lg:h-[calc(100vh-90px)]">
+        <div class="flex h-full flex-col">
+          <header id="workbench-header" class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:px-6">
+            <div class="flex items-center gap-3">
+              <div id="chat-client-avatar" class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-800 text-base font-semibold text-white">
+                <span id="chat-client-initials">AI</span>
               </div>
+              <div class="leading-tight">
+                <p id="chat-client-name" class="text-base font-semibold text-slate-900">Virtual Partner</p>
+                <p id="chat-client-meta" class="text-xs text-slate-500">
+                  <span id="chat-client-status" class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">● Online</span>
+                  <span id="chat-client-time" class="ml-2 text-slate-500">Local Time: --:--</span>
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
               <button
-                id="scenario-collapse-btn"
-                type="button"
-                class="shrink-0 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
-                aria-expanded="true"
-                aria-controls="scenario-panel-body"
+                id="scenario-drawer-toggle"
+                class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
               >
-                收起 ▲
+                ℹ️ 场景简介
+              </button>
+              <button
+                id="reset-session"
+                class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                重置对话
+              </button>
+              <button
+                id="reopen-level-map"
+                class="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+              >
+                关卡地图
               </button>
             </div>
-            <div
-              id="scenario-panel-body"
-              class="space-y-6 border-t border-slate-800/60 px-6 py-6"
-            >
-              <div class="grid gap-6 lg:grid-cols-3">
-                <div class="space-y-4">
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">角色与公司</h3>
-                    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
-                      <p class="font-semibold text-blue-200">学生</p>
-                      <p id="student-role" class="mt-1 text-slate-300"></p>
-                      <p id="student-company" class="mt-1 text-xs text-slate-400"></p>
-                      <div class="mt-3 h-px bg-slate-800"></div>
-                      <p class="mt-3 font-semibold text-emerald-200">AI</p>
-                      <p id="ai-role" class="mt-1 text-slate-300"></p>
-                      <p id="ai-company" class="mt-1 text-xs text-slate-400"></p>
-                    </div>
-                  </div>
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">交易要点</h3>
-                    <ul id="product-details" class="space-y-1 text-sm text-slate-300"></ul>
-                  </div>
-                </div>
-                <div class="space-y-4">
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">谈判焦点</h3>
-                    <ul id="negotiation-focus" class="list-disc space-y-1 pl-5 text-sm text-slate-300"></ul>
-                  </div>
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">风险提示</h3>
-                    <ul id="risk-list" class="list-disc space-y-1 pl-5 text-sm text-slate-400"></ul>
-                  </div>
-                </div>
-                <div class="space-y-4">
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">任务清单</h3>
-                    <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-300"></ol>
-                  </div>
-                  <div class="space-y-3">
-                    <h3 class="text-sm font-semibold text-slate-200">难度设定</h3>
-                    <p id="scenario-difficulty" class="text-sm text-slate-300"></p>
-                  </div>
-                </div>
-              </div>
-              <div
-                id="scenario-custom-fields"
-                class="hidden grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
-              ></div>
-            </div>
-          </section>
+          </header>
 
-          <div class="space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)] lg:items-start lg:gap-6 lg:space-y-0">
-            <section
-              data-experience-module="chat"
-              class="flex min-h-[520px] flex-col rounded-3xl border border-slate-800 bg-slate-100"
-            >
-              <div
-                id="chat-header"
-                class="flex items-center justify-between bg-blue-600 px-6 py-4 text-sm text-blue-50"
-              >
+          <div class="flex flex-1 overflow-hidden">
+            <aside id="session-rail" class="hidden w-64 flex-shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+              <div class="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p class="text-xs uppercase tracking-wider text-blue-200">对话对象</p>
-                  <p id="chat-company" class="text-base font-semibold"></p>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span id="chat-tone" class="rounded-full bg-blue-500/30 px-3 py-1 text-xs text-blue-800"></span>
-                  <button
-                    id="reset-session"
-                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-600 transition hover:border-blue-200 hover:text-blue-800"
-                  >
-                    重置对话
-                  </button>
-                  <button
-                    id="reopen-level-map"
-                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-600 transition hover:border-blue-200 hover:text-blue-800"
-                  >
-                    关卡地图
-                  </button>
+                  <p class="text-xs uppercase tracking-widest text-slate-400">Sessions</p>
+                  <p class="text-sm font-semibold text-slate-800">多会话面板</p>
                 </div>
               </div>
-              <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6"></div>
-              <div class="border-t border-slate-200 bg-white px-6 py-4">
+              <div id="session-list" class="flex-1 overflow-y-auto divide-y divide-slate-100"></div>
+            </aside>
+
+            <main class="flex min-w-0 flex-1 flex-col bg-slate-100">
+              <div
+                id="email-mode-banner"
+                class="hidden border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm font-medium text-amber-900"
+              >
+                邮件模式 · 请以商务函电格式（Subject/称呼/正文/结尾/签名）撰写。可使用右下角 Copilot 辅助。
+              </div>
+              <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto px-6 py-6"></div>
+              <div
+                id="email-thread"
+                class="hidden flex-1 space-y-4 overflow-y-auto bg-slate-50 px-6 py-6"
+              ></div>
+              <div id="chat-input-panel" class="border-t border-slate-200 bg-white px-6 py-4">
                 <div class="flex gap-3">
                   <textarea
                     id="chat-input"
@@ -2929,124 +3240,101 @@
                   提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
                 </p>
               </div>
-            </section>
-
-            <section
-              id="review-module"
-              data-experience-module="review"
-              class="hidden min-h-[520px] flex-col rounded-3xl border border-slate-800 bg-white"
-            >
-              <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-                <div>
-                  <p class="text-xs uppercase tracking-wider text-slate-500">Document Review</p>
-                  <p class="text-base font-semibold text-slate-800">单证审核工作台</p>
-                </div>
-                <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">划词批注 · 单证比对</span>
-              </div>
-              <div class="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,0.62fr)_minmax(320px,0.48fr)]">
-                <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-inner">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <p class="text-xs uppercase tracking-wider text-slate-500">Document Surface</p>
-                      <p class="text-sm font-semibold text-slate-800">左侧为仿真单证，可划词高亮</p>
-                    </div>
-                    <span class="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-semibold text-blue-800">预览模式</span>
-                  </div>
-                  <div
-                    id="review-document"
-                    class="review-doc surface-scroll prose prose-sm max-w-none flex-1 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-800 shadow-sm"
-                  >
-                    <p class="text-sm text-slate-500">等待加载单证...</p>
-                  </div>
-                </div>
-                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
-                  <div class="space-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p class="text-xs uppercase tracking-wider text-slate-500">选中内容</p>
-                    <p id="review-selection" class="text-sm text-slate-800 line-clamp-3">尚未划词</p>
-                    <div class="grid gap-3 md:grid-cols-2">
-                      <label class="flex flex-col gap-1 text-sm text-slate-700">
-                        错误原因
-                        <input
-                          id="review-issue"
-                          type="text"
-                          class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none"
-                          placeholder="例：交货期与合同不符"
-                        />
-                      </label>
-                      <label class="flex flex-col gap-1 text-sm text-slate-700">
-                        修改意见
-                        <input
-                          id="review-fix"
-                          type="text"
-                          class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
-                          placeholder="例：调整为 2024-11-20 装船"
-                        />
-                      </label>
-                    </div>
+              <div
+                id="email-composer"
+                class="hidden border-t border-slate-200 bg-white px-6 py-4"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3">
+                  <div class="flex items-center gap-2">
                     <button
-                      id="review-save"
-                      type="button"
-                      class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      id="email-draft"
+                      class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
                     >
-                      记录批注
+                      ✨ 帮我写
                     </button>
+                    <button
+                      id="email-polish"
+                      class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+                    >
+                      🔧 帮我润色
+                    </button>
+                    <span id="email-copilot-status" class="text-xs text-slate-500"></span>
                   </div>
-                  <div class="space-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <div class="flex items-center justify-between">
-                      <p class="text-sm font-semibold text-slate-800">批注列表</p>
-                      <span class="text-xs text-slate-500">点击条目聚焦高亮</span>
-                    </div>
-                    <ul id="review-annotations" class="space-y-2 text-sm text-slate-700"></ul>
-                  </div>
-                  <div class="space-y-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-                    <p class="text-sm font-semibold text-blue-900">AI 辅助字段</p>
-                    <ul id="review-context" class="space-y-1 text-xs text-blue-800"></ul>
-                  </div>
-                  <div class="space-y-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-                    <p class="text-sm font-semibold text-amber-900">埋点提示</p>
-                    <ul id="review-hints" class="space-y-1 text-xs text-amber-800"></ul>
+                  <div class="flex items-center gap-2 text-xs text-slate-500">
+                    <span class="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700">邮件模式</span>
+                    <button id="email-send" class="rounded-full bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-emerald-500/40 transition hover:bg-emerald-600">发送邮件</button>
                   </div>
                 </div>
+                <div class="space-y-2">
+                  <input id="email-subject" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="Subject" />
+                  <div class="grid grid-cols-2 gap-2">
+                    <input id="email-to" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="To" />
+                    <input id="email-from" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="From" />
+                  </div>
+                  <textarea id="email-body" rows="6" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none" placeholder="邮件正文"></textarea>
+                  <input id="email-signature" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="Signature" />
+                </div>
               </div>
-            </section>
+            </main>
 
             <aside
               data-experience-module="evaluation"
-              class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+              class="evaluation-panel hidden w-80 flex-shrink-0 flex-col gap-4 border-l border-slate-200 bg-white px-4 py-5 lg:flex"
             >
               <div>
-                <p class="text-xs uppercase tracking-widest text-slate-500">
-                  Evaluation
+                <p class="text-xs uppercase tracking-widest text-slate-400">
+                  Live Feedback
                 </p>
-                <h2 class="mt-2 text-xl font-semibold text-white">即时反馈</h2>
+                <h2 class="mt-1 text-lg font-semibold text-slate-900">即时反馈</h2>
               </div>
-              <div class="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
-                <p class="text-xs uppercase tracking-widest text-emerald-700">
-                  当前得分 / 胜率
-                </p>
-                <p id="evaluation-score" class="mt-3 text-4xl font-bold text-emerald-700">--</p>
-                <p id="evaluation-score-label" class="text-sm text-emerald-600"></p>
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="score-card">
+                  <svg class="score-ring" viewBox="0 0 120 120">
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="54"
+                      stroke="#e2e8f0"
+                      stroke-width="12"
+                      fill="none"
+                    />
+                    <circle
+                      id="evaluation-ring-progress"
+                      cx="60"
+                      cy="60"
+                      r="54"
+                      stroke="#10b981"
+                      stroke-width="12"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-dasharray="339.292"
+                      stroke-dashoffset="339.292"
+                      transform="rotate(-90 60 60)"
+                    />
+                  </svg>
+                  <div class="space-y-1">
+                    <p class="text-[11px] uppercase tracking-widest text-slate-500">当前得分 / 胜率</p>
+                    <p id="evaluation-score" class="text-4xl font-bold text-slate-900">--</p>
+                    <p id="evaluation-score-label" class="text-sm text-slate-600"></p>
+                  </div>
+                </div>
               </div>
               <div class="space-y-3">
-                <h3 class="text-sm font-semibold text-slate-200">评语</h3>
-                <p id="evaluation-commentary" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"></p>
+                <h3 class="text-sm font-semibold text-slate-800">重点</h3>
+                <div id="evaluation-feedback-cards" class="grid grid-cols-1 gap-2"></div>
               </div>
-              <div class="space-y-3">
-                <h3 class="text-sm font-semibold text-slate-200">改进建议</h3>
-                <ul id="evaluation-actions" class="list-disc space-y-2 pl-5 text-sm text-slate-300"></ul>
-              </div>
-              <div class="space-y-3">
-                <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
+              <div class="space-y-2">
+                <h3 class="text-sm font-semibold text-slate-800">知识点</h3>
                 <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
               </div>
               <div
                 id="evaluation-recommendations-section"
                 class="hidden space-y-3"
               >
-                <h3 class="text-sm font-semibold text-slate-200">推荐巩固课程</h3>
+                <h3 class="text-sm font-semibold text-slate-800">推荐巩固课程</h3>
                 <p
                   id="evaluation-recommendations-status"
-                  class="text-xs text-slate-400"
+                  class="text-xs text-slate-500"
                 ></p>
                 <div
                   id="evaluation-recommendations-list"
@@ -3058,45 +3346,158 @@
         </div>
 
         <div
-          id="mobile-experience-tabs"
-          class="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden"
+          id="scenario-drawer-overlay"
+          class="fixed inset-0 z-50 hidden bg-slate-900/40 backdrop-blur"
         >
-          <nav class="flex items-stretch justify-around">
-            <button
-              type="button"
-              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-              data-experience-tab="scenario"
-              aria-controls="scenario-panel"
-            >
-              <span>场景简报</span>
-            </button>
-            <button
-              type="button"
-              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-              data-experience-tab="chat"
-              aria-controls="chat-body"
-            >
-              <span>模拟实训</span>
-            </button>
-            <button
-              type="button"
-              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-              data-experience-tab="review"
-              aria-controls="review-module"
-            >
-              <span>单证审核</span>
-            </button>
-            <button
-              type="button"
-              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-              data-experience-tab="evaluation"
-              aria-controls="evaluation-score"
-            >
-              <span>即时反馈</span>
-            </button>
-          </nav>
+          <aside
+            id="scenario-drawer"
+            class="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white shadow-2xl"
+          >
+            <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <p class="text-xs uppercase tracking-widest text-slate-400">Scenario Briefing</p>
+                <h3 id="scenario-title" class="text-lg font-semibold text-slate-900"></h3>
+              </div>
+              <button
+                id="scenario-drawer-close"
+                class="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-50"
+              >
+                关闭
+              </button>
+            </div>
+            <div class="space-y-5 px-5 py-4">
+              <p id="scenario-summary" class="text-sm text-slate-700"></p>
+              <div class="grid gap-4 lg:grid-cols-3">
+                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 class="text-sm font-semibold text-slate-800">角色信息</h3>
+                  <div class="text-sm text-slate-700">
+                    <p class="font-semibold text-emerald-700">学生</p>
+                    <p id="student-role" class="mt-1"></p>
+                    <p id="student-company" class="mt-1 text-xs text-slate-500"></p>
+                    <div class="my-3 h-px bg-slate-200"></div>
+                    <p class="font-semibold text-blue-700">AI</p>
+                    <p id="ai-role" class="mt-1"></p>
+                    <p id="ai-company" class="mt-1 text-xs text-slate-500"></p>
+                  </div>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 class="text-sm font-semibold text-slate-800">产品参数</h3>
+                  <ul id="product-details" class="space-y-2 text-sm text-slate-700"></ul>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 class="text-sm font-semibold text-slate-800">任务清单</h3>
+                  <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-700"></ol>
+                  <div class="space-y-1">
+                    <p class="text-sm font-semibold text-slate-800">难度设定</p>
+                    <p id="scenario-difficulty" class="text-sm text-slate-700"></p>
+                  </div>
+                </div>
+              </div>
+              <div class="grid gap-4 lg:grid-cols-2">
+                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 class="text-sm font-semibold text-slate-800">谈判焦点</h3>
+                  <ul id="negotiation-focus" class="space-y-2 text-sm text-slate-700"></ul>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 class="text-sm font-semibold text-slate-800">风险提示</h3>
+                  <ul id="risk-list" class="space-y-2 text-sm text-amber-700"></ul>
+                </div>
+              </div>
+              <div
+                id="scenario-custom-fields"
+                class="hidden grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
+              ></div>
+            </div>
+          </aside>
+        </div>
+
+        <div id="knowledge-peek" class="knowledge-peek" role="dialog" aria-modal="true">
+          <div class="knowledge-peek__card kp-viewer-card">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs uppercase tracking-widest text-slate-500">Knowledge Peek</p>
+                <h3 id="knowledge-peek-title" class="text-lg font-semibold text-slate-900"></h3>
+              </div>
+              <button
+                id="knowledge-peek-close"
+                class="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-600 transition hover:bg-slate-100"
+              >
+                关闭
+              </button>
+            </div>
+            <div class="mt-3 grid gap-4 lg:grid-cols-[1fr_2fr]">
+              <div class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-inner">
+                <div class="flex items-center justify-between">
+                  <span class="kp-viewer-chip">知识卡</span>
+                  <button id="knowledge-peek-jump" class="text-xs text-blue-600 hover:text-blue-800">↗ 前往课程</button>
+                </div>
+                <p id="knowledge-peek-summary" class="mt-2 text-sm text-slate-600"></p>
+                <div id="knowledge-peek-body" class="mt-3 space-y-2 text-sm text-slate-800"></div>
+              </div>
+              <div class="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-inner">
+                <div class="flex items-center justify-between text-xs text-slate-500 px-1">
+                  <span>知识图谱</span>
+                  <span id="knowledge-peek-graph-status" class="text-[11px] text-slate-500"></span>
+                </div>
+                <div id="knowledge-peek-graph" class="mt-2 h-[320px] w-full rounded-xl border border-slate-200 bg-slate-50"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
+
+      <button id="copilot-fab" class="copilot-fab">
+        🤖 场外援助
+      </button>
+      <div id="copilot-panel" class="copilot-panel">
+        <div class="copilot-panel__header">
+          <div>
+            <p class="text-xs uppercase tracking-widest text-slate-300">Copilot</p>
+            <p class="text-sm font-semibold text-white">场外援助（仅供参考体验）</p>
+          </div>
+          <button id="copilot-close" class="text-slate-300 hover:text-white">✕</button>
+        </div>
+        <div class="copilot-panel__body">
+          <textarea id="copilot-input" placeholder="描述你想要的帮助，如“帮我回一段柔和的还盘”"></textarea>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              id="copilot-assist"
+              class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              📄 助手模式
+            </button>
+            <button
+              id="copilot-agent"
+              class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              ⚡ Agent 自动回
+            </button>
+            <button
+              id="copilot-stop"
+              class="hidden rounded-lg border border-rose-400 px-3 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/10"
+            >
+              停止自动
+            </button>
+            <span id="copilot-status" class="text-xs text-slate-400"></span>
+          </div>
+          <div class="copilot-suggestion">
+            <div class="flex items-center justify-between">
+              <p class="text-xs uppercase tracking-wider text-slate-300">建议</p>
+              <button
+                id="copilot-copy"
+                class="text-xs text-slate-400 hover:text-white"
+                title="复制段落"
+              >
+                ⧉
+              </button>
+            </div>
+            <div id="copilot-output" class="mt-2 text-sm text-slate-100"></div>
+          </div>
+          <p class="text-[11px] text-amber-300">
+            提示：Copilot 内容仅供体验与学习，回复前请自行判断。
+          </p>
+        </div>
+      </div>
 
       <section id="admin-panel" class="hidden surface-card p-6">
         <div class="flex flex-col gap-6">

@@ -155,6 +155,7 @@ def start_level():
     except Exception as exc:
         return jsonify({"error": f"Failed to generate scenario: {exc}"}), 500
 
+    scenario["mode"] = section.get("mode") or scenario.get("mode") or ""
     document_text = _attach_review_document(section_id, scenario)
     conversation_prompt, evaluation_prompt = render_prompts_from_section(
         section, scenario, difficulty_key, difficulty_profile
@@ -184,6 +185,7 @@ def start_level():
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
         "documentText": document_text or scenario.get("document_text") or "",
         "reviewHints": scenario.get("review_hints") or {},
+        "mode": section.get("mode") or "",
         "chapterId": chapter_id,
         "sectionId": section_id,
         "difficulty": difficulty_key,
@@ -303,7 +305,13 @@ def start_assignment(assignment_id: str):
         return jsonify({"error": "Assignment not found"}), 404
 
     scenario = record.get("scenario") or {}
+    section_mode = ""
+    if record.get("chapterId") and record.get("sectionId"):
+        section_tpl = database.get_section_template(record.get("chapterId"), record.get("sectionId"))
+        if section_tpl:
+            section_mode = section_tpl.get("mode") or ""
     difficulty_key = record.get("difficulty") or DEFAULT_DIFFICULTY
+    scenario["mode"] = record.get("mode") or scenario.get("mode") or section_mode
     document_text = _attach_review_document(record.get("sectionId"), scenario)
     if record.get("sessionId"):
         session = database.get_session(record["sessionId"])
@@ -319,6 +327,7 @@ def start_assignment(assignment_id: str):
                 "openingMessage": record.get("openingMessage", ""),
                 "documentText": document_text or scenario.get("document_text") or "",
                 "reviewHints": scenario.get("review_hints") or {},
+                "mode": record.get("mode") or scenario.get("mode") or "",
                 "difficulty": difficulty_key,
             }
             inject_difficulty_metadata(payload)
@@ -363,6 +372,7 @@ def start_assignment(assignment_id: str):
         "openingMessage": opening_message or "",
         "documentText": document_text or scenario.get("document_text") or "",
         "reviewHints": scenario.get("review_hints") or {},
+        "mode": record.get("mode") or scenario.get("mode") or "",
         "difficulty": difficulty_key,
     }
     inject_difficulty_metadata(payload)
@@ -434,7 +444,18 @@ def chat():
             )
             database.add_message(session_id, "assistant", ai_reply)
 
-            evaluation = evaluate_session(session_id, session)
+            try:
+                evaluation = evaluate_session(session_id, session)
+            except Exception as exc:  # pragma: no cover - fallback to avoid SSE break
+                LOGGER.exception("evaluate_session failed in stream: %s", exc)
+                evaluation = {
+                    "score": None,
+                    "scoreLabel": None,
+                    "commentary": "評估暫時不可用，請稍後再試。",
+                    "actionItems": [],
+                    "knowledgePoints": session.get("scenario", {}).get("knowledge_points", []) or [],
+                    "bargainingWinRate": None,
+                }
             latest_evaluation = database.get_latest_evaluation(session_id)
             if latest_evaluation:
                 evaluation = latest_evaluation
@@ -460,7 +481,18 @@ def chat():
     ai_reply = _ensure_english_reply(collab_key, raw_reply)
     database.add_message(session_id, "assistant", ai_reply)
 
-    evaluation = evaluate_session(session_id, session)
+    try:
+        evaluation = evaluate_session(session_id, session)
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        LOGGER.exception("evaluate_session failed: %s", exc)
+        evaluation = {
+            "score": None,
+            "scoreLabel": None,
+            "commentary": "評估暫時不可用，請稍後再試。",
+            "actionItems": [],
+            "knowledgePoints": session.get("scenario", {}).get("knowledge_points", []) or [],
+            "bargainingWinRate": None,
+        }
     latest_evaluation = database.get_latest_evaluation(session_id)
     if latest_evaluation:
         evaluation = latest_evaluation
@@ -519,6 +551,7 @@ def get_session_detail(session_id: str):
             "scenario": prepare_scenario_payload(scenario_raw),
             "expectsBargaining": session["expects_bargaining"],
             "difficulty": session.get("difficulty"),
+            "mode": scenario_raw.get("mode") or "",
         },
         "messages": history,
         "evaluation": evaluation,
@@ -552,5 +585,6 @@ def reset_session(session_id: str):
         "chapterId": session["chapter_id"],
         "sectionId": session["section_id"],
         "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,
+        "mode": scenario.get("mode") or "",
     }
     return jsonify(payload)

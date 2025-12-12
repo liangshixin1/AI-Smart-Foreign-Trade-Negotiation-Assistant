@@ -1,11 +1,22 @@
+// -------------------- 学生端全局状态 --------------------
+// 能力雷达图实例
 let abilityRadarChart = null;
+// 学生弹窗当前激活的 tab（会话/作业/账号等）
 let currentStudentModalTab = null;
+// 体验模块：聊天/复盘/理论等当前展示的区域
 let activeExperienceModule = "chat";
+// 情景描述区域是否收起
 let isScenarioCollapsed = false;
+// AI 推荐阈值分数
 const RECOMMENDATION_SCORE_THRESHOLD = 80;
+// 异步请求防抖 token，确保最新结果覆盖旧请求
 let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
+// 学生端理论图谱实例
 let studentLessonGraphInstance = null;
+// Copilot Agent 连续推理是否运行中
+let copilotAgentRunning = false;
+// 需要启用“复盘模式”的章节集合
 const REVIEW_SECTION_IDS = new Set([
   "chapter-4-section-1",
   "chapter-4-section-2",
@@ -13,14 +24,18 @@ const REVIEW_SECTION_IDS = new Set([
   "chapter-5-section-4",
   "chapter-6-section-1",
 ]);
+const AVATAR_COLORS = ["#2563eb", "#0ea5e9", "#8b5cf6", "#f97316", "#0ea5a6"];
+const SCORE_RING_LENGTH = 339.292; // 2 * Math.PI * r (r=54)
+let evaluationSpinValue = 0;
 
-// Fallback DOM refs (防止未定义报错)
+// Fallback DOM refs (防止未定义报错)：若页面未注入对应元素，使用安全的备用获取方式。
 const theoryCompassSection = typeof window !== "undefined" && window.theoryCompassSection ? window.theoryCompassSection : document.getElementById("theory-knowledge-compass");
 const theoryCompassStatus = typeof window !== "undefined" && window.theoryCompassStatus ? window.theoryCompassStatus : document.getElementById("theory-knowledge-compass-status");
 const theoryCompassList = typeof window !== "undefined" && window.theoryCompassList ? window.theoryCompassList : document.getElementById("theory-knowledge-compass-list");
 const studentLessonGraph = typeof window !== "undefined" && window.studentLessonGraph ? window.studentLessonGraph : document.getElementById("student-lesson-graph");
 const studentLessonGraphRefresh = typeof window !== "undefined" && window.studentLessonGraphRefresh ? window.studentLessonGraphRefresh : document.getElementById("student-lesson-graph-refresh");
 
+// 章节/关卡排序与展示文本规范化：处理序号、绪论、章节标题等。
 function sortLevelHierarchy(chapters) {
   if (!Array.isArray(chapters)) {
     return [];
@@ -155,6 +170,7 @@ if (hasMarked) {
   });
 }
 
+// 基础 HTML 转义，防止 Markdown 渲染时注入。
 function escapeHtml(text) {
   if (typeof text !== "string") {
     return "";
@@ -169,6 +185,7 @@ function escapeHtml(text) {
   return text.replace(/[&<>"']/g, (m) => map[m]);
 }
 
+// Markdown 渲染：优先使用 marked + DOMPurify，回退为转义文本。
 function renderMarkdown(text) {
   const safeText = typeof text === "string" ? text : "";
   if (hasMarked && typeof window.DOMPurify !== "undefined") {
@@ -185,6 +202,7 @@ function renderMarkdown(text) {
 
 
 
+// 控制全局 loading 遮罩显隐。
 function toggleLoading(isLoading) {
   if (isLoading) {
     loadingPanel.classList.remove("hidden");
@@ -193,6 +211,286 @@ function toggleLoading(isLoading) {
   }
 }
 
+// 控制即时反馈区域的加载态。
+function setEvaluationLoading(isLoading) {
+  if (isLoading) {
+    startEvaluationSpin();
+  } else {
+    stopEvaluationSpin();
+  }
+}
+
+// 生成首字母头像文本。
+function getInitials(text) {
+  if (!text || typeof text !== "string") return "AI";
+  const parts = text.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// 根据名称选择稳定的商务色盘背景。
+function pickAvatarColor(seed) {
+  if (!seed) return AVATAR_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[idx];
+}
+
+// 模拟客户本地时间。
+function simulateClientTime() {
+  const now = new Date();
+  const offsetHours = Math.floor(Math.random() * 12) - 4; // -4 ~ +7 小时
+  const simulated = new Date(now.getTime() + offsetHours * 60 * 60 * 1000);
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return formatter.format(simulated);
+}
+
+function updateChatHeader(name, role) {
+  if (!chatClientNameEl || !chatClientInitialsEl || !chatClientAvatarEl) return;
+  const displayName = role || name || "Client";
+  chatClientNameEl.textContent = displayName;
+  chatClientInitialsEl.textContent = getInitials(displayName);
+  chatClientAvatarEl.style.backgroundColor = pickAvatarColor(displayName);
+  const timeLabel = simulateClientTime();
+  if (chatClientTimeEl) {
+    chatClientTimeEl.textContent = `Local Time: ${timeLabel}`;
+  }
+  if (chatClientStatusEl) {
+    chatClientStatusEl.textContent = "● Online";
+  }
+}
+
+function openScenarioDrawer() {
+  if (!scenarioDrawerOverlay || !scenarioDrawer) return;
+  scenarioDrawerOverlay.classList.remove("hidden");
+}
+
+function closeScenarioDrawer() {
+  if (!scenarioDrawerOverlay || !scenarioDrawer) return;
+  scenarioDrawerOverlay.classList.add("hidden");
+}
+
+function ensureSessionState() {
+  if (!state.sessionMessages || !(state.sessionMessages instanceof Map)) {
+    state.sessionMessages = new Map();
+  }
+  if (!state.sessionDeck || !Array.isArray(state.sessionDeck)) {
+    state.sessionDeck = [];
+  }
+  if (!state.unreadSessions || !(state.unreadSessions instanceof Set)) {
+    state.unreadSessions = new Set();
+  }
+  if (!state.simulatedSessions || !(state.simulatedSessions instanceof Set)) {
+    state.simulatedSessions = new Set();
+  }
+}
+
+function renderSessionRail() {
+  if (!sessionListEl) return;
+  ensureSessionState();
+  sessionListEl.innerHTML = "";
+  if (!state.sessionDeck || state.sessionDeck.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "px-4 py-6 text-sm text-slate-500";
+    empty.textContent = "暂无会话，进入关卡后自动生成。";
+    sessionListEl.appendChild(empty);
+    return;
+  }
+  state.sessionDeck.forEach((session) => {
+    const button = document.createElement("button");
+    const isActive = state.activeSessionId === session.id;
+    const isUnread = state.unreadSessions && state.unreadSessions.has(session.id);
+    button.type = "button";
+    button.className =
+      "flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-100" +
+      (isActive ? " bg-emerald-50" : "");
+    const avatar = document.createElement("div");
+    avatar.className =
+      "flex h-10 w-10 items-center justify-center rounded-xl text-sm font-semibold text-white";
+    avatar.style.backgroundColor = pickAvatarColor(session.role || session.title);
+    avatar.textContent = getInitials(session.role || session.title);
+    button.appendChild(avatar);
+    const meta = document.createElement("div");
+    meta.className = "flex-1 min-w-0";
+    const title = document.createElement("p");
+    title.className = "truncate text-sm font-semibold text-slate-900";
+    title.textContent = session.title || session.role || "会话";
+    meta.appendChild(title);
+    const subtitle = document.createElement("p");
+    subtitle.className = "truncate text-xs text-slate-500";
+    subtitle.textContent = session.role || session.title || "";
+    meta.appendChild(subtitle);
+    button.appendChild(meta);
+    if (isUnread) {
+      const badge = document.createElement("span");
+      badge.className = "h-2 w-2 rounded-full bg-rose-500";
+      button.appendChild(badge);
+    }
+    button.addEventListener("click", () => {
+      activateSession(session.id);
+    });
+    sessionListEl.appendChild(button);
+  });
+}
+
+function setChatInputAvailability(enabled) {
+  if (chatInputEl) chatInputEl.disabled = !enabled;
+  if (sendMessageBtn) sendMessageBtn.disabled = !enabled;
+}
+
+function activateSession(sessionId) {
+  ensureSessionState();
+  state.activeSessionId = sessionId;
+  const messagesForSession =
+    (state.sessionMessages && state.sessionMessages.get(sessionId)) || state.messages || [];
+  state.messages = messagesForSession;
+  if (state.unreadSessions) {
+    state.unreadSessions.delete(sessionId);
+  }
+  renderChat();
+  renderSessionRail();
+  const isLive = sessionId === state.sessionId;
+  setChatInputAvailability(isLive);
+  if (!isLive) {
+    evaluationScoreEl.textContent = "--";
+    updateScoreRing(0, "#cbd5e1");
+    if (evaluationScoreLabelEl) evaluationScoreLabelEl.textContent = "仅实时会话可用";
+    if (evaluationCommentaryEl) {
+      evaluationCommentaryEl.textContent = "模拟会话仅展示消息，不参与打分。";
+    }
+    if (evaluationActionsEl) evaluationActionsEl.innerHTML = "";
+    if (evaluationKnowledgeEl) evaluationKnowledgeEl.innerHTML = "";
+  }
+}
+
+function seedSessionDeck(mainSessionId, scenario) {
+  ensureSessionState();
+  state.sessionDeck = [];
+  state.sessionMessages = new Map();
+  state.simulatedSessions = new Set();
+  state.unreadSessions = new Set();
+
+  const main = {
+    id: mainSessionId,
+    title: (scenario && (scenario.title || scenario.summary)) || "主会话",
+    role: (scenario && scenario.aiRole) || "Client",
+    simulated: false,
+  };
+  state.sessionDeck.push(main);
+  state.sessionMessages.set(mainSessionId, state.messages || []);
+
+  const backgrounds = Array.isArray(scenario?.backgroundSessions) ? scenario.backgroundSessions : [];
+  backgrounds.forEach((item, index) => {
+    const simId = item.id || `sim-${Date.now()}-${index}`;
+    const session = {
+      id: simId,
+      title: item.title || `侧边会话 ${index + 1}`,
+      role: item.aiRole || item.role || "关联联系人",
+      simulated: true,
+      openingMessage: item.openingMessage || "同步中...",
+    };
+    state.sessionDeck.push(session);
+    state.simulatedSessions.add(simId);
+    state.unreadSessions.add(simId);
+    state.sessionMessages.set(simId, [
+      { role: "assistant", content: session.openingMessage },
+    ]);
+  });
+
+  state.activeSessionId = mainSessionId;
+  renderSessionRail();
+}
+
+// 数字滚动动画，用于即时反馈的分数/胜率。
+function animateEvaluationScore(targetValue, { isPercent = false, duration = 900 } = {}) {
+  if (!evaluationScoreEl) return;
+  const end = Number(targetValue);
+  if (!Number.isFinite(end)) {
+    evaluationScoreEl.textContent = isPercent && targetValue !== undefined && targetValue !== null
+      ? `${targetValue}%`
+      : "--";
+    evaluationScoreEl.dataset.value = "0";
+    return;
+  }
+  const start = Number(evaluationScoreEl.dataset.value);
+  const from = Number.isFinite(start) ? start : 0;
+  const startTime = performance.now();
+
+  const step = (now) => {
+    const progress = Math.min(1, (now - startTime) / duration);
+    const current = from + (end - from) * progress;
+    const display = Math.round(current);
+    evaluationScoreEl.textContent = isPercent ? `${display}%` : `${display}`;
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      evaluationScoreEl.textContent = isPercent ? `${Math.round(end)}%` : `${Math.round(end)}`;
+      evaluationScoreEl.dataset.value = String(end);
+    }
+  };
+
+  requestAnimationFrame(step);
+}
+
+function updateScoreRing(value, color) {
+  if (!evaluationRingProgress) return;
+  const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+  const offset = SCORE_RING_LENGTH * (1 - clamped / 100);
+  evaluationRingProgress.style.strokeDashoffset = offset.toFixed(2);
+  evaluationRingProgress.style.stroke = color;
+}
+
+let evaluationSpinTimer = null;
+function startEvaluationSpin() {
+  stopEvaluationSpin();
+  evaluationSpinValue = 0;
+  updateScoreRing(0, "#cbd5e1");
+  evaluationSpinTimer = setInterval(() => {
+    const step = 0.8 + Math.random() * 0.4; // 0.8 ~ 1.2
+    evaluationSpinValue = Math.min(100, evaluationSpinValue + step);
+    const color =
+      evaluationSpinValue >= 80 ? "#16a34a" : evaluationSpinValue >= 60 ? "#ca8a04" : "#ef4444";
+    animateEvaluationScore(evaluationSpinValue, { duration: 500 });
+    updateScoreRing(evaluationSpinValue, color);
+  }, 1000);
+}
+
+function stopEvaluationSpin() {
+  if (evaluationSpinTimer) {
+    clearInterval(evaluationSpinTimer);
+    evaluationSpinTimer = null;
+  }
+  evaluationSpinValue = 0;
+}
+
+// 让即时反馈内容浮入。
+function animateEvaluationContent() {
+  const targets = [
+    evaluationScoreEl,
+    evaluationScoreLabelEl,
+    evaluationFeedbackCards,
+    evaluationKnowledgeEl,
+    evaluationRecommendationsSection,
+  ];
+  targets.forEach((el) => {
+    if (!el) return;
+    el.classList.remove("evaluation-animate");
+    void el.offsetWidth;
+    el.classList.add("evaluation-animate");
+  });
+}
+
+// 更新行内状态提示的文本与颜色。
 function updateInlineStatus(element, message, variant = "muted") {
   if (!element) return;
   element.textContent = message || "";
@@ -210,6 +508,7 @@ function updateInlineStatus(element, message, variant = "muted") {
   }
 }
 
+// 设置状态栏提示，并切换颜色样式。
 function setStatusText(element, message, variant = "muted") {
   if (!element) {
     return;
@@ -227,6 +526,7 @@ function setStatusText(element, message, variant = "muted") {
   }
 }
 
+// 折叠左侧章节/关卡选择面板。
 function collapseLevelSelection() {
   if (!levelSelectionPanel) {
     return;
@@ -235,6 +535,7 @@ function collapseLevelSelection() {
   state.isLevelSelectionCollapsed = true;
 }
 
+// 展开章节/关卡选择面板。
 function expandLevelSelection() {
   if (!levelSelectionPanel) {
     return;
@@ -251,10 +552,12 @@ function expandLevelSelection() {
   highlightSelectedLevel();
 }
 
+// 根据 ID 获取章节对象。
 function findChapter(chapterId) {
   return (state.chapters || []).find((chapter) => chapter.id === chapterId) || null;
 }
 
+// 根据章节/关卡 ID 获取关卡对象。
 function findSection(chapterId, sectionId) {
   const chapter = findChapter(chapterId);
   if (!chapter) {
@@ -263,6 +566,7 @@ function findSection(chapterId, sectionId) {
   return (chapter.sections || []).find((section) => section.id === sectionId) || null;
 }
 
+// 高亮当前选中的关卡按钮。
 function highlightSelectedLevel() {
   if (!levelMapContainer) {
     return;
@@ -295,6 +599,7 @@ function highlightSelectedLevel() {
   }
 }
 
+// 刷新右侧“关卡详情”区域（标题/摘要/关卡按钮）。
 function updateSelectedLevelDetail() {
   if (!selectedLevelDetail || !selectedLevelTitle || !selectedLevelDescription) {
     return;
@@ -325,6 +630,7 @@ function updateSelectedLevelDetail() {
   updateAssignmentShortcut();
 }
 
+// 设置当前选中的关卡并刷新相关 UI。
 function setSelectedLevel(chapterId, sectionId) {
   if (!(state.expandedChapters instanceof Set)) {
     state.expandedChapters = new Set();
@@ -332,10 +638,13 @@ function setSelectedLevel(chapterId, sectionId) {
   if (chapterId) {
     state.expandedChapters.add(chapterId);
   }
-  state.selectedLevel = { chapterId, sectionId };
+  const section = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
+  const mode = section && section.mode ? section.mode : "";
+  state.selectedLevel = { chapterId, sectionId, mode };
   updateSelectedLevelDetail();
 }
 
+// 渲染章节-关卡地图，支持展开与选中态。
 function renderLevelMap() {
   if (!levelMapContainer) {
     return;
@@ -482,6 +791,7 @@ function renderLevelMap() {
   highlightSelectedLevel();
 }
 
+// 初始化理论模块 state，避免空引用。
 function ensureTheoryState() {
   if (!state.theory || typeof state.theory !== "object") {
     state.theory = { tree: [], selectedLessonId: null, lessonCache: new Map() };
@@ -491,6 +801,7 @@ function ensureTheoryState() {
   }
 }
 
+// 初始化学生端图谱状态（节点/边/缓存等）。
 function ensureStudentGraphState() {
   if (!state.studentGraph || typeof state.studentGraph !== "object") {
     state.studentGraph = { lessonPractices: new Map(), practiceLessons: new Map() };
@@ -503,6 +814,7 @@ function ensureStudentGraphState() {
   }
 }
 
+// 初始化知识罗盘状态，存储高亮与缓存数据。
 function ensureCompassState() {
   if (!state.studentCompass || typeof state.studentCompass !== "object") {
     state.studentCompass = {
@@ -523,6 +835,7 @@ function ensureCompassState() {
   }
 }
 
+// 清除文章中的知识点高亮标记。
 function clearKnowledgeHighlights(container) {
   if (!container) return;
   const marks = container.querySelectorAll("[data-kp-highlight]");
@@ -536,6 +849,7 @@ function clearKnowledgeHighlights(container) {
   });
 }
 
+// 根据知识点列表在文章中高亮对应关键词。
 function applyKnowledgeHighlights(container, knowledgePoints) {
   if (!container || !Array.isArray(knowledgePoints)) return;
   clearKnowledgeHighlights(container);
@@ -571,6 +885,7 @@ function applyKnowledgeHighlights(container, knowledgePoints) {
   });
 }
 
+// 清空罗盘区域的高亮状态。
 function clearCompassHighlights(container) {
   if (!container) return;
   const marks = container.querySelectorAll("[data-compass-highlight]");
@@ -582,6 +897,7 @@ function clearCompassHighlights(container) {
   });
 }
 
+// 在文章中高亮指定文本片段。
 function highlightInArticle(container, text) {
   if (!container || !text) return;
   clearCompassHighlights(container);
@@ -605,10 +921,12 @@ function highlightInArticle(container, text) {
   }
 }
 
+// 判断当前关卡是否属于“复盘模式”范围。
 function isReviewSection(sectionId) {
   return !!sectionId && REVIEW_SECTION_IDS.has(sectionId);
 }
 
+// 初始化复盘状态（文档/提示/标注）。
 function ensureReviewState() {
   if (!state.review) {
     state.review = {
@@ -620,6 +938,7 @@ function ensureReviewState() {
   }
 }
 
+// 清空复盘数据，恢复初始状态。
 function resetReviewState() {
   ensureReviewState();
   state.review.documentText = "";
@@ -629,6 +948,7 @@ function resetReviewState() {
   renderReviewWorkbench();
 }
 
+// 渲染复盘文档正文，并附带提示区域。
 function renderReviewDocument() {
   if (!reviewDocumentEl) return;
   ensureReviewState();
@@ -644,6 +964,7 @@ function renderReviewDocument() {
   reviewDocumentEl.appendChild(pre);
 }
 
+// 渲染复盘提示列表。
 function renderReviewHints() {
   if (!reviewHintList || !reviewContextList) return;
   ensureReviewState();
@@ -705,6 +1026,7 @@ function renderReviewHints() {
   }
 }
 
+// 渲染已创建的标注列表，包含跳转锚点。
 function renderReviewAnnotations() {
   if (!reviewAnnotationsList) return;
   ensureReviewState();
@@ -752,6 +1074,7 @@ function renderReviewAnnotations() {
   });
 }
 
+// 清空“选区预览”区域。
 function clearReviewSelectionPreview() {
   ensureReviewState();
   state.review.pendingSelection = null;
@@ -762,6 +1085,7 @@ function clearReviewSelectionPreview() {
   if (reviewFixInput) reviewFixInput.value = "";
 }
 
+// 获取用户当前在复盘文档的选区，记录文本和 HTML。
 function captureReviewSelection() {
   if (!reviewDocumentEl) return;
   const selection = window.getSelection();
@@ -786,6 +1110,7 @@ function captureReviewSelection() {
   }
 }
 
+// 移除指定标注 ID 的高亮标记。
 function unwrapAnnotationMarks(id) {
   if (!reviewDocumentEl || !id) return;
   const marks = reviewDocumentEl.querySelectorAll(`[data-review-annotation-id="${CSS.escape(id)}"]`);
@@ -799,6 +1124,7 @@ function unwrapAnnotationMarks(id) {
   });
 }
 
+// 删除标注并刷新列表/预览。
 function removeReviewAnnotation(id) {
   ensureReviewState();
   if (!id) return;
@@ -807,6 +1133,7 @@ function removeReviewAnnotation(id) {
   renderReviewAnnotations();
 }
 
+// 保存当前选区为标注（附带备注），并刷新展示。
 function saveReviewAnnotation() {
   ensureReviewState();
   const pending = state.review.pendingSelection;
@@ -840,6 +1167,7 @@ function saveReviewAnnotation() {
   renderReviewAnnotations();
 }
 
+// 渲染复盘工作台（包含提示、标注、选区预览）。
 function renderReviewWorkbench() {
   if (!reviewModule) return;
   ensureReviewState();
@@ -855,6 +1183,252 @@ function renderReviewWorkbench() {
   renderReviewAnnotations();
 }
 
+// 判断当前体验模块是否为邮件往来模式。
+function isEmailModeActive() {
+  const mode =
+    (state.currentScenario && state.currentScenario.mode) ||
+    (state.activeLevel && state.activeLevel.mode) ||
+    (state.selectedLevel && state.selectedLevel.mode) ||
+    "";
+  return mode === "email";
+}
+
+// 初始化邮件草稿结构。
+function ensureEmailDraft() {
+  if (!state.emailDraft) {
+    state.emailDraft = { subject: "", body: "", signature: "" };
+  }
+}
+
+// 根据场景信息预填邮件撰写器（收件人/主题等）。
+function hydrateEmailComposer(scenario) {
+  ensureEmailDraft();
+  const studentCompany = (scenario && scenario.studentCompany) || {};
+  const aiCompany = (scenario && scenario.aiCompany) || {};
+  const studentRole = scenario && scenario.studentRole ? scenario.studentRole : "";
+  const aiRole = scenario && scenario.aiRole ? scenario.aiRole : "";
+  const defaultSubject = scenario?.title || "Business correspondence";
+  const defaultSignature =
+    state.emailDraft.signature || `${studentRole}\n${studentCompany.name || ""}`.trim();
+  if (emailSubjectInput) emailSubjectInput.value = state.emailDraft.subject || defaultSubject;
+  if (emailFromInput) {
+    const fromLine = `${studentRole || "Student"}${studentCompany.name ? " | " + studentCompany.name : ""}`;
+    emailFromInput.value = fromLine;
+  }
+  if (emailToInput) {
+    const toLine = `${aiRole || "Counterparty"}${aiCompany.name ? " | " + aiCompany.name : ""}`;
+    emailToInput.value = toLine;
+  }
+  if (emailBodyInput) {
+    emailBodyInput.value = state.emailDraft.body || "";
+  }
+  if (emailSignatureInput) {
+    emailSignatureInput.value = defaultSignature;
+  }
+}
+
+// 更新邮件 Copilot 状态栏。
+function setEmailCopilotStatus(message, variant = "muted") {
+  if (!emailCopilotStatus) return;
+  emailCopilotStatus.textContent = message || "";
+  emailCopilotStatus.className = "text-xs";
+  if (variant === "loading") {
+    emailCopilotStatus.classList.add("text-blue-600");
+  } else if (variant === "error") {
+    emailCopilotStatus.classList.add("text-rose-600");
+  } else {
+    emailCopilotStatus.classList.add("text-slate-500");
+  }
+}
+
+// 渲染邮件往来列表（AI 回复 + 用户草稿）。
+function renderEmailThread() {
+  if (!emailThreadEl || !chatBodyEl || !emailComposerEl || !chatInputPanel || !emailBannerEl) {
+    return;
+  }
+  emailThreadEl.innerHTML = "";
+  chatBodyEl.classList.add("hidden");
+  chatInputPanel.classList.add("hidden");
+  emailThreadEl.classList.remove("hidden");
+  emailComposerEl.classList.remove("hidden");
+  emailBannerEl.classList.remove("hidden");
+
+  const scenario = state.currentScenario || {};
+  const aiCompany = scenario.aiCompany || {};
+  const studentCompany = scenario.studentCompany || {};
+  state.messages.forEach((message) => {
+    const card = document.createElement("article");
+    const isUser = message.role === "user";
+    let subject = message.subject;
+    if (!subject && typeof message.content === "string") {
+      const match = message.content.match(/Subject:\s*([^\n]+)/i);
+      if (match) {
+        subject = match[1].trim();
+      }
+    }
+    card.className = `email-card ${isUser ? "email-card--user" : "email-card--assistant"}`;
+    const meta = document.createElement("div");
+    meta.className = "email-card__meta";
+    const fromLabel = isUser
+      ? studentCompany.name || scenario.studentRole || "Student"
+      : aiCompany.name || scenario.aiRole || "AI";
+    const from = document.createElement("span");
+    from.textContent = `From: ${fromLabel}`;
+    meta.appendChild(from);
+    if (subject) {
+      const subj = document.createElement("span");
+      subj.textContent = `Subject: ${subject}`;
+      meta.appendChild(subj);
+    }
+    card.appendChild(meta);
+    if (subject) {
+      const subjectEl = document.createElement("div");
+      subjectEl.className = "email-card__subject";
+      subjectEl.textContent = subject;
+      card.appendChild(subjectEl);
+    }
+    const body = document.createElement("div");
+    body.className = "email-card__body chat-markdown";
+    body.innerHTML = renderMarkdown(message.content);
+    card.appendChild(body);
+    emailThreadEl.appendChild(card);
+  });
+}
+
+// 渲染邮件撰写区域，包括开关、按钮、输入框。
+function renderEmailComposer() {
+  if (!isEmailModeActive()) {
+    if (emailBannerEl) emailBannerEl.classList.add("hidden");
+    if (emailComposerEl) emailComposerEl.classList.add("hidden");
+    if (emailThreadEl) emailThreadEl.classList.add("hidden");
+    if (chatBodyEl) chatBodyEl.classList.remove("hidden");
+    if (chatInputPanel) chatInputPanel.classList.remove("hidden");
+    if (copilotFab) copilotFab.style.display = "";
+    return;
+  }
+  hydrateEmailComposer(state.currentScenario || {});
+  renderEmailThread();
+  if (copilotFab) copilotFab.style.display = "none";
+}
+
+// 根据当前模式显示/隐藏 Copilot 面板与切换按钮。
+function renderCopilotVisibility() {
+  if (!copilotFab) return;
+  const liveChat = !isEmailModeActive() && !isReviewSection(state.activeLevel?.sectionId);
+  copilotFab.style.display = liveChat ? "flex" : "none";
+}
+
+// 展开 Copilot 面板。
+function openCopilotPanel() {
+  if (!copilotPanel) return;
+  copilotPanel.style.display = "flex";
+  if (copilotInput) copilotInput.focus();
+}
+
+// 收起 Copilot 面板。
+function closeCopilotPanel() {
+  if (!copilotPanel) return;
+  copilotPanel.style.display = "none";
+  copilotAgentRunning = false;
+  if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
+  setCopilotStatus("");
+}
+
+// 更新 Copilot 状态提示。
+function setCopilotStatus(text, variant = "muted") {
+  if (!copilotStatus) return;
+  copilotStatus.textContent = text || "";
+  copilotStatus.className = "text-xs";
+  if (variant === "loading") {
+    copilotStatus.classList.add("text-blue-300");
+  } else if (variant === "error") {
+    copilotStatus.classList.add("text-rose-300");
+  } else {
+    copilotStatus.classList.add("text-slate-400");
+  }
+}
+
+// 设置 Copilot 输出展示（支持 Markdown）。
+function setCopilotOutput(text) {
+  if (!copilotOutput) return;
+  copilotOutput.textContent = text || "";
+}
+
+// 调用后端 Copilot 接口获取建议/草稿。
+async function fetchCopilotSuggestion(action, hint) {
+  if (!state.sessionId) {
+    setCopilotStatus("请先进入关卡。", "error");
+    return null;
+  }
+  setCopilotStatus("Copilot 正在思考…", "loading");
+  try {
+    const response = await fetchWithAuth("/api/ai/chat/copilot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        action,
+        user_input: hint || "",
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Copilot 调用失败");
+    }
+    setCopilotStatus("完成，内容仅供参考。");
+    return data.suggestion || "";
+  } catch (error) {
+    console.error(error);
+    setCopilotStatus(error.message || "Copilot 失败", "error");
+    return null;
+  }
+}
+
+// Copilot 单轮助理：根据输入生成建议并写入输出区。
+async function handleCopilotAssist() {
+  const hint = copilotInput ? copilotInput.value.trim() : "";
+  const suggestion = await fetchCopilotSuggestion("assistant", hint);
+  if (suggestion) {
+    setCopilotOutput(suggestion);
+  }
+}
+
+// Copilot Agent 模式：循环向后端请求分步骤输出。
+async function copilotAgentLoop(hint) {
+  if (!copilotAgentRunning) return;
+  const suggestion = await fetchCopilotSuggestion("agent", hint);
+  if (!suggestion) {
+    copilotAgentRunning = false;
+    if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
+    return;
+  }
+  setCopilotOutput(suggestion);
+  await sendMessageWithContent(suggestion, { fromCopilot: true });
+  if (copilotAgentRunning) {
+    setTimeout(() => copilotAgentLoop(hint), 600);
+  }
+}
+
+// 入口：触发 Agent 模式，避免重复运行。
+async function handleCopilotAgent() {
+  if (!state.sessionId) {
+    setCopilotStatus("请先进入关卡。", "error");
+    return;
+  }
+  copilotAgentRunning = true;
+  if (copilotStopBtn) copilotStopBtn.classList.remove("hidden");
+  setCopilotStatus("Agent 自动回复中（仅供体验）。", "loading");
+  const hint = copilotInput ? copilotInput.value.trim() : "";
+  copilotAgentLoop(hint);
+}
+
+function handleCopilotStop() {
+  copilotAgentRunning = false;
+  if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
+  setCopilotStatus("已停止自动回复");
+}
+
+// 打开知识卡弹窗，展示指定知识点详情。
 function showStudentKnowledgeCard(name) {
   if (!name) return;
   ensureCompassState();
@@ -971,6 +1545,7 @@ function showStudentKnowledgeCard(name) {
   }
 }
 
+// 渲染知识罗盘：突出当前课程的重点知识点与关联状态。
 function renderKnowledgeCompass(lessonDetail) {
   if (!theoryCompassSection || !theoryCompassList || !theoryCompassStatus) return;
   ensureCompassState();
@@ -1016,6 +1591,7 @@ function renderKnowledgeCompass(lessonDetail) {
   });
 }
 
+// 根据课程 ID 返回所在章节/主题等上下文。
 function findTheoryLessonContext(lessonId) {
   if (!lessonId) {
     return null;
@@ -1035,6 +1611,7 @@ function findTheoryLessonContext(lessonId) {
   return null;
 }
 
+// 获取理论树的首个课程节点，供默认选中。
 function getFirstTheoryLesson(tree) {
   const chapters = Array.isArray(tree) ? tree : [];
   for (const chapter of chapters) {
@@ -1049,6 +1626,7 @@ function getFirstTheoryLesson(tree) {
   return null;
 }
 
+// 渲染学生端理论导航树，并绑定点击事件。
 function renderStudentTheoryTree() {
   if (!theoryTree) {
     return;
@@ -1185,6 +1763,7 @@ function renderStudentTheoryTree() {
   theoryTree.appendChild(root);
 }
 
+// 绑定富文本中的关卡气泡点击事件，实现跳转/提示。
 function attachChallengeBubbleHandlers(container) {
   if (!container) {
     return;
@@ -1218,6 +1797,7 @@ function attachChallengeBubbleHandlers(container) {
   });
 }
 
+// 渲染理论课程正文、知识罗盘和相关关卡按钮。
 function renderTheoryLessonContent(lessonDetail) {
   if (!theoryLessonTitleEl || !theoryLessonContentEl || !theoryLessonCodeEl) {
     return;
@@ -1267,6 +1847,7 @@ function renderTheoryLessonContent(lessonDetail) {
   theoryChallengeContainer.classList.remove("hidden");
 }
 
+// 刷新理论板块的选中状态（标题、内容、关联图谱）。
 function refreshStudentTheorySelection() {
   ensureTheoryState();
   const lessonId = state.theory.selectedLessonId;
@@ -1304,6 +1885,7 @@ if (studentLessonGraphRefresh) {
   });
 }
 
+// 切换选中的理论课程，加载内容与关联练习。
 async function selectStudentTheoryLesson(lessonId) {
   ensureTheoryState();
   state.theory.selectedLessonId = lessonId || null;
@@ -1340,6 +1922,7 @@ async function selectStudentTheoryLesson(lessonId) {
   }
 }
 
+// 拉取并渲染当前课程的关联图谱（知识点/关卡）。
 async function renderLessonSubgraph(lessonId) {
   if (!studentLessonGraph) return;
   if (studentLessonGraphInstance) {
@@ -1431,6 +2014,7 @@ async function renderLessonSubgraph(lessonId) {
   }
 }
 
+// 初始化理论板块：加载课程树、默认选择、刷新罗盘。
 async function loadStudentTheory(options = {}) {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
@@ -1475,12 +2059,14 @@ async function loadStudentTheory(options = {}) {
   }
 }
 
+// 根据 session 是否存在、模式等控制按钮启用状态。
 function updateSessionControls() {
   if (resetSessionBtn) {
     resetSessionBtn.disabled = !state.sessionId;
   }
 }
 
+// 切换学生弹窗内的选项卡状态。
 function updateStudentOptionState(activeTab) {
   if (!studentOptionButtons || studentOptionButtons.length === 0) {
     return;
@@ -1494,6 +2080,7 @@ function updateStudentOptionState(activeTab) {
   });
 }
 
+// 激活学生端体验区域的 tab，并渲染对应模块。
 function activateStudentTab(tabId = null) {
   if (tabId) {
     openStudentModal(tabId);
@@ -1514,6 +2101,7 @@ function activateStudentTab(tabId = null) {
   }
 }
 
+// 激活弹窗中的 tab，同时刷新 UI。
 function activateStudentModalTab(tabId) {
   if (!studentModalTabButtons || studentModalTabButtons.length === 0) {
     updateStudentOptionState(null);
@@ -1544,6 +2132,7 @@ function activateStudentModalTab(tabId) {
   }
 }
 
+// 打开学生侧弹窗并可选指定 tab。
 function openStudentModal(tabId) {
   if (!studentModalOverlay) {
     return;
@@ -1558,6 +2147,7 @@ function openStudentModal(tabId) {
   }
 }
 
+// 关闭学生弹窗并移除遮罩。
 function closeStudentModal() {
   if (!studentModalOverlay) {
     return;
@@ -1573,6 +2163,7 @@ function closeStudentModal() {
   }
 }
 
+// 打开密码修改弹窗并重置输入。
 function openStudentPasswordModal() {
   if (!studentPasswordModal) {
     return;
@@ -1592,6 +2183,7 @@ function openStudentPasswordModal() {
   }
 }
 
+// 关闭密码修改弹窗。
 function closeStudentPasswordModal() {
   if (!studentPasswordModal) {
     return;
@@ -1602,6 +2194,7 @@ function closeStudentPasswordModal() {
   }
 }
 
+// 管理员入口的 tab 切换（仅学生页面复用）。
 function activateAdminTab(tabId) {
   if (!adminTabButtons || adminTabButtons.length === 0) {
     return;
@@ -1625,6 +2218,7 @@ function activateAdminTab(tabId) {
   });
 }
 
+// 展示体验面板（对话/复盘/理论等）。
 function showExperience() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
@@ -1641,19 +2235,24 @@ function showExperience() {
   const reviewModeActive =
     isReviewSection(state.activeLevel?.sectionId) &&
     !!(state.review && state.review.documentText && state.review.documentText.trim());
+  const emailModeActive = isEmailModeActive();
   setActiveExperienceModule(reviewModeActive ? "review" : "chat");
   if (chatInputEl) {
-    chatInputEl.disabled = reviewModeActive;
-    if (!reviewModeActive) {
+    chatInputEl.disabled = reviewModeActive || emailModeActive;
+    if (!reviewModeActive && !emailModeActive) {
       chatInputEl.focus();
     }
   }
   if (sendMessageBtn) {
-    sendMessageBtn.disabled = reviewModeActive;
+    sendMessageBtn.disabled = reviewModeActive || emailModeActive;
+  }
+  if (emailModeActive) {
+    renderEmailComposer();
   }
   state.studentActiveView = "practice";
 }
 
+// 回到学生首页卡片视图。
 function showStudentDashboardHome() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
@@ -1673,6 +2272,7 @@ function showStudentDashboardHome() {
   state.studentActiveView = "home";
 }
 
+// 进入理论学习模式，隐藏对话模块。
 function enterTheoryMode(options = {}) {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
@@ -1695,6 +2295,7 @@ function enterTheoryMode(options = {}) {
   }
 }
 
+// 隐藏体验区域，返回章节选择。
 function hideExperience() {
   experienceSection.classList.add("hidden");
   if (chatInputEl) {
@@ -1705,6 +2306,7 @@ function hideExperience() {
   }
 }
 
+// 回到章节/关卡选择界面，可选清除当前关卡。
 function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
   if (clearSelection) {
     state.selectedLevel = { chapterId: null, sectionId: null };
@@ -1714,8 +2316,16 @@ function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
     chapterId: null,
     sectionId: null,
     difficulty: difficultySelect ? difficultySelect.value : "balanced",
+    mode: "",
   };
+  ensureSessionState();
+  state.sessionDeck = [];
+  state.sessionMessages = new Map();
+  state.simulatedSessions = new Set();
+  state.unreadSessions = new Set();
+  state.activeSessionId = null;
   state.messages = [];
+  state.emailDraft = { subject: "", body: "", signature: "" };
   renderChat();
   renderScenario({});
   resetEvaluation();
@@ -1731,14 +2341,20 @@ function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
   if (chatInputEl) {
     chatInputEl.value = "";
   }
+  renderSessionRail();
+  setChatInputAvailability(false);
 }
 
+// 清空评估信息与雷达图。
 function resetEvaluation() {
   evaluationScoreEl.textContent = "--";
-  evaluationScoreLabelEl.textContent = "";
-  evaluationCommentaryEl.textContent = "等待新的对话内容...";
-  evaluationActionsEl.innerHTML = "";
-  evaluationKnowledgeEl.innerHTML = "";
+  evaluationScoreEl.dataset.value = "0";
+  if (evaluationScoreLabelEl) evaluationScoreLabelEl.textContent = "";
+  if (evaluationCommentaryEl) evaluationCommentaryEl.textContent = "等待新的对话内容...";
+  if (evaluationActionsEl) evaluationActionsEl.innerHTML = "";
+  if (evaluationKnowledgeEl) evaluationKnowledgeEl.innerHTML = "";
+  updateScoreRing(0, "#cbd5e1");
+  setEvaluationLoading(false);
   if (evaluationRecommendationsSection) {
     evaluationRecommendationsSection.classList.add("hidden");
   }
@@ -1750,6 +2366,7 @@ function resetEvaluation() {
   }
 }
 
+// 通用列表渲染，支持有序/无序模式。
 function renderList(container, items, ordered = false) {
   const values = Array.isArray(items)
     ? items
@@ -1773,6 +2390,7 @@ function renderList(container, items, ordered = false) {
   });
 }
 
+// 渲染知识点列表，附带标签/简介。
 function renderKnowledge(container, items) {
   if (!container) {
     return;
@@ -1807,6 +2425,40 @@ function renderKnowledge(container, items) {
   });
 }
 
+function renderEvaluationKnowledge(items) {
+  if (!evaluationKnowledgeEl) return;
+  evaluationKnowledgeEl.innerHTML = "";
+  const values = Array.isArray(items) ? items : items ? [items] : [];
+  if (values.length === 0) {
+    const pill = document.createElement("span");
+    pill.className = "knowledge-pill";
+    pill.textContent = "暂无知识点";
+    evaluationKnowledgeEl.appendChild(pill);
+    return;
+  }
+  values.forEach((item) => {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "knowledge-pill";
+    const label = (item && (item.label || item.name || item.title)) || item || "知识点";
+    const detail =
+      (item && (item.description || item.detail || item.summary || item.text)) || "";
+    const graphPayload = {
+      name: item && (item.name || item.label || label),
+      prerequisites: item && item.prerequisites,
+      relations: item && item.relations,
+      lessonId: item && item.lessonId,
+    };
+    pill.textContent = label;
+    pill.addEventListener("click", () => {
+      showKnowledgePeek(label, detail);
+      renderKnowledgePeekGraph(graphPayload);
+    });
+    evaluationKnowledgeEl.appendChild(pill);
+  });
+}
+
+// 渲染与理论课程关联的实战关卡列表。
 function renderTheoryRelatedPracticeItems(practices) {
   if (!theoryRelatedPracticeList) {
     return;
@@ -1876,6 +2528,7 @@ function renderTheoryRelatedPracticeItems(practices) {
   });
 }
 
+// 加载并展示与指定理论课程关联的实战关卡（含缓存与状态提示）。
 async function updateTheoryRelatedPractices(lessonId, options = {}) {
   ensureStudentGraphState();
   const requestId = ++theoryRelatedRequestToken;
@@ -1965,6 +2618,7 @@ async function updateTheoryRelatedPractices(lessonId, options = {}) {
   renderTheoryRelatedPracticeItems(items);
 }
 
+// 根据评估结果判断是否触发理论推荐。
 function shouldRecommendLessons(evaluation) {
   if (!evaluation) {
     return false;
@@ -1984,6 +2638,7 @@ function shouldRecommendLessons(evaluation) {
   return false;
 }
 
+// 学生点击推荐课程时的跳转逻辑：选中课程并滚动到理论面板。
 async function navigateToTheoryLesson(lessonId) {
   if (!lessonId || !state.auth.user || state.auth.user.role !== "student") {
     return;
@@ -2007,6 +2662,7 @@ async function navigateToTheoryLesson(lessonId) {
   }
 }
 
+// 根据评估结果生成 AI 推荐（理论/实战）并渲染推荐卡片。
 async function updateEvaluationRecommendations(evaluation) {
   const requestId = ++evaluationRecommendationToken;
   if (!evaluationRecommendationsSection) {
@@ -2130,6 +2786,7 @@ async function updateEvaluationRecommendations(evaluation) {
   });
 }
 
+// 渲染场景自定义字段（如买方信息、卖方信息等）。
 function renderCustomFields(fields) {
   if (!scenarioCustomFieldsEl) {
     return;
@@ -2183,10 +2840,12 @@ function renderCustomFields(fields) {
   });
 }
 
+// 生成关卡胜利标识的存储 key。
 function getLevelVictoryKey(chapterId, sectionId) {
   return `${chapterId || ""}::${sectionId || ""}`;
 }
 
+// 判断评估结果是否包含胜利/通过的评分。
 function hasVictoryScore(evaluation) {
   if (!evaluation || evaluation.score === null || evaluation.score === undefined) {
     return false;
@@ -2198,6 +2857,7 @@ function hasVictoryScore(evaluation) {
   return numeric > 80;
 }
 
+// 标记关卡已通过（本地存储 + 内存）。
 function markLevelVictory(chapterId, sectionId) {
   if (!chapterId || !sectionId) {
     return;
@@ -2213,6 +2873,7 @@ function markLevelVictory(chapterId, sectionId) {
   renderLevelMap();
 }
 
+// 从 localStorage 重建通过记录，供 UI 高亮。
 function rebuildLevelVictories() {
   if (!state.levelVictories || !(state.levelVictories instanceof Set)) {
     state.levelVictories = new Set();
@@ -2245,6 +2906,7 @@ function rebuildLevelVictories() {
   }
 }
 
+// 查找当前关卡是否有已分配的作业。
 function findAssignmentForLevel(chapterId, sectionId) {
   if (!chapterId || !sectionId) {
     return null;
@@ -2276,6 +2938,7 @@ function findAssignmentForLevel(chapterId, sectionId) {
   );
 }
 
+// 更新“进入作业”快捷按钮的显示与跳转链接。
 function updateAssignmentShortcut() {
   if (!startAssignmentBtn) {
     return;
@@ -2302,6 +2965,7 @@ function updateAssignmentShortcut() {
   startAssignmentBtn.setAttribute("aria-label", actionLabel);
 }
 
+// 若评估达到胜利阈值，则记录关卡通过状态。
 function maybeRecordVictory(evaluation) {
   if (!evaluation || !hasVictoryScore(evaluation)) {
     return;
@@ -2312,6 +2976,7 @@ function maybeRecordVictory(evaluation) {
   }
 }
 
+// 切换体验区模块（聊天/复盘/理论等），并刷新布局。
 function setActiveExperienceModule(moduleId) {
   if (!moduleId) {
     return;
@@ -2334,6 +2999,7 @@ function setActiveExperienceModule(moduleId) {
   updateExperienceLayout();
 }
 
+// 根据 activeExperienceModule 切换展示/隐藏对应区块。
 function updateExperienceLayout() {
   const modules = Array.from(experienceModules || []);
   if (modules.length === 0) {
@@ -2375,6 +3041,7 @@ function updateExperienceLayout() {
   });
 }
 
+// 展开/收起情景描述面板。
 function toggleScenarioPanel() {
   if (!scenarioPanelBody || !scenarioCollapseBtn) {
     return;
@@ -2391,6 +3058,7 @@ function toggleScenarioPanel() {
   }
 }
 
+// 渲染能力/知识点条目列表，用于评估反馈。
 function renderAbilityKnowledge(container, items) {
   container.innerHTML = "";
   if (!items || items.length === 0) {
@@ -2421,6 +3089,7 @@ function renderAbilityKnowledge(container, items) {
   });
 }
 
+// 渲染学生仪表盘数据：能力雷达、推荐课程等。
 function renderStudentInsights(insights) {
   state.studentInsights = insights || null;
 
@@ -2538,6 +3207,7 @@ function renderStudentInsights(insights) {
   });
 }
 
+// 渲染当前会话的情景描述、买卖双方信息与提示。
 function renderScenario(scenario) {
   state.currentScenario = scenario;
   scenarioTitleEl.textContent = scenario.title || "";
@@ -2584,7 +3254,9 @@ function renderScenario(scenario) {
   renderList(riskListEl, scenario.risks || []);
   renderList(taskChecklistEl, scenario.checklist || [], true);
 
-  chatCompanyEl.textContent = aiCompany.name || "AI 虚拟公司";
+  if (chatCompanyEl) {
+    chatCompanyEl.textContent = aiCompany.name || "AI 虚拟公司";
+  }
   const difficultyLabel = scenario.difficultyLabel || "";
   const difficultyDescription = scenario.difficultyDescription || "";
   if (scenarioDifficultyEl) {
@@ -2599,14 +3271,28 @@ function renderScenario(scenario) {
       descriptionParts.length > 0 ? descriptionParts.join(" · ") : "默认 · 平衡博弈";
   }
   const toneText = scenario.communicationTone || "";
-  chatToneEl.textContent = difficultyLabel
-    ? `${difficultyLabel}${toneText ? ` · ${toneText}` : ""}`
-    : toneText;
+  if (chatToneEl) {
+    chatToneEl.textContent = difficultyLabel
+      ? `${difficultyLabel}${toneText ? ` · ${toneText}` : ""}`
+      : toneText;
+  }
   renderCustomFields(scenario.customFields || []);
   renderKnowledge(evaluationKnowledgeEl, scenario.knowledgePoints || []);
+  renderEmailComposer();
+  renderCopilotVisibility();
+  updateChatHeader(scenario.title || scenario.aiRole || "");
 }
 
+// 渲染聊天窗口（消息列表 + 输入区域），区分邮件/普通模式。
 function renderChat() {
+  if (isEmailModeActive()) {
+    renderEmailComposer();
+    return;
+  }
+  if (emailBannerEl) emailBannerEl.classList.add("hidden");
+  if (emailComposerEl) emailComposerEl.classList.add("hidden");
+  if (emailThreadEl) emailThreadEl.classList.add("hidden");
+  if (chatInputPanel) chatInputPanel.classList.remove("hidden");
   chatBodyEl.innerHTML = "";
   state.messages.forEach((message) => {
     const row = document.createElement("div");
@@ -2654,485 +3340,47 @@ function renderChat() {
   chatBodyEl.scrollTop = chatBodyEl.scrollHeight;
 }
 
+// 追加一条消息到 state，并返回索引（支持中途更新）。
 function appendMessage(role, content, options = {}) {
   const message = { role, content };
-  state.messages.push(message);
+  if (options.subject) {
+    message.subject = options.subject;
+  }
+  if (state.sessionMessages && state.activeSessionId) {
+    const bucket = state.sessionMessages.get(state.activeSessionId) || [];
+    bucket.push(message);
+    state.sessionMessages.set(state.activeSessionId, bucket);
+    state.messages = bucket;
+  } else {
+    state.messages.push(message);
+  }
   if (!options.silent) {
     renderChat();
   }
   return state.messages.length - 1;
 }
 
-function updateMessageContent(index, content) {
-  if (index < 0 || index >= state.messages.length) {
-    return;
-  }
-  state.messages[index].content = content;
-  renderChat();
-}
-
-function renderEvaluation(evaluation) {
-  if (!evaluation) {
-    resetEvaluation();
-    return;
-  }
-
-  evaluationScoreEl.textContent =
-    evaluation.score !== null && evaluation.score !== undefined && evaluation.score !== ""
-      ? evaluation.score
-      : evaluation.bargainingWinRate !== null && evaluation.bargainingWinRate !== undefined
-      ? `${evaluation.bargainingWinRate}%`
-      : "--";
-  evaluationScoreLabelEl.textContent = evaluation.scoreLabel || "";
-  evaluationCommentaryEl.textContent = evaluation.commentary || "等待新的对话内容...";
-
-  evaluationActionsEl.innerHTML = "";
-  const actionItems = Array.isArray(evaluation.actionItems)
-    ? evaluation.actionItems
-    : evaluation.actionItems
-    ? [evaluation.actionItems]
-    : [];
-  actionItems.forEach((item) => {
-    const li = document.createElement("li");
-    li.textContent = item;
-    evaluationActionsEl.appendChild(li);
-  });
-
-  renderKnowledge(evaluationKnowledgeEl, evaluation.knowledgePoints || []);
-  maybeRecordVictory(evaluation);
-  updateEvaluationRecommendations(evaluation);
-}
-
-function renderSessionHistory() {
-  sessionHistoryList.innerHTML = "";
-  if (!state.sessions || state.sessions.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
-    empty.textContent = "暂无历史会话，点击左侧生成新场景。";
-    sessionHistoryList.appendChild(empty);
-    return;
-  }
-
-  state.sessions.forEach((session) => {
-    const li = document.createElement("li");
-    li.className = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-slate-600 hover:bg-slate-900";
-
-    const title = document.createElement("p");
-    title.className = "text-sm font-semibold text-white";
-    title.textContent = session.title || `章节 ${session.chapterId} · 小节 ${session.sectionId}`;
-
-    const summary = document.createElement("p");
-    summary.className = "mt-1 text-xs text-slate-400";
-    summary.textContent = session.summary || "暂无摘要";
-
-    let difficultyMeta = null;
-    if (session.difficultyLabel) {
-      difficultyMeta = document.createElement("p");
-      difficultyMeta.className = "mt-1 text-[11px] text-slate-500";
-      difficultyMeta.textContent = `难度：${session.difficultyLabel}`;
-    }
-
-    const footer = document.createElement("div");
-    footer.className = "mt-3 flex items-center justify-between text-xs text-slate-500";
-    footer.innerHTML = `<span>最近更新：${session.updatedAt || "-"}</span>`;
-
-    const button = document.createElement("button");
-    button.className = "rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-500 hover:text-white";
-    button.textContent = "继续会话";
-    button.dataset.sessionId = session.id;
-    footer.appendChild(button);
-
-    li.appendChild(title);
-    li.appendChild(summary);
-    if (difficultyMeta) {
-      li.appendChild(difficultyMeta);
-    }
-    li.appendChild(footer);
-    sessionHistoryList.appendChild(li);
-  });
-}
-
-
-
-async function loadLevels() {
-  try {
-    const response = await fetch("/api/levels");
-    if (!response.ok) {
-      throw new Error("无法载入章节信息");
-    }
-    const data = await response.json();
-    state.chapters = sortLevelHierarchy(data.chapters || []);
-    if (!(state.expandedChapters instanceof Set)) {
-      state.expandedChapters = new Set();
-    }
-    const preservedExpanded = new Set();
-    state.chapters.forEach((chapter) => {
-      if (state.expandedChapters.has(chapter.id)) {
-        preservedExpanded.add(chapter.id);
-      }
-    });
-    state.expandedChapters = preservedExpanded;
-    populateAssignmentChapterOptions();
-    populateBlueprintChapterOptions();
-    const { chapterId, sectionId } = state.selectedLevel || {};
-    const currentSection = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
-    if (!currentSection) {
-      const firstChapter = state.chapters[0];
-      const firstSection = firstChapter && (firstChapter.sections || [])[0];
-      if (firstChapter && firstSection) {
-        state.selectedLevel = { chapterId: firstChapter.id, sectionId: firstSection.id };
-      } else {
-        state.selectedLevel = { chapterId: null, sectionId: null };
-      }
-    }
-    renderLevelMap();
-    updateSelectedLevelDetail();
-    refreshStudentTheorySelection();
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "加载章节失败");
-  }
-}
-
-
-
-async function loadSessions() {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    return;
-  }
-  try {
-    const response = await fetchWithAuth("/api/sessions");
-    if (!response.ok) {
-      throw new Error("无法加载历史会话");
-    }
-    const data = await response.json();
-    state.sessions = data.sessions || [];
-    rebuildLevelVictories();
-    renderSessionHistory();
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "加载历史会话失败");
-  }
-}
-
-
-
-async function loadStudentDashboardInsights() {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    return;
-  }
-  try {
-    const response = await fetchWithAuth("/api/student/dashboard");
-    if (!response.ok) {
-      throw new Error("无法加载成长数据");
-    }
-    const data = await response.json();
-    renderStudentInsights(data);
-  } catch (error) {
-    console.error(error);
-    renderStudentInsights(null);
-  }
-}
-
-
-
-async function loadStudentSession(sessionId) {
-  if (!sessionId) return;
-  try {
-    const response = await fetchWithAuth(`/api/sessions/${sessionId}`);
-    if (!response.ok) {
-      throw new Error("无法载入会话详情");
-    }
-    const data = await response.json();
-    state.sessionId = data.session.id;
-    state.messages = (data.messages || []).map((item) => ({ role: item.role, content: item.content }));
-    state.activeLevel = {
-      chapterId: data.session.chapterId,
-      sectionId: data.session.sectionId,
-      difficulty: data.session.difficulty || "balanced",
-    };
-    state.selectedLevel = {
-      chapterId: state.activeLevel.chapterId,
-      sectionId: state.activeLevel.sectionId,
-    };
-    ensureReviewState();
-    state.review.documentText =
-      data.session.scenario?.documentText ||
-      data.session.scenario?.document_text ||
-      "";
-    state.review.hints = data.session.scenario?.reviewHints || null;
-    state.review.annotations = [];
-    state.review.pendingSelection = null;
-    updateSessionControls();
-    renderScenario(data.session.scenario || {});
-    renderChat();
-    renderEvaluation(data.evaluation);
-    renderReviewWorkbench();
-    collapseLevelSelection();
-    updateSelectedLevelDetail();
-    showExperience();
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "加载会话失败");
-  }
-}
-
-
-
-async function loadStudentAssignments() {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    return;
-  }
-  try {
-    const response = await fetchWithAuth("/api/student/assignments");
-    if (!response.ok) {
-      throw new Error("无法获取作业列表");
-    }
-    const data = await response.json();
-    state.studentAssignments = data.assignments || [];
-    renderStudentAssignments();
-    updateAssignmentShortcut();
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = "";
-    }
-  } catch (error) {
-    console.error(error);
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = error.message || "加载作业失败";
-    }
-  }
-}
-
-
-
-async function startAssignmentSession(assignmentId) {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    return;
-  }
-  toggleLoading(true);
-  try {
-    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "连接作业中...";
-    const response = await fetchWithAuth(`/api/assignments/${assignmentId}/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "无法启动作业");
-    }
-    const data = await response.json();
-    state.sessionId = data.sessionId;
-    state.messages = [];
-    const fallbackChapter = state.selectedLevel?.chapterId || null;
-    const fallbackSection = state.selectedLevel?.sectionId || null;
-    state.activeLevel = {
-      chapterId: data.chapterId || fallbackChapter,
-      sectionId: data.sectionId || fallbackSection,
-      difficulty: data.difficulty || "balanced",
-    };
-    state.selectedLevel = {
-      chapterId: data.chapterId || fallbackChapter,
-      sectionId: data.sectionId || fallbackSection,
-    };
-    updateSessionControls();
-    ensureReviewState();
-    state.review.documentText =
-      data.documentText || (data.scenario && data.scenario.documentText) || "";
-    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
-    state.review.annotations = [];
-    state.review.pendingSelection = null;
-
-    renderScenario(data.scenario || {});
-    resetEvaluation();
-    renderReviewWorkbench();
-    highlightSelectedLevel();
-    updateSelectedLevelDetail();
-    if (data.openingMessage) {
-      appendMessage("assistant", data.openingMessage);
-    }
-    collapseLevelSelection();
-    showExperience();
-    await loadSessions();
-    await loadStudentAssignments();
-    await loadStudentDashboardInsights();
-    updateAssignmentShortcut();
-    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "";
-  } catch (error) {
-    console.error(error);
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = error.message || "启动作业失败";
-    }
-  } finally {
-    toggleLoading(false);
-  }
-}
-
-
-
-async function handleStudentPasswordChange(event) {
-  event.preventDefault();
-  if (!state.auth.user) return;
-  try {
-    const response = await fetchWithAuth("/api/account/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        currentPassword: studentPasswordCurrent.value,
-        newPassword: studentPasswordNew.value,
-      }),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "更新密码失败");
-    }
-    studentPasswordCurrent.value = "";
-    studentPasswordNew.value = "";
-    studentPasswordStatus.textContent = "密码已更新";
-  } catch (error) {
-    console.error(error);
-    studentPasswordStatus.textContent = error.message || "更新密码失败";
-  }
-}
-
-
-
-async function startLevel() {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    alert("请先使用学生账号登录");
-    return;
-  }
-
-  const { chapterId, sectionId } = state.selectedLevel || {};
-  const difficulty = difficultySelect ? difficultySelect.value : "balanced";
-
-  if (!chapterId || !sectionId) {
-    alert("请选择章节与小节");
-    return;
-  }
-
-  startLevelBtn.disabled = true;
-  startLevelBtn.textContent = "加载中...";
-  toggleLoading(true);
-
-  try {
-    const response = await fetchWithAuth("/api/start_level", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapterId, sectionId, difficulty }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || "无法生成场景");
-    }
-
-    const data = await response.json();
-    state.sessionId = data.sessionId;
-    state.messages = [];
-    state.activeLevel = { chapterId, sectionId, difficulty };
-    updateSessionControls();
-
-    ensureReviewState();
-    state.review.documentText =
-      data.documentText || (data.scenario && data.scenario.documentText) || "";
-    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
-    state.review.annotations = [];
-    state.review.pendingSelection = null;
-
-    renderScenario(data.scenario || {});
-    resetEvaluation();
-    renderReviewWorkbench();
-
-    const opening = data.openingMessage;
-    if (opening) {
-      appendMessage("assistant", opening);
-    }
-
-    collapseLevelSelection();
-    updateSelectedLevelDetail();
-    showExperience();
-    await loadSessions();
-    await loadStudentAssignments();
-    await loadStudentDashboardInsights();
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "生成场景失败，请稍后再试");
-    toggleLoading(false);
-  } finally {
-    startLevelBtn.disabled = false;
-    startLevelBtn.textContent = "🚀 进入关卡";
-    toggleLoading(false);
-  }
-}
-
-
-
-async function resetCurrentSession() {
+// 发送一条消息并流式接收 AI 回复，兼容重新生成/回退等。
+async function sendMessageWithContent(message, options = {}) {
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请使用学生账号体验对话");
     return;
   }
-  if (!state.sessionId) {
-    alert("当前没有可重置的会话");
+  if (state.activeSessionId && state.sessionId && state.activeSessionId !== state.sessionId) {
+    alert("当前为模拟侧边会话，无法发送。请切回主会话。");
     return;
   }
-  if (!resetSessionBtn) {
-    return;
-  }
-
-  const originalLabel = resetSessionBtn.textContent;
-  resetSessionBtn.disabled = true;
-  resetSessionBtn.textContent = "重置中...";
-
-  try {
-    const response = await fetchWithAuth(`/api/sessions/${state.sessionId}/reset`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "重置对话失败");
-    }
-
-    await response.json().catch(() => ({}));
-    goToLevelSelection({ clearSelection: true });
-    closeStudentModal();
-    await loadSessions();
-    await loadStudentAssignments();
-    await loadStudentDashboardInsights();
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "重置会话失败");
-  } finally {
-    resetSessionBtn.textContent = originalLabel;
-    resetSessionBtn.disabled = false;
-    updateSessionControls();
-  }
-}
-
-
-
-async function sendMessage() {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    alert("请使用学生账号体验对话");
-    return;
-  }
-  const message = chatInputEl.value.trim();
-  if (!message) {
-    return;
-  }
+  if (!message) return;
   if (!state.sessionId) {
     alert("请先选择关卡并加载场景");
     return;
   }
 
-  chatInputEl.value = "";
-  chatInputEl.disabled = true;
-  sendMessageBtn.disabled = true;
+  setEvaluationLoading(true);
+  if (chatInputEl) chatInputEl.disabled = true;
+  if (sendMessageBtn) sendMessageBtn.disabled = true;
 
-  const userMessageIndex = appendMessage("user", message);
+  const userMessageIndex = appendMessage("user", message, options);
   const assistantIndex = appendMessage("assistant", "…", { silent: true });
   renderChat();
 
@@ -3207,79 +3455,982 @@ async function sendMessage() {
           const parsed = JSON.parse(errorText);
           errorMessage = parsed.error || errorMessage;
         } catch (err) {
-          errorMessage = errorText;
+          errorMessage = errorText || errorMessage;
         }
       }
       throw new Error(errorMessage);
     }
 
-    if (!response.body) {
-      throw new Error("当前浏览器不支持流式响应");
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("无法读取响应流");
     }
-
-    const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-
-    while (!shouldTerminate) {
-      const { value, done } = await reader.read();
-      if (done) {
-        buffer += decoder.decode();
-        break;
-      }
-      buffer += decoder.decode(value || new Uint8Array(), { stream: true });
-
-      let separatorIndex = buffer.indexOf("\n\n");
-      while (separatorIndex !== -1) {
-        const rawEvent = buffer.slice(0, separatorIndex);
-        buffer = buffer.slice(separatorIndex + 2);
-        separatorIndex = buffer.indexOf("\n\n");
-
-        if (!rawEvent.trim()) {
-          continue;
-        }
-
-        const { eventType, payload } = parseEvent(rawEvent);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const raw = decoder.decode(value, { stream: true });
+      const parts = raw.split("\n\n").filter(Boolean);
+      parts.forEach((part) => {
+        const { eventType, payload } = parseEvent(part);
         handleEvent(eventType, payload);
-        if (shouldTerminate) {
-          break;
-        }
-      }
+      });
+      if (shouldTerminate) break;
     }
-
-    if (!shouldTerminate && buffer.trim()) {
-      const { eventType, payload } = parseEvent(buffer.trim());
-      handleEvent(eventType, payload);
-    }
-
     if (streamError) {
       throw streamError;
     }
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "发送失败");
+    state.messages.splice(assistantIndex, 1);
+    state.messages.splice(userMessageIndex, 1);
+    renderChat();
+  } finally {
+    setEvaluationLoading(false);
+    if (chatInputEl) chatInputEl.disabled = false;
+    if (sendMessageBtn) sendMessageBtn.disabled = false;
+  }
+}
 
-    if (!fullReply) {
-      const existingMessage =
-        state.messages[assistantIndex] &&
-        typeof state.messages[assistantIndex] === "object"
-          ? state.messages[assistantIndex].content || ""
-          : "";
-      fullReply = existingMessage && existingMessage !== "…"
-        ? existingMessage
-        : "（无有效回复）";
-      updateMessageContent(assistantIndex, fullReply);
+// 更新已有消息的内容（用于流式或修正）。
+function updateMessageContent(index, content) {
+  if (index < 0 || index >= state.messages.length) {
+    return;
+  }
+  state.messages[index].content = content;
+  renderChat();
+}
+
+// 渲染会话评估结果、行动建议、知识点反馈与雷达图。
+function renderEvaluation(evaluation) {
+  setEvaluationLoading(false);
+  if (!evaluation) {
+    resetEvaluation();
+    return;
+  }
+
+  const hasScore = evaluation.score !== null && evaluation.score !== undefined && evaluation.score !== "";
+  const hasWinRate =
+    evaluation.bargainingWinRate !== null &&
+    evaluation.bargainingWinRate !== undefined &&
+    evaluation.bargainingWinRate !== "";
+
+  let numericScore = null;
+  let isPercent = false;
+  if (hasScore) {
+    numericScore = Number(evaluation.score);
+  } else if (hasWinRate) {
+    numericScore = Number(evaluation.bargainingWinRate);
+    isPercent = true;
+  }
+
+  const color = numericScore >= 80 ? "#16a34a" : numericScore >= 60 ? "#ca8a04" : "#ef4444";
+  updateScoreRing(numericScore, color);
+  animateEvaluationScore(numericScore, { isPercent });
+  if (evaluationScoreLabelEl) evaluationScoreLabelEl.textContent = evaluation.scoreLabel || "";
+  if (evaluationCommentaryEl) {
+    evaluationCommentaryEl.textContent = evaluation.commentary || "等待新的对话内容...";
+  }
+
+  renderEvaluationCards(evaluation);
+  renderEvaluationKnowledge(evaluation.knowledgePoints || []);
+  maybeRecordVictory(evaluation);
+  updateEvaluationRecommendations(evaluation);
+  animateEvaluationContent();
+}
+
+function normalizeFeedbackEntries(evaluation) {
+  const collected = [];
+  const addEntries = (items, type) => {
+    if (!items) return;
+    const list = Array.isArray(items) ? items : [items];
+    list.forEach((entry) => {
+      if (!entry) return;
+      if (typeof entry === "string") {
+        collected.push({ type, title: entry, detail: entry });
+      } else if (typeof entry === "object") {
+        collected.push({
+          type,
+          title: entry.title || entry.label || entry.name || "未命名",
+          detail:
+            entry.detail ||
+            entry.description ||
+            entry.content ||
+            entry.value ||
+            entry.explanation ||
+            entry.text ||
+            "",
+        });
+      }
+    });
+  };
+
+  addEntries(evaluation.highlights || evaluation.亮点, "highlight");
+  addEntries(evaluation.risks || evaluation.warnings || evaluation.不足, "risk");
+  addEntries(evaluation.suggestions || evaluation.tips || evaluation.actionItems, "tip");
+
+  if (collected.length === 0) {
+    const fallback = evaluation.commentary || "等待新的对话内容...";
+    collected.push({ type: "tip", title: fallback.slice(0, 20), detail: fallback });
+  }
+  // 补全缺失的 detail
+  const fallbackDetail = evaluation.commentary || "";
+  return collected.map((item) => ({
+    ...item,
+    detail: item.detail || fallbackDetail || item.title || "暂无详情",
+  }));
+}
+
+function renderEvaluationCards(evaluation) {
+  if (!evaluationFeedbackCards) return;
+  evaluationFeedbackCards.innerHTML = "";
+  const cards = normalizeFeedbackEntries(evaluation);
+  const typeMeta = {
+    highlight: { icon: "🟢", label: "Keep it up", border: "border-emerald-200 bg-emerald-50" },
+    risk: { icon: "🔴", label: "Warning", border: "border-rose-200 bg-rose-50" },
+    tip: { icon: "🔵", label: "Tip", border: "border-sky-200 bg-sky-50" },
+  };
+  cards.forEach((card) => {
+    const meta = typeMeta[card.type] || typeMeta.tip;
+    const node = document.createElement("div");
+    node.className = `feedback-card ${meta.border}`;
+    const titleRow = document.createElement("div");
+    titleRow.className = "feedback-card__title text-sm text-slate-900";
+    const titleText = document.createElement("span");
+    const safeTitle = (card.title || meta.label || "").toString();
+    const clipped = safeTitle.length > 15 ? `${safeTitle.slice(0, 15)}…` : safeTitle;
+    titleText.textContent = `${meta.icon} ${clipped || meta.label}`;
+    const tag = document.createElement("span");
+    tag.className = "text-[11px] text-slate-500";
+    tag.textContent = meta.label;
+    titleRow.appendChild(titleText);
+    titleRow.appendChild(tag);
+    const body = document.createElement("p");
+    body.className = "feedback-card__body text-xs";
+    body.textContent = card.detail || "点击查看详情";
+    node.appendChild(titleRow);
+    node.appendChild(body);
+    node.addEventListener("click", () => {
+      node.classList.toggle("active");
+    });
+    evaluationFeedbackCards.appendChild(node);
+  });
+}
+
+function showKnowledgePeek(title, detail) {
+  if (!knowledgePeek || !knowledgePeekTitle || !knowledgePeekSummary) return;
+  const name = title || "";
+  knowledgePeekTitle.textContent = name || "知识点";
+  knowledgePeekSummary.textContent = detail || "结合知识图谱预览该知识点。";
+  if (knowledgePeekBody) {
+    knowledgePeekBody.innerHTML = detail || "";
+  }
+  knowledgePeek.classList.add("active");
+  renderKnowledgePeekGraph({ name });
+  loadKnowledgePeekDetail(name, detail || "");
+}
+
+function closeKnowledgePeek() {
+  if (!knowledgePeek) return;
+  knowledgePeek.classList.remove("active");
+}
+
+function loadKnowledgePeekDetail(name, fallbackDetail = "") {
+  if (!name) return;
+  if (knowledgePeekBody) knowledgePeekBody.textContent = "加载详情中...";
+  if (knowledgePeekGraphStatus) knowledgePeekGraphStatus.textContent = "加载图谱...";
+  fetchWithAuth(`/api/graph/knowledge-points/${encodeURIComponent(name)}`)
+    .then((res) => res.json())
+    .then((data) => {
+      const info = data || {};
+      if (knowledgePeekSummary) {
+        knowledgePeekSummary.textContent = info.description || info.summary || knowledgePeekSummary.textContent;
+      }
+      if (knowledgePeekBody) {
+        const bodyText = info.content || info.description || info.summary || "";
+        if (window.marked && window.DOMPurify && bodyText) {
+          knowledgePeekBody.innerHTML = window.DOMPurify.sanitize(window.marked.parse(bodyText));
+        } else {
+          knowledgePeekBody.textContent = bodyText || fallbackDetail || "";
+        }
+      }
+      if (knowledgePeekJump) {
+        const lessonId = Array.isArray(info.lessons) && info.lessons[0];
+        knowledgePeekJump.classList.toggle("hidden", !lessonId);
+        if (lessonId) {
+          knowledgePeekJump.onclick = () => navigateToTheoryLesson(lessonId);
+        } else {
+          knowledgePeekJump.onclick = null;
+        }
+      }
+      renderKnowledgePeekGraph({
+        name,
+        prerequisites: info.prerequisites || [],
+        relations: info.relations || [],
+        lessonId: Array.isArray(info.lessons) ? info.lessons[0] : null,
+      });
+      // 流式讲解（复用知识卡体验）
+      if (knowledgePeekBody) {
+        knowledgePeekBody.textContent = "生成讲解中...";
+        fetchWithAuth("/api/knowledge/explain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, lessonId: Array.isArray(info.lessons) ? info.lessons[0] : null }),
+        })
+          .then((response) => {
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("无法读取流");
+            const decoder = new TextDecoder("utf-8");
+            let buf = "";
+            const pump = () =>
+              reader.read().then(({ value, done }) => {
+                if (done) {
+                  if (buf) {
+                    if (window.marked && window.DOMPurify) {
+                      knowledgePeekBody.innerHTML = window.DOMPurify.sanitize(window.marked.parse(buf));
+                    } else {
+                      knowledgePeekBody.textContent = buf;
+                    }
+                  }
+                  return;
+                }
+                buf += decoder.decode(value, { stream: true });
+                if (window.marked && window.DOMPurify) {
+                  knowledgePeekBody.innerHTML = window.DOMPurify.sanitize(window.marked.parse(buf));
+                } else {
+                  knowledgePeekBody.textContent = buf;
+                }
+                return pump();
+              });
+            return pump();
+          })
+          .catch(() => {
+            knowledgePeekBody.textContent =
+              info.content || info.description || info.summary || fallbackDetail || "暂时无法生成讲解";
+          });
+      }
+    })
+    .catch(() => {
+      if (knowledgePeekBody) knowledgePeekBody.textContent = "暂时无法加载详情";
+      renderKnowledgePeekGraph({ name });
+    });
+}
+
+let knowledgePeekGraphInstance = null;
+async function renderKnowledgePeekGraph(payload) {
+  if (!knowledgePeekGraph) return;
+  if (knowledgePeekGraphStatus) knowledgePeekGraphStatus.textContent = "加载图谱...";
+  const highlight = payload.name || "";
+  const lessonId = payload.lessonId || state.theory?.selectedLessonId || null;
+
+  const renderSimple = () => {
+    if (typeof G6 === "undefined") {
+      if (knowledgePeekGraphStatus) knowledgePeekGraphStatus.textContent = "图谱组件未加载";
+      return;
+    }
+    const prereqs = Array.isArray(payload.prerequisites) ? payload.prerequisites : [];
+    const relations = Array.isArray(payload.relations) ? payload.relations : [];
+    const nodes = [{ id: highlight || "KP", label: highlight || "知识点", nodeType: "KnowledgePoint" }];
+    const edges = [];
+    prereqs.forEach((p, idx) => {
+      const id = `prereq-${idx}-${p}`;
+      nodes.push({ id, label: p, nodeType: "Prerequisite" });
+      edges.push({ source: id, target: nodes[0].id, label: "前置" });
+    });
+    relations.forEach((r, idx) => {
+      const id = `rel-${idx}-${r}`;
+      nodes.push({ id, label: r, nodeType: "Related" });
+      edges.push({ source: nodes[0].id, target: id, label: "关联" });
+    });
+    drawKnowledgePeekGraph(nodes, edges, new Set([highlight]));
+  };
+
+  if (!lessonId) {
+    renderSimple();
+    return;
+  }
+
+  try {
+      const resp = await fetchWithAuth(
+        `/api/graph/lesson-network?lessonId=${encodeURIComponent(lessonId)}&limit=600`,
+      );
+    if (!resp.ok) {
+      renderSimple();
+      return;
+    }
+    const data = await resp.json();
+    const nodes = data.nodes || [];
+    const edges = Array.isArray(data.edges) ? data.edges : [];
+    const nodeIds = new Set(nodes.map((n) => n.id || n.key || n.name));
+    const safeEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    const highlights = new Set(data.highlights || []);
+    if (highlight) highlights.add(highlight);
+    if (nodes.length === 0) {
+      renderSimple();
+      return;
+    }
+    drawKnowledgePeekGraph(nodes, safeEdges, highlights);
+  } catch (err) {
+    console.error("[KnowledgePeekGraph]", err);
+    renderSimple();
+  }
+}
+
+function drawKnowledgePeekGraph(nodes, edges, highlights) {
+  if (!knowledgePeekGraph || typeof G6 === "undefined") return;
+  if (knowledgePeekGraphInstance) {
+    knowledgePeekGraphInstance.destroy();
+    knowledgePeekGraphInstance = null;
+  }
+  knowledgePeekGraphInstance = new G6.Graph({
+    container: knowledgePeekGraph,
+    width: knowledgePeekGraph.clientWidth || 520,
+    height: knowledgePeekGraph.clientHeight || 320,
+    layout: { type: "force", preventOverlap: true, linkDistance: 160, nodeStrength: -220 },
+    modes: { default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }] },
+    defaultNode: {
+      size: 20,
+      labelCfg: { position: "bottom", style: { fill: "#0f172a", fontSize: 11, fontWeight: 600 } },
+      style: { fill: "#38bdf8", stroke: "#0ea5e9" },
+      stateStyles: { highlight: { shadowColor: "#22c55e", shadowBlur: 16, lineWidth: 2 } },
+    },
+    defaultEdge: {
+      type: "line",
+      style: { stroke: "rgba(148,163,184,0.6)", endArrow: true },
+      labelCfg: { style: { fill: "#475569", fontSize: 10, background: { fill: "#e2e8f0", padding: 2 } } },
+    },
+    animate: true,
+    fitCenter: true,
+  });
+  knowledgePeekGraphInstance.node((n) => {
+    const highlighted = highlights && (highlights.has(n.name) || highlights.has(n.id));
+    const type = n.nodeType || n.label;
+    if (type === "Stage") {
+      return { size: 34, style: { fill: "#3b82f6", stroke: "#2563eb" } };
+    }
+    if (type === "Topic") {
+      return { type: "rect", size: [32, 20], style: { fill: "#f97316", stroke: "#ea580c" } };
+    }
+    return {
+      size: highlighted ? 26 : 16,
+      style: { fill: highlighted ? "#22c55e" : "#94a3b8", stroke: highlighted ? "#16a34a" : "#64748b" },
+      labelCfg: { style: { fill: "#0f172a", fontWeight: highlighted ? 700 : 500 } },
+    };
+  });
+  knowledgePeekGraphInstance.data({ nodes, edges });
+  knowledgePeekGraphInstance.render();
+  knowledgePeekGraphInstance.fitView(40);
+  if (knowledgePeekGraphStatus) {
+    knowledgePeekGraphStatus.textContent = `${nodes.length} 节点`;
+  }
+}
+
+// 渲染历史会话列表，供学生继续对话。
+function renderSessionHistory() {
+  sessionHistoryList.innerHTML = "";
+  if (!state.sessions || state.sessions.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
+    empty.textContent = "暂无历史会话，点击左侧生成新场景。";
+    sessionHistoryList.appendChild(empty);
+    return;
+  }
+
+  state.sessions.forEach((session) => {
+    const li = document.createElement("li");
+    li.className = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-slate-600 hover:bg-slate-900";
+
+    const title = document.createElement("p");
+    title.className = "text-sm font-semibold text-white";
+    title.textContent = session.title || `章节 ${session.chapterId} · 小节 ${session.sectionId}`;
+
+    const summary = document.createElement("p");
+    summary.className = "mt-1 text-xs text-slate-400";
+    summary.textContent = session.summary || "暂无摘要";
+
+    let difficultyMeta = null;
+    if (session.difficultyLabel) {
+      difficultyMeta = document.createElement("p");
+      difficultyMeta.className = "mt-1 text-[11px] text-slate-500";
+      difficultyMeta.textContent = `难度：${session.difficultyLabel}`;
     }
 
+    const footer = document.createElement("div");
+    footer.className = "mt-3 flex items-center justify-between text-xs text-slate-500";
+    footer.innerHTML = `<span>最近更新：${session.updatedAt || "-"}</span>`;
+
+    const button = document.createElement("button");
+    button.className = "rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-500 hover:text-white";
+    button.textContent = "继续会话";
+    button.dataset.sessionId = session.id;
+    footer.appendChild(button);
+
+    li.appendChild(title);
+    li.appendChild(summary);
+    if (difficultyMeta) {
+      li.appendChild(difficultyMeta);
+    }
+    li.appendChild(footer);
+    sessionHistoryList.appendChild(li);
+  });
+}
+
+
+
+// 拉取章节/关卡配置，初始化默认选中项并刷新地图。
+async function loadLevels() {
+  try {
+    const response = await fetch("/api/levels");
+    if (!response.ok) {
+      throw new Error("无法载入章节信息");
+    }
+    const data = await response.json();
+    state.chapters = sortLevelHierarchy(data.chapters || []);
+    if (!(state.expandedChapters instanceof Set)) {
+      state.expandedChapters = new Set();
+    }
+    const preservedExpanded = new Set();
+    state.chapters.forEach((chapter) => {
+      if (state.expandedChapters.has(chapter.id)) {
+        preservedExpanded.add(chapter.id);
+      }
+    });
+    state.expandedChapters = preservedExpanded;
+    populateAssignmentChapterOptions();
+    populateBlueprintChapterOptions();
+    const { chapterId, sectionId } = state.selectedLevel || {};
+    const currentSection = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
+    if (!currentSection) {
+      const firstChapter = state.chapters[0];
+      const firstSection = firstChapter && (firstChapter.sections || [])[0];
+      if (firstChapter && firstSection) {
+        state.selectedLevel = { chapterId: firstChapter.id, sectionId: firstSection.id };
+      } else {
+        state.selectedLevel = { chapterId: null, sectionId: null };
+      }
+    }
+    renderLevelMap();
+    updateSelectedLevelDetail();
+    refreshStudentTheorySelection();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "加载章节失败");
+  }
+}
+
+
+
+// 拉取历史会话列表并重建通过记录。
+async function loadSessions() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/sessions");
+    if (!response.ok) {
+      throw new Error("无法加载历史会话");
+    }
+    const data = await response.json();
+    state.sessions = data.sessions || [];
+    rebuildLevelVictories();
+    renderSessionHistory();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "加载历史会话失败");
+  }
+}
+
+
+
+// 拉取学生仪表盘数据（成长报告、推荐等）。
+async function loadStudentDashboardInsights() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/student/dashboard");
+    if (!response.ok) {
+      throw new Error("无法加载成长数据");
+    }
+    const data = await response.json();
+    renderStudentInsights(data);
+  } catch (error) {
+    console.error(error);
+    renderStudentInsights(null);
+  }
+}
+
+
+
+// 载入指定会话详情，恢复对话、场景和评估。
+async function loadStudentSession(sessionId) {
+  if (!sessionId) return;
+  try {
+    const response = await fetchWithAuth(`/api/sessions/${sessionId}`);
+    if (!response.ok) {
+      throw new Error("无法载入会话详情");
+    }
+    const data = await response.json();
+    state.sessionId = data.session.id;
+    state.messages = (data.messages || []).map((item) => ({ role: item.role, content: item.content }));
+    state.activeLevel = {
+      chapterId: data.session.chapterId,
+      sectionId: data.session.sectionId,
+      difficulty: data.session.difficulty || "balanced",
+      mode: data.session.mode || state.selectedLevel?.mode || "",
+    };
+    state.selectedLevel = {
+      chapterId: state.activeLevel.chapterId,
+      sectionId: state.activeLevel.sectionId,
+      mode: state.activeLevel.mode || "",
+    };
+    ensureReviewState();
+    state.review.documentText =
+      data.session.scenario?.documentText ||
+      data.session.scenario?.document_text ||
+      "";
+    state.review.hints = data.session.scenario?.reviewHints || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+    updateSessionControls();
+    renderScenario(data.session.scenario || {});
+    renderChat();
+    renderEvaluation(data.evaluation);
+    seedSessionDeck(state.sessionId, data.session.scenario || {});
+    activateSession(state.sessionId);
+    renderReviewWorkbench();
+    collapseLevelSelection();
+    updateSelectedLevelDetail();
+    showExperience();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "加载会话失败");
+  }
+}
+
+
+
+// 拉取学生的作业列表并刷新 UI。
+async function loadStudentAssignments() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  try {
+    const response = await fetchWithAuth("/api/student/assignments");
+    if (!response.ok) {
+      throw new Error("无法获取作业列表");
+    }
+    const data = await response.json();
+    state.studentAssignments = data.assignments || [];
+    renderStudentAssignments();
+    updateAssignmentShortcut();
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = "";
+    }
+  } catch (error) {
+    console.error(error);
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = error.message || "加载作业失败";
+    }
+  }
+}
+
+
+
+// 进入某个作业对应的会话，初始化场景/提示。
+async function startAssignmentSession(assignmentId) {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    return;
+  }
+  toggleLoading(true);
+  try {
+    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "连接作业中...";
+    const response = await fetchWithAuth(`/api/assignments/${assignmentId}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "无法启动作业");
+    }
+    const data = await response.json();
+    state.sessionId = data.sessionId;
+    state.messages = [];
+    const fallbackChapter = state.selectedLevel?.chapterId || null;
+    const fallbackSection = state.selectedLevel?.sectionId || null;
+    state.activeLevel = {
+      chapterId: data.chapterId || fallbackChapter,
+      sectionId: data.sectionId || fallbackSection,
+      difficulty: data.difficulty || "balanced",
+      mode: data.mode || state.selectedLevel?.mode || "",
+    };
+    state.selectedLevel = {
+      chapterId: data.chapterId || fallbackChapter,
+      sectionId: data.sectionId || fallbackSection,
+      mode: data.mode || state.selectedLevel?.mode || "",
+    };
+    updateSessionControls();
+    ensureReviewState();
+    state.review.documentText =
+      data.documentText || (data.scenario && data.scenario.documentText) || "";
+    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+
+    renderScenario(data.scenario || {});
+    resetEvaluation();
+    renderReviewWorkbench();
+    highlightSelectedLevel();
+    updateSelectedLevelDetail();
+    seedSessionDeck(state.sessionId, data.scenario || {});
+    activateSession(state.sessionId);
+    if (data.openingMessage) {
+      appendMessage("assistant", data.openingMessage);
+    }
+    collapseLevelSelection();
+    showExperience();
+    await loadSessions();
+    await loadStudentAssignments();
+    await loadStudentDashboardInsights();
+    updateAssignmentShortcut();
+    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "";
+  } catch (error) {
+    console.error(error);
+    if (studentAssignmentStatus) {
+      studentAssignmentStatus.textContent = error.message || "启动作业失败";
+    }
+  } finally {
+    toggleLoading(false);
+  }
+}
+
+
+
+// 处理学生修改密码表单提交。
+async function handleStudentPasswordChange(event) {
+  event.preventDefault();
+  if (!state.auth.user) return;
+  try {
+    const response = await fetchWithAuth("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: studentPasswordCurrent.value,
+        newPassword: studentPasswordNew.value,
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "更新密码失败");
+    }
+    studentPasswordCurrent.value = "";
+    studentPasswordNew.value = "";
+    studentPasswordStatus.textContent = "密码已更新";
+  } catch (error) {
+    console.error(error);
+    studentPasswordStatus.textContent = error.message || "更新密码失败";
+  }
+}
+
+
+
+// 从选中的关卡发起新会话，生成场景并开启对话。
+async function startLevel() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    alert("请先使用学生账号登录");
+    return;
+  }
+
+  const { chapterId, sectionId } = state.selectedLevel || {};
+  const difficulty = difficultySelect ? difficultySelect.value : "balanced";
+
+  if (!chapterId || !sectionId) {
+    alert("请选择章节与小节");
+    return;
+  }
+
+  startLevelBtn.disabled = true;
+  startLevelBtn.textContent = "加载中...";
+  toggleLoading(true);
+
+  try {
+    const response = await fetchWithAuth("/api/start_level", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapterId, sectionId, difficulty }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "无法生成场景");
+    }
+
+    const data = await response.json();
+    state.sessionId = data.sessionId;
+    state.messages = [];
+    state.activeLevel = {
+      chapterId,
+      sectionId,
+      difficulty,
+      mode: data.mode || state.selectedLevel?.mode || "",
+    };
+    updateSessionControls();
+
+    ensureReviewState();
+    state.review.documentText =
+      data.documentText || (data.scenario && data.scenario.documentText) || "";
+    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+
+    renderScenario(data.scenario || {});
+    resetEvaluation();
+    renderReviewWorkbench();
+    seedSessionDeck(state.sessionId, data.scenario || {});
+    activateSession(state.sessionId);
+
+    const opening = data.openingMessage;
+    if (opening) {
+      appendMessage("assistant", opening);
+    }
+
+    collapseLevelSelection();
+    updateSelectedLevelDetail();
+    showExperience();
     await loadSessions();
     await loadStudentAssignments();
     await loadStudentDashboardInsights();
   } catch (error) {
     console.error(error);
-    state.messages.splice(assistantIndex, 1);
-    state.messages.splice(userMessageIndex, 1);
-    renderChat();
-    appendMessage("assistant", `系统提示：${error.message || "对话失败"}`);
+    alert(error.message || "生成场景失败，请稍后再试");
+    toggleLoading(false);
   } finally {
-    chatInputEl.disabled = false;
-    sendMessageBtn.disabled = false;
-    chatInputEl.focus();
+    startLevelBtn.disabled = false;
+    startLevelBtn.textContent = "🚀 进入关卡";
+    toggleLoading(false);
   }
+}
+
+
+
+// 重置当前会话，清空记录并回到章节选择。
+async function resetCurrentSession() {
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    alert("请使用学生账号体验对话");
+    return;
+  }
+  if (!state.sessionId) {
+    alert("当前没有可重置的会话");
+    return;
+  }
+  if (!resetSessionBtn) {
+    return;
+  }
+
+  const originalLabel = resetSessionBtn.textContent;
+  resetSessionBtn.disabled = true;
+  resetSessionBtn.textContent = "重置中...";
+
+  try {
+    const response = await fetchWithAuth(`/api/sessions/${state.sessionId}/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "重置对话失败");
+    }
+
+    await response.json().catch(() => ({}));
+    goToLevelSelection({ clearSelection: true });
+    closeStudentModal();
+    await loadSessions();
+    await loadStudentAssignments();
+    await loadStudentDashboardInsights();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "重置会话失败");
+  } finally {
+    resetSessionBtn.textContent = originalLabel;
+    resetSessionBtn.disabled = false;
+    updateSessionControls();
+  }
+}
+
+// 在邮件模式下发送一封邮件形式的对话消息，并处理 AI 回复。
+async function sendEmailMessage() {
+  ensureEmailDraft();
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    alert("请使用学生账号体验");
+    return;
+  }
+  if (state.activeSessionId && state.sessionId && state.activeSessionId !== state.sessionId) {
+    alert("当前为模拟侧边会话，无法发送。请切回主会话。");
+    return;
+  }
+  if (!state.sessionId) {
+    alert("请先选择关卡并加载场景");
+    return;
+  }
+  const subject = emailSubjectInput ? emailSubjectInput.value.trim() : "";
+  const to = emailToInput ? emailToInput.value.trim() : "";
+  const from = emailFromInput ? emailFromInput.value.trim() : "";
+  const body = emailBodyInput ? emailBodyInput.value.trim() : "";
+  const signature = emailSignatureInput ? emailSignatureInput.value.trim() : "";
+  if (!subject || !body) {
+    alert("请填写 Subject 与正文后再发送");
+    return;
+  }
+  state.emailDraft = { subject, body, signature };
+
+  const composed = `Subject: ${subject}\nTo: ${to}\nFrom: ${from}\n\n${body}${signature ? `\n\n${signature}` : ""}`;
+
+  if (emailSendBtn) {
+    emailSendBtn.disabled = true;
+    emailSendBtn.textContent = "发送中...";
+  }
+  const userIndex = appendMessage("user", composed, { subject });
+  renderChat();
+  setEvaluationLoading(true);
+  try {
+    const response = await fetchWithAuth("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: state.sessionId, message: composed }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "发送失败");
+    }
+    const data = await response.json();
+    if (data.reply) {
+      appendMessage("assistant", data.reply);
+    }
+    if (data.evaluation) {
+      renderEvaluation(data.evaluation);
+    }
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "发送失败");
+    state.messages.splice(userIndex, 1);
+    renderChat();
+  } finally {
+    setEvaluationLoading(false);
+    if (emailSendBtn) {
+      emailSendBtn.disabled = false;
+      emailSendBtn.textContent = "发送邮件";
+    }
+  }
+}
+
+// 使用 Copilot 为当前邮件生成草稿。
+async function handleEmailDraft() {
+  if (!isEmailModeActive()) return;
+  const intent = window.prompt("告诉 Copilot 你的意图（例：写一封委婉的催款信）");
+  if (!intent) return;
+  setEmailCopilotStatus("AI 正在起草...", "loading");
+  try {
+    const response = await fetchWithAuth("/api/ai/email/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        action: "draft",
+        user_input: intent,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "起草失败");
+    }
+    if (emailBodyInput) {
+      emailBodyInput.value = data.suggestion || emailBodyInput.value;
+      state.emailDraft.body = emailBodyInput.value;
+    }
+    setEmailCopilotStatus("已生成草稿");
+  } catch (error) {
+    console.error(error);
+    setEmailCopilotStatus(error.message || "AI 起草失败", "error");
+  }
+}
+
+// 使用 Copilot 对邮件草稿进行润色。
+async function handleEmailPolish() {
+  if (!isEmailModeActive()) return;
+  const subject = emailSubjectInput ? emailSubjectInput.value.trim() : "";
+  const to = emailToInput ? emailToInput.value.trim() : "";
+  const from = emailFromInput ? emailFromInput.value.trim() : "";
+  const body = emailBodyInput ? emailBodyInput.value.trim() : "";
+  const signature = emailSignatureInput ? emailSignatureInput.value.trim() : "";
+  const draft = `Subject: ${subject}\nTo: ${to}\nFrom: ${from}\n\n${body}${signature ? `\n\n${signature}` : ""}`;
+  setEmailCopilotStatus("AI 正在润色...", "loading");
+  try {
+    const response = await fetchWithAuth("/api/ai/email/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        action: "polish",
+        user_input: draft,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "润色失败");
+    }
+    if (emailBodyInput) {
+      emailBodyInput.value = data.suggestion || emailBodyInput.value;
+      state.emailDraft.body = emailBodyInput.value;
+    }
+    setEmailCopilotStatus("润色完成");
+  } catch (error) {
+    console.error(error);
+    setEmailCopilotStatus(error.message || "AI 润色失败", "error");
+  }
+}
+
+// 文本输入框发送消息的入口，自动区分邮件/普通模式。
+async function sendMessage() {
+  if (isEmailModeActive()) {
+    return sendEmailMessage();
+  }
+  if (!state.auth.user || state.auth.user.role !== "student") {
+    alert("请使用学生账号体验对话");
+    return;
+  }
+  const message = chatInputEl.value.trim();
+  if (!message) {
+    return;
+  }
+  chatInputEl.value = "";
+  await sendMessageWithContent(message);
+}
+
+// 注册顶部抽屉事件
+if (scenarioDrawerToggle) {
+  scenarioDrawerToggle.addEventListener("click", openScenarioDrawer);
+}
+if (scenarioDrawerClose) {
+  scenarioDrawerClose.addEventListener("click", closeScenarioDrawer);
+}
+if (scenarioDrawerOverlay) {
+  scenarioDrawerOverlay.addEventListener("click", (event) => {
+    if (event.target === scenarioDrawerOverlay) {
+      closeScenarioDrawer();
+    }
+  });
+}
+
+if (knowledgePeekClose) {
+  knowledgePeekClose.addEventListener("click", closeKnowledgePeek);
+}
+if (knowledgePeek) {
+  knowledgePeek.addEventListener("click", (event) => {
+    if (event.target === knowledgePeek) {
+      closeKnowledgePeek();
+    }
+  });
 }

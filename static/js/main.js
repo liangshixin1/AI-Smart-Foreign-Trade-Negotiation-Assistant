@@ -36,6 +36,53 @@ if (chatInputEl) {
   });
 }
 
+if (emailSendBtn) {
+  emailSendBtn.addEventListener("click", sendEmailMessage);
+}
+
+if (emailDraftBtn) {
+  emailDraftBtn.addEventListener("click", handleEmailDraft);
+}
+
+if (emailPolishBtn) {
+  emailPolishBtn.addEventListener("click", handleEmailPolish);
+}
+
+if (copilotFab) {
+  copilotFab.addEventListener("click", openCopilotPanel);
+}
+
+if (copilotCloseBtn) {
+  copilotCloseBtn.addEventListener("click", closeCopilotPanel);
+}
+
+if (copilotAssistBtn) {
+  copilotAssistBtn.addEventListener("click", handleCopilotAssist);
+}
+
+if (copilotAgentBtn) {
+  copilotAgentBtn.addEventListener("click", handleCopilotAgent);
+}
+
+if (copilotStopBtn) {
+  copilotStopBtn.addEventListener("click", handleCopilotStop);
+}
+
+if (copilotCopyBtn) {
+  copilotCopyBtn.addEventListener("click", () => {
+    const text = copilotOutput ? copilotOutput.textContent || "" : "";
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        if (copilotStatus) copilotStatus.textContent = "已复制到剪贴板";
+      })
+      .catch(() => {
+        if (copilotStatus) copilotStatus.textContent = "复制失败，请手动选中文本";
+      });
+  });
+}
+
 if (reviewDocumentEl) {
   reviewDocumentEl.addEventListener("mouseup", captureReviewSelection);
 }

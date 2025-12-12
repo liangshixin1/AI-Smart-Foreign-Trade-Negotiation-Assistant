@@ -9,8 +9,8 @@ function createInitialState() {
     scenario: null,
     messages: [],
     sessions: [],
-    selectedLevel: { chapterId: null, sectionId: null },
-    activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced" },
+    selectedLevel: { chapterId: null, sectionId: null, mode: "" },
+    activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced", mode: "" },
     isLevelSelectionCollapsed: false,
     studentActiveView: "home",
     expandedChapters: new Set(),
@@ -57,6 +57,11 @@ function createInitialState() {
       hints: null,
       annotations: [],
       pendingSelection: null,
+    },
+    emailDraft: {
+      subject: "",
+      body: "",
+      signature: "",
     },
     currentScenario: null,
   };

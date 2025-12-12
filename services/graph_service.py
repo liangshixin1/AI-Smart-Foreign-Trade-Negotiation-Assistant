@@ -1406,7 +1406,8 @@ def list_knowledge_points() -> List[Dict[str, object]]:
         OPTIONAL MATCH (k)<-[:TESTS]-(p:Practice)
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
-        RETURN k.name AS name,
+        RETURN elementId(k) AS nodeId,
+               k.name AS name,
                k.summary AS summary,
                k.bodyHtml AS bodyHtml,
                k.imageUrl AS imageUrl,
