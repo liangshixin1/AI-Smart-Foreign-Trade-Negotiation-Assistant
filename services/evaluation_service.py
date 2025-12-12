@@ -214,16 +214,8 @@ def _match_to_existing_knowledge(
 
 
 def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
-    score_key = (
-        os.getenv("DEEPSEEK_CRITIC_SCORE_KEY")
-        or os.getenv("DEEPSEEK_CRITIC_KEY")
-        or os.getenv("DEEPSEEK_API_KEY")
-    )
-    detail_key = (
-        os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY")
-        or os.getenv("DEEPSEEK_CRITIC_KEY")
-        or os.getenv("DEEPSEEK_API_KEY")
-    )
+    score_key = os.getenv("DEEPSEEK_CRITIC_SCORE_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
+    detail_key = os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
     if not score_key and not detail_key:
         scenario = session.get("scenario", {}) if session else {}
         return {

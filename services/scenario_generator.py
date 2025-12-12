@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import random
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -12,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from levels import CHAPTERS, STATIC_SCENARIO_MARKER, flatten_scenario_for_template
 from models.scenario import Scenario
 from utils.normalizers import normalize_company, normalize_product, normalize_text_list
-from utils.validators import MissingKeyError, extract_json_block, first_non_empty
+from utils.validators import MissingKeyError, extract_json_block, first_non_empty, require_key
 
 from services.llm_service import complete_chat
 
@@ -598,9 +597,7 @@ def generate_scenario_for_section(section: Dict[str, object], difficulty_key: st
         scenario_dict, profile = apply_difficulty_profile(scenario_dict, difficulty_key)
         return scenario_dict, profile
 
-    generator_key = os.getenv("DEEPSEEK_GENERATOR_KEY") or os.getenv("DEEPSEEK_API_KEY")
-    if not generator_key:
-        raise MissingKeyError("Missing environment variable: DEEPSEEK_GENERATOR_KEY or DEEPSEEK_API_KEY")
+    generator_key = require_key("DEEPSEEK_GENERATOR_KEY")
     system_prompt = section.get("environment_prompt_template")
     user_prompt = section.get("environment_user_message")
     if not system_prompt or not user_prompt:
