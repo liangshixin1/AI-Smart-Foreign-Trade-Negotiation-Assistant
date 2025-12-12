@@ -35,17 +35,23 @@ def _match_to_existing_knowledge(
     section_id: Optional[str] = None,
     chapter_id: Optional[str] = None,
     scenario_hint: Optional[Dict[str, object]] = None,
-) -> Dict[str, List[str]]:
-    """Map model-suggested names to existing graph nodes; group by nodeType."""
+) -> Dict[str, object]:
+    """Map model-suggested names to existing graph nodes; return grouped + flat list."""
 
     normalized = _normalize_names(names)
     if not normalized:
-        return {"KnowledgePoint": [], "Skill": [], "Terminology": []}
+        empty = {"KnowledgePoint": [], "Skill": [], "Terminology": []}
+        return {"grouped": empty, "flat": []}
 
     try:
         all_candidates = graph_service.list_knowledge_points()
     except Exception:
-        return {"KnowledgePoint": normalized[:limit], "Skill": [], "Terminology": []}
+        minimal = [
+            {"label": name, "name": name, "category": "KnowledgePoint", "matchScore": 0.0}
+            for name in normalized[:limit]
+        ]
+        grouped = {"KnowledgePoint": minimal, "Skill": [], "Terminology": []}
+        return {"grouped": grouped, "flat": minimal}
 
     # 候选集优先使用当前关卡/章节/场景范围，减少向量计算规模
     scoped_names: Set[str] = set()
@@ -78,8 +84,24 @@ def _match_to_existing_knowledge(
         name_to_node[nm] = node
         lower_index[nm.lower()] = nm
 
-    matched: Dict[str, List[str]] = {"KnowledgePoint": [], "Skill": [], "Terminology": []}
+    matched: Dict[str, List[Dict[str, object]]] = {"KnowledgePoint": [], "Skill": [], "Terminology": []}
     unmatched: List[str] = []
+
+    def _node_to_payload(node: Dict[str, object], score: float = 1.0) -> Dict[str, object]:
+        category = node.get("category") or node.get("nodeType") or "KnowledgePoint"
+        return {
+            "label": node.get("name") or "",
+            "name": node.get("name") or "",
+            "summary": node.get("summary") or "",
+            "category": category,
+            "nodeType": node.get("nodeType") or category,
+            "knowledgeId": node.get("knowledgeId"),
+            "graphNodeId": node.get("nodeId"),
+            "topic": node.get("topic"),
+            "lessonCount": node.get("lessonCount"),
+            "practiceCount": node.get("practiceCount"),
+            "matchScore": float(score) if score is not None else 0.0,
+        }
 
     for target in normalized:
         key = target.lower()
@@ -87,7 +109,10 @@ def _match_to_existing_knowledge(
         if existing_name:
             node = name_to_node.get(existing_name, {})
             node_type = node.get("nodeType") or "KnowledgePoint"
-            matched.setdefault(node_type, []).append(existing_name)
+            payload = _node_to_payload(node, 1.0)
+            matched.setdefault(node_type, [])
+            if not any(item.get("name") == payload["name"] for item in matched[node_type]):
+                matched[node_type].append(payload)
         else:
             unmatched.append(target)
 
@@ -153,14 +178,31 @@ def _match_to_existing_knowledge(
 
             if best_name and score_best >= 0.35:
                 matched.setdefault(best_type, [])
-                if best_name not in matched[best_type]:
-                    matched[best_type].append(best_name)
+                payload = _node_to_payload(name_to_node.get(best_name, {}), score_best)
+                if not any(item.get("name") == payload["name"] for item in matched[best_type]):
+                    matched[best_type].append(payload)
+            else:
+                # 未匹配到图谱节点时，保留原始名称
+                matched.setdefault("KnowledgePoint", [])
+                matched["KnowledgePoint"].append(
+                    {
+                        "label": target,
+                        "name": target,
+                        "summary": "",
+                        "category": "KnowledgePoint",
+                        "matchScore": 0.0,
+                    }
+                )
 
     # 限制总量，优先保留已有精确匹配
     for key, items in matched.items():
         matched[key] = items[:limit]
 
-    return matched
+    flat: List[Dict[str, object]] = []
+    for key, items in matched.items():
+        flat.extend(items)
+
+    return {"grouped": matched, "flat": flat}
 
 
 def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
@@ -187,6 +229,9 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     last_ai = next((row["content"] for row in reversed(history_rows) if row["role"] == "assistant"), "")
     transcript = build_transcript(transcript_history, scenario)
     evaluation_prompt = session.get("evaluation_prompt", "")
+    scenario_mode = (scenario or {}).get("mode") or ""
+    if scenario_mode == "email":
+        evaluation_prompt = f"{evaluation_prompt}\n\n[Email Mode Focus]\n- 请优先评估邮件格式规范（Subject/Salutation/Closing/Signature）。\n- 检查正文逻辑、礼貌度与条款完整性。\n- 简明指出格式缺失或不当之处。"
 
     messages = [
         {"role": "system", "content": str(evaluation_prompt)},
@@ -241,11 +286,12 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         chapter_id=session.get("chapter_id"),
         scenario_hint=scenario,
     )
-    knowledge_points = (
-        matched.get("KnowledgePoint", [])
-        + matched.get("Skill", [])
-        + matched.get("Terminology", [])
-    )
+    knowledge_points = matched.get("flat", [])
+    # 注入 lessonId 便于前端跳转/图谱高亮
+    for kp in knowledge_points:
+        lessons = scenario.get("lessons") or []
+        if not kp.get("lessonId") and lessons:
+            kp["lessonId"] = lessons[0].get("id") if isinstance(lessons[0], dict) else lessons[0]
 
     result = {
         "score": score,
@@ -253,7 +299,7 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         "commentary": data.get("commentary", ""),
         "actionItems": action_items,
         "knowledgePoints": knowledge_points,
-        "knowledgePointsGrouped": matched,  # 便于前端分栏展示
+        "knowledgePointsGrouped": matched.get("grouped", {}),  # 便于前端分栏展示
         "bargainingWinRate": bargaining_win_rate,
     }
 
