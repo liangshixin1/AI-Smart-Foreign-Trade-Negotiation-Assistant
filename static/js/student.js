@@ -3428,6 +3428,20 @@ async function sendMessageWithContent(message, options = {}) {
       }
     } else if (eventType === "evaluation") {
       evaluationResult = payload.evaluation || null;
+      if (evaluationResult && evaluationResult.debug) {
+        console.info(
+          "[EvaluationDebug][ScoreKey]",
+          evaluationResult.debug.rawScore || "(no score response)"
+        );
+        console.info(
+          "[EvaluationDebug][DetailKey]",
+          evaluationResult.debug.rawDetail || "(no detail response)"
+        );
+        console.info("[EvaluationDebug][Parsed]", {
+          score: evaluationResult.debug.parsedScore,
+          detail: evaluationResult.debug.parsedDetail,
+        });
+      }
       renderEvaluation(evaluationResult);
     } else if (eventType === "error") {
       streamError = new Error(payload.error || "对话失败");
