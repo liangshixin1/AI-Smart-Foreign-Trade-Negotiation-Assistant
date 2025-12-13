@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import uuid
 from typing import Dict, List, Optional
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 import database
+from services import evaluation_service
 from services.auth_service import current_user, require_role
 from services.document_composer import compose_review_document, generate_opening_message
 from services.evaluation_service import evaluate_session
@@ -444,11 +446,36 @@ def chat():
             )
             database.add_message(session_id, "assistant", ai_reply)
 
+            reply_payload = json.dumps({"reply": ai_reply})
+            yield f"event: summary\ndata: {reply_payload}\n\n"
+
+            # 流式评估：先推送分数，再推送详情
             try:
-                evaluation = evaluate_session(session_id, session)
+                ctx = evaluation_service.prepare_evaluation_context(session_id, session)
+                score_key = os.getenv("DEEPSEEK_CRITIC_SCORE_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
+                detail_key = os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
+
+                score_data, raw_score = evaluation_service.compute_score(ctx, score_key)
+                score_payload = {
+                    "score": score_data.get("score"),
+                    "scoreLabel": evaluation_service._score_to_label(score_data.get("score")),
+                    "debug": {"rawScore": raw_score, "parsedScore": score_data},
+                }
+                yield f"event: score\ndata: {json.dumps(score_payload)}\n\n"
+
+                detail_data, raw_detail = evaluation_service.compute_detail(ctx, detail_key)
+                evaluation = evaluation_service.build_evaluation_result(
+                    ctx, session, score_data, detail_data, raw_score, raw_detail
+                )
+                database.save_evaluation(session_id, evaluation)
+                if session.get("assignment_id"):
+                    database.mark_assignment_completed_by_session(session_id)
+
+                detail_payload = json.dumps({"evaluation": evaluation})
+                yield f"event: detail\ndata: {detail_payload}\n\n"
             except Exception as exc:  # pragma: no cover - fallback to avoid SSE break
-                LOGGER.exception("evaluate_session failed in stream: %s", exc)
-                evaluation = {
+                LOGGER.exception("evaluate_session streaming failed: %s", exc)
+                fallback_eval = {
                     "score": None,
                     "scoreLabel": None,
                     "commentary": "評估暫時不可用，請稍後再試。",
@@ -456,20 +483,9 @@ def chat():
                     "knowledgePoints": session.get("scenario", {}).get("knowledge_points", []) or [],
                     "bargainingWinRate": None,
                 }
-            latest_evaluation = database.get_latest_evaluation(session_id)
-            if latest_evaluation:
-                merged = {**latest_evaluation, **evaluation}
-                if evaluation.get("debug"):
-                    merged["debug"] = evaluation.get("debug")
-                evaluation = merged
+                yield f"event: detail\ndata: {json.dumps({'evaluation': fallback_eval})}\n\n"
 
-            reply_payload = json.dumps({"reply": ai_reply})
-            yield f"event: summary\ndata: {reply_payload}\n\n"
-
-            evaluation_payload = json.dumps({"evaluation": evaluation})
-            yield f"event: evaluation\ndata: {evaluation_payload}\n\n"
-
-            yield "event: done\ndata: {}\n\n"
+            yield "event: close\ndata: {}\n\n"
 
         response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache"

@@ -456,7 +456,7 @@ function startEvaluationSpin() {
   evaluationSpinValue = 0;
   updateScoreRing(0, "#cbd5e1");
   evaluationSpinTimer = setInterval(() => {
-    const step = 0.8 + Math.random() * 0.4; // 0.8 ~ 1.2
+    const step = 8 + Math.random() * 2; // 8 ~ 10
     evaluationSpinValue = Math.min(100, evaluationSpinValue + step);
     const color =
       evaluationSpinValue >= 80 ? "#16a34a" : evaluationSpinValue >= 60 ? "#ca8a04" : "#ef4444";
@@ -2440,9 +2440,11 @@ function renderEvaluationKnowledge(items) {
     const pill = document.createElement("button");
     pill.type = "button";
     pill.className = "knowledge-pill";
-    const label = (item && (item.label || item.name || item.title)) || item || "知识点";
+    const labelSource =
+      (item && (item.point || item.label || item.name || item.title || item.content)) || item || "知识点";
+    const label = typeof labelSource === "string" ? labelSource : String(labelSource || "知识点");
     const detail =
-      (item && (item.description || item.detail || item.summary || item.text)) || "";
+      (item && (item.description || item.detail || item.summary || item.text || item.content)) || "";
     const graphPayload = {
       name: item && (item.name || item.label || label),
       prerequisites: item && item.prerequisites,
@@ -3426,7 +3428,35 @@ async function sendMessageWithContent(message, options = {}) {
         fullReply = payload.reply;
         updateMessageContent(assistantIndex, fullReply);
       }
+    } else if (eventType === "score") {
+      const scoreVal = payload.score;
+      const scoreLabel = payload.scoreLabel || (payload.debug && payload.debug.parsedScore && payload.debug.parsedScore.score_label);
+      evaluationResult = {
+        score: scoreVal,
+        scoreLabel,
+        commentary: evaluationResult ? evaluationResult.commentary : "等待详细评语…",
+        actionItems: evaluationResult ? evaluationResult.actionItems : [],
+        knowledgePoints: evaluationResult ? evaluationResult.knowledgePoints : [],
+      };
+      renderEvaluation(evaluationResult);
     } else if (eventType === "evaluation") {
+      evaluationResult = payload.evaluation || null;
+      if (evaluationResult && evaluationResult.debug) {
+        console.info(
+          "[EvaluationDebug][ScoreKey]",
+          evaluationResult.debug.rawScore || "(no score response)"
+        );
+        console.info(
+          "[EvaluationDebug][DetailKey]",
+          evaluationResult.debug.rawDetail || "(no detail response)"
+        );
+        console.info("[EvaluationDebug][Parsed]", {
+          score: evaluationResult.debug.parsedScore,
+          detail: evaluationResult.debug.parsedDetail,
+        });
+      }
+      renderEvaluation(evaluationResult);
+    } else if (eventType === "detail") {
       evaluationResult = payload.evaluation || null;
       if (evaluationResult && evaluationResult.debug) {
         console.info(
@@ -3446,7 +3476,7 @@ async function sendMessageWithContent(message, options = {}) {
     } else if (eventType === "error") {
       streamError = new Error(payload.error || "对话失败");
       shouldTerminate = true;
-    } else if (eventType === "done") {
+    } else if (eventType === "done" || eventType === "close") {
       shouldTerminate = true;
     }
   };

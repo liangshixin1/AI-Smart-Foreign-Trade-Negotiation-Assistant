@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Iterable, List, Optional, Set
+import json
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import logging
 import database
@@ -30,6 +31,264 @@ def _score_to_label(score: Optional[object]) -> Optional[str]:
     if val >= 60:
         return "Adequate"
     return "Needs Improvement"
+
+
+def _parse_score(raw: str) -> Optional[int]:
+    """Best-effort parse score from model output."""
+    if not raw:
+        return None
+    text = raw.strip()
+    # Strip markdown fences
+    text = text.replace("```json", "").replace("```", "").strip()
+    # First, try strict JSON
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "score" in data:
+            val = data.get("score")
+            if isinstance(val, (int, float)):
+                num = int(round(float(val)))
+                if 0 <= num <= 100:
+                    return num
+    except Exception:
+        pass
+    # Next, try extract JSON block via existing helper
+    parsed = extract_json_block(text) or {}
+    if isinstance(parsed, dict) and "score" in parsed:
+        val = parsed.get("score")
+        if isinstance(val, (int, float)):
+            num = int(round(float(val)))
+            if 0 <= num <= 100:
+                return num
+    # Finally, regex number fallback
+    import re
+
+    match = re.search(r"(-?\d+)", text)
+    if match:
+        num = int(match.group(1))
+        num = max(0, min(100, num))
+        return num
+    return None
+
+
+def prepare_evaluation_context(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
+    scenario = session.get("scenario", {})
+    scenario_knowledge = scenario.get("knowledge_points", []) or []
+    history_rows = database.get_messages(session_id)
+    transcript_history = [
+        {"role": row["role"], "content": row["content"]} for row in history_rows
+    ]
+    last_user = next((row["content"] for row in reversed(history_rows) if row["role"] == "user"), "")
+    last_ai = next((row["content"] for row in reversed(history_rows) if row["role"] == "assistant"), "")
+    transcript = build_transcript(transcript_history, scenario)
+    evaluation_prompt = session.get("evaluation_prompt", "")
+    scenario_mode = (scenario or {}).get("mode") or ""
+    if scenario_mode == "email":
+        evaluation_prompt = f"{evaluation_prompt}\n\n[Email Mode Focus]\n- 请优先评估邮件格式规范（Subject/Salutation/Closing/Signature）。\n- 检查正文逻辑、礼貌度与条款完整性。\n- 简明指出格式缺失或不当之处。"
+
+    base_messages = [
+        {"role": "system", "content": str(evaluation_prompt)},
+        {"role": "user", "content": transcript},
+    ]
+    scenario_text = scenario.get("scenario_summary") or scenario.get("description") or scenario.get("scenario_title") or ""
+    context_text = "\n".join(
+        filter(
+            None,
+            [
+                f"user: {last_user}" if last_user else "",
+                f"assistant: {last_ai}" if last_ai else "",
+                scenario_text,
+            ],
+        )
+    )
+    return {
+        "scenario": scenario,
+        "scenarioKnowledge": scenario_knowledge,
+        "evaluationPrompt": evaluation_prompt,
+        "baseMessages": base_messages,
+        "transcript": transcript,
+        "lastUser": last_user,
+        "lastAi": last_ai,
+        "contextText": context_text,
+    }
+
+
+def compute_score(context: Dict[str, object], score_key: Optional[str]) -> Tuple[Dict[str, object], Optional[str]]:
+    """Compute score channel only."""
+    if not score_key:
+        return {}, None
+    transcript = context.get("transcript") or ""
+    base_messages = context.get("baseMessages") or []
+    score_messages = [
+        {**base_messages[0], "content": f"{base_messages[0]['content']}\n\n[Policy]\n- 你是严格的评分器，只能返回单个 JSON 对象。\n- 禁止返回 Markdown 代码块、前缀、解释或寒暄。\n- 只允许返回 score 一个字段，取值 0-100 的数字。"},
+        {
+            "role": "user",
+            "content": (
+                f"{transcript}\n\n"
+                "[Scoring Only]\n"
+                "- 仅计算整体得分 (0-100)。\n"
+                '- 仅以 JSON 返回：{"score": 75}。\n'
+                "- 不要使用 ```json ``` 代码块或额外文本，不要添加其他字段。"
+            ),
+        },
+    ]
+    raw_score = None
+    score_data: Dict[str, object] = {}
+    try:
+        raw_score = complete_chat(
+            score_key,
+            score_messages,
+            temperature=0.05,
+            response_format={"type": "json_object"},
+        )
+        parsed_score = _parse_score(raw_score)
+        if parsed_score is not None:
+            score_data = {"score": parsed_score}
+        else:
+            score_data = extract_json_block(raw_score) or {}
+    except Exception:
+        LOGGER.exception("Score channel failed")
+    return score_data, raw_score
+
+
+def compute_detail(context: Dict[str, object], detail_key: Optional[str]) -> Tuple[Dict[str, object], Optional[str]]:
+    if not detail_key:
+        return {}, None
+    evaluation_prompt = context.get("evaluationPrompt") or ""
+    transcript = context.get("transcript") or ""
+    detail_prompt = (
+        f"{evaluation_prompt}\n\n"
+        "[Detail Only]\n"
+        "- 请输出评语、行动项、knowledge_points、bargaining_win_rate（如有）。\n"
+        "- knowledge_points 的 name/label 必须使用中文图谱名称，可附 summary，避免自定义 category。\n"
+        "- 不要返回 score 或 score_label。\n"
+        "- 输出 JSON。"
+    )
+    detail_messages = [
+        {"role": "system", "content": detail_prompt},
+        {"role": "user", "content": transcript},
+    ]
+    raw_detail = None
+    detail_data: Dict[str, object] = {}
+    try:
+        raw_detail = complete_chat(
+            detail_key,
+            detail_messages,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        detail_data = extract_json_block(raw_detail) or {}
+    except Exception:
+        LOGGER.exception("Detail channel failed")
+    return detail_data, raw_detail
+
+
+def build_evaluation_result(
+    ctx: Dict[str, object],
+    session: Dict[str, object],
+    score_data: Dict[str, object],
+    detail_data: Dict[str, object],
+    raw_score_response: Optional[str],
+    raw_detail_response: Optional[str],
+) -> Dict[str, object]:
+    scenario = ctx.get("scenario") or {}
+    scenario_knowledge = ctx.get("scenarioKnowledge") or []
+    if not score_data and not detail_data:
+        return {
+            "score": None,
+            "scoreLabel": None,
+            "commentary": "評估暫時無法提供，請稍後再試。",
+            "actionItems": [],
+            "knowledgePoints": scenario_knowledge,
+            "bargainingWinRate": None,
+        }
+
+    score = score_data.get("score")
+    score_label = score_data.get("score_label") or score_data.get("scoreLabel")
+    action_items = detail_data.get("action_items", []) or []
+    knowledge_points_raw = detail_data.get("knowledge_points", []) or scenario_knowledge
+    if not isinstance(action_items, list):
+        action_items = [action_items]
+    if not isinstance(knowledge_points_raw, list):
+        knowledge_points_raw = [knowledge_points_raw] if knowledge_points_raw else []
+    bargaining_win_rate = detail_data.get("bargaining_win_rate") if session.get("expects_bargaining") else None
+    if score is None and detail_data:
+        score = detail_data.get("score")
+    if score_label is None and detail_data:
+        score_label = detail_data.get("score_label") or detail_data.get("scoreLabel")
+    if score_label is None:
+        score_label = _score_to_label(score)
+    highlights = detail_data.get("highlights") or []
+    risks = detail_data.get("risks") or detail_data.get("warnings") or []
+    suggestions = detail_data.get("suggestions") or detail_data.get("tips") or detail_data.get("action_items") or []
+    if not isinstance(highlights, list):
+        highlights = [highlights] if highlights else []
+    if not isinstance(risks, list):
+        risks = [risks] if risks else []
+    if not isinstance(suggestions, list):
+        suggestions = [suggestions] if suggestions else []
+
+    context_text = ctx.get("contextText") or ""
+
+    # 使用向量索引将模型返回的知识点名称映射到真实图谱节点名称，过滤掉幻觉
+    raw_candidates = knowledge_points_raw or scenario_knowledge or []
+    LOGGER.info("LLM knowledge_points (raw): %s", raw_candidates)
+    grounded_names: List[str] = []
+    match_debug: List[Dict[str, object]] = []
+    for kp in raw_candidates:
+        if isinstance(kp, dict):
+            candidate = kp.get("name") or kp.get("label") or kp.get("title") or ""
+        else:
+            candidate = str(kp) if kp is not None else ""
+        linked, score_link, best_name = rag_matcher.link_knowledge(candidate, return_score=True)
+        match_debug.append(
+            {
+                "raw": candidate,
+                "bestCandidate": best_name or "",
+                "score": float(score_link or 0.0),
+                "matched": linked or "",
+            }
+        )
+        if linked and linked not in grounded_names:
+            grounded_names.append(linked)
+    if not grounded_names and raw_candidates:
+        grounded_names = _normalize_names(raw_candidates)
+    if match_debug:
+        LOGGER.info("Knowledge grounding results: %s", match_debug)
+
+    matched = _match_to_existing_knowledge(
+        grounded_names,
+        limit=8,
+        use_rag=True,
+        context_text=context_text,
+        section_id=session.get("section_id"),
+        chapter_id=session.get("chapter_id"),
+        scenario_hint=scenario,
+    )
+    knowledge_points = matched.get("flat", [])
+    # 注入 lessonId 便于前端跳转/图谱高亮
+    for kp in knowledge_points:
+        lessons = scenario.get("lessons") or []
+        if not kp.get("lessonId") and lessons:
+            kp["lessonId"] = lessons[0].get("id") if isinstance(lessons[0], dict) else lessons[0]
+
+    return {
+        "score": score,
+        "scoreLabel": score_label,
+        "commentary": (detail_data.get("commentary") or detail_data.get("comment") or ""),
+        "actionItems": action_items,
+        "knowledgePoints": knowledge_points,
+        "knowledgePointsGrouped": matched.get("grouped", {}),
+        "bargainingWinRate": bargaining_win_rate,
+        "highlights": highlights,
+        "risks": risks,
+        "suggestions": suggestions,
+        "debug": {
+            "rawScore": raw_score_response,
+            "rawDetail": raw_detail_response,
+            "parsedScore": score_data,
+            "parsedDetail": detail_data,
+        },
+    }
 
 
 def _normalize_names(candidates: Iterable[object]) -> List[str]:
@@ -248,182 +507,22 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
             "bargainingWinRate": None,
         }
 
-    scenario = session.get("scenario", {})
-    scenario_knowledge = scenario.get("knowledge_points", []) or []
-    history_rows = database.get_messages(session_id)
-    transcript_history = [
-        {"role": row["role"], "content": row["content"]} for row in history_rows
-    ]
-    last_user = next((row["content"] for row in reversed(history_rows) if row["role"] == "user"), "")
-    last_ai = next((row["content"] for row in reversed(history_rows) if row["role"] == "assistant"), "")
-    transcript = build_transcript(transcript_history, scenario)
-    evaluation_prompt = session.get("evaluation_prompt", "")
-    scenario_mode = (scenario or {}).get("mode") or ""
-    if scenario_mode == "email":
-        evaluation_prompt = f"{evaluation_prompt}\n\n[Email Mode Focus]\n- 请优先评估邮件格式规范（Subject/Salutation/Closing/Signature）。\n- 检查正文逻辑、礼貌度与条款完整性。\n- 简明指出格式缺失或不当之处。"
+    ctx = prepare_evaluation_context(session_id, session)
 
-    base_messages = [
-        {"role": "system", "content": str(evaluation_prompt)},
-        {"role": "user", "content": transcript},
-    ]
+    raw_score_response: Optional[str]
+    score_data, raw_score_response = compute_score(ctx, score_key)
 
-    # 1) 分数通道：只返回 score/score_label
-    raw_score_response: Optional[str] = None
-    score_data: Dict[str, object] = {}
-    if score_key:
-        score_messages = [
-            {**base_messages[0], "content": f"{base_messages[0]['content']}\n\n[Policy]\n- 你是严格的评分器，只能返回单个 JSON 对象。\n- 禁止返回 Markdown 代码块、前缀、解释或寒暄。\n- 只允许返回 score 一个字段，取值 0-100 的数字。"},
-            {
-                "role": "user",
-                "content": (
-                    f"{transcript}\n\n"
-                    "[Scoring Only]\n"
-                    "- 仅计算整体得分 (0-100)。\n"
-                    '- 仅以 JSON 返回：{"score": 75}。\n'
-                    "- 不要使用 ```json ``` 代码块或额外文本，不要添加其他字段。"
-                ),
-            },
-        ]
-        try:
-            raw_score = complete_chat(score_key, score_messages, temperature=0.05)
-            raw_score_response = raw_score
-            clean_score = raw_score.replace("```json", "").replace("```", "").strip()
-            score_data = extract_json_block(clean_score) or {}
-        except Exception:
-            LOGGER.exception("Score channel failed")
+    raw_detail_response: Optional[str]
+    detail_data, raw_detail_response = compute_detail(ctx, detail_key)
 
-    # 2) 详情通道：评语/行动项/知识点/胜率，不返回分数
-    raw_detail_response: Optional[str] = None
-    detail_data: Dict[str, object] = {}
-    if detail_key:
-        detail_prompt = (
-            f"{evaluation_prompt}\n\n"
-            "[Detail Only]\n"
-            "- 请输出评语、行动项、knowledge_points、bargaining_win_rate（如有）。\n"
-            "- knowledge_points 的 name/label 必须使用中文图谱名称，可附 summary，避免自定义 category。\n"
-            "- 不要返回 score 或 score_label。\n"
-            "- 输出 JSON。"
-        )
-        detail_messages = [
-            {"role": "system", "content": detail_prompt},
-            {"role": "user", "content": transcript},
-        ]
-        try:
-            raw_detail = complete_chat(detail_key, detail_messages, temperature=0.2)
-            raw_detail_response = raw_detail
-            detail_data = extract_json_block(raw_detail) or {}
-        except Exception:
-            LOGGER.exception("Detail channel failed")
-
-    if not score_data and not detail_data:
-        return {
-            "score": None,
-            "scoreLabel": None,
-            "commentary": "評估暫時無法提供，請稍後再試。",
-            "actionItems": [],
-            "knowledgePoints": scenario_knowledge,
-            "bargainingWinRate": None,
-        }
-
-    score = score_data.get("score")
-    score_label = score_data.get("score_label") or score_data.get("scoreLabel")
-    action_items = detail_data.get("action_items", []) or []
-    knowledge_points_raw = detail_data.get("knowledge_points", []) or scenario_knowledge
-    if not isinstance(action_items, list):
-        action_items = [action_items]
-    if not isinstance(knowledge_points_raw, list):
-        knowledge_points_raw = [knowledge_points_raw] if knowledge_points_raw else []
-    bargaining_win_rate = detail_data.get("bargaining_win_rate") if session.get("expects_bargaining") else None
-    if score is None and detail_data:
-        score = detail_data.get("score")
-    if score_label is None and detail_data:
-        score_label = detail_data.get("score_label") or detail_data.get("scoreLabel")
-    # 本地生成等级，避免依赖模型
-    if score_label is None:
-        score_label = _score_to_label(score)
-    highlights = detail_data.get("highlights") or []
-    risks = detail_data.get("risks") or detail_data.get("warnings") or []
-    suggestions = detail_data.get("suggestions") or detail_data.get("tips") or detail_data.get("action_items") or []
-    if not isinstance(highlights, list):
-        highlights = [highlights] if highlights else []
-    if not isinstance(risks, list):
-        risks = [risks] if risks else []
-    if not isinstance(suggestions, list):
-        suggestions = [suggestions] if suggestions else []
-
-    # 将模型返回的知识点映射到真实图谱节点，并按类型分组
-    scenario_text = scenario.get("scenario_summary") or scenario.get("description") or scenario.get("scenario_title") or ""
-    context_text = "\n".join(
-        filter(
-            None,
-            [
-                f"user: {last_user}" if last_user else "",
-                f"assistant: {last_ai}" if last_ai else "",
-                scenario_text,
-            ],
-        )
+    result = build_evaluation_result(
+        ctx,
+        session,
+        score_data,
+        detail_data,
+        raw_score_response,
+        raw_detail_response,
     )
-
-    # 使用向量索引将模型返回的知识点名称映射到真实图谱节点名称，过滤掉幻觉
-    raw_candidates = knowledge_points_raw or scenario_knowledge or []
-    LOGGER.info("LLM knowledge_points (raw): %s", raw_candidates)
-    grounded_names: List[str] = []
-    match_debug: List[Dict[str, object]] = []
-    for kp in raw_candidates:
-        if isinstance(kp, dict):
-            candidate = kp.get("name") or kp.get("label") or kp.get("title") or ""
-        else:
-            candidate = str(kp) if kp is not None else ""
-        linked, score, best_name = rag_matcher.link_knowledge(candidate, return_score=True)
-        match_debug.append(
-            {
-                "raw": candidate,
-                "bestCandidate": best_name or "",
-                "score": float(score or 0.0),
-                "matched": linked or "",
-            }
-        )
-        if linked and linked not in grounded_names:
-            grounded_names.append(linked)
-    if not grounded_names and raw_candidates:
-        grounded_names = _normalize_names(raw_candidates)
-    if match_debug:
-        LOGGER.info("Knowledge grounding results: %s", match_debug)
-
-    matched = _match_to_existing_knowledge(
-        grounded_names,
-        limit=8,
-        use_rag=True,
-        context_text=context_text,
-        section_id=session.get("section_id"),
-        chapter_id=session.get("chapter_id"),
-        scenario_hint=scenario,
-    )
-    knowledge_points = matched.get("flat", [])
-    # 注入 lessonId 便于前端跳转/图谱高亮
-    for kp in knowledge_points:
-        lessons = scenario.get("lessons") or []
-        if not kp.get("lessonId") and lessons:
-            kp["lessonId"] = lessons[0].get("id") if isinstance(lessons[0], dict) else lessons[0]
-
-    result = {
-        "score": score,
-        "scoreLabel": score_label,
-        "commentary": (detail_data.get("commentary") or detail_data.get("comment") or ""),
-        "actionItems": action_items,
-        "knowledgePoints": knowledge_points,
-        "knowledgePointsGrouped": matched.get("grouped", {}),  # 便于前端分栏展示
-        "bargainingWinRate": bargaining_win_rate,
-        "highlights": highlights,
-        "risks": risks,
-        "suggestions": suggestions,
-        "debug": {
-            "rawScore": raw_score_response,
-            "rawDetail": raw_detail_response,
-            "parsedScore": score_data,
-            "parsedDetail": detail_data,
-        },
-    }
 
     database.save_evaluation(session_id, result)
     if session.get("assignment_id"):
