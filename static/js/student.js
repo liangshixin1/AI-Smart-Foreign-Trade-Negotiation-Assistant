@@ -453,11 +453,11 @@ function updateScoreRing(value, color) {
 let evaluationSpinTimer = null;
 function startEvaluationSpin() {
   stopEvaluationSpin();
-  evaluationSpinValue = 0;
-  updateScoreRing(0, "#cbd5e1");
+  evaluationSpinValue = 100;
+  updateScoreRing(100, "#cbd5e1");
   evaluationSpinTimer = setInterval(() => {
-    const step = 8 + Math.random() * 2; // 8 ~ 10
-    evaluationSpinValue = Math.min(100, evaluationSpinValue + step);
+    const step = 2 + Math.random() * 1; // 2 ~ 3
+    evaluationSpinValue = Math.max(0, evaluationSpinValue - step);
     const color =
       evaluationSpinValue >= 80 ? "#16a34a" : evaluationSpinValue >= 60 ? "#ca8a04" : "#ef4444";
     animateEvaluationScore(evaluationSpinValue, { duration: 500 });
@@ -3441,37 +3441,9 @@ async function sendMessageWithContent(message, options = {}) {
       renderEvaluation(evaluationResult);
     } else if (eventType === "evaluation") {
       evaluationResult = payload.evaluation || null;
-      if (evaluationResult && evaluationResult.debug) {
-        console.info(
-          "[EvaluationDebug][ScoreKey]",
-          evaluationResult.debug.rawScore || "(no score response)"
-        );
-        console.info(
-          "[EvaluationDebug][DetailKey]",
-          evaluationResult.debug.rawDetail || "(no detail response)"
-        );
-        console.info("[EvaluationDebug][Parsed]", {
-          score: evaluationResult.debug.parsedScore,
-          detail: evaluationResult.debug.parsedDetail,
-        });
-      }
       renderEvaluation(evaluationResult);
     } else if (eventType === "detail") {
       evaluationResult = payload.evaluation || null;
-      if (evaluationResult && evaluationResult.debug) {
-        console.info(
-          "[EvaluationDebug][ScoreKey]",
-          evaluationResult.debug.rawScore || "(no score response)"
-        );
-        console.info(
-          "[EvaluationDebug][DetailKey]",
-          evaluationResult.debug.rawDetail || "(no detail response)"
-        );
-        console.info("[EvaluationDebug][Parsed]", {
-          score: evaluationResult.debug.parsedScore,
-          detail: evaluationResult.debug.parsedDetail,
-        });
-      }
       renderEvaluation(evaluationResult);
     } else if (eventType === "error") {
       streamError = new Error(payload.error || "对话失败");
@@ -3554,7 +3526,6 @@ function renderEvaluation(evaluation) {
     return;
   }
 
-  // 若模型返回的调试数据包含解析结果，先行回填，确保分数和要点即时可用。
   const parsedScore = evaluation.debug && evaluation.debug.parsedScore ? evaluation.debug.parsedScore : {};
   const parsedDetail = evaluation.debug && evaluation.debug.parsedDetail ? evaluation.debug.parsedDetail : {};
   if ((evaluation.score === null || evaluation.score === undefined || evaluation.score === "") && parsedScore.score !== undefined) {

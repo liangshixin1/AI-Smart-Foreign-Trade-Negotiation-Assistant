@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import json
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import logging
 import database
@@ -265,12 +265,6 @@ def build_evaluation_result(
         scenario_hint=scenario,
     )
     knowledge_points = matched.get("flat", [])
-    # 注入 lessonId 便于前端跳转/图谱高亮
-    for kp in knowledge_points:
-        lessons = scenario.get("lessons") or []
-        if not kp.get("lessonId") and lessons:
-            kp["lessonId"] = lessons[0].get("id") if isinstance(lessons[0], dict) else lessons[0]
-
     return {
         "score": score,
         "scoreLabel": score_label,
@@ -343,27 +337,8 @@ def _match_to_existing_knowledge(
         grouped = {"KnowledgePoint": minimal, "Skill": [], "Terminology": []}
         return {"grouped": grouped, "flat": minimal}
 
-    # 候选集优先使用当前关卡/章节/场景范围，减少向量计算规模
-    scoped_names: Set[str] = set()
-    if section_id:
-        try:
-            practice_recs = graph_service.get_practice_knowledge_recommendations(section_id)
-            scoped_names.update(practice_recs.get("existing", []))
-            scoped_names.update(practice_recs.get("recommended", []))
-        except Exception:
-            pass
-    if scenario_hint:
-        scoped_names.update(_normalize_names(scenario_hint.get("knowledge_points") or []))
-    if chapter_id:
-        # 章级别暂用 practice 预设 + 全局，避免额外查询
-        pass
-    scoped_candidates = (
-        [node for node in all_candidates if (node.get("name") or "") in scoped_names]
-        if scoped_names
-        else all_candidates
-    )
-    # 限制向量候选数量，按名称排序保持稳定
-    scoped_candidates = sorted(scoped_candidates, key=lambda n: n.get("name", ""))[:400]
+    # 不再按关卡/场景收窄候选，统一使用全量知识点集合
+    scoped_candidates = sorted(all_candidates, key=lambda n: n.get("name", ""))[:400]
 
     name_to_node: Dict[str, Dict[str, object]] = {}
     lower_index: Dict[str, str] = {}
@@ -409,9 +384,6 @@ def _match_to_existing_knowledge(
     # 轻量模糊匹配（仅少量未命中才启用，避免性能开销）
     if use_rag and unmatched:
         fuzzy_candidates = scoped_candidates
-        if scoped_names and len(unmatched) and scoped_candidates != all_candidates:
-            # 初筛未命中时扩大候选范围，避免因范围过窄遗漏真实节点
-            fuzzy_candidates = sorted(all_candidates, key=lambda n: n.get("name", ""))[:400]
         cards = []
         candidate_texts: List[str] = []
         card_names: List[str] = []
