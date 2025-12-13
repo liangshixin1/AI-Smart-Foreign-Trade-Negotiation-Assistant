@@ -458,7 +458,10 @@ def chat():
                 }
             latest_evaluation = database.get_latest_evaluation(session_id)
             if latest_evaluation:
-                evaluation = latest_evaluation
+                merged = {**latest_evaluation, **evaluation}
+                if evaluation.get("debug"):
+                    merged["debug"] = evaluation.get("debug")
+                evaluation = merged
 
             reply_payload = json.dumps({"reply": ai_reply})
             yield f"event: summary\ndata: {reply_payload}\n\n"
@@ -495,7 +498,10 @@ def chat():
         }
     latest_evaluation = database.get_latest_evaluation(session_id)
     if latest_evaluation:
-        evaluation = latest_evaluation
+        merged = {**latest_evaluation, **evaluation}
+        if evaluation.get("debug"):
+            merged["debug"] = evaluation.get("debug")
+        evaluation = merged
 
     return jsonify({"reply": ai_reply, "evaluation": evaluation})
 

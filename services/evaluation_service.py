@@ -15,6 +15,23 @@ from utils.validators import extract_json_block
 LOGGER = logging.getLogger(__name__)
 
 
+def _score_to_label(score: Optional[object]) -> Optional[str]:
+    """Map numeric score to a short label locally."""
+    try:
+        val = float(score) if score is not None else None
+    except Exception:
+        return None
+    if val is None:
+        return None
+    if val >= 90:
+        return "Excellent"
+    if val >= 75:
+        return "Good"
+    if val >= 60:
+        return "Adequate"
+    return "Needs Improvement"
+
+
 def _normalize_names(candidates: Iterable[object]) -> List[str]:
     normalized: List[str] = []
     for item in candidates or []:
@@ -61,7 +78,7 @@ def _match_to_existing_knowledge(
         all_candidates = graph_service.list_knowledge_points()
     except Exception:
         minimal = [
-            {"label": name, "name": name, "category": "KnowledgePoint", "matchScore": 0.0}
+            {"label": name, "name": name, "summary": "", "category": "KnowledgePoint", "matchScore": 1.0}
             for name in normalized[:limit]
         ]
         grouped = {"KnowledgePoint": minimal, "Skill": [], "Terminology": []}
@@ -132,10 +149,14 @@ def _match_to_existing_knowledge(
 
     # 轻量模糊匹配（仅少量未命中才启用，避免性能开销）
     if use_rag and unmatched:
+        fuzzy_candidates = scoped_candidates
+        if scoped_names and len(unmatched) and scoped_candidates != all_candidates:
+            # 初筛未命中时扩大候选范围，避免因范围过窄遗漏真实节点
+            fuzzy_candidates = sorted(all_candidates, key=lambda n: n.get("name", ""))[:400]
         cards = []
         candidate_texts: List[str] = []
         card_names: List[str] = []
-        for node in scoped_candidates:
+        for node in fuzzy_candidates:
             text_parts = [
                 node.get("name") or "",
                 node.get("summary") or "",
@@ -247,35 +268,39 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     ]
 
     # 1) 分数通道：只返回 score/score_label
+    raw_score_response: Optional[str] = None
     score_data: Dict[str, object] = {}
     if score_key:
         score_messages = [
-            base_messages[0],
+            {**base_messages[0], "content": f"{base_messages[0]['content']}\n\n[Policy]\n- 你是严格的评分器，只能返回单个 JSON 对象。\n- 禁止返回 Markdown 代码块、前缀、解释或寒暄。\n- 只允许返回 score 一个字段，取值 0-100 的数字。"},
             {
                 "role": "user",
                 "content": (
                     f"{transcript}\n\n"
                     "[Scoring Only]\n"
                     "- 仅计算整体得分 (0-100)。\n"
-                    "- 可选返回 score_label 对分数的简短评级。\n"
-                    '- 仅以 JSON 返回：{\"score\": <number>, \"score_label\": \"...\"}。\n'
-                    "- 不要返回其他字段或解释。"
+                    '- 仅以 JSON 返回：{"score": 75}。\n'
+                    "- 不要使用 ```json ``` 代码块或额外文本，不要添加其他字段。"
                 ),
             },
         ]
         try:
-            raw_score = complete_chat(score_key, score_messages, temperature=0.1)
-            score_data = extract_json_block(raw_score) or {}
+            raw_score = complete_chat(score_key, score_messages, temperature=0.05)
+            raw_score_response = raw_score
+            clean_score = raw_score.replace("```json", "").replace("```", "").strip()
+            score_data = extract_json_block(clean_score) or {}
         except Exception:
             LOGGER.exception("Score channel failed")
 
     # 2) 详情通道：评语/行动项/知识点/胜率，不返回分数
+    raw_detail_response: Optional[str] = None
     detail_data: Dict[str, object] = {}
     if detail_key:
         detail_prompt = (
             f"{evaluation_prompt}\n\n"
             "[Detail Only]\n"
             "- 请输出评语、行动项、knowledge_points、bargaining_win_rate（如有）。\n"
+            "- knowledge_points 的 name/label 必须使用中文图谱名称，可附 summary，避免自定义 category。\n"
             "- 不要返回 score 或 score_label。\n"
             "- 输出 JSON。"
         )
@@ -285,6 +310,7 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         ]
         try:
             raw_detail = complete_chat(detail_key, detail_messages, temperature=0.2)
+            raw_detail_response = raw_detail
             detail_data = extract_json_block(raw_detail) or {}
         except Exception:
             LOGGER.exception("Detail channel failed")
@@ -312,6 +338,18 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         score = detail_data.get("score")
     if score_label is None and detail_data:
         score_label = detail_data.get("score_label") or detail_data.get("scoreLabel")
+    # 本地生成等级，避免依赖模型
+    if score_label is None:
+        score_label = _score_to_label(score)
+    highlights = detail_data.get("highlights") or []
+    risks = detail_data.get("risks") or detail_data.get("warnings") or []
+    suggestions = detail_data.get("suggestions") or detail_data.get("tips") or detail_data.get("action_items") or []
+    if not isinstance(highlights, list):
+        highlights = [highlights] if highlights else []
+    if not isinstance(risks, list):
+        risks = [risks] if risks else []
+    if not isinstance(suggestions, list):
+        suggestions = [suggestions] if suggestions else []
 
     # 将模型返回的知识点映射到真实图谱节点，并按类型分组
     scenario_text = scenario.get("scenario_summary") or scenario.get("description") or scenario.get("scenario_title") or ""
@@ -347,6 +385,8 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         )
         if linked and linked not in grounded_names:
             grounded_names.append(linked)
+    if not grounded_names and raw_candidates:
+        grounded_names = _normalize_names(raw_candidates)
     if match_debug:
         LOGGER.info("Knowledge grounding results: %s", match_debug)
 
@@ -374,6 +414,15 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
         "knowledgePoints": knowledge_points,
         "knowledgePointsGrouped": matched.get("grouped", {}),  # 便于前端分栏展示
         "bargainingWinRate": bargaining_win_rate,
+        "highlights": highlights,
+        "risks": risks,
+        "suggestions": suggestions,
+        "debug": {
+            "rawScore": raw_score_response,
+            "rawDetail": raw_detail_response,
+            "parsedScore": score_data,
+            "parsedDetail": detail_data,
+        },
     }
 
     database.save_evaluation(session_id, result)

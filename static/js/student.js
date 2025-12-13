@@ -3524,6 +3524,30 @@ function renderEvaluation(evaluation) {
     return;
   }
 
+  // 若模型返回的调试数据包含解析结果，先行回填，确保分数和要点即时可用。
+  const parsedScore = evaluation.debug && evaluation.debug.parsedScore ? evaluation.debug.parsedScore : {};
+  const parsedDetail = evaluation.debug && evaluation.debug.parsedDetail ? evaluation.debug.parsedDetail : {};
+  if ((evaluation.score === null || evaluation.score === undefined || evaluation.score === "") && parsedScore.score !== undefined) {
+    evaluation.score = parsedScore.score;
+  }
+  if ((!evaluation.scoreLabel || evaluation.scoreLabel === "") && parsedScore.score_label) {
+    evaluation.scoreLabel = parsedScore.score_label;
+  }
+  if ((!evaluation.knowledgePoints || evaluation.knowledgePoints.length === 0) && (parsedDetail.knowledge_points || parsedScore.knowledge_points)) {
+    const fallbackKp = parsedDetail.knowledge_points || parsedScore.knowledge_points || [];
+    evaluation.knowledgePoints = Array.isArray(fallbackKp) ? fallbackKp : [fallbackKp];
+  }
+  if ((!evaluation.highlights || evaluation.highlights.length === 0) && parsedDetail.highlights) {
+    evaluation.highlights = parsedDetail.highlights;
+  }
+  if ((!evaluation.risks || evaluation.risks.length === 0) && parsedDetail.risks) {
+    evaluation.risks = parsedDetail.risks;
+  }
+  if ((!evaluation.suggestions || evaluation.suggestions.length === 0) && parsedDetail.suggestions) {
+    evaluation.suggestions = parsedDetail.suggestions;
+  }
+  console.info("[EvaluationDebug][ResolvedEvaluation]", evaluation);
+
   const hasScore = evaluation.score !== null && evaluation.score !== undefined && evaluation.score !== "";
   const hasWinRate =
     evaluation.bargainingWinRate !== null &&
