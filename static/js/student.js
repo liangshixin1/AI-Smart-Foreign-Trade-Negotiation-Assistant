@@ -3761,7 +3761,7 @@ async function renderKnowledgePeekGraph(payload) {
   if (!knowledgePeekGraph) return;
   if (knowledgePeekGraphStatus) knowledgePeekGraphStatus.textContent = "加载图谱...";
   const highlight = payload.name || "";
-  const lessonId = payload.lessonId || state.theory?.selectedLessonId || null;
+  const lessonId = payload.lessonId || null;
 
   const renderSimple = () => {
     if (typeof G6 === "undefined") {
