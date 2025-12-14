@@ -110,7 +110,7 @@ def transcribe_audio():
 class _StreamingCallback(RecognitionCallback):
     """流式回调：将增量结果推回前端 websocket。"""
 
-    def __init__(self, ws: Server) -> None:
+    def __init__(self, ws) -> None:
         self.ws = ws
 
     def on_open(self) -> None:
@@ -161,7 +161,9 @@ def asr_stream(ws):
         ws.close()
         return
     dashscope.api_key = api_key
-    dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    dashscope.base_websocket_api_url = os.getenv(
+        "DASHSCOPE_WS_URL", "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    )
 
     callback = _StreamingCallback(ws)
     recognition = Recognition(
@@ -174,6 +176,7 @@ def asr_stream(ws):
 
     try:
         recognition.start()
+        ws.send(json.dumps({"event": "asr_log", "message": "recognition started"}))
         while True:
             frame = ws.receive()
             if frame is None:
@@ -181,7 +184,23 @@ def asr_stream(ws):
             if isinstance(frame, str) and frame.strip().upper() == "__STOP__":
                 break
             if isinstance(frame, (bytes, bytearray)):
+                try:
+                    ws.send(json.dumps({"event": "asr_log", "message": f"recv {len(frame)} bytes"}))
+                except Exception:
+                    pass
                 recognition.send_audio_frame(frame)
+            else:
+                try:
+                    ws.send(
+                        json.dumps(
+                            {
+                                "event": "asr_log",
+                                "message": f"unexpected frame type {type(frame)}",
+                            }
+                        )
+                    )
+                except Exception:
+                    pass
         recognition.stop()
     except Exception as exc:  # pragma: no cover
         try:

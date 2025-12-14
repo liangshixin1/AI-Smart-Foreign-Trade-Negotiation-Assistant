@@ -2367,11 +2367,12 @@ function resetEvaluation() {
 }
 
 // ========== 语音输入（录音 -> 后端转写） ==========
-let mediaRecorder = null;
-let recordedChunks = [];
 let asrSocket = null;
 let asrStreaming = false;
 let asrBuffer = "";
+let asrAudioContext = null;
+let asrProcessor = null;
+let asrStream = null;
 
 async function startVoiceRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2379,16 +2380,32 @@ async function startVoiceRecording() {
     return;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    asrStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const wsUrl = `${protocol}://${window.location.host}/api/asr/stream`;
     asrSocket = new WebSocket(wsUrl);
     asrStreaming = true;
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    asrSocket.binaryType = "arraybuffer";
 
     asrSocket.onopen = () => {
-      mediaRecorder.start(200);
+      console.debug("[ASR] WS open");
+      // 建立音频处理管线：采样 → 重采样 → PCM int16 → WS
+      asrAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (asrAudioContext.state === "suspended") {
+        asrAudioContext.resume();
+      }
+      const source = asrAudioContext.createMediaStreamSource(asrStream);
+      asrProcessor = asrAudioContext.createScriptProcessor(4096, 1, 1);
+      asrProcessor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        const pcmBuffer = floatToPcm16k(input, asrAudioContext.sampleRate);
+        if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
+          console.debug("[ASR] send bytes", pcmBuffer.byteLength);
+          asrSocket.send(pcmBuffer);
+        }
+      };
+      source.connect(asrProcessor);
+      asrProcessor.connect(asrAudioContext.destination);
       if (chatVoiceBtn) {
         chatVoiceBtn.classList.add("border-emerald-400", "text-emerald-600");
         chatVoiceBtn.textContent = "⏹";
@@ -2396,14 +2413,13 @@ async function startVoiceRecording() {
     };
 
     asrSocket.onmessage = (event) => {
+      console.debug("[ASR] recv", event.data);
       try {
         const payload = JSON.parse(event.data);
         if (payload.event === "asr_partial" && payload.text) {
-          const base = chatInputEl ? chatInputEl.value.split("\n").slice(0, -1).join("\n") : "";
           asrBuffer = payload.text;
           if (chatInputEl) {
-            const prefix = base ? `${base}\n` : "";
-            chatInputEl.value = `${prefix}${asrBuffer}`;
+            chatInputEl.value = asrBuffer;
           }
         }
         if (payload.event === "asr_complete") {
@@ -2418,39 +2434,18 @@ async function startVoiceRecording() {
     };
 
     asrSocket.onerror = () => {
+      console.error("[ASR] WS error");
       alert("语音通道连接失败");
       stopVoiceRecording();
     };
 
     asrSocket.onclose = () => {
+      console.debug("[ASR] WS closed");
       asrStreaming = false;
       if (chatVoiceBtn) {
         chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
         chatVoiceBtn.textContent = "🎤";
       }
-    };
-
-    mediaRecorder.ondataavailable = async (e) => {
-      if (e.data && e.data.size > 0 && asrSocket && asrSocket.readyState === WebSocket.OPEN) {
-        try {
-          const pcm = await convertToPcm16k(e.data);
-          asrSocket.send(pcm);
-        } catch (err) {
-          console.error("[ASR] 发送音频失败", err);
-        }
-      }
-    };
-
-    mediaRecorder.onstop = () => {
-      if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
-        try {
-          asrSocket.send("__STOP__");
-          asrSocket.close();
-        } catch (err) {
-          console.error("[ASR] 关闭 WS 失败", err);
-        }
-      }
-      stream.getTracks().forEach((t) => t.stop());
     };
   } catch (err) {
     console.error("[ASR] 无法开始录音", err);
@@ -2459,62 +2454,65 @@ async function startVoiceRecording() {
 }
 
 function stopVoiceRecording() {
-  if (mediaRecorder) {
-    mediaRecorder.stop();
-    mediaRecorder = null;
-    if (chatVoiceBtn) {
-      chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
-      chatVoiceBtn.textContent = "🎤";
+  if (asrProcessor) {
+    asrProcessor.disconnect();
+    asrProcessor = null;
+  }
+  if (asrAudioContext) {
+    asrAudioContext.close();
+    asrAudioContext = null;
+  }
+  if (asrStream) {
+    asrStream.getTracks().forEach((t) => t.stop());
+    asrStream = null;
+  }
+  if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
+    try {
+      asrSocket.send("__STOP__");
+      asrSocket.close();
+    } catch (err) {
+      console.error("[ASR] 关闭 WS 失败", err);
     }
+  }
+  asrSocket = null;
+  asrStreaming = false;
+  if (chatVoiceBtn) {
+    chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
+    chatVoiceBtn.textContent = "🎤";
   }
 }
 
 function toggleVoiceRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
+  if (asrStreaming) {
     stopVoiceRecording();
   } else {
     startVoiceRecording();
   }
 }
 
-// 将 webm/opus blob 转为 PCM 16k 单声道 int16 ArrayBuffer
-async function convertToPcm16k(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const decoded = await audioCtx.decodeAudioData(arrayBuffer);
-  const channelData = decoded.numberOfChannels > 1 ? mixToMono(decoded) : decoded.getChannelData(0);
-  // 重采样到 16k
+// 将 float32 数据重采样为 PCM16 16k
+function floatToPcm16k(float32Array, sourceSampleRate) {
   const targetRate = 16000;
-  const offlineCtx = new OfflineAudioContext(1, Math.ceil((channelData.length * targetRate) / decoded.sampleRate), targetRate);
-  const buffer = offlineCtx.createBuffer(1, channelData.length, decoded.sampleRate);
-  buffer.copyToChannel(channelData, 0);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(offlineCtx.destination);
-  source.start(0);
-  const rendered = await offlineCtx.startRendering();
-  const resampled = rendered.getChannelData(0);
-  const pcm = new Int16Array(resampled.length);
-  for (let i = 0; i < resampled.length; i++) {
-    const s = Math.max(-1, Math.min(1, resampled[i]));
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  const sampleRateRatio = sourceSampleRate / targetRate;
+  const newLength = Math.round(float32Array.length / sampleRateRatio);
+  const pcm = new Int16Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < newLength) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < float32Array.length; i++) {
+      accum += float32Array[i];
+      count++;
+    }
+    const sample = accum / count;
+    const s = Math.max(-1, Math.min(1, sample));
+    pcm[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
   }
   return pcm.buffer;
-}
-
-function mixToMono(decodedBuffer) {
-  const len = decodedBuffer.length;
-  const tmp = new Float32Array(len);
-  for (let c = 0; c < decodedBuffer.numberOfChannels; c++) {
-    const data = decodedBuffer.getChannelData(c);
-    for (let i = 0; i < len; i++) {
-      tmp[i] += data[i];
-    }
-  }
-  for (let i = 0; i < len; i++) {
-    tmp[i] /= decodedBuffer.numberOfChannels;
-  }
-  return tmp;
 }
 
 // 通用列表渲染，支持有序/无序模式。
