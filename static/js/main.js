@@ -27,6 +27,10 @@ if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
 }
 
+if (chatVoiceBtn) {
+  chatVoiceBtn.addEventListener("click", toggleVoiceRecording);
+}
+
 if (chatInputEl) {
   chatInputEl.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {

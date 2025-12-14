@@ -17,6 +17,7 @@ from routes import scenarios as scenario_routes
 from routes import theory as theory_routes
 from routes import graph as graph_routes
 from routes import knowledge as knowledge_routes
+from routes import asr as asr_routes
 
 
 def create_app() -> Flask:
@@ -42,6 +43,9 @@ def create_app() -> Flask:
     app.register_blueprint(theory_routes.bp)
     app.register_blueprint(graph_routes.bp)
     app.register_blueprint(knowledge_routes.bp)
+    app.register_blueprint(asr_routes.bp)
+    # WebSocket 支持（flask-sock）
+    asr_routes.sock.init_app(app)
 
     @app.route("/")
     def index() -> str:

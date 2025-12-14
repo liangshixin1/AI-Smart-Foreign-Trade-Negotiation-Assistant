@@ -250,6 +250,7 @@ const emailPolishBtn = document.getElementById("email-polish");
 const emailCopilotStatus = document.getElementById("email-copilot-status");
 const chatInputPanel = document.getElementById("chat-input-panel");
 const chatInputEl = document.getElementById("chat-input");
+const chatVoiceBtn = document.getElementById("chat-voice-toggle");
 const sendMessageBtn = document.getElementById("send-message");
 const copilotFab = document.getElementById("copilot-fab");
 const copilotPanel = document.getElementById("copilot-panel");
