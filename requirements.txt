@@ -6,3 +6,5 @@ neo4j
 python-docx
 sentence-transformers>=2.6.1
 torch>=2.2.0
+dashscope
+flask-sock

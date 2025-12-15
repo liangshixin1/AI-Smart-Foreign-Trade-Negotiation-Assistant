@@ -3231,21 +3231,45 @@
                     class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
                     placeholder="请输入你的回复，按 Enter 发送"
                   ></textarea>
-                  <button
-                    id="chat-voice-toggle"
-                    class="inline-flex h-[48px] w-[48px] items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-600 shadow-sm transition hover:border-emerald-400 hover:text-emerald-600"
-                    type="button"
-                    title="语音输入"
-                    aria-label="语音输入"
-                  >
-                    🎤
-                  </button>
-                  <button
-                    id="send-message"
-                    class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
-                  >
-                    发送
-                  </button>
+                  <div class="flex flex-col gap-2">
+                    <div class="flex items-center justify-end">
+                      <div class="flex items-center gap-1 rounded-full bg-slate-100 px-1 py-1 text-[11px] font-semibold text-slate-600 shadow-inner">
+                        <button
+                          id="voice-mode-asr"
+                          type="button"
+                          class="rounded-full px-3 py-[6px] transition focus:outline-none"
+                          aria-label="语音转文字"
+                        >
+                          📝 语音转文字
+                        </button>
+                        <button
+                          id="voice-mode-realtime"
+                          type="button"
+                          class="rounded-full px-3 py-[6px] transition focus:outline-none"
+                          aria-label="实时对话"
+                        >
+                          🗣️ 实时对话
+                        </button>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        id="chat-voice-toggle"
+                        class="inline-flex h-[48px] w-[48px] items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-600 shadow-sm transition hover:border-emerald-400 hover:text-emerald-600"
+                        type="button"
+                        title="语音输入"
+                        aria-label="语音输入"
+                      >
+                        🎤
+                      </button>
+                      <button
+                        id="send-message"
+                        class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
+                      >
+                        发送
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <p class="mt-2 text-xs text-slate-400">
                   提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。

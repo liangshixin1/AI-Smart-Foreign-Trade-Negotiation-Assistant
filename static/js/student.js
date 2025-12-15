@@ -2373,6 +2373,135 @@ let asrBuffer = "";
 let asrAudioContext = null;
 let asrProcessor = null;
 let asrStream = null;
+let asrStopping = false;
+let voiceMode = state.voice?.mode || "asr_only"; // asr_only | realtime
+let asrLastVoiceAt = 0;
+
+// ========== TTS 播放队列 ==========
+const ttsQueue = [];
+let ttsPlaying = false;
+let ttsBuffer = "";
+let ttsCurrentAudio = null;
+
+function refreshVoiceModeUI() {
+  if (voiceModeAsrBtn && voiceModeRealtimeBtn) {
+    voiceModeAsrBtn.classList.remove("bg-white", "shadow", "text-slate-800");
+    voiceModeRealtimeBtn.classList.remove("bg-white", "shadow", "text-slate-800");
+    voiceModeAsrBtn.classList.add("text-slate-500");
+    voiceModeRealtimeBtn.classList.add("text-slate-500");
+    const activeBtn = voiceMode === "realtime" ? voiceModeRealtimeBtn : voiceModeAsrBtn;
+    activeBtn.classList.remove("text-slate-500");
+    activeBtn.classList.add("bg-white", "shadow", "text-slate-800");
+  }
+  if (chatVoiceBtn && !asrStreaming) {
+    chatVoiceBtn.classList.remove("border-indigo-300", "text-indigo-600", "border-slate-300", "text-slate-600");
+    if (voiceMode === "realtime") {
+      chatVoiceBtn.classList.add("border-indigo-300", "text-indigo-600");
+    } else {
+      chatVoiceBtn.classList.add("border-slate-300", "text-slate-600");
+    }
+  }
+}
+
+function setVoiceMode(mode) {
+  voiceMode = mode === "realtime" ? "realtime" : "asr_only";
+  if (state.voice) {
+    state.voice.mode = voiceMode;
+  }
+  // 切回纯 ASR 时停止/清空 TTS
+  if (voiceMode === "asr_only") {
+    ttsBuffer = "";
+    ttsQueue.length = 0;
+    if (ttsCurrentAudio) {
+      try {
+        ttsCurrentAudio.pause();
+      } catch (err) {
+        /* ignore */
+      }
+      ttsCurrentAudio = null;
+    }
+    ttsPlaying = false;
+  }
+  refreshVoiceModeUI();
+}
+
+// TTS 队列播放
+function playNextTts() {
+  if (ttsQueue.length === 0) {
+    ttsPlaying = false;
+    ttsCurrentAudio = null;
+    return;
+  }
+  ttsPlaying = true;
+  const url = ttsQueue.shift();
+  const audio = new Audio(url);
+  ttsCurrentAudio = audio;
+  audio.onended = () => {
+    URL.revokeObjectURL(url);
+    ttsCurrentAudio = null;
+    playNextTts();
+  };
+  audio.onerror = () => {
+    URL.revokeObjectURL(url);
+    ttsCurrentAudio = null;
+    playNextTts();
+  };
+  audio.play().catch((err) => {
+    console.warn("[TTS] autoplay blocked", err);
+    ttsCurrentAudio = null;
+    playNextTts();
+  });
+}
+
+async function enqueueTtsSentence(sentence) {
+  const text = (sentence || "").trim();
+  if (!text || voiceMode !== "realtime") return;
+  try {
+    const res = await fetchWithAuth("/api/tts/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      console.warn("[TTS] synthesize failed", res.status);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    ttsQueue.push(url);
+    if (!ttsPlaying) {
+      playNextTts();
+    }
+  } catch (err) {
+    console.warn("[TTS] enqueue error", err);
+  }
+}
+
+function processTtsStream(chunk, isEnd = false) {
+  if (voiceMode !== "realtime") return;
+  if (chunk) {
+    ttsBuffer += chunk;
+  }
+  const sentences = [];
+  const regex = /[^。！？!?]+[。！？!?]/g;
+  let match;
+  while ((match = regex.exec(ttsBuffer)) !== null) {
+    sentences.push(match[0]);
+  }
+  // 移除已提取的部分
+  if (sentences.length > 0) {
+    const consumed = sentences.reduce((sum, s) => sum + s.length, 0);
+    ttsBuffer = ttsBuffer.slice(consumed);
+  }
+  if (isEnd && ttsBuffer.trim()) {
+    sentences.push(ttsBuffer.trim());
+    ttsBuffer = "";
+  }
+  sentences.forEach((s) => enqueueTtsSentence(s));
+}
+
+// 初始化模式样式
+setVoiceMode(voiceMode);
 
 async function startVoiceRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2385,6 +2514,7 @@ async function startVoiceRecording() {
     const wsUrl = `${protocol}://${window.location.host}/api/asr/stream`;
     asrSocket = new WebSocket(wsUrl);
     asrStreaming = true;
+    asrStopping = false;
     asrSocket.binaryType = "arraybuffer";
 
     asrSocket.onopen = () => {
@@ -2396,8 +2526,22 @@ async function startVoiceRecording() {
       }
       const source = asrAudioContext.createMediaStreamSource(asrStream);
       asrProcessor = asrAudioContext.createScriptProcessor(4096, 1, 1);
+      asrLastVoiceAt = Date.now();
       asrProcessor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
+        // 简单静音检测，连续 3 秒低于阈值则自动停录并触发发送
+        let sum = 0;
+        for (let i = 0; i < input.length; i++) {
+          sum += input[i] * input[i];
+        }
+        const rms = Math.sqrt(sum / input.length);
+        const now = Date.now();
+        if (rms > 0.001) {
+          asrLastVoiceAt = now;
+        } else if (now - asrLastVoiceAt > 3000 && asrStreaming && !asrStopping) {
+          stopVoiceRecording();
+          return;
+        }
         const pcmBuffer = floatToPcm16k(input, asrAudioContext.sampleRate);
         if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
           console.debug("[ASR] send bytes", pcmBuffer.byteLength);
@@ -2421,8 +2565,16 @@ async function startVoiceRecording() {
           if (chatInputEl) {
             chatInputEl.value = asrBuffer;
           }
+          if (payload.isEnd && voiceMode === "realtime") {
+            // 句子结束时也可以更新输入框
+            chatInputEl && (chatInputEl.value = asrBuffer);
+          }
         }
         if (payload.event === "asr_complete") {
+          const finalText = (chatInputEl && chatInputEl.value) || asrBuffer || "";
+          if (voiceMode === "realtime" && finalText.trim()) {
+            sendMessage();
+          }
           asrBuffer = "";
         }
         if (payload.event === "asr_error" && payload.error) {
@@ -2435,17 +2587,21 @@ async function startVoiceRecording() {
 
     asrSocket.onerror = () => {
       console.error("[ASR] WS error");
-      alert("语音通道连接失败");
-      stopVoiceRecording();
+      if (!asrStopping) {
+        alert("语音通道连接失败");
+        stopVoiceRecording();
+      }
     };
 
     asrSocket.onclose = () => {
       console.debug("[ASR] WS closed");
       asrStreaming = false;
+      asrStopping = false;
       if (chatVoiceBtn) {
         chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
         chatVoiceBtn.textContent = "🎤";
       }
+      refreshVoiceModeUI();
     };
   } catch (err) {
     console.error("[ASR] 无法开始录音", err);
@@ -2454,6 +2610,7 @@ async function startVoiceRecording() {
 }
 
 function stopVoiceRecording() {
+  asrStopping = true;
   if (asrProcessor) {
     asrProcessor.disconnect();
     asrProcessor = null;
@@ -2480,6 +2637,7 @@ function stopVoiceRecording() {
     chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
     chatVoiceBtn.textContent = "🎤";
   }
+  refreshVoiceModeUI();
 }
 
 function toggleVoiceRecording() {
@@ -3571,11 +3729,13 @@ async function sendMessageWithContent(message, options = {}) {
       if (payload.content) {
         fullReply += payload.content;
         updateMessageContent(assistantIndex, fullReply);
+        processTtsStream(payload.content, false);
       }
     } else if (eventType === "summary") {
       if (payload.reply) {
         fullReply = payload.reply;
         updateMessageContent(assistantIndex, fullReply);
+        processTtsStream(payload.reply, false);
       }
     } else if (eventType === "score") {
       const scoreVal = payload.score;
@@ -3598,6 +3758,7 @@ async function sendMessageWithContent(message, options = {}) {
       streamError = new Error(payload.error || "对话失败");
       shouldTerminate = true;
     } else if (eventType === "done" || eventType === "close") {
+      processTtsStream("", true);
       shouldTerminate = true;
     }
   };

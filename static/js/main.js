@@ -27,6 +27,14 @@ if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
 }
 
+if (voiceModeAsrBtn) {
+  voiceModeAsrBtn.addEventListener("click", () => setVoiceMode("asr_only"));
+}
+
+if (voiceModeRealtimeBtn) {
+  voiceModeRealtimeBtn.addEventListener("click", () => setVoiceMode("realtime"));
+}
+
 if (chatVoiceBtn) {
   chatVoiceBtn.addEventListener("click", toggleVoiceRecording);
 }

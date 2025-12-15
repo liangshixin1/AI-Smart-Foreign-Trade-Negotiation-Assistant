@@ -64,6 +64,9 @@ function createInitialState() {
       signature: "",
     },
     currentScenario: null,
+    voice: {
+      mode: "asr_only", // asr_only | realtime
+    },
   };
 }
 
