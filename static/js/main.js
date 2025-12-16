@@ -27,12 +27,15 @@ if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
 }
 
-if (voiceModeAsrBtn) {
-  voiceModeAsrBtn.addEventListener("click", () => setVoiceMode("asr_only"));
+if (voiceSttBtn) {
+  voiceSttBtn.addEventListener("click", () => {
+    setVoiceMode("asr_only");
+    toggleVoiceRecording();
+  });
 }
 
-if (voiceModeRealtimeBtn) {
-  voiceModeRealtimeBtn.addEventListener("click", () => setVoiceMode("realtime"));
+if (voiceCallBtn) {
+  voiceCallBtn.addEventListener("click", startVoiceCallManually);
 }
 
 if (chatVoiceBtn) {
@@ -133,6 +136,14 @@ if (theoryChallengeAction) {
       levelSelectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   });
+}
+
+if (voiceCallAccept) {
+  voiceCallAccept.addEventListener("click", acceptIncomingCall);
+}
+
+if (voiceCallHangup) {
+  voiceCallHangup.addEventListener("click", hangupVoiceCall);
 }
 
 if (studentPracticeEntryBtn) {

@@ -65,7 +65,10 @@ function createInitialState() {
     },
     currentScenario: null,
     voice: {
-      mode: "asr_only", // asr_only | realtime
+      mode: "asr_only", // asr_only | realtime(call)
+      callActive: false,
+      incoming: false,
+      awaitingListen: false,
     },
   };
 }

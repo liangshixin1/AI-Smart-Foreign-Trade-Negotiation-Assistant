@@ -3231,26 +3231,26 @@
                     class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
                     placeholder="请输入你的回复，按 Enter 发送"
                   ></textarea>
-                  <div class="flex flex-col gap-2">
-                    <div class="flex items-center justify-end">
-                      <div class="flex items-center gap-1 rounded-full bg-slate-100 px-1 py-1 text-[11px] font-semibold text-slate-600 shadow-inner">
-                        <button
-                          id="voice-mode-asr"
-                          type="button"
-                          class="rounded-full px-3 py-[6px] transition focus:outline-none"
-                          aria-label="语音转文字"
-                        >
-                          📝 语音转文字
-                        </button>
-                        <button
-                          id="voice-mode-realtime"
-                          type="button"
-                          class="rounded-full px-3 py-[6px] transition focus:outline-none"
-                          aria-label="实时对话"
-                        >
-                          🗣️ 实时对话
-                        </button>
-                      </div>
+                  <div class="flex flex-col gap-3">
+                    <div class="flex items-center gap-2">
+                      <button
+                        id="voice-stt-btn"
+                        class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
+                        type="button"
+                        aria-label="语音识别"
+                        title="语音识别（转文字）"
+                      >
+                        🎙️ 语音识别
+                      </button>
+                      <button
+                        id="voice-call-btn"
+                        class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
+                        type="button"
+                        aria-label="语音聊天"
+                        title="语音聊天（电话模式）"
+                      >
+                        📞 语音聊天
+                      </button>
                     </div>
                     <div class="flex items-center gap-2">
                       <button
@@ -3274,6 +3274,36 @@
                 <p class="mt-2 text-xs text-slate-400">
                   提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
                 </p>
+              </div>
+              <div
+                id="voice-call-overlay"
+                class="hidden fixed inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm text-white"
+              >
+                <div class="flex flex-col items-center gap-4 rounded-2xl bg-white/10 px-8 py-6 shadow-2xl ring-1 ring-white/20">
+                  <div class="text-sm uppercase tracking-[0.2em] text-slate-200">语音聊天</div>
+                  <div id="voice-call-status" class="text-lg font-semibold">等待接听...</div>
+                  <div class="flex items-center gap-2 text-sm text-slate-200">
+                    <span class="relative inline-flex h-3 w-3">
+                      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75"></span>
+                      <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-400"></span>
+                    </span>
+                    <span id="voice-call-hint">请保持安静，系统正在聆听</span>
+                  </div>
+                  <div class="flex gap-3">
+                    <button
+                      id="voice-call-accept"
+                      class="hidden inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
+                    >
+                      接听
+                    </button>
+                    <button
+                      id="voice-call-hangup"
+                      class="inline-flex items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-500/40 transition hover:bg-rose-600"
+                    >
+                      挂断
+                    </button>
+                  </div>
+                </div>
               </div>
               <div
                 id="email-composer"

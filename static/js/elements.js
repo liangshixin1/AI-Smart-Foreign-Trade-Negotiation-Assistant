@@ -138,6 +138,13 @@ const sectionEditorConversation = document.getElementById("section-editor-conver
 const sectionEditorEvaluation = document.getElementById("section-editor-evaluation");
 const sectionEditorEnvironmentHost = document.getElementById("section-editor-environment-editor");
 const sectionEditorConversationHost = document.getElementById("section-editor-conversation-editor");
+
+// 语音聊天 UI
+const voiceCallOverlay = document.getElementById("voice-call-overlay");
+const voiceCallStatus = document.getElementById("voice-call-status");
+const voiceCallHint = document.getElementById("voice-call-hint");
+const voiceCallAccept = document.getElementById("voice-call-accept");
+const voiceCallHangup = document.getElementById("voice-call-hangup");
 const sectionEditorEvaluationHost = document.getElementById("section-editor-evaluation-editor");
 const sectionEditorBargaining = document.getElementById("section-editor-bargaining");
 const sectionEditorOrder = document.getElementById("section-editor-order");
@@ -250,8 +257,8 @@ const emailPolishBtn = document.getElementById("email-polish");
 const emailCopilotStatus = document.getElementById("email-copilot-status");
 const chatInputPanel = document.getElementById("chat-input-panel");
 const chatInputEl = document.getElementById("chat-input");
-const voiceModeAsrBtn = document.getElementById("voice-mode-asr");
-const voiceModeRealtimeBtn = document.getElementById("voice-mode-realtime");
+const voiceSttBtn = document.getElementById("voice-stt-btn");
+const voiceCallBtn = document.getElementById("voice-call-btn");
 const chatVoiceBtn = document.getElementById("chat-voice-toggle");
 const sendMessageBtn = document.getElementById("send-message");
 const copilotFab = document.getElementById("copilot-fab");

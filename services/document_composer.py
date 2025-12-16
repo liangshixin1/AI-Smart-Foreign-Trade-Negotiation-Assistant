@@ -346,7 +346,7 @@ def _compose_default_opening(scenario: Dict[str, object]) -> str:
     if contains_cjk(ai_company_name):
         ai_company_name = "our company"
 
-    greeting = f"Hello, this is {ai_role} from {ai_company_name}."
+    greeting = f"Hello, this is {ai_role} from {ai_company_name}. I will keep this brief."
 
     student_role = normalize_text(scenario.get("student_role")) or ""
     student_company = scenario.get("student_company") or {}
@@ -363,22 +363,16 @@ def _compose_default_opening(scenario: Dict[str, object]) -> str:
         counterpart_fragments.append(f"at {student_company_name}")
     counterpart_line = ""
     if counterpart_fragments:
-        counterpart_line = (
-            "Thank you for joining me "
-            + ("as " + " ".join(counterpart_fragments))
-            + " to review today's objectives."
-        )
+        counterpart_line = "Thank you for joining me as " + " ".join(counterpart_fragments) + "."
 
     product = scenario.get("product") or {}
     product_name = normalize_text(product.get("name")) or "the current plan"
     if contains_cjk(product_name):
         product_name = "the current plan"
 
-    focus_line = (
-        f"I'd like to start by aligning on {product_name} and any priorities you want to address."
-    )
+    focus_line = f"I'll start with {product_name} and any priorities you want to address."
 
-    closing_line = "I'm ready to begin our discussion in English whenever you are ready."
+    closing_line = "Ready to proceed in English whenever you are ready."
 
     parts = [greeting, counterpart_line, focus_line, closing_line]
     return " ".join(part.strip() for part in parts if part)

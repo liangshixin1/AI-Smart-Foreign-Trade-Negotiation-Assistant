@@ -2378,28 +2378,30 @@ let voiceMode = state.voice?.mode || "asr_only"; // asr_only | realtime
 let asrLastVoiceAt = 0;
 
 // ========== TTS 播放队列 ==========
-const ttsQueue = [];
+const ttsQueue = []; // {seq, url}
 let ttsPlaying = false;
 let ttsBuffer = "";
 let ttsCurrentAudio = null;
+let ttsCursor = 0; // 已处理的文本长度（用于增量分句）
+let ttsSeq = 0; // 送入 TTS 的序号，确保播放顺序
+let ttsChain = Promise.resolve(); // 串行化 TTS 请求，防止乱序返回
+let voiceCallActive = false;
+let voiceIncoming = false;
+let voiceCallAwaitingListen = false;
+let voiceCallOpeningLine = "";
+let voiceDialTimer = null;
+const ringAudio = new Audio("/static/audio/ring.mp3"); // 请将铃声文件放置在 static/audio/ring.mp3
+ringAudio.loop = true;
 
 function refreshVoiceModeUI() {
-  if (voiceModeAsrBtn && voiceModeRealtimeBtn) {
-    voiceModeAsrBtn.classList.remove("bg-white", "shadow", "text-slate-800");
-    voiceModeRealtimeBtn.classList.remove("bg-white", "shadow", "text-slate-800");
-    voiceModeAsrBtn.classList.add("text-slate-500");
-    voiceModeRealtimeBtn.classList.add("text-slate-500");
-    const activeBtn = voiceMode === "realtime" ? voiceModeRealtimeBtn : voiceModeAsrBtn;
-    activeBtn.classList.remove("text-slate-500");
-    activeBtn.classList.add("bg-white", "shadow", "text-slate-800");
-  }
-  if (chatVoiceBtn && !asrStreaming) {
-    chatVoiceBtn.classList.remove("border-indigo-300", "text-indigo-600", "border-slate-300", "text-slate-600");
-    if (voiceMode === "realtime") {
-      chatVoiceBtn.classList.add("border-indigo-300", "text-indigo-600");
-    } else {
-      chatVoiceBtn.classList.add("border-slate-300", "text-slate-600");
-    }
+  if (voiceCallActive && voiceCallOverlay) {
+    voiceCallOverlay.classList.remove("hidden");
+    if (chatInputPanel) chatInputPanel.classList.add("hidden");
+    if (chatBodyEl) chatBodyEl.classList.add("opacity-30", "pointer-events-none");
+  } else {
+    if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
+    if (chatInputPanel) chatInputPanel.classList.remove("hidden");
+    if (chatBodyEl) chatBodyEl.classList.remove("opacity-30", "pointer-events-none");
   }
 }
 
@@ -2411,6 +2413,8 @@ function setVoiceMode(mode) {
   // 切回纯 ASR 时停止/清空 TTS
   if (voiceMode === "asr_only") {
     ttsBuffer = "";
+    ttsCursor = 0;
+    ttsSeq = 0;
     ttsQueue.length = 0;
     if (ttsCurrentAudio) {
       try {
@@ -2430,10 +2434,14 @@ function playNextTts() {
   if (ttsQueue.length === 0) {
     ttsPlaying = false;
     ttsCurrentAudio = null;
+    maybeStartListeningAfterTts();
     return;
   }
   ttsPlaying = true;
-  const url = ttsQueue.shift();
+  const { url } = ttsQueue.shift();
+  if (asrStreaming) {
+    stopVoiceRecording();
+  }
   const audio = new Audio(url);
   ttsCurrentAudio = audio;
   audio.onended = () => {
@@ -2456,34 +2464,52 @@ function playNextTts() {
 async function enqueueTtsSentence(sentence) {
   const text = (sentence || "").trim();
   if (!text || voiceMode !== "realtime") return;
-  try {
-    const res = await fetchWithAuth("/api/tts/synthesize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+  const seq = ++ttsSeq;
+  // 串行执行 TTS 请求，防止返回乱序
+  ttsChain = ttsChain
+    .catch(() => {}) // 忽略前一条错误，继续后续
+    .then(async () => {
+      try {
+        const res = await fetchWithAuth("/api/tts/synthesize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) {
+          console.warn("[TTS] synthesize failed", res.status, "seq", seq);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        ttsQueue.push({ seq, url });
+        ttsQueue.sort((a, b) => a.seq - b.seq);
+        if (!ttsPlaying) {
+          playNextTts();
+        }
+      } catch (err) {
+        console.warn("[TTS] enqueue error", err, "seq", seq);
+      }
     });
-    if (!res.ok) {
-      console.warn("[TTS] synthesize failed", res.status);
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    ttsQueue.push(url);
-    if (!ttsPlaying) {
-      playNextTts();
-    }
-  } catch (err) {
-    console.warn("[TTS] enqueue error", err);
-  }
 }
 
-function processTtsStream(chunk, isEnd = false) {
+function processTtsStream(fullText, isEnd = false) {
   if (voiceMode !== "realtime") return;
-  if (chunk) {
-    ttsBuffer += chunk;
+  const incoming = (fullText || "").toString();
+  if (!incoming) {
+    if (isEnd && ttsBuffer.trim()) {
+      enqueueTtsSentence(ttsBuffer.trim());
+      ttsBuffer = "";
+    }
+    return;
+  }
+  // 只处理新增的文本片段，避免重复朗读
+  const delta = incoming.slice(ttsCursor);
+  ttsCursor = incoming.length;
+  if (delta) {
+    ttsBuffer += delta;
   }
   const sentences = [];
-  const regex = /[^。！？!?]+[。！？!?]/g;
+  const regex = /[^。！？!?\\.]+[。！？!?\\.]/g;
   let match;
   while ((match = regex.exec(ttsBuffer)) !== null) {
     sentences.push(match[0]);
@@ -2500,10 +2526,137 @@ function processTtsStream(chunk, isEnd = false) {
   sentences.forEach((s) => enqueueTtsSentence(s));
 }
 
+function maybeStartListeningAfterTts() {
+  if (voiceCallActive && !ttsPlaying && !asrStreaming && !asrStopping) {
+    voiceCallAwaitingListen = false;
+    startVoiceRecording();
+  } else if (voiceCallActive && ttsPlaying) {
+    voiceCallAwaitingListen = true;
+  }
+}
+
+function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
+  if (voiceCallOverlay) {
+    voiceCallOverlay.classList.remove("hidden");
+  }
+  if (chatInputPanel) chatInputPanel.classList.add("hidden");
+  if (chatBodyEl) chatBodyEl.classList.add("opacity-30", "pointer-events-none");
+  if (voiceCallStatus) voiceCallStatus.textContent = stateText || "";
+  if (voiceCallHint) voiceCallHint.textContent = hintText || "";
+  if (voiceCallAccept) {
+    voiceCallAccept.classList.toggle("hidden", !showAccept);
+  }
+  refreshVoiceModeUI();
+}
+
+function hideVoiceCallOverlay() {
+  if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
+  if (chatInputPanel) chatInputPanel.classList.remove("hidden");
+  if (chatBodyEl) chatBodyEl.classList.remove("opacity-30", "pointer-events-none");
+  refreshVoiceModeUI();
+}
+
+function startVoiceCallManually() {
+  startVoiceCallFlow(false, "");
+}
+
+function startVoiceCallFlow(isIncoming, openingLine) {
+  if (voiceCallActive) return;
+  voiceMode = "realtime";
+  if (state.voice) {
+    state.voice.mode = "realtime";
+  }
+  voiceCallActive = true;
+  voiceIncoming = isIncoming;
+  voiceCallAwaitingListen = false;
+  voiceCallOpeningLine = isIncoming ? (openingLine || getOpeningLineFallback()) : "";
+  ttsBuffer = "";
+  ttsCursor = 0;
+  ttsSeq = 0;
+  ttsQueue.length = 0;
+  stopVoiceRecording();
+  if (isIncoming) {
+    showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
+    try {
+      ringAudio.currentTime = 0;
+      ringAudio.play().catch(() => {});
+    } catch (err) {}
+  } else {
+    showVoiceCallOverlay("正在拨号...", "请稍候，连接中", false);
+    if (voiceDialTimer) {
+      clearTimeout(voiceDialTimer);
+      voiceDialTimer = null;
+    }
+    voiceDialTimer = setTimeout(() => {
+      connectOutgoingCall();
+    }, 5000);
+  }
+  refreshVoiceModeUI();
+}
+
+function acceptIncomingCall() {
+  if (!voiceIncoming) return;
+  try {
+    ringAudio.pause();
+  } catch (err) {}
+  voiceIncoming = false;
+  showVoiceCallOverlay("通话中", "请开始说话，保持 2 秒静音自动发送", false);
+  if (voiceCallOpeningLine) {
+    enqueueTtsSentence(voiceCallOpeningLine);
+  }
+  voiceCallAwaitingListen = true;
+  maybeStartListeningAfterTts();
+}
+
+function hangupVoiceCall() {
+  try {
+    ringAudio.pause();
+  } catch (err) {}
+  if (voiceDialTimer) {
+    clearTimeout(voiceDialTimer);
+    voiceDialTimer = null;
+  }
+  voiceCallActive = false;
+  voiceIncoming = false;
+  voiceCallAwaitingListen = false;
+  voiceCallOpeningLine = "";
+  voiceMode = "asr_only";
+  if (state.voice) state.voice.mode = "asr_only";
+  stopVoiceRecording();
+  hideVoiceCallOverlay();
+  // 挂断视为失败提示
+  alert("通话已挂断");
+}
+
+function getOpeningLineFallback() {
+  const lastAssistant = state.messages.find((m) => m.role === "assistant");
+  if (lastAssistant && lastAssistant.content) return lastAssistant.content;
+  return "您好，这里是语音练习座席，我们开始实战演练。";
+}
+
+function maybeStartIncomingCall(openingLine) {
+  // 30% 概率触发自动来电
+  if (Math.random() < 0.3) {
+    startVoiceCallFlow(true, openingLine || getOpeningLineFallback());
+  }
+}
+
+function connectOutgoingCall() {
+  voiceDialTimer = null;
+  if (!voiceCallActive || voiceIncoming) return;
+  showVoiceCallOverlay("通话中", "请开始说话，保持 2 秒静音自动发送", false);
+  voiceCallAwaitingListen = false;
+  maybeStartListeningAfterTts();
+}
+
 // 初始化模式样式
 setVoiceMode(voiceMode);
 
 async function startVoiceRecording() {
+  if (voiceCallActive && ttsPlaying) {
+    voiceCallAwaitingListen = true;
+    return;
+  }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert("当前浏览器不支持麦克风录音");
     return;
@@ -2529,16 +2682,16 @@ async function startVoiceRecording() {
       asrLastVoiceAt = Date.now();
       asrProcessor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
-        // 简单静音检测，连续 3 秒低于阈值则自动停录并触发发送
+        // 简单静音检测，连续 2 秒低于阈值则自动停录并触发发送
         let sum = 0;
         for (let i = 0; i < input.length; i++) {
           sum += input[i] * input[i];
         }
         const rms = Math.sqrt(sum / input.length);
         const now = Date.now();
-        if (rms > 0.001) {
+        if (rms > 0.0003) {
           asrLastVoiceAt = now;
-        } else if (now - asrLastVoiceAt > 3000 && asrStreaming && !asrStopping) {
+        } else if (now - asrLastVoiceAt > 2000 && asrStreaming && !asrStopping) {
           stopVoiceRecording();
           return;
         }
@@ -2641,9 +2794,11 @@ function stopVoiceRecording() {
 }
 
 function toggleVoiceRecording() {
+  if (voiceCallActive) return; // 通话模式下不使用文字录音按钮
   if (asrStreaming) {
     stopVoiceRecording();
   } else {
+    setVoiceMode("asr_only");
     startVoiceRecording();
   }
 }
@@ -3694,6 +3849,8 @@ async function sendMessageWithContent(message, options = {}) {
   renderChat();
 
   let fullReply = "";
+  ttsBuffer = "";
+  ttsCursor = 0;
   let evaluationResult = null;
   let shouldTerminate = false;
   let streamError = null;
@@ -3729,13 +3886,13 @@ async function sendMessageWithContent(message, options = {}) {
       if (payload.content) {
         fullReply += payload.content;
         updateMessageContent(assistantIndex, fullReply);
-        processTtsStream(payload.content, false);
+        processTtsStream(fullReply, false);
       }
     } else if (eventType === "summary") {
       if (payload.reply) {
         fullReply = payload.reply;
         updateMessageContent(assistantIndex, fullReply);
-        processTtsStream(payload.reply, false);
+        processTtsStream(fullReply, false);
       }
     } else if (eventType === "score") {
       const scoreVal = payload.score;
@@ -3758,7 +3915,7 @@ async function sendMessageWithContent(message, options = {}) {
       streamError = new Error(payload.error || "对话失败");
       shouldTerminate = true;
     } else if (eventType === "done" || eventType === "close") {
-      processTtsStream("", true);
+      processTtsStream(fullReply, true);
       shouldTerminate = true;
     }
   };
@@ -4548,6 +4705,7 @@ async function startLevel() {
     collapseLevelSelection();
     updateSelectedLevelDetail();
     showExperience();
+    maybeStartIncomingCall(opening);
     await loadSessions();
     await loadStudentAssignments();
     await loadStudentDashboardInsights();
