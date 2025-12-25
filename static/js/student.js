@@ -2543,6 +2543,14 @@ function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
   if (chatBodyEl) chatBodyEl.classList.add("opacity-30", "pointer-events-none");
   if (voiceCallStatus) voiceCallStatus.textContent = stateText || "";
   if (voiceCallHint) voiceCallHint.textContent = hintText || "";
+  const aiCompany = (state.currentScenario && state.currentScenario.aiCompany) || {};
+  const aiName = (aiCompany && aiCompany.name) || state.currentScenario?.aiRole || "AI";
+  if (voiceCallName) voiceCallName.textContent = aiName;
+  if (voiceCallTitle) voiceCallTitle.textContent = state.currentScenario?.aiRole || "Voice Chat";
+  if (voiceCallAvatar) {
+    const initials = aiName ? aiName.slice(0, 2).toUpperCase() : "AI";
+    voiceCallAvatar.textContent = initials;
+  }
   if (voiceCallAccept) {
     voiceCallAccept.classList.toggle("hidden", !showAccept);
   }
@@ -2576,7 +2584,7 @@ function startVoiceCallFlow(isIncoming, openingLine) {
   ttsQueue.length = 0;
   stopVoiceRecording();
   if (isIncoming) {
-    showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
+  showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
     try {
       ringAudio.currentTime = 0;
       ringAudio.play().catch(() => {});
@@ -2644,9 +2652,24 @@ function maybeStartIncomingCall(openingLine) {
 function connectOutgoingCall() {
   voiceDialTimer = null;
   if (!voiceCallActive || voiceIncoming) return;
-  showVoiceCallOverlay("通话中", "请开始说话，保持 2 秒静音自动发送", false);
+  showVoiceCallOverlay("已接通", "请开始说话，保持 2 秒静音自动发送", false);
   voiceCallAwaitingListen = false;
   maybeStartListeningAfterTts();
+}
+
+function sendManualVoiceMessage() {
+  // 在通话模式下提供手动提前发送
+  if (asrStreaming) {
+    stopVoiceRecording();
+    return;
+  }
+  const text = (chatInputEl && chatInputEl.value) || "";
+  if (text.trim()) {
+    sendMessage();
+  } else if (voiceCallActive) {
+    // 没有文本则重新开始聆听
+    startVoiceRecording();
+  }
 }
 
 // 初始化模式样式

@@ -146,6 +146,10 @@ if (voiceCallHangup) {
   voiceCallHangup.addEventListener("click", hangupVoiceCall);
 }
 
+if (voiceCallSendBtn) {
+  voiceCallSendBtn.addEventListener("click", sendManualVoiceMessage);
+}
+
 if (studentPracticeEntryBtn) {
   studentPracticeEntryBtn.addEventListener("click", () => {
     expandLevelSelection();
