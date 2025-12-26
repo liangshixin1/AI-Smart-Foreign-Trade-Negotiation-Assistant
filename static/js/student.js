@@ -16,6 +16,8 @@ let evaluationRecommendationToken = 0;
 let studentLessonGraphInstance = null;
 // Copilot Agent 连续推理是否运行中
 let copilotAgentRunning = false;
+let copilotPanelOpen = false;
+const copilotDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 // 需要启用“复盘模式”的章节集合
 const REVIEW_SECTION_IDS = new Set([
   "chapter-4-section-1",
@@ -1303,25 +1305,35 @@ function renderEmailComposer() {
     if (emailThreadEl) emailThreadEl.classList.add("hidden");
     if (chatBodyEl) chatBodyEl.classList.remove("hidden");
     if (chatInputPanel) chatInputPanel.classList.remove("hidden");
-    if (copilotFab) copilotFab.style.display = "";
+    renderCopilotVisibility();
     return;
   }
   hydrateEmailComposer(state.currentScenario || {});
   renderEmailThread();
-  if (copilotFab) copilotFab.style.display = "none";
+  renderCopilotVisibility();
 }
 
 // 根据当前模式显示/隐藏 Copilot 面板与切换按钮。
 function renderCopilotVisibility() {
   if (!copilotFab) return;
   const liveChat = !isEmailModeActive() && !isReviewSection(state.activeLevel?.sectionId);
-  copilotFab.style.display = liveChat ? "flex" : "none";
+  if (!liveChat) {
+    copilotFab.style.display = "none";
+    if (copilotPanel) copilotPanel.style.display = "none";
+    copilotPanelOpen = false;
+    copilotAgentRunning = false;
+    if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
+    return;
+  }
+  copilotFab.style.display = copilotPanelOpen ? "none" : "flex";
 }
 
 // 展开 Copilot 面板。
 function openCopilotPanel() {
   if (!copilotPanel) return;
   copilotPanel.style.display = "flex";
+  copilotPanelOpen = true;
+  renderCopilotVisibility();
   if (copilotInput) copilotInput.focus();
 }
 
@@ -1329,9 +1341,11 @@ function openCopilotPanel() {
 function closeCopilotPanel() {
   if (!copilotPanel) return;
   copilotPanel.style.display = "none";
+  copilotPanelOpen = false;
   copilotAgentRunning = false;
   if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
   setCopilotStatus("");
+  renderCopilotVisibility();
 }
 
 // 更新 Copilot 状态提示。
@@ -1352,6 +1366,47 @@ function setCopilotStatus(text, variant = "muted") {
 function setCopilotOutput(text) {
   if (!copilotOutput) return;
   copilotOutput.textContent = text || "";
+}
+
+function initCopilotDrag() {
+  if (!copilotPanel) return;
+  const onPointerMove = (event) => {
+    if (!copilotDrag.active) return;
+    const point = event.touches ? event.touches[0] : event;
+    const dx = point.clientX - copilotDrag.startX;
+    const dy = point.clientY - copilotDrag.startY;
+    copilotDrag.offsetX += dx;
+    copilotDrag.offsetY += dy;
+    copilotDrag.startX = point.clientX;
+    copilotDrag.startY = point.clientY;
+    copilotPanel.style.transform = `translate(${copilotDrag.offsetX}px, ${copilotDrag.offsetY}px)`;
+  };
+  const onPointerEnd = () => {
+    copilotDrag.active = false;
+    copilotPanel.classList.remove("copilot-panel--dragging");
+  };
+  const onPointerStart = (event) => {
+    if (event.type === "mousedown" && event.button !== 0) return;
+    if (
+      event.target.closest(
+        "button, input, textarea, select, option, a, label, [contenteditable='true']"
+      )
+    ) {
+      return;
+    }
+    const point = event.touches ? event.touches[0] : event;
+    copilotDrag.active = true;
+    copilotDrag.startX = point.clientX;
+    copilotDrag.startY = point.clientY;
+    copilotPanel.classList.add("copilot-panel--dragging");
+  };
+  copilotPanel.addEventListener("mousedown", onPointerStart);
+  copilotPanel.addEventListener("touchstart", onPointerStart, { passive: true });
+  document.addEventListener("mousemove", onPointerMove);
+  document.addEventListener("touchmove", onPointerMove, { passive: true });
+  document.addEventListener("mouseup", onPointerEnd);
+  document.addEventListener("touchend", onPointerEnd);
+  document.addEventListener("touchcancel", onPointerEnd);
 }
 
 // 调用后端 Copilot 接口获取建议/草稿。
@@ -2375,7 +2430,10 @@ let asrProcessor = null;
 let asrStream = null;
 let asrStopping = false;
 let voiceMode = state.voice?.mode || "asr_only"; // asr_only | realtime
-let asrLastVoiceAt = 0;
+let asrBaseText = "";
+let asrCommittedText = "";
+let voiceSendOnStop = false;
+let asrStopTimer = null;
 
 // ========== TTS 播放队列 ==========
 const ttsQueue = []; // {seq, url}
@@ -2387,21 +2445,17 @@ let ttsSeq = 0; // 送入 TTS 的序号，确保播放顺序
 let ttsChain = Promise.resolve(); // 串行化 TTS 请求，防止乱序返回
 let voiceCallActive = false;
 let voiceIncoming = false;
-let voiceCallAwaitingListen = false;
 let voiceCallOpeningLine = "";
 let voiceDialTimer = null;
+const voiceCallDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 const ringAudio = new Audio("/static/audio/ring.mp3"); // 请将铃声文件放置在 static/audio/ring.mp3
 ringAudio.loop = true;
 
 function refreshVoiceModeUI() {
   if (voiceCallActive && voiceCallOverlay) {
     voiceCallOverlay.classList.remove("hidden");
-    if (chatInputPanel) chatInputPanel.classList.add("hidden");
-    if (chatBodyEl) chatBodyEl.classList.add("opacity-30", "pointer-events-none");
   } else {
     if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
-    if (chatInputPanel) chatInputPanel.classList.remove("hidden");
-    if (chatBodyEl) chatBodyEl.classList.remove("opacity-30", "pointer-events-none");
   }
 }
 
@@ -2434,7 +2488,6 @@ function playNextTts() {
   if (ttsQueue.length === 0) {
     ttsPlaying = false;
     ttsCurrentAudio = null;
-    maybeStartListeningAfterTts();
     return;
   }
   ttsPlaying = true;
@@ -2526,21 +2579,10 @@ function processTtsStream(fullText, isEnd = false) {
   sentences.forEach((s) => enqueueTtsSentence(s));
 }
 
-function maybeStartListeningAfterTts() {
-  if (voiceCallActive && !ttsPlaying && !asrStreaming && !asrStopping) {
-    voiceCallAwaitingListen = false;
-    startVoiceRecording();
-  } else if (voiceCallActive && ttsPlaying) {
-    voiceCallAwaitingListen = true;
-  }
-}
-
 function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
   if (voiceCallOverlay) {
     voiceCallOverlay.classList.remove("hidden");
   }
-  if (chatInputPanel) chatInputPanel.classList.add("hidden");
-  if (chatBodyEl) chatBodyEl.classList.add("opacity-30", "pointer-events-none");
   if (voiceCallStatus) voiceCallStatus.textContent = stateText || "";
   if (voiceCallHint) voiceCallHint.textContent = hintText || "";
   const aiCompany = (state.currentScenario && state.currentScenario.aiCompany) || {};
@@ -2559,10 +2601,47 @@ function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
 
 function hideVoiceCallOverlay() {
   if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
-  if (chatInputPanel) chatInputPanel.classList.remove("hidden");
-  if (chatBodyEl) chatBodyEl.classList.remove("opacity-30", "pointer-events-none");
   refreshVoiceModeUI();
 }
+
+function toggleVoiceCallMinimize() {
+  if (!voiceCallWindow) return;
+  voiceCallWindow.classList.toggle("minimized");
+}
+
+function initVoiceCallDrag() {
+  if (!voiceCallHeader || !voiceCallWindow) return;
+  const onPointerMove = (event) => {
+    if (!voiceCallDrag.active) return;
+    const point = event.touches ? event.touches[0] : event;
+    const dx = point.clientX - voiceCallDrag.startX;
+    const dy = point.clientY - voiceCallDrag.startY;
+    voiceCallDrag.offsetX += dx;
+    voiceCallDrag.offsetY += dy;
+    voiceCallDrag.startX = point.clientX;
+    voiceCallDrag.startY = point.clientY;
+    voiceCallWindow.style.transform = `translate(${voiceCallDrag.offsetX}px, ${voiceCallDrag.offsetY}px)`;
+  };
+  const onPointerEnd = () => {
+    voiceCallDrag.active = false;
+  };
+  const onPointerStart = (event) => {
+    if (window.innerWidth <= 768 && !voiceCallWindow.classList.contains("minimized")) {
+      return;
+    }
+    const point = event.touches ? event.touches[0] : event;
+    voiceCallDrag.active = true;
+    voiceCallDrag.startX = point.clientX;
+    voiceCallDrag.startY = point.clientY;
+  };
+  voiceCallHeader.addEventListener("mousedown", onPointerStart);
+  voiceCallHeader.addEventListener("touchstart", onPointerStart, { passive: true });
+  document.addEventListener("mousemove", onPointerMove);
+  document.addEventListener("touchmove", onPointerMove, { passive: true });
+  document.addEventListener("mouseup", onPointerEnd);
+  document.addEventListener("touchend", onPointerEnd);
+}
+
 
 function startVoiceCallManually() {
   startVoiceCallFlow(false, "");
@@ -2574,9 +2653,11 @@ function startVoiceCallFlow(isIncoming, openingLine) {
   if (state.voice) {
     state.voice.mode = "realtime";
   }
+  if (voiceCallWindow) {
+    voiceCallWindow.classList.remove("minimized");
+  }
   voiceCallActive = true;
   voiceIncoming = isIncoming;
-  voiceCallAwaitingListen = false;
   voiceCallOpeningLine = isIncoming ? (openingLine || getOpeningLineFallback()) : "";
   ttsBuffer = "";
   ttsCursor = 0;
@@ -2584,7 +2665,7 @@ function startVoiceCallFlow(isIncoming, openingLine) {
   ttsQueue.length = 0;
   stopVoiceRecording();
   if (isIncoming) {
-  showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
+    showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
     try {
       ringAudio.currentTime = 0;
       ringAudio.play().catch(() => {});
@@ -2608,12 +2689,10 @@ function acceptIncomingCall() {
     ringAudio.pause();
   } catch (err) {}
   voiceIncoming = false;
-  showVoiceCallOverlay("通话中", "请开始说话，保持 2 秒静音自动发送", false);
+  showVoiceCallOverlay("通话中", "按住说话，松开发送", false);
   if (voiceCallOpeningLine) {
     enqueueTtsSentence(voiceCallOpeningLine);
   }
-  voiceCallAwaitingListen = true;
-  maybeStartListeningAfterTts();
 }
 
 function hangupVoiceCall() {
@@ -2626,8 +2705,9 @@ function hangupVoiceCall() {
   }
   voiceCallActive = false;
   voiceIncoming = false;
-  voiceCallAwaitingListen = false;
   voiceCallOpeningLine = "";
+  voiceSendOnStop = false;
+  asrCommittedText = "";
   voiceMode = "asr_only";
   if (state.voice) state.voice.mode = "asr_only";
   stopVoiceRecording();
@@ -2652,32 +2732,32 @@ function maybeStartIncomingCall(openingLine) {
 function connectOutgoingCall() {
   voiceDialTimer = null;
   if (!voiceCallActive || voiceIncoming) return;
-  showVoiceCallOverlay("已接通", "请开始说话，保持 2 秒静音自动发送", false);
-  voiceCallAwaitingListen = false;
-  maybeStartListeningAfterTts();
+  showVoiceCallOverlay("已接通", "按住说话，松开发送", false);
 }
 
 function sendManualVoiceMessage() {
   // 在通话模式下提供手动提前发送
-  if (asrStreaming) {
-    stopVoiceRecording();
+  if (!voiceCallActive) return;
+  if (ttsPlaying) {
     return;
   }
-  const text = (chatInputEl && chatInputEl.value) || "";
-  if (text.trim()) {
-    sendMessage();
-  } else if (voiceCallActive) {
-    // 没有文本则重新开始聆听
-    startVoiceRecording();
+  if (asrStreaming) {
+    return;
   }
+  voiceSendOnStop = true;
+  startVoiceRecording();
 }
 
 // 初始化模式样式
 setVoiceMode(voiceMode);
+initVoiceCallDrag();
+initCopilotDrag();
 
 async function startVoiceRecording() {
   if (voiceCallActive && ttsPlaying) {
-    voiceCallAwaitingListen = true;
+    return;
+  }
+  if (asrStreaming || asrStopping) {
     return;
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2702,22 +2782,8 @@ async function startVoiceRecording() {
       }
       const source = asrAudioContext.createMediaStreamSource(asrStream);
       asrProcessor = asrAudioContext.createScriptProcessor(4096, 1, 1);
-      asrLastVoiceAt = Date.now();
       asrProcessor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
-        // 简单静音检测，连续 2 秒低于阈值则自动停录并触发发送
-        let sum = 0;
-        for (let i = 0; i < input.length; i++) {
-          sum += input[i] * input[i];
-        }
-        const rms = Math.sqrt(sum / input.length);
-        const now = Date.now();
-        if (rms > 0.0003) {
-          asrLastVoiceAt = now;
-        } else if (now - asrLastVoiceAt > 2000 && asrStreaming && !asrStopping) {
-          stopVoiceRecording();
-          return;
-        }
         const pcmBuffer = floatToPcm16k(input, asrAudioContext.sampleRate);
         if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
           console.debug("[ASR] send bytes", pcmBuffer.byteLength);
@@ -2730,6 +2796,13 @@ async function startVoiceRecording() {
         chatVoiceBtn.classList.add("border-emerald-400", "text-emerald-600");
         chatVoiceBtn.textContent = "⏹";
       }
+      const currentText = chatInputEl ? chatInputEl.value.trim() : "";
+      if (currentText) {
+        asrCommittedText = currentText;
+      } else if (!asrCommittedText) {
+        asrCommittedText = "";
+      }
+      asrBuffer = "";
     };
 
     asrSocket.onmessage = (event) => {
@@ -2739,19 +2812,38 @@ async function startVoiceRecording() {
         if (payload.event === "asr_partial" && payload.text) {
           asrBuffer = payload.text;
           if (chatInputEl) {
-            chatInputEl.value = asrBuffer;
-          }
-          if (payload.isEnd && voiceMode === "realtime") {
-            // 句子结束时也可以更新输入框
-            chatInputEl && (chatInputEl.value = asrBuffer);
+            const prefix = asrCommittedText ? `${asrCommittedText} ` : "";
+            chatInputEl.value = `${prefix}${asrBuffer}`.trim();
           }
         }
         if (payload.event === "asr_complete") {
-          const finalText = (chatInputEl && chatInputEl.value) || asrBuffer || "";
-          if (voiceMode === "realtime" && finalText.trim()) {
-            sendMessage();
+          if (voiceSendOnStop) {
+            const spoken = asrBuffer.trim();
+            voiceSendOnStop = false;
+            if (spoken) {
+              if (asrCommittedText) {
+                asrCommittedText = `${asrCommittedText} ${spoken}`.trim();
+              } else {
+                asrCommittedText = spoken;
+              }
+              if (chatInputEl) {
+                chatInputEl.value = asrCommittedText;
+              }
+              sendMessageWithContent(spoken);
+            }
           }
           asrBuffer = "";
+          if (asrStopTimer) {
+            clearTimeout(asrStopTimer);
+            asrStopTimer = null;
+          }
+          if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
+            try {
+              asrSocket.close();
+            } catch (err) {
+              /* ignore */
+            }
+          }
         }
         if (payload.event === "asr_error" && payload.error) {
           alert(`语音识别出错：${payload.error}`);
@@ -2802,7 +2894,16 @@ function stopVoiceRecording() {
   if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
     try {
       asrSocket.send("__STOP__");
-      asrSocket.close();
+      if (voiceSendOnStop) {
+        if (asrStopTimer) clearTimeout(asrStopTimer);
+        asrStopTimer = setTimeout(() => {
+          if (asrSocket && asrSocket.readyState === WebSocket.OPEN) {
+            asrSocket.close();
+          }
+        }, 1500);
+      } else {
+        asrSocket.close();
+      }
     } catch (err) {
       console.error("[ASR] 关闭 WS 失败", err);
     }

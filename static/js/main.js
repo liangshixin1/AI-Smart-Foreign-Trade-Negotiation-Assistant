@@ -27,19 +27,12 @@ if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
 }
 
-if (voiceSttBtn) {
-  voiceSttBtn.addEventListener("click", () => {
-    setVoiceMode("asr_only");
-    toggleVoiceRecording();
-  });
-}
-
 if (voiceCallBtn) {
   voiceCallBtn.addEventListener("click", startVoiceCallManually);
 }
 
 if (chatVoiceBtn) {
-  chatVoiceBtn.addEventListener("click", toggleVoiceRecording);
+  chatVoiceBtn.addEventListener("click", startVoiceCallManually);
 }
 
 if (chatInputEl) {
@@ -69,6 +62,10 @@ if (copilotFab) {
 
 if (copilotCloseBtn) {
   copilotCloseBtn.addEventListener("click", closeCopilotPanel);
+}
+
+if (copilotMinimizeBtn) {
+  copilotMinimizeBtn.addEventListener("click", closeCopilotPanel);
 }
 
 if (copilotAssistBtn) {
@@ -147,7 +144,23 @@ if (voiceCallHangup) {
 }
 
 if (voiceCallSendBtn) {
-  voiceCallSendBtn.addEventListener("click", sendManualVoiceMessage);
+  const startTalk = (event) => {
+    event.preventDefault();
+    sendManualVoiceMessage();
+  };
+  const stopTalk = (event) => {
+    event.preventDefault();
+    stopVoiceRecording();
+  };
+  voiceCallSendBtn.addEventListener("mousedown", startTalk);
+  voiceCallSendBtn.addEventListener("touchstart", startTalk, { passive: false });
+  voiceCallSendBtn.addEventListener("mouseup", stopTalk);
+  voiceCallSendBtn.addEventListener("mouseleave", stopTalk);
+  voiceCallSendBtn.addEventListener("touchend", stopTalk);
+}
+
+if (voiceCallMinimize) {
+  voiceCallMinimize.addEventListener("click", toggleVoiceCallMinimize);
 }
 
 if (studentPracticeEntryBtn) {

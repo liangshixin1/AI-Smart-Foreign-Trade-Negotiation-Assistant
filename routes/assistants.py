@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List
 
 from flask import Blueprint, jsonify, request
 
@@ -51,7 +51,37 @@ def _build_email_assist_prompt(action: str, scenario: Dict[str, object], user_hi
     )
 
 
-def _build_chat_assist_prompt(action: str, scenario: Dict[str, object], user_hint: str) -> str:
+def _format_chat_history(
+    history: List[Dict[str, object]],
+    student_role: str,
+    ai_role: str,
+    limit: int = 12,
+) -> str:
+    if not history:
+        return ""
+    trimmed = history[-limit:]
+    lines = []
+    for row in trimmed:
+        role = row.get("role")
+        content = normalize_text(row.get("content"))
+        if not content:
+            continue
+        if role == "user":
+            speaker = student_role or "Student"
+        elif role == "assistant":
+            speaker = ai_role or "Counterparty"
+        else:
+            speaker = role or "System"
+        lines.append(f"{speaker}: {content}")
+    return "\n".join(lines)
+
+
+def _build_chat_assist_prompt(
+    action: str,
+    scenario: Dict[str, object],
+    user_hint: str,
+    history: List[Dict[str, object]],
+) -> str:
     student_role = normalize_text(scenario.get("student_role")) or "Student"
     ai_role = normalize_text(scenario.get("ai_role")) or "Counterparty"
     product = scenario.get("product") or {}
@@ -60,6 +90,9 @@ def _build_chat_assist_prompt(action: str, scenario: Dict[str, object], user_hin
     quantity = normalize_text(product.get("quantity_requirement")) or ""
     targets = scenario.get("negotiation_targets") or []
     targets_line = "; ".join([normalize_text(t) for t in targets if normalize_text(t)])
+
+    history_text = _format_chat_history(history, student_role, ai_role)
+    history_block = f"\nConversation so far:\n{history_text}\n" if history_text else ""
 
     if action == "assistant":
         return (
@@ -70,6 +103,7 @@ def _build_chat_assist_prompt(action: str, scenario: Dict[str, object], user_hin
             f"- Product: {product_name} {specs} {quantity}\n"
             f"- Negotiation targets: {targets_line}\n"
             "Tone: professional, concise, actionable. Do not include meta comments.\n"
+            f"{history_block}"
             f"User hint: {user_hint}"
         )
 
@@ -80,6 +114,7 @@ def _build_chat_assist_prompt(action: str, scenario: Dict[str, object], user_hin
         f"- AI counterpart: {ai_role}\n"
         f"- Product: {product_name} {specs} {quantity}\n"
         f"- Negotiation targets: {targets_line}\n"
+        f"{history_block}"
         f"Hint: {user_hint}"
     )
 
@@ -140,12 +175,16 @@ def chat_copilot():
         return jsonify({"error": "Forbidden"}), 403
 
     scenario = session.get("scenario") or {}
+    history_rows = database.get_messages(session_id)
+    history: List[Dict[str, object]] = [
+        {"role": row.get("role"), "content": row.get("content")} for row in history_rows
+    ]
     try:
         api_key = require_key("DEEPSEEK_COPILOT_API_KEY")
     except MissingKeyError:
         api_key = require_key("DEEPSEEK_COLLAB_KEY")
 
-    prompt = _build_chat_assist_prompt(action, scenario, user_input or "")
+    prompt = _build_chat_assist_prompt(action, scenario, user_input or "", history)
     try:
         suggestion = complete_chat(api_key, [{"role": "user", "content": prompt}], temperature=0.5)
     except Exception as exc:  # pragma: no cover - 辅助接口容错

@@ -1052,6 +1052,18 @@
         display: none;
         flex-direction: column;
         overflow: hidden;
+        cursor: grab;
+      }
+      .copilot-panel--dragging {
+        box-shadow: 0 30px 55px -22px rgba(37, 99, 235, 0.45);
+        cursor: grabbing;
+      }
+      .copilot-panel button,
+      .copilot-panel input,
+      .copilot-panel textarea,
+      .copilot-panel select,
+      .copilot-panel option {
+        cursor: auto;
       }
       .copilot-panel__header {
         display: flex;
@@ -1061,6 +1073,11 @@
         padding: 12px 14px;
         background: rgba(37, 99, 235, 0.08);
         border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+        user-select: none;
+        touch-action: none;
+      }
+      .copilot-panel--dragging .copilot-panel__header {
+        cursor: grabbing;
       }
       .copilot-panel__body {
         padding: 14px;
@@ -2754,6 +2771,117 @@
         }
       }
 
+      #voice-call-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        pointer-events: none;
+      }
+
+      .voice-call-window {
+        position: absolute;
+        right: 24px;
+        bottom: 24px;
+        width: 320px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 26px 60px -30px rgba(15, 23, 42, 0.25);
+        backdrop-filter: blur(12px);
+        color: #0f172a;
+        pointer-events: auto;
+        transition: transform 0.2s ease, width 0.2s ease, height 0.2s ease;
+      }
+
+      .voice-call-window.minimized {
+        width: 210px;
+      }
+
+      .voice-call-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        cursor: grab;
+      }
+
+      .voice-call-avatar {
+        display: flex;
+        height: 44px;
+        width: 44px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(16, 185, 129, 0.16);
+        color: #047857;
+        font-weight: 700;
+        box-shadow: 0 12px 22px -10px rgba(16, 185, 129, 0.35);
+      }
+
+      .voice-call-minimize {
+        display: inline-flex;
+        height: 30px;
+        width: 30px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.2);
+        color: #0f172a;
+        font-size: 14px;
+      }
+
+      .voice-call-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 0 16px 16px;
+      }
+
+      .voice-call-window.minimized .voice-call-body {
+        display: none;
+      }
+
+      .voice-call-action {
+        display: flex;
+        height: 64px;
+        width: 64px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #ffffff;
+        cursor: pointer;
+        transition: transform 0.2s ease, background 0.2s ease;
+      }
+
+      .voice-call-action--hangup {
+        background: #f43f5e;
+        box-shadow: 0 14px 26px -12px rgba(244, 63, 94, 0.65);
+      }
+
+      .voice-call-action--accept {
+        background: #10b981;
+        box-shadow: 0 14px 26px -12px rgba(16, 185, 129, 0.65);
+      }
+
+      @media (max-width: 768px) {
+        .voice-call-window {
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          border-radius: 0;
+        }
+        .voice-call-window.minimized {
+          inset: auto;
+          right: 12px;
+          bottom: 12px;
+          width: 200px;
+          height: auto;
+          border-radius: 18px;
+        }
+      }
+
     </style>
   </head>
   <body class="bg-transparent min-h-screen antialiased">
@@ -3234,22 +3362,13 @@
                   <div class="flex flex-col gap-3">
                     <div class="flex items-center gap-2">
                       <button
-                        id="voice-stt-btn"
-                        class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
-                        type="button"
-                        aria-label="语音识别"
-                        title="语音识别（转文字）"
-                      >
-                        🎙️ 语音识别
-                      </button>
-                      <button
                         id="voice-call-btn"
                         class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
                         type="button"
-                        aria-label="语音聊天"
-                        title="语音聊天（电话模式）"
+                        aria-label="语音通话"
+                        title="语音通话（电话模式）"
                       >
-                        📞 语音聊天
+                        语音通话
                       </button>
                     </div>
                     <div class="flex items-center gap-2">
@@ -3257,8 +3376,8 @@
                         id="chat-voice-toggle"
                         class="inline-flex h-[48px] w-[48px] items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-600 shadow-sm transition hover:border-emerald-400 hover:text-emerald-600"
                         type="button"
-                        title="语音输入"
-                        aria-label="语音输入"
+                        title="语音通话"
+                        aria-label="语音通话"
                       >
                         🎤
                       </button>
@@ -3275,52 +3394,54 @@
                   提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
                 </p>
               </div>
-              <div
-                id="voice-call-overlay"
-                class="hidden fixed inset-0 z-30 flex items-center justify-center bg-slate-900/80 backdrop-blur-lg text-white"
-              >
-                <div class="flex flex-col items-center gap-5 rounded-3xl bg-white/10 px-10 py-8 shadow-2xl ring-1 ring-white/20">
-                  <div class="flex flex-col items-center gap-2">
-                    <div id="voice-call-avatar" class="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-xl font-semibold shadow-lg">
-                      AI
+              <div id="voice-call-overlay" class="hidden">
+                <div id="voice-call-window" class="voice-call-window">
+                  <div id="voice-call-header" class="voice-call-header">
+                    <div id="voice-call-avatar" class="voice-call-avatar">AI</div>
+                    <div class="flex-1">
+                      <div id="voice-call-name" class="text-base font-semibold text-slate-900">正在连接...</div>
+                      <div id="voice-call-title" class="text-xs text-slate-500">语音通话</div>
                     </div>
-                    <div id="voice-call-name" class="text-lg font-semibold">正在连接...</div>
-                    <div id="voice-call-title" class="text-sm text-slate-200">语音聊天</div>
+                    <button id="voice-call-minimize" class="voice-call-minimize" title="缩小到悬浮窗">
+                      ⤢
+                    </button>
                   </div>
-                  <div id="voice-call-status" class="text-sm text-slate-100">等待接听...</div>
-                  <div class="flex items-center gap-2 text-xs text-slate-200">
-                    <span class="relative inline-flex h-3 w-3">
-                      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75"></span>
-                      <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-400"></span>
+                  <div class="voice-call-body">
+                    <div id="voice-call-status" class="text-sm text-slate-700">等待接听...</div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                      <span class="relative inline-flex h-3 w-3">
+                      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-500"></span>
                     </span>
                     <span id="voice-call-hint">请保持安静，系统正在聆听</span>
                   </div>
                   <button
                     id="voice-call-send"
-                    class="w-full rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-inner shadow-white/10 transition hover:bg-white/20"
+                    class="w-full rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner shadow-slate-100 transition hover:bg-slate-200"
                   >
-                    手动发送（若需提前结束）
+                    按住说话
                   </button>
-                  <div class="mt-3 flex w-full items-center justify-center gap-16">
-                    <div class="flex flex-col items-center gap-2">
-                      <div
-                        id="voice-call-hangup"
-                        class="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-rose-500 text-2xl shadow-lg shadow-rose-500/40 transition hover:scale-105 hover:bg-rose-600"
-                        title="上滑挂断"
-                      >
-                        ⬆️
+                    <div class="mt-3 flex w-full items-center justify-center gap-16">
+                      <div class="flex flex-col items-center gap-2">
+                        <div
+                          id="voice-call-hangup"
+                          class="voice-call-action voice-call-action--hangup"
+                          title="挂断"
+                        >
+                          挂断
+                        </div>
+                        <div class="text-xs text-slate-500">结束通话</div>
                       </div>
-                      <div class="text-xs text-slate-200">上滑挂断</div>
-                    </div>
-                    <div class="flex flex-col items-center gap-2">
-                      <div
-                        id="voice-call-accept"
-                        class="hidden flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-emerald-500 text-2xl shadow-lg shadow-emerald-500/40 transition hover:scale-105 hover:bg-emerald-600"
-                        title="上滑接听"
-                      >
-                        ⬆️
+                      <div id="voice-call-accept-wrap" class="hidden flex flex-col items-center gap-2">
+                        <div
+                          id="voice-call-accept"
+                          class="voice-call-action voice-call-action--accept"
+                          title="接听"
+                        >
+                          接听
+                        </div>
+                        <div class="text-xs text-slate-500">接听通话</div>
                       </div>
-                      <div class="text-xs text-slate-200">上滑接听</div>
                     </div>
                   </div>
                 </div>
@@ -3535,12 +3656,23 @@
         🤖 场外援助
       </button>
       <div id="copilot-panel" class="copilot-panel">
-        <div class="copilot-panel__header">
+        <div id="copilot-header" class="copilot-panel__header">
           <div>
             <p class="text-xs uppercase tracking-widest text-slate-300">Copilot</p>
             <p class="text-sm font-semibold text-white">场外援助（仅供参考体验）</p>
           </div>
-          <button id="copilot-close" class="text-slate-300 hover:text-white">✕</button>
+          <div class="flex items-center gap-2">
+            <button
+              id="copilot-minimize"
+              class="text-slate-300 hover:text-white"
+              title="最小化"
+            >
+              -
+            </button>
+            <button id="copilot-close" class="text-slate-300 hover:text-white" title="关闭">
+              ✕
+            </button>
+          </div>
         </div>
         <div class="copilot-panel__body">
           <textarea id="copilot-input" placeholder="描述你想要的帮助，如“帮我回一段柔和的还盘”"></textarea>
