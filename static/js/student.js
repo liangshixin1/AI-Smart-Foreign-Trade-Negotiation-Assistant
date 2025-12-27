@@ -2430,8 +2430,9 @@ let asrProcessor = null;
 let asrStream = null;
 let asrStopping = false;
 let voiceMode = state.voice?.mode || "asr_only"; // asr_only | realtime
-let asrBaseText = "";
 let asrCommittedText = "";
+let asrSegments = [];
+let asrCurrentPartial = "";
 let voiceSendOnStop = false;
 let asrStopTimer = null;
 
@@ -2593,8 +2594,14 @@ function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
     const initials = aiName ? aiName.slice(0, 2).toUpperCase() : "AI";
     voiceCallAvatar.textContent = initials;
   }
-  if (voiceCallAccept) {
+  const showHangup = !showAccept;
+  if (voiceCallAcceptWrap) {
+    voiceCallAcceptWrap.classList.toggle("hidden", !showAccept);
+  } else if (voiceCallAccept) {
     voiceCallAccept.classList.toggle("hidden", !showAccept);
+  }
+  if (voiceCallHangupWrap) {
+    voiceCallHangupWrap.classList.toggle("hidden", !showHangup);
   }
   refreshVoiceModeUI();
 }
@@ -2665,7 +2672,7 @@ function startVoiceCallFlow(isIncoming, openingLine) {
   ttsQueue.length = 0;
   stopVoiceRecording();
   if (isIncoming) {
-    showVoiceCallOverlay("来电中...", "点击接听或挂断", true);
+    showVoiceCallOverlay("来电中...", "点击接听", true);
     try {
       ringAudio.currentTime = 0;
       ringAudio.play().catch(() => {});
@@ -2757,9 +2764,10 @@ async function startVoiceRecording() {
   if (voiceCallActive && ttsPlaying) {
     return;
   }
-  if (asrStreaming || asrStopping) {
+  if (asrStreaming) {
     return;
   }
+  asrStopping = false;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert("当前浏览器不支持麦克风录音");
     return;
@@ -2803,6 +2811,8 @@ async function startVoiceRecording() {
         asrCommittedText = "";
       }
       asrBuffer = "";
+      asrSegments = [];
+      asrCurrentPartial = "";
     };
 
     asrSocket.onmessage = (event) => {
@@ -2810,15 +2820,27 @@ async function startVoiceRecording() {
       try {
         const payload = JSON.parse(event.data);
         if (payload.event === "asr_partial" && payload.text) {
-          asrBuffer = payload.text;
+          const nextText = payload.text.trim();
+          if (!nextText) return;
+          if (nextText !== asrCurrentPartial) {
+            asrCurrentPartial = nextText;
+          }
+          if (payload.isEnd) {
+            const lastSegment = asrSegments[asrSegments.length - 1] || "";
+            if (asrCurrentPartial && asrCurrentPartial !== lastSegment) {
+              asrSegments.push(asrCurrentPartial);
+            }
+            asrCurrentPartial = "";
+          }
+          const combined = [...asrSegments, asrCurrentPartial].filter(Boolean).join(" ");
           if (chatInputEl) {
             const prefix = asrCommittedText ? `${asrCommittedText} ` : "";
-            chatInputEl.value = `${prefix}${asrBuffer}`.trim();
+            chatInputEl.value = `${prefix}${combined}`.trim();
           }
         }
         if (payload.event === "asr_complete") {
           if (voiceSendOnStop) {
-            const spoken = asrBuffer.trim();
+            const spoken = [...asrSegments, asrCurrentPartial].filter(Boolean).join(" ").trim();
             voiceSendOnStop = false;
             if (spoken) {
               if (asrCommittedText) {
@@ -2833,6 +2855,8 @@ async function startVoiceRecording() {
             }
           }
           asrBuffer = "";
+          asrSegments = [];
+          asrCurrentPartial = "";
           if (asrStopTimer) {
             clearTimeout(asrStopTimer);
             asrStopTimer = null;
@@ -2865,6 +2889,7 @@ async function startVoiceRecording() {
       console.debug("[ASR] WS closed");
       asrStreaming = false;
       asrStopping = false;
+      asrSocket = null;
       if (chatVoiceBtn) {
         chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");
         chatVoiceBtn.textContent = "🎤";
@@ -2908,7 +2933,9 @@ function stopVoiceRecording() {
       console.error("[ASR] 关闭 WS 失败", err);
     }
   }
-  asrSocket = null;
+  if (!asrSocket) {
+    asrStopping = false;
+  }
   asrStreaming = false;
   if (chatVoiceBtn) {
     chatVoiceBtn.classList.remove("border-emerald-400", "text-emerald-600");

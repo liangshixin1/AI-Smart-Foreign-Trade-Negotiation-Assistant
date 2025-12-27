@@ -153,6 +153,7 @@ const voiceCallWindow = document.getElementById("voice-call-window");
 const voiceCallHeader = document.getElementById("voice-call-header");
 const voiceCallMinimize = document.getElementById("voice-call-minimize");
 const voiceCallAcceptWrap = document.getElementById("voice-call-accept-wrap");
+const voiceCallHangupWrap = document.getElementById("voice-call-hangup-wrap");
 const sectionEditorEvaluationHost = document.getElementById("section-editor-evaluation-editor");
 const sectionEditorBargaining = document.getElementById("section-editor-bargaining");
 const sectionEditorOrder = document.getElementById("section-editor-order");
