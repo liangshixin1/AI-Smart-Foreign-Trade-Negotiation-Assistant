@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from typing import Dict, List
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 import database
 from services.auth_service import current_user, require_role
-from services.llm_service import complete_chat
+from services.llm_service import complete_chat, stream_chat
 from utils.normalizers import normalize_text
-from utils.validators import MissingKeyError, require_key
+from utils.validators import MissingKeyError, as_bool, require_key
 
 bp = Blueprint("assistants", __name__)
 
@@ -185,6 +186,24 @@ def chat_copilot():
         api_key = require_key("DEEPSEEK_COLLAB_KEY")
 
     prompt = _build_chat_assist_prompt(action, scenario, user_input or "", history)
+    stream_requested = as_bool(request.args.get("stream"))
+    if stream_requested:
+
+        def event_stream():
+            try:
+                for delta in stream_chat(api_key, [{"role": "user", "content": prompt}], temperature=0.5):
+                    if not isinstance(delta, str):
+                        continue
+                    payload = json.dumps({"content": delta})
+                    yield f"event: chunk\ndata: {payload}\n\n"
+            except Exception as exc:  # pragma: no cover - 辅助接口容错
+                error_payload = json.dumps({"error": f"Failed to generate suggestion: {exc}"})
+                yield f"event: error\ndata: {error_payload}\n\n"
+                return
+            yield "event: done\ndata: {}\n\n"
+
+        return Response(event_stream(), mimetype="text/event-stream")
+
     try:
         suggestion = complete_chat(api_key, [{"role": "user", "content": prompt}], temperature=0.5)
     except Exception as exc:  # pragma: no cover - 辅助接口容错

@@ -1365,7 +1365,7 @@ function setCopilotStatus(text, variant = "muted") {
 // 设置 Copilot 输出展示（支持 Markdown）。
 function setCopilotOutput(text) {
   if (!copilotOutput) return;
-  copilotOutput.textContent = text || "";
+  copilotOutput.innerHTML = renderMarkdown(text || "");
 }
 
 function initCopilotDrag() {
@@ -1416,22 +1416,105 @@ async function fetchCopilotSuggestion(action, hint) {
     return null;
   }
   setCopilotStatus("Copilot 正在思考…", "loading");
+  setCopilotOutput("");
   try {
-    const response = await fetchWithAuth("/api/ai/chat/copilot", {
+    const response = await fetchWithAuth("/api/ai/chat/copilot?stream=1", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify({
         session_id: state.sessionId,
         action,
         user_input: hint || "",
       }),
     });
-    const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || "Copilot 调用失败");
+      const errorText = await response.text();
+      let errorMessage = "Copilot 调用失败";
+      if (errorText) {
+        try {
+          const parsed = JSON.parse(errorText);
+          errorMessage = parsed.error || errorMessage;
+        } catch (err) {
+          errorMessage = errorText || errorMessage;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/event-stream")) {
+      const data = await response.json();
+      setCopilotStatus("完成，内容仅供参考。");
+      return data.suggestion || "";
+    }
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("无法读取 Copilot 流式响应");
+    }
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let fullText = "";
+    let shouldTerminate = false;
+    let streamError = null;
+
+    const parseEvent = (raw) => {
+      const lines = raw.split("\n");
+      let eventType = "message";
+      const dataLines = [];
+      lines.forEach((line) => {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trim());
+        }
+      });
+      const dataString = dataLines.join("\n");
+      let payload;
+      if (dataString) {
+        try {
+          payload = JSON.parse(dataString);
+        } catch (err) {
+          payload = {};
+        }
+      } else {
+        payload = {};
+      }
+      return { eventType, payload };
+    };
+
+    const handleEvent = (eventType, payload) => {
+      if (eventType === "chunk") {
+        if (payload.content) {
+          fullText += payload.content;
+          setCopilotOutput(fullText);
+        }
+      } else if (eventType === "done") {
+        shouldTerminate = true;
+      } else if (eventType === "error") {
+        streamError = new Error(payload.error || "Copilot 调用失败");
+        shouldTerminate = true;
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+      parts.filter(Boolean).forEach((part) => {
+        const { eventType, payload } = parseEvent(part);
+        handleEvent(eventType, payload);
+      });
+      if (shouldTerminate) break;
+    }
+    if (streamError) {
+      throw streamError;
     }
     setCopilotStatus("完成，内容仅供参考。");
-    return data.suggestion || "";
+    return fullText;
   } catch (error) {
     console.error(error);
     setCopilotStatus(error.message || "Copilot 失败", "error");

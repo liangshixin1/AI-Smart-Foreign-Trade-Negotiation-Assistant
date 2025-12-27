@@ -126,7 +126,7 @@ def compute_score(context: Dict[str, object], score_key: Optional[str]) -> Tuple
                 f"{transcript}\n\n"
                 "[Scoring Only]\n"
                 "- 仅计算整体得分 (0-100)。\n"
-                '- 仅以 JSON 返回：{"score": 75}。\n'
+                '- 仅以 JSON 返回：{"score": 分数}。\n'
                 "- 不要使用 ```json ``` 代码块或额外文本，不要添加其他字段。"
             ),
         },
@@ -137,7 +137,7 @@ def compute_score(context: Dict[str, object], score_key: Optional[str]) -> Tuple
         raw_score = complete_chat(
             score_key,
             score_messages,
-            temperature=0.05,
+            temperature=0.35,
             response_format={"type": "json_object"},
         )
         parsed_score = _parse_score(raw_score)
