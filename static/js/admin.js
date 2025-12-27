@@ -6133,36 +6133,10 @@ async function loadAdminAssignments() {
   if (!state.auth.user || state.auth.user.role !== "teacher") {
     return;
   }
-  try {
-    const response = await fetchWithAuth("/api/assignments");
-    if (!response.ok) {
-      throw new Error("无法加载作业列表");
-    }
-    const data = await response.json();
-    state.admin.assignments = data.assignments || [];
-    if (
-      state.admin.selectedAssignmentId &&
-      !state.admin.assignments.some((item) => item.id === state.admin.selectedAssignmentId)
-    ) {
-      state.admin.selectedAssignmentId = null;
-      if (adminAssignmentIdInput) {
-        adminAssignmentIdInput.value = "";
-      }
-      populateAssignmentForm(null);
-    } else if (state.admin.selectedAssignmentId) {
-      const selected = findAdminAssignment(state.admin.selectedAssignmentId);
-      if (selected) {
-        populateAssignmentForm(selected);
-      }
-    }
-    renderAssignmentList();
-    renderAssignmentStudents();
-  } catch (error) {
-    console.error(error);
-    if (adminAssignmentStatus) {
-      adminAssignmentStatus.textContent = error.message || "加载作业失败";
-    }
-  }
+  state.admin.assignments = [];
+  state.admin.selectedAssignmentId = null;
+  renderAssignmentList();
+  renderAssignmentStudents();
 }
 
 
@@ -6233,65 +6207,8 @@ async function deleteBlueprint(blueprintId) {
 
 async function submitAssignment(event) {
   event.preventDefault();
-  if (!state.auth.user || state.auth.user.role !== "teacher") {
-    return;
-  }
-  const students = Array.from(
-    adminAssignmentStudents ? adminAssignmentStudents.querySelectorAll("input[type='checkbox']") : []
-  )
-    .filter((input) => input.checked)
-    .map((input) => Number(input.value));
-  let scenarioPayload = null;
-  let scenarioSource = "";
-  if (tokenEditors.assignmentScenario) {
-    scenarioSource = tokenEditors.assignmentScenario.getValue();
-  } else if (adminAssignmentScenario) {
-    scenarioSource = adminAssignmentScenario.value;
-  }
-  if (scenarioSource && scenarioSource.trim()) {
-    try {
-      scenarioPayload = JSON.parse(scenarioSource.trim());
-    } catch (error) {
-      if (adminAssignmentStatus) {
-        adminAssignmentStatus.textContent = "场景 JSON 解析失败，请检查格式";
-      }
-      return;
-    }
-  }
-  const payload = {
-    title: adminAssignmentTitle.value.trim(),
-    description: adminAssignmentDescription.value.trim(),
-    difficulty: adminAssignmentDifficulty.value,
-    chapterId: adminAssignmentChapter.value || null,
-    sectionId: adminAssignmentSection.value || null,
-    blueprintId: adminAssignmentBlueprint.value || null,
-    studentIds: students,
-  };
-  if (scenarioPayload) {
-    payload.scenario = scenarioPayload;
-  }
-  try {
-    if (adminAssignmentStatus) adminAssignmentStatus.textContent = "发布中...";
-    const response = await fetchWithAuth("/api/assignments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "创建作业失败");
-    }
-    if (adminAssignmentStatus) adminAssignmentStatus.textContent = "作业已创建";
-    adminAssignmentForm.reset();
-    state.admin.selectedAssignmentId = null;
-    populateAssignmentForm(null);
-    populateAssignmentChapterOptions();
-    populateAssignmentBlueprintOptions();
-    renderAssignmentStudents();
-    await loadAdminAssignments();
-  } catch (error) {
-    console.error(error);
-    if (adminAssignmentStatus) adminAssignmentStatus.textContent = error.message || "创建作业失败";
+  if (adminAssignmentStatus) {
+    adminAssignmentStatus.textContent = "Assignments are disabled.";
   }
 }
 

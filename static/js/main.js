@@ -10,19 +10,6 @@ if (startLevelBtn) {
   startLevelBtn.addEventListener("click", startLevel);
 }
 
-if (startAssignmentBtn) {
-  startAssignmentBtn.addEventListener("click", () => {
-    const assignmentId = startAssignmentBtn.dataset.assignmentId;
-    if (!assignmentId) {
-      if (studentAssignmentStatus) {
-        studentAssignmentStatus.textContent = "请先选择关卡或等待教师分配案例挑战";
-      }
-      return;
-    }
-    startAssignmentSession(assignmentId);
-  });
-}
-
 if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
 }
@@ -574,7 +561,6 @@ if (studentPasswordModalClose) {
 if (refreshSessionsBtn) {
   refreshSessionsBtn.addEventListener("click", () => {
     loadSessions();
-    loadStudentAssignments();
   });
 }
 
@@ -672,10 +658,6 @@ if (adminTabButtons) {
         await loadAdminStudents();
         await loadAdminAnalytics();
       }
-      if (target === "assignments") {
-        await loadAdminStudents();
-        await loadAdminAssignments();
-      }
       if (target === "blueprints") {
         await loadAdminBlueprints();
       }
@@ -703,53 +685,6 @@ if (adminStudentList) {
   });
 }
 
-if (adminAssignmentForm) {
-  adminAssignmentForm.addEventListener("submit", submitAssignment);
-}
-
-if (adminAssignmentChapter) {
-  adminAssignmentChapter.addEventListener("change", () => {
-    updateAssignmentSectionOptions();
-    state.admin.selectedAssignmentId = null;
-    renderAssignmentList();
-    if (adminAssignmentStatus) {
-      adminAssignmentStatus.textContent = "";
-    }
-    updateInlineStatus(adminAssignmentGeneratorStatus, "");
-  });
-}
-
-if (adminAssignmentSection) {
-  adminAssignmentSection.addEventListener("change", () => {
-    updateInlineStatus(adminAssignmentGeneratorStatus, "");
-  });
-}
-
-if (adminAssignmentList) {
-  adminAssignmentList.addEventListener("click", (event) => {
-    const item = event.target.closest("li[data-assignment-id]");
-    if (!item) return;
-    selectAdminAssignment(item.dataset.assignmentId);
-  });
-  adminAssignmentList.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    const item = event.target.closest("li[data-assignment-id]");
-    if (!item) return;
-    event.preventDefault();
-    selectAdminAssignment(item.dataset.assignmentId);
-  });
-}
-
-if (studentAssignmentListEl) {
-  studentAssignmentListEl.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-assignment-id]");
-    if (!button) return;
-    startAssignmentSession(button.dataset.assignmentId);
-  });
-}
-
 if (studentPasswordForm) {
   studentPasswordForm.addEventListener("submit", handleStudentPasswordChange);
 }
@@ -772,13 +707,6 @@ if (adminStudentPasswordForm) {
 
 if (adminBlueprintForm) {
   adminBlueprintForm.addEventListener("submit", submitBlueprint);
-}
-
-if (adminAssignmentGenerateBtn) {
-  adminAssignmentGenerateBtn.addEventListener(
-    "click",
-    handleAssignmentScenarioGeneration,
-  );
 }
 
 if (adminBlueprintGenerateBtn) {

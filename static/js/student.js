@@ -612,7 +612,6 @@ function updateSelectedLevelDetail() {
     selectedLevelTitle.textContent = "";
     selectedLevelDescription.textContent = "";
     startLevelBtn.disabled = true;
-    updateAssignmentShortcut();
     return;
   }
   const chapter = findChapter(chapterId);
@@ -620,7 +619,6 @@ function updateSelectedLevelDetail() {
   if (!chapter || !section) {
     selectedLevelDetail.classList.add("hidden");
     startLevelBtn.disabled = true;
-    updateAssignmentShortcut();
     return;
   }
   const chapterLabel = chapter.displayTitle || chapter.title || "章节";
@@ -629,7 +627,6 @@ function updateSelectedLevelDetail() {
   selectedLevelDetail.classList.remove("hidden");
   startLevelBtn.disabled = false;
   highlightSelectedLevel();
-  updateAssignmentShortcut();
 }
 
 // 设置当前选中的关卡并刷新相关 UI。
@@ -3613,65 +3610,6 @@ function rebuildLevelVictories() {
   }
 }
 
-// 查找当前关卡是否有已分配的作业。
-function findAssignmentForLevel(chapterId, sectionId) {
-  if (!chapterId || !sectionId) {
-    return null;
-  }
-  const assignments = Array.isArray(state.studentAssignments) ? state.studentAssignments : [];
-  const byChapterSection = assignments.filter(
-    (assignment) => assignment.chapterId === chapterId && assignment.sectionId === sectionId,
-  );
-  const prioritized =
-    byChapterSection.find((assignment) => assignment.status !== "completed") || byChapterSection[0];
-  if (prioritized) {
-    return prioritized;
-  }
-
-  const bySection = assignments.filter(
-    (assignment) => assignment.sectionId && assignment.sectionId === sectionId,
-  );
-  const sectionMatch =
-    bySection.find((assignment) => assignment.status !== "completed") || bySection[0];
-  if (sectionMatch) {
-    return sectionMatch;
-  }
-
-  const byChapter = assignments.filter(
-    (assignment) => assignment.chapterId && assignment.chapterId === chapterId,
-  );
-  return (
-    byChapter.find((assignment) => assignment.status !== "completed") || byChapter[0] || null
-  );
-}
-
-// 更新“进入作业”快捷按钮的显示与跳转链接。
-function updateAssignmentShortcut() {
-  if (!startAssignmentBtn) {
-    return;
-  }
-  const { chapterId, sectionId } = state.selectedLevel || {};
-  const assignment = chapterId && sectionId ? findAssignmentForLevel(chapterId, sectionId) : null;
-  if (!assignment) {
-    startAssignmentBtn.dataset.assignmentId = "";
-    startAssignmentBtn.disabled = true;
-    startAssignmentBtn.removeAttribute("title");
-    startAssignmentBtn.removeAttribute("aria-label");
-    return;
-  }
-  startAssignmentBtn.dataset.assignmentId = assignment.id || "";
-  startAssignmentBtn.disabled = false;
-  const status = assignment.status || "pending";
-  const actionLabel =
-    status === "completed"
-      ? "查看案例成绩"
-      : assignment.sessionId
-      ? "继续案例挑战"
-      : "开始案例挑战";
-  startAssignmentBtn.setAttribute("title", actionLabel);
-  startAssignmentBtn.setAttribute("aria-label", actionLabel);
-}
-
 // 若评估达到胜利阈值，则记录关卡通过状态。
 function maybeRecordVictory(evaluation) {
   if (!evaluation || !hasVictoryScore(evaluation)) {
@@ -4646,7 +4584,6 @@ async function loadLevels() {
       }
     });
     state.expandedChapters = preservedExpanded;
-    populateAssignmentChapterOptions();
     populateBlueprintChapterOptions();
     const { chapterId, sectionId } = state.selectedLevel || {};
     const currentSection = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
@@ -4765,94 +4702,14 @@ async function loadStudentAssignments() {
   if (!state.auth.user || state.auth.user.role !== "student") {
     return;
   }
-  try {
-    const response = await fetchWithAuth("/api/student/assignments");
-    if (!response.ok) {
-      throw new Error("无法获取作业列表");
-    }
-    const data = await response.json();
-    state.studentAssignments = data.assignments || [];
-    renderStudentAssignments();
-    updateAssignmentShortcut();
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = "";
-    }
-  } catch (error) {
-    console.error(error);
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = error.message || "加载作业失败";
-    }
-  }
+  state.studentAssignments = [];
 }
 
 
 
 // 进入某个作业对应的会话，初始化场景/提示。
-async function startAssignmentSession(assignmentId) {
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    return;
-  }
-  toggleLoading(true);
-  try {
-    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "连接作业中...";
-    const response = await fetchWithAuth(`/api/assignments/${assignmentId}/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "无法启动作业");
-    }
-    const data = await response.json();
-    state.sessionId = data.sessionId;
-    state.messages = [];
-    const fallbackChapter = state.selectedLevel?.chapterId || null;
-    const fallbackSection = state.selectedLevel?.sectionId || null;
-    state.activeLevel = {
-      chapterId: data.chapterId || fallbackChapter,
-      sectionId: data.sectionId || fallbackSection,
-      difficulty: data.difficulty || "balanced",
-      mode: data.mode || state.selectedLevel?.mode || "",
-    };
-    state.selectedLevel = {
-      chapterId: data.chapterId || fallbackChapter,
-      sectionId: data.sectionId || fallbackSection,
-      mode: data.mode || state.selectedLevel?.mode || "",
-    };
-    updateSessionControls();
-    ensureReviewState();
-    state.review.documentText =
-      data.documentText || (data.scenario && data.scenario.documentText) || "";
-    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
-    state.review.annotations = [];
-    state.review.pendingSelection = null;
-
-    renderScenario(data.scenario || {});
-    resetEvaluation();
-    renderReviewWorkbench();
-    highlightSelectedLevel();
-    updateSelectedLevelDetail();
-    seedSessionDeck(state.sessionId, data.scenario || {});
-    activateSession(state.sessionId);
-    if (data.openingMessage) {
-      appendMessage("assistant", data.openingMessage);
-    }
-    collapseLevelSelection();
-    showExperience();
-    await loadSessions();
-    await loadStudentAssignments();
-    await loadStudentDashboardInsights();
-    updateAssignmentShortcut();
-    if (studentAssignmentStatus) studentAssignmentStatus.textContent = "";
-  } catch (error) {
-    console.error(error);
-    if (studentAssignmentStatus) {
-      studentAssignmentStatus.textContent = error.message || "启动作业失败";
-    }
-  } finally {
-    toggleLoading(false);
-  }
+async function startAssignmentSession() {
+  return;
 }
 
 
