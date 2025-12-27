@@ -2433,6 +2433,8 @@ let voiceMode = state.voice?.mode || "asr_only"; // asr_only | realtime
 let asrCommittedText = "";
 let asrSegments = [];
 let asrCurrentPartial = "";
+let asrLastEndText = "";
+let asrFinalized = false;
 let voiceSendOnStop = false;
 let asrStopTimer = null;
 
@@ -2813,6 +2815,8 @@ async function startVoiceRecording() {
       asrBuffer = "";
       asrSegments = [];
       asrCurrentPartial = "";
+      asrLastEndText = "";
+      asrFinalized = false;
     };
 
     asrSocket.onmessage = (event) => {
@@ -2822,15 +2826,17 @@ async function startVoiceRecording() {
         if (payload.event === "asr_partial" && payload.text) {
           const nextText = payload.text.trim();
           if (!nextText) return;
-          if (nextText !== asrCurrentPartial) {
-            asrCurrentPartial = nextText;
-          }
           if (payload.isEnd) {
-            const lastSegment = asrSegments[asrSegments.length - 1] || "";
-            if (asrCurrentPartial && asrCurrentPartial !== lastSegment) {
-              asrSegments.push(asrCurrentPartial);
+            if (nextText !== asrLastEndText) {
+              const lastSegment = asrSegments[asrSegments.length - 1] || "";
+              if (nextText && nextText !== lastSegment) {
+                asrSegments.push(nextText);
+              }
+              asrLastEndText = nextText;
             }
             asrCurrentPartial = "";
+          } else if (nextText !== asrCurrentPartial) {
+            asrCurrentPartial = nextText;
           }
           const combined = [...asrSegments, asrCurrentPartial].filter(Boolean).join(" ");
           if (chatInputEl) {
@@ -2839,24 +2845,27 @@ async function startVoiceRecording() {
           }
         }
         if (payload.event === "asr_complete") {
-          if (voiceSendOnStop) {
-            const spoken = [...asrSegments, asrCurrentPartial].filter(Boolean).join(" ").trim();
+          if (asrFinalized) return;
+          asrFinalized = true;
+          const spoken = [...asrSegments, asrCurrentPartial].filter(Boolean).join(" ").trim();
+          if (voiceSendOnStop && spoken) {
             voiceSendOnStop = false;
-            if (spoken) {
-              if (asrCommittedText) {
-                asrCommittedText = `${asrCommittedText} ${spoken}`.trim();
-              } else {
-                asrCommittedText = spoken;
-              }
-              if (chatInputEl) {
-                chatInputEl.value = asrCommittedText;
-              }
-              sendMessageWithContent(spoken);
+            if (asrCommittedText) {
+              asrCommittedText = `${asrCommittedText} ${spoken}`.trim();
+            } else {
+              asrCommittedText = spoken;
             }
+            if (chatInputEl) {
+              chatInputEl.value = asrCommittedText;
+            }
+            sendMessageWithContent(spoken);
+          } else {
+            voiceSendOnStop = false;
           }
           asrBuffer = "";
           asrSegments = [];
           asrCurrentPartial = "";
+          asrLastEndText = "";
           if (asrStopTimer) {
             clearTimeout(asrStopTimer);
             asrStopTimer = null;
