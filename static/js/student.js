@@ -1,4 +1,130 @@
 // -------------------- 学生端全局状态 --------------------
+// ==================== 演示专用：加载动画控制器 ====================
+const LoadingFX = {
+  timer: null,
+  progress: 0,
+  logs: [
+    "正在调研全球行业数据库 (Global Trade Data)...",
+    "正在分析目标市场背景...",
+    "生成虚拟公司档案：TechNova Solutions...",
+    "正在构建产品参数表与报价策略...",
+    "生成物流条款与风险模型 (Incoterms 2020)...",
+    "正在拟定谈判目标与对手心理画像...",
+    "生成开场话术与初始邮件草稿...",
+    "识别与植入潜在谈判障碍点 (Pain Points) 与解决方案...",
+    "生成备选谈判情景剧本...",
+    "合规与风险条款自动审查...",
+    "模拟多轮对话策略树与底线推演...",
+    "思考中...",
+    "整合信息中...",
+    "最终完整性校验...",
+  ],
+  start: function () {
+    const overlay = document.getElementById("loading-overlay");
+    const bar = document.getElementById("progress-bar");
+    const logEl = document.getElementById("log-text");
+    if (!overlay) return;
+
+    overlay.classList.remove("hidden");
+    this.progress = 0;
+    let logIndex = 0;
+
+    if (logEl) {
+      const initial = this.logs[0] || "系统启动中...";
+      logEl.innerText = `> ${initial}`;
+      logIndex = 1;
+    }
+
+    if (bar) bar.style.width = "0%";
+
+    if (this.timer) clearInterval(this.timer);
+
+    this.timer = setInterval(() => {
+      if (this.progress < 40) this.progress += 1.5;
+      else if (this.progress < 70) this.progress += 0.4;
+      else if (this.progress < 95) this.progress += 0.1;
+
+      if (bar) bar.style.width = `${this.progress}%`;
+
+      if (this.progress > 5 && Math.floor(this.progress * 10) % 120 === 0) {
+        if (logEl && logIndex < this.logs.length) {
+          logEl.innerText = `> ${this.logs[logIndex++]}`;
+        }
+      }
+    }, 50);
+  },
+  finish: function () {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.progress = 100;
+    const bar = document.getElementById("progress-bar");
+    const logEl = document.getElementById("log-text");
+    const overlay = document.getElementById("loading-overlay");
+
+    if (bar) bar.style.width = "100%";
+    if (logEl) logEl.innerText = "> 场景构建完成！";
+
+    setTimeout(() => {
+      if (overlay) overlay.classList.add("hidden");
+    }, 600);
+  },
+};
+
+// ==================== 演示专用：硬编码兜底数据 ====================
+// 万一后端挂了，直接用这个渲染，保证演示不翻车
+const DEMO_FALLBACK_SCENARIO = {
+  title: "第 4 章 · 实战：智能手表出口谈判",
+  scenario_title: "第 4 章 · 实战：智能手表出口谈判",
+  summary:
+    "买家 Smith 代表英国头部电子零售商，急需采购一批智能运动手表（IP68 防水）。但他对价格极其敏感，且要求 D/P 付款。",
+  scenario_summary:
+    "买家 Smith 代表英国头部电子零售商，急需采购一批智能运动手表（IP68 防水）。但他对价格极其敏感，且要求 D/P 付款。",
+  studentRole: "李明（销售经理）",
+  student_role: "李明（销售经理）",
+  studentCompany: {
+    name: "Shenzhen TechWear Co., Ltd.",
+    profile: "智能穿戴制造商",
+  },
+  student_company: {
+    name: "Shenzhen TechWear Co., Ltd.",
+    profile: "智能穿戴制造商",
+  },
+  aiRole: "David Smith (Purchasing Manager)",
+  ai_role: "David Smith (Purchasing Manager)",
+  aiCompany: {
+    name: "UK Gadget World",
+    profile: "UK electronics retailer",
+  },
+  ai_company: {
+    name: "UK Gadget World",
+    profile: "UK electronics retailer",
+  },
+  product: {
+    name: "Smart Watch Model-X",
+    specifications: "IP68 Waterproof, 14-day battery life",
+    quantity_requirement: "5000 pcs",
+    price_expectation: {
+      student_target: "$23 FOB Shenzhen",
+      ai_bottom_line: "$18 D/P",
+    },
+  },
+  negotiationTargets: [
+    "引导买方接受 30% 预付款 + 70% T/T",
+    "争取将价格稳定在 $23 以内",
+    "强调防水与续航的差异化优势",
+  ],
+  risks: ["D/P 付款风险过高", "交期压缩导致产能紧张", "价格锚定过低"],
+  checklist: ["确认付款方式", "明确交期", "锁定质保条款"],
+  difficultyLabel: "展示版",
+  difficultyDescription: "快节奏 · 价格敏感",
+  communicationTone: "理性务实",
+  openingMessage:
+    "Hello, I've reviewed your catalog. The Model-X looks promising, but your price of $25 is way above our budget for this quantity.",
+  opening_message:
+    "Hello, I've reviewed your catalog. The Model-X looks promising, but your price of $25 is way above our budget for this quantity.",
+  backgroundSessions: [],
+  background_sessions: [],
+};
 // 能力雷达图实例
 let abilityRadarChart = null;
 // 学生弹窗当前激活的 tab（会话/作业/账号等）
@@ -12,6 +138,9 @@ const RECOMMENDATION_SCORE_THRESHOLD = 80;
 // 异步请求防抖 token，确保最新结果覆盖旧请求
 let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
+// Scenario briefing 窗口状态（拖拽偏移/最小化）
+const scenarioWindowDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
+let scenarioWindowMinimized = false;
 // 学生端理论图谱实例
 let studentLessonGraphInstance = null;
 // Copilot Agent 连续推理是否运行中
@@ -275,11 +404,81 @@ function updateChatHeader(name, role) {
 function openScenarioDrawer() {
   if (!scenarioDrawerOverlay || !scenarioDrawer) return;
   scenarioDrawerOverlay.classList.remove("hidden");
+  scenarioDrawer.classList.toggle("minimized", scenarioWindowMinimized);
+  if (window.innerWidth <= 768) {
+    scenarioWindowDrag.offsetX = 0;
+    scenarioWindowDrag.offsetY = 0;
+    scenarioDrawer.style.transform = "translate(0px, 0px)";
+    return;
+  }
+  scenarioDrawer.style.transform = `translate(${scenarioWindowDrag.offsetX}px, ${scenarioWindowDrag.offsetY}px)`;
 }
 
 function closeScenarioDrawer() {
   if (!scenarioDrawerOverlay || !scenarioDrawer) return;
   scenarioDrawerOverlay.classList.add("hidden");
+  scenarioDrawer.classList.remove("scenario-drawer--dragging");
+}
+
+function toggleScenarioDrawerMinimize() {
+  if (!scenarioDrawer) return;
+  scenarioWindowMinimized = !scenarioWindowMinimized;
+  scenarioDrawer.classList.toggle("minimized", scenarioWindowMinimized);
+}
+
+function resetScenarioWindowTransform() {
+  scenarioWindowDrag.offsetX = 0;
+  scenarioWindowDrag.offsetY = 0;
+  if (scenarioDrawer) {
+    scenarioDrawer.style.transform = "translate(0px, 0px)";
+  }
+}
+
+function initScenarioWindowDrag() {
+  if (!scenarioDrawer) return;
+  const handles =
+    (scenarioDragHandles && scenarioDragHandles.length && Array.from(scenarioDragHandles)) ||
+    [scenarioDrawer];
+  const onPointerMove = (event) => {
+    if (!scenarioWindowDrag.active) return;
+    const point = event.touches ? event.touches[0] : event;
+    const dx = point.clientX - scenarioWindowDrag.startX;
+    const dy = point.clientY - scenarioWindowDrag.startY;
+    scenarioWindowDrag.offsetX += dx;
+    scenarioWindowDrag.offsetY += dy;
+    scenarioWindowDrag.startX = point.clientX;
+    scenarioWindowDrag.startY = point.clientY;
+    scenarioDrawer.style.transform = `translate(${scenarioWindowDrag.offsetX}px, ${scenarioWindowDrag.offsetY}px)`;
+  };
+  const onPointerEnd = () => {
+    scenarioWindowDrag.active = false;
+    scenarioDrawer.classList.remove("scenario-drawer--dragging");
+  };
+  const onPointerStart = (event) => {
+    if (window.innerWidth <= 768) return;
+    if (event.type === "mousedown" && event.button !== 0) return;
+    if (
+      event.target.closest(
+        "button, input, textarea, select, option, a, label, [contenteditable='true']",
+      )
+    ) {
+      return;
+    }
+    const point = event.touches ? event.touches[0] : event;
+    scenarioWindowDrag.active = true;
+    scenarioWindowDrag.startX = point.clientX;
+    scenarioWindowDrag.startY = point.clientY;
+    scenarioDrawer.classList.add("scenario-drawer--dragging");
+  };
+  handles.forEach((handle) => {
+    handle.addEventListener("mousedown", onPointerStart);
+    handle.addEventListener("touchstart", onPointerStart, { passive: true });
+  });
+  document.addEventListener("mousemove", onPointerMove);
+  document.addEventListener("touchmove", onPointerMove, { passive: true });
+  document.addEventListener("mouseup", onPointerEnd);
+  document.addEventListener("touchend", onPointerEnd);
+  document.addEventListener("touchcancel", onPointerEnd);
 }
 
 function ensureSessionState() {
@@ -2841,6 +3040,7 @@ function sendManualVoiceMessage() {
 setVoiceMode(voiceMode);
 initVoiceCallDrag();
 initCopilotDrag();
+initScenarioWindowDrag();
 
 async function startVoiceRecording() {
   if (voiceCallActive && ttsPlaying) {
@@ -4759,7 +4959,54 @@ async function startLevel() {
 
   startLevelBtn.disabled = true;
   startLevelBtn.textContent = "加载中...";
-  toggleLoading(true);
+  LoadingFX.start();
+
+  const hydrateScenario = async (
+    payload,
+    { skipRemote = false } = {}
+  ) => {
+    const scenario = payload.scenario || {};
+    const sessionId = payload.sessionId || `demo-${Date.now()}`;
+    const opening =
+      payload.openingMessage || scenario.openingMessage || scenario.opening_message || "";
+
+    state.sessionId = sessionId;
+    state.messages = [];
+    state.activeLevel = {
+      chapterId,
+      sectionId,
+      difficulty,
+      mode: payload.mode || state.selectedLevel?.mode || "",
+    };
+    updateSessionControls();
+
+    ensureReviewState();
+    state.review.documentText = payload.documentText || scenario.documentText || "";
+    state.review.hints = payload.reviewHints || scenario.reviewHints || null;
+    state.review.annotations = [];
+    state.review.pendingSelection = null;
+
+    renderScenario(scenario);
+    resetEvaluation();
+    renderReviewWorkbench();
+    seedSessionDeck(state.sessionId, scenario);
+    activateSession(state.sessionId);
+
+    if (opening) {
+      appendMessage("assistant", opening);
+    }
+
+    collapseLevelSelection();
+    updateSelectedLevelDetail();
+    showExperience();
+    maybeStartIncomingCall(opening);
+
+    if (!skipRemote) {
+      await loadSessions();
+      await loadStudentAssignments();
+      await loadStudentDashboardInsights();
+    }
+  };
 
   try {
     const response = await fetchWithAuth("/api/start_level", {
@@ -4774,49 +5021,33 @@ async function startLevel() {
     }
 
     const data = await response.json();
-    state.sessionId = data.sessionId;
-    state.messages = [];
-    state.activeLevel = {
-      chapterId,
-      sectionId,
-      difficulty,
-      mode: data.mode || state.selectedLevel?.mode || "",
-    };
-    updateSessionControls();
-
-    ensureReviewState();
-    state.review.documentText =
-      data.documentText || (data.scenario && data.scenario.documentText) || "";
-    state.review.hints = data.reviewHints || (data.scenario && data.scenario.reviewHints) || null;
-    state.review.annotations = [];
-    state.review.pendingSelection = null;
-
-    renderScenario(data.scenario || {});
-    resetEvaluation();
-    renderReviewWorkbench();
-    seedSessionDeck(state.sessionId, data.scenario || {});
-    activateSession(state.sessionId);
-
-    const opening = data.openingMessage;
-    if (opening) {
-      appendMessage("assistant", opening);
-    }
-
-    collapseLevelSelection();
-    updateSelectedLevelDetail();
-    showExperience();
-    maybeStartIncomingCall(opening);
-    await loadSessions();
-    await loadStudentAssignments();
-    await loadStudentDashboardInsights();
+    await hydrateScenario({
+      sessionId: data.sessionId,
+      mode: data.mode,
+      scenario: data.scenario || {},
+      openingMessage: data.openingMessage,
+      documentText: data.documentText,
+      reviewHints: data.reviewHints,
+    });
+    LoadingFX.finish();
   } catch (error) {
-    console.error(error);
-    alert(error.message || "生成场景失败，请稍后再试");
-    toggleLoading(false);
+    console.warn("演示模式：后端请求失败，启用兜底数据", error);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await hydrateScenario(
+      {
+        sessionId: `demo-${Date.now()}`,
+        mode: state.selectedLevel?.mode || "",
+        scenario: DEMO_FALLBACK_SCENARIO,
+        openingMessage:
+          DEMO_FALLBACK_SCENARIO.openingMessage || DEMO_FALLBACK_SCENARIO.opening_message,
+      },
+      { skipRemote: true }
+    );
+    LoadingFX.finish();
+    alert("（演示提示：已触发兜底数据模式）");
   } finally {
     startLevelBtn.disabled = false;
     startLevelBtn.textContent = "🚀 进入关卡";
-    toggleLoading(false);
   }
 }
 
@@ -5020,16 +5251,19 @@ async function sendMessage() {
 if (scenarioDrawerToggle) {
   scenarioDrawerToggle.addEventListener("click", openScenarioDrawer);
 }
+if (scenarioDrawerMinimize) {
+  scenarioDrawerMinimize.addEventListener("click", toggleScenarioDrawerMinimize);
+}
 if (scenarioDrawerClose) {
   scenarioDrawerClose.addEventListener("click", closeScenarioDrawer);
 }
-if (scenarioDrawerOverlay) {
-  scenarioDrawerOverlay.addEventListener("click", (event) => {
-    if (event.target === scenarioDrawerOverlay) {
-      closeScenarioDrawer();
-    }
-  });
-}
+window.addEventListener("resize", () => {
+  if (window.innerWidth <= 768) {
+    scenarioWindowMinimized = false;
+    if (scenarioDrawer) scenarioDrawer.classList.remove("minimized");
+    resetScenarioWindowTransform();
+  }
+});
 
 if (knowledgePeekClose) {
   knowledgePeekClose.addEventListener("click", closeKnowledgePeek);

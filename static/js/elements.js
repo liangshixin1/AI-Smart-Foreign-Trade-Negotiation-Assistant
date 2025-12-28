@@ -239,6 +239,9 @@ const challengeSelectorClose = document.getElementById("challenge-selector-close
 const challengeSelectorCancel = document.getElementById("challenge-selector-cancel");
 const challengeSelectorConfirm = document.getElementById("challenge-selector-confirm");
 
+const scenarioDrawerBody = document.getElementById("scenario-drawer-body");
+const scenarioDrawerMinimize = document.getElementById("scenario-drawer-minimize");
+const scenarioDragHandles = document.querySelectorAll("[data-scenario-drag]");
 const scenarioTitleEl = document.getElementById("scenario-title");
 const scenarioSummaryEl = document.getElementById("scenario-summary");
 const studentRoleEl = document.getElementById("student-role");
