@@ -1108,6 +1108,30 @@
         line-height: 1.6;
         white-space: pre-wrap;
       }
+      @media (max-width: 768px) {
+        .copilot-panel {
+          top: 0;
+          bottom: 0;
+          left: 0;
+          right: auto;
+          width: min(86vw, 360px);
+          border-radius: 0 16px 16px 0;
+          transform: translateX(-105%);
+          transition: transform 0.28s ease, box-shadow 0.28s ease;
+          box-shadow: 0 22px 42px -28px rgba(15, 23, 42, 0.55);
+          pointer-events: none;
+        }
+        .copilot-panel--open {
+          transform: translateX(0);
+          pointer-events: auto;
+        }
+        .copilot-panel--closing {
+          pointer-events: none;
+        }
+        .copilot-panel__body {
+          overflow-y: auto;
+        }
+      }
       .review-doc {
         font-family: "Noto Sans SC", "Segoe UI", sans-serif;
         line-height: 1.7;
@@ -2956,6 +2980,8 @@
         overflow: hidden;
         max-height: calc(100vh - 160px);
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
       }
 
       .evaluation-loading {
@@ -3026,6 +3052,65 @@
 
       .feedback-card.active .feedback-card__body {
         display: block;
+      }
+
+      .evaluation-toggle {
+        display: none;
+      }
+
+      @media (max-width: 768px) {
+        .evaluation-panel {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: min(84vw, 360px);
+          max-height: none;
+          border-left: 1px solid rgba(148, 163, 184, 0.35);
+          box-shadow: -18px 0 40px -28px rgba(15, 23, 42, 0.45);
+          background: #fff;
+          transform: translateX(105%);
+          transition: transform 0.28s ease, opacity 0.28s ease;
+          z-index: 76;
+          pointer-events: none;
+          padding-bottom: max(16px, env(safe-area-inset-bottom, 12px));
+        }
+        .evaluation-panel.evaluation-panel--open {
+          transform: translateX(0);
+          pointer-events: auto;
+        }
+        .evaluation-panel.evaluation-panel--closing {
+          pointer-events: none;
+        }
+        .evaluation-panel__close {
+          display: inline-flex;
+          align-self: flex-end;
+          height: 34px;
+          width: 34px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 12px;
+          border: 1px solid rgba(148, 163, 184, 0.35);
+          background: rgba(248, 250, 252, 0.95);
+          color: #0f172a;
+        }
+        .evaluation-toggle {
+          position: fixed;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 75;
+          height: 46px;
+          width: 46px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 18px 34px -22px rgba(37, 99, 235, 0.65);
+          border: 1px solid rgba(255, 255, 255, 0.35);
+        }
       }
 
       .knowledge-pill {
@@ -3121,9 +3206,12 @@
       }
       #scenario-drawer-overlay:not(.hidden) {
         display: flex;
+        pointer-events: auto;
       }
       #scenario-drawer {
         position: relative;
+        display: flex;
+        flex-direction: column;
         width: min(560px, 94vw);
         max-height: 82vh;
         border-radius: 18px;
@@ -3183,6 +3271,9 @@
         padding: 16px;
         overflow: auto;
         max-height: calc(82vh - 68px);
+        flex: 1;
+        min-height: 0;
+        -webkit-overflow-scrolling: touch;
       }
       #scenario-drawer.minimized {
         width: min(360px, 85vw);
@@ -3231,16 +3322,25 @@
       @media (max-width: 768px) {
         #scenario-drawer-overlay {
           padding: 0;
+          align-items: flex-end;
+          justify-content: center;
         }
         #scenario-drawer {
           width: 100%;
-          height: 100%;
-          border-radius: 0;
-          max-height: none;
+          max-height: 78vh;
+          border-radius: 18px 18px 0 0;
           resize: none;
           cursor: default;
           touch-action: auto;
-          transform: translate(0, 0) !important;
+          transform: translateY(104%);
+          transition: transform 0.28s ease, box-shadow 0.28s ease;
+        }
+        #scenario-drawer-overlay.scenario-mobile-open #scenario-drawer {
+          transform: translateY(0);
+          box-shadow: 0 -12px 38px -24px rgba(15, 23, 42, 0.35);
+        }
+        #scenario-drawer-overlay.scenario-mobile-closing #scenario-drawer {
+          transform: translateY(104%);
         }
         .scenario-window__body {
           max-height: none;
@@ -3346,18 +3446,26 @@
 
       @media (max-width: 768px) {
         .voice-call-window {
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          border-radius: 0;
+          position: fixed;
+          inset: auto;
+          top: 10px;
+          left: 10px;
+          right: 10px;
+          bottom: auto;
+          width: auto;
+          height: auto;
+          border-radius: 12px;
+          transform: translateY(-130%);
+          transition: transform 0.25s ease;
+          box-shadow: 0 16px 32px -22px rgba(15, 23, 42, 0.35);
         }
         .voice-call-window.minimized {
-          inset: auto;
-          right: 12px;
-          bottom: 12px;
-          width: 200px;
+          transform: translateY(-130%);
+          width: auto;
           height: auto;
-          border-radius: 18px;
+        }
+        .voice-call-window.voice-call-open {
+          transform: translateY(0);
         }
       }
 
@@ -3952,9 +4060,18 @@
             </main>
 
             <aside
+              id="evaluation-panel"
               data-experience-module="evaluation"
               class="evaluation-panel hidden w-80 flex-shrink-0 flex-col gap-4 border-l border-slate-200 bg-white px-4 py-5 lg:flex"
             >
+              <button
+                id="evaluation-panel-close"
+                class="evaluation-panel__close lg:hidden"
+                aria-label="关闭即时反馈"
+                type="button"
+              >
+                ✕
+              </button>
               <div>
                 <p class="text-xs uppercase tracking-widest text-slate-400">
                   Live Feedback
@@ -4016,6 +4133,14 @@
                 ></div>
               </div>
             </aside>
+            <button
+              id="evaluation-toggle"
+              class="evaluation-toggle lg:hidden"
+              type="button"
+              title="打开即时反馈"
+            >
+              ⚡
+            </button>
           </div>
         </div>
 

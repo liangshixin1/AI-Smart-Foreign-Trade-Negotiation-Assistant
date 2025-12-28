@@ -141,11 +141,15 @@ let evaluationRecommendationToken = 0;
 // Scenario briefing 窗口状态（拖拽偏移/最小化）
 const scenarioWindowDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 let scenarioWindowMinimized = false;
+let scenarioDrawerHideTimer = null;
+let evaluationPanelOpen = false;
+let evaluationPanelHideTimer = null;
 // 学生端理论图谱实例
 let studentLessonGraphInstance = null;
 // Copilot Agent 连续推理是否运行中
 let copilotAgentRunning = false;
 let copilotPanelOpen = false;
+let copilotMobileHideTimer = null;
 const copilotDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 // 需要启用“复盘模式”的章节集合
 const REVIEW_SECTION_IDS = new Set([
@@ -326,6 +330,10 @@ function renderMarkdown(text) {
   return escapeHtml(safeText).replace(/\n/g, "<br />");
 }
 
+function isMobileViewport() {
+  return window.innerWidth <= 768;
+}
+
 
 
 
@@ -403,21 +411,74 @@ function updateChatHeader(name, role) {
 
 function openScenarioDrawer() {
   if (!scenarioDrawerOverlay || !scenarioDrawer) return;
+  if (scenarioDrawerHideTimer) {
+    clearTimeout(scenarioDrawerHideTimer);
+    scenarioDrawerHideTimer = null;
+  }
   scenarioDrawerOverlay.classList.remove("hidden");
   scenarioDrawer.classList.toggle("minimized", scenarioWindowMinimized);
-  if (window.innerWidth <= 768) {
+  if (isMobileViewport()) {
     scenarioWindowDrag.offsetX = 0;
     scenarioWindowDrag.offsetY = 0;
-    scenarioDrawer.style.transform = "translate(0px, 0px)";
+    scenarioDrawerOverlay.classList.add("scenario-mobile-open");
+    scenarioDrawerOverlay.classList.remove("scenario-mobile-closing");
+    scenarioDrawer.style.transform = "";
     return;
   }
+  scenarioDrawerOverlay.classList.remove("scenario-mobile-open", "scenario-mobile-closing");
   scenarioDrawer.style.transform = `translate(${scenarioWindowDrag.offsetX}px, ${scenarioWindowDrag.offsetY}px)`;
 }
 
 function closeScenarioDrawer() {
   if (!scenarioDrawerOverlay || !scenarioDrawer) return;
-  scenarioDrawerOverlay.classList.add("hidden");
   scenarioDrawer.classList.remove("scenario-drawer--dragging");
+  if (isMobileViewport()) {
+    scenarioDrawerOverlay.classList.remove("scenario-mobile-open");
+    scenarioDrawerOverlay.classList.add("scenario-mobile-closing");
+    scenarioDrawer.style.transform = "";
+    if (scenarioDrawerHideTimer) {
+      clearTimeout(scenarioDrawerHideTimer);
+    }
+    scenarioDrawerHideTimer = setTimeout(() => {
+      scenarioDrawerOverlay.classList.add("hidden");
+      scenarioDrawerOverlay.classList.remove("scenario-mobile-closing");
+      scenarioDrawerHideTimer = null;
+    }, 280);
+    return;
+  }
+  scenarioDrawerOverlay.classList.add("hidden");
+}
+
+function openEvaluationPanelDrawer() {
+  if (!evaluationPanel) return;
+  if (evaluationPanelHideTimer) {
+    clearTimeout(evaluationPanelHideTimer);
+    evaluationPanelHideTimer = null;
+  }
+  evaluationPanel.classList.remove("hidden", "evaluation-panel--closing");
+  if (isMobileViewport()) {
+    evaluationPanel.classList.add("evaluation-panel--open");
+  }
+  evaluationPanelOpen = true;
+}
+
+function closeEvaluationPanelDrawer() {
+  if (!evaluationPanel) return;
+  evaluationPanelOpen = false;
+  if (isMobileViewport()) {
+    evaluationPanel.classList.remove("evaluation-panel--open");
+    evaluationPanel.classList.add("evaluation-panel--closing");
+    if (evaluationPanelHideTimer) {
+      clearTimeout(evaluationPanelHideTimer);
+    }
+    evaluationPanelHideTimer = setTimeout(() => {
+      evaluationPanel.classList.add("hidden");
+      evaluationPanel.classList.remove("evaluation-panel--closing");
+      evaluationPanelHideTimer = null;
+    }, 280);
+  } else {
+    evaluationPanel.classList.add("hidden");
+  }
 }
 
 function toggleScenarioDrawerMinimize() {
@@ -1527,7 +1588,16 @@ function renderCopilotVisibility() {
 // 展开 Copilot 面板。
 function openCopilotPanel() {
   if (!copilotPanel) return;
+  if (copilotMobileHideTimer) {
+    clearTimeout(copilotMobileHideTimer);
+    copilotMobileHideTimer = null;
+  }
   copilotPanel.style.display = "flex";
+  if (isMobileViewport()) {
+    copilotPanel.classList.add("copilot-panel--open");
+    copilotPanel.classList.remove("copilot-panel--closing");
+    copilotPanel.style.transform = "";
+  }
   copilotPanelOpen = true;
   renderCopilotVisibility();
   if (copilotInput) copilotInput.focus();
@@ -1536,11 +1606,24 @@ function openCopilotPanel() {
 // 收起 Copilot 面板。
 function closeCopilotPanel() {
   if (!copilotPanel) return;
-  copilotPanel.style.display = "none";
   copilotPanelOpen = false;
   copilotAgentRunning = false;
   if (copilotStopBtn) copilotStopBtn.classList.add("hidden");
   setCopilotStatus("");
+  if (isMobileViewport()) {
+    copilotPanel.classList.remove("copilot-panel--open");
+    copilotPanel.classList.add("copilot-panel--closing");
+    if (copilotMobileHideTimer) {
+      clearTimeout(copilotMobileHideTimer);
+    }
+    copilotMobileHideTimer = setTimeout(() => {
+      copilotPanel.style.display = "none";
+      copilotPanel.classList.remove("copilot-panel--closing");
+      copilotMobileHideTimer = null;
+    }, 260);
+  } else {
+    copilotPanel.style.display = "none";
+  }
   renderCopilotVisibility();
 }
 
@@ -1582,6 +1665,7 @@ function initCopilotDrag() {
     copilotPanel.classList.remove("copilot-panel--dragging");
   };
   const onPointerStart = (event) => {
+    if (isMobileViewport()) return;
     if (event.type === "mousedown" && event.button !== 0) return;
     if (
       event.target.closest(
@@ -2729,6 +2813,7 @@ let voiceCallActive = false;
 let voiceIncoming = false;
 let voiceCallOpeningLine = "";
 let voiceDialTimer = null;
+let voiceCallHideTimer = null;
 const voiceCallDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 const ringAudio = new Audio("/static/audio/ring.mp3"); // 请将铃声文件放置在 static/audio/ring.mp3
 ringAudio.loop = true;
@@ -2736,8 +2821,12 @@ ringAudio.loop = true;
 function refreshVoiceModeUI() {
   if (voiceCallActive && voiceCallOverlay) {
     voiceCallOverlay.classList.remove("hidden");
-  } else {
-    if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
+    if (voiceCallWindow) {
+      voiceCallWindow.classList.add("voice-call-open");
+    }
+  } else if (voiceCallOverlay) {
+    if (voiceCallHideTimer) return;
+    voiceCallOverlay.classList.add("hidden");
   }
 }
 
@@ -2863,6 +2952,10 @@ function processTtsStream(fullText, isEnd = false) {
 
 function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
   if (voiceCallOverlay) {
+    if (voiceCallHideTimer) {
+      clearTimeout(voiceCallHideTimer);
+      voiceCallHideTimer = null;
+    }
     voiceCallOverlay.classList.remove("hidden");
   }
   if (voiceCallStatus) voiceCallStatus.textContent = stateText || "";
@@ -2884,11 +2977,32 @@ function showVoiceCallOverlay(stateText, hintText, showAccept = false) {
   if (voiceCallHangupWrap) {
     voiceCallHangupWrap.classList.toggle("hidden", !showHangup);
   }
+  if (voiceCallWindow) {
+    voiceCallWindow.classList.add("voice-call-open");
+    if (isMobileViewport()) {
+      voiceCallWindow.style.transform = "";
+    }
+  }
   refreshVoiceModeUI();
 }
 
 function hideVoiceCallOverlay() {
-  if (voiceCallOverlay) voiceCallOverlay.classList.add("hidden");
+  if (voiceCallWindow) {
+    voiceCallWindow.classList.remove("voice-call-open");
+  }
+  if (voiceCallOverlay) {
+    if (isMobileViewport()) {
+      if (voiceCallHideTimer) {
+        clearTimeout(voiceCallHideTimer);
+      }
+      voiceCallHideTimer = setTimeout(() => {
+        voiceCallOverlay.classList.add("hidden");
+        voiceCallHideTimer = null;
+      }, 220);
+    } else {
+      voiceCallOverlay.classList.add("hidden");
+    }
+  }
   refreshVoiceModeUI();
 }
 
@@ -5256,6 +5370,18 @@ if (scenarioDrawerMinimize) {
 }
 if (scenarioDrawerClose) {
   scenarioDrawerClose.addEventListener("click", closeScenarioDrawer);
+}
+if (evaluationToggle) {
+  evaluationToggle.addEventListener("click", () => {
+    if (evaluationPanelOpen) {
+      closeEvaluationPanelDrawer();
+    } else {
+      openEvaluationPanelDrawer();
+    }
+  });
+}
+if (evaluationPanelClose) {
+  evaluationPanelClose.addEventListener("click", closeEvaluationPanelDrawer);
 }
 window.addEventListener("resize", () => {
   if (window.innerWidth <= 768) {
