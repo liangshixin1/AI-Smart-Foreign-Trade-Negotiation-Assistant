@@ -1584,14 +1584,36 @@ def get_latest_evaluation(session_id: str) -> Optional[Dict[str, object]]:
         }
 
 
-def list_students_progress() -> List[Dict[str, object]]:
+def list_students_progress() -> Tuple[List[Dict[str, object]], int]:
+    with get_connection() as conn:
+        total_sections_row = conn.execute("SELECT COUNT(*) AS total FROM sections").fetchone()
+        total_sections = total_sections_row["total"] if total_sections_row and total_sections_row["total"] else 0
+
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT u.id, u.username, u.display_name,
                    COUNT(DISTINCT s.id) AS session_count,
                    COUNT(DISTINCT e.id) AS evaluation_count,
-                   MAX(s.updated_at) AS last_active
+                   COUNT(DISTINCT s.section_id) AS section_completed,
+                   MAX(s.updated_at) AS last_active,
+                   AVG(COALESCE(e.score, e.bargaining_win_rate)) AS avg_score,
+                   (
+                       SELECT COALESCE(ev.score, ev.bargaining_win_rate)
+                       FROM evaluations ev
+                       JOIN chat_sessions cs ON cs.id = ev.session_id
+                       WHERE cs.user_id = u.id
+                       ORDER BY ev.created_at DESC, ev.id DESC
+                       LIMIT 1
+                   ) AS latest_score,
+                   (
+                       SELECT ev.score_label
+                       FROM evaluations ev
+                       JOIN chat_sessions cs ON cs.id = ev.session_id
+                       WHERE cs.user_id = u.id
+                       ORDER BY ev.created_at DESC, ev.id DESC
+                       LIMIT 1
+                   ) AS latest_score_label
             FROM users u
             LEFT JOIN chat_sessions s ON s.user_id = u.id
             LEFT JOIN evaluations e ON e.session_id = s.id
@@ -1600,17 +1622,22 @@ def list_students_progress() -> List[Dict[str, object]]:
             ORDER BY u.username
             """
         ).fetchall()
-        return [
+        students = [
             {
                 "id": row["id"],
                 "username": row["username"],
                 "displayName": row["display_name"] or row["username"],
                 "sessionCount": row["session_count"],
                 "evaluationCount": row["evaluation_count"],
+                "sectionCompleted": row["section_completed"],
+                "averageScore": row["avg_score"],
+                "latestScore": row["latest_score"],
+                "latestScoreLabel": row["latest_score_label"],
                 "lastActive": row["last_active"],
             }
             for row in rows
         ]
+        return students, total_sections
 
 
 def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
@@ -2201,6 +2228,24 @@ def verify_user_password(user_id: int, password: str) -> bool:
 
 
 def get_class_analytics() -> Dict[str, object]:
+    def normalize_knowledge_label(raw: object) -> str:
+        if raw is None:
+            return ""
+        if isinstance(raw, str):
+            text = raw.strip()
+            if text.startswith("{") or text.startswith("["):
+                try:
+                    parsed = json.loads(text)
+                    return normalize_knowledge_label(parsed)
+                except json.JSONDecodeError:
+                    return text
+            return text
+        if isinstance(raw, dict):
+            for key in ("label", "name", "title", "knowledgePoint"):
+                if raw.get(key):
+                    return str(raw.get(key)).strip()
+        return str(raw).strip()
+
     with get_connection() as conn:
         trend_rows = conn.execute(
             """
@@ -2220,8 +2265,9 @@ def get_class_analytics() -> Dict[str, object]:
 
         knowledge_rows = conn.execute(
             """
-            SELECT kp.value AS knowledge_point, e.score, e.bargaining_win_rate
+            SELECT kp.value AS knowledge_point, e.score, e.bargaining_win_rate, s.user_id
             FROM evaluations e
+            JOIN chat_sessions s ON s.id = e.session_id
             JOIN json_each(e.knowledge_points_json) AS kp
             WHERE kp.value IS NOT NULL AND kp.value != ''
             """
@@ -2235,6 +2281,15 @@ def get_class_analytics() -> Dict[str, object]:
             WHERE kp.value IS NOT NULL AND kp.value != ''
             """
         ).fetchall()
+
+        user_rows = conn.execute(
+            "SELECT id, display_name, username FROM users WHERE role = 'student'"
+        ).fetchall()
+
+    user_name_map = {
+        row["id"]: (row["display_name"] or row["username"] or f"学生 {row['id']}")
+        for row in user_rows
+    }
 
     weekly_trends: List[Dict[str, object]] = []
     for row in trend_rows:
@@ -2256,23 +2311,53 @@ def get_class_analytics() -> Dict[str, object]:
         )
 
     knowledge_stats: Dict[str, Dict[str, float]] = defaultdict(
-        lambda: {"count": 0, "score_sum": 0.0, "score_count": 0}
+        lambda: {
+            "count": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "students": defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_count": 0}),
+        }
     )
     for row in knowledge_rows:
-        kp = row["knowledge_point"]
+        kp_raw = row["knowledge_point"]
+        kp = normalize_knowledge_label(kp_raw)
         stats = knowledge_stats[kp]
         stats["count"] += 1
         value = row["score"] if row["score"] is not None else row["bargaining_win_rate"]
         if value is not None:
             stats["score_sum"] += float(value)
             stats["score_count"] += 1
+        user_id = row["user_id"]
+        if user_id is not None:
+            student_stats = stats["students"][user_id]
+            student_stats["count"] += 1
+            if value is not None:
+                student_stats["score_sum"] += float(value)
+                student_stats["score_count"] += 1
 
     knowledge_weakness = []
-    for kp, stats in knowledge_stats.items():
+    for kp_label, stats in knowledge_stats.items():
+        students_detail = []
+        for user_id, s_stats in stats["students"].items():
+            avg_score = (
+                s_stats["score_sum"] / s_stats["score_count"]
+                if s_stats["score_count"]
+                else None
+            )
+            students_detail.append(
+                {
+                    "id": user_id,
+                    "name": user_name_map.get(user_id, f"学生 {user_id}"),
+                    "count": s_stats["count"],
+                    "averageScore": avg_score,
+                }
+            )
+        students_detail.sort(key=lambda item: (-item["count"], item["name"]))
         entry = {
-            "label": kp,
-            "knowledgePoint": kp,
+            "label": kp_label,
+            "knowledgePoint": kp_label,
             "count": stats["count"],
+            "students": students_detail,
         }
         if stats["score_count"]:
             entry["averageScore"] = stats["score_sum"] / stats["score_count"]

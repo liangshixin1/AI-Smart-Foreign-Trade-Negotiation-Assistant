@@ -488,8 +488,8 @@ def reset_student_password(student_id: int):
 @bp.get("/api/admin/students")
 @require_role("teacher")
 def list_students_progress():
-    students = database.list_students_progress()
-    return jsonify({"students": students})
+    students, total_sections = database.list_students_progress()
+    return jsonify({"students": students, "totalSections": total_sections})
 
 
 @bp.get("/api/admin/students/<int:student_id>")

@@ -19,6 +19,30 @@ const knowledgeCardModalState = {
   imageDataUrl: "",
   indexRecords: [],
 };
+let adminTrendChartInstance = null;
+
+function normalizeKnowledgeLabel(raw) {
+  if (raw === null || raw === undefined) return "";
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (text.startsWith("{") || text.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(text);
+        return normalizeKnowledgeLabel(parsed);
+      } catch (error) {
+        return text;
+      }
+    }
+    return text;
+  }
+  if (typeof raw === "object") {
+    if (raw.label) return String(raw.label).trim();
+    if (raw.name) return String(raw.name).trim();
+    if (raw.title) return String(raw.title).trim();
+    if (raw.knowledgePoint) return String(raw.knowledgePoint).trim();
+  }
+  return String(raw).trim();
+}
 
 // -------------------- 知识卡模板与数据规范化 --------------------
 // 清洗知识卡 HTML，防止 XSS，同时允许正常的富文本标签。
@@ -1420,44 +1444,159 @@ function renderAutoBuildDrafts(drafts) {
 }
 
 // 渲染学生列表，支持选中态高亮与“查看”按钮。
+function getAdminTotalSections() {
+  if (state.admin && state.admin.totalSections) {
+    return state.admin.totalSections;
+  }
+  const chapters = state.admin && Array.isArray(state.admin.levels) ? state.admin.levels : [];
+  return chapters.reduce((sum, chapter) => sum + (Array.isArray(chapter.sections) ? chapter.sections.length : 0), 0);
+}
+
+function deriveStudentStatus(lastActive) {
+  if (!lastActive) {
+    return { label: "未上线", tone: "warn", detail: "暂无活跃时间" };
+  }
+  const parsed = new Date(lastActive);
+  if (Number.isNaN(parsed.getTime())) {
+    return { label: "未上线", tone: "warn", detail: lastActive };
+  }
+  const diffHours = (Date.now() - parsed.getTime()) / 3600000;
+  if (diffHours <= 24) {
+    return { label: "当天在线", tone: "good", detail: "最近 24 小时活跃" };
+  }
+  if (diffHours <= 72) {
+    return { label: `离线 ${Math.round(diffHours / 24)} 天`, tone: "warn", detail: "建议提醒上线" };
+  }
+  return { label: `离线 ${Math.round(diffHours / 24)} 天`, tone: "bad", detail: "长时间未活跃" };
+}
+
+function getProgressColor(percent) {
+  if (percent >= 80) {
+    return "linear-gradient(90deg, #22c55e, #16a34a)";
+  }
+  if (percent >= 50) {
+    return "linear-gradient(90deg, #22d3ee, #38bdf8)";
+  }
+  return "linear-gradient(90deg, #f97316, #ef4444)";
+}
+
+function decorateAdminStudent(student) {
+  const totalSections = Math.max(0, getAdminTotalSections());
+  const completed = Number(student.sectionCompleted || student.sessionCount || 0);
+  const progress = totalSections > 0 ? Math.min(100, Math.round((completed / totalSections) * 100)) : Math.min(100, completed * 10);
+  const avgScore = typeof student.averageScore === "number" ? student.averageScore : null;
+  const latestScore = typeof student.latestScore === "number" ? student.latestScore : null;
+  const status = deriveStudentStatus(student.lastActive);
+  const baseName = student.displayName || student.username || "学生";
+  const initials = baseName.slice(0, 2).toUpperCase();
+  return {
+    ...student,
+    progress,
+    status,
+    initials,
+    scoreValue: latestScore !== null ? latestScore : avgScore,
+    avgScore,
+    attention: avgScore !== null && avgScore < 65,
+  };
+}
+
+function applyStudentFilters(students) {
+  const filters = state.admin.studentFilters || { search: "", filter: "all", sort: "progress" };
+  const search = (filters.search || "").toLowerCase();
+  let list = students;
+  if (search) {
+    list = list.filter((student) => {
+      const name = (student.displayName || student.username || "").toLowerCase();
+      return name.includes(search);
+    });
+  }
+  if (filters.filter === "attention") {
+    list = list.filter((student) => student.attention);
+  } else if (filters.filter === "active") {
+    list = list.filter((student) => student.status && student.status.tone === "good");
+  }
+
+  list.sort((a, b) => {
+    if (filters.sort === "score") {
+      return (b.scoreValue || -Infinity) - (a.scoreValue || -Infinity);
+    }
+    if (filters.sort === "activity") {
+      const timeA = a.lastActive ? new Date(a.lastActive).getTime() : 0;
+      const timeB = b.lastActive ? new Date(b.lastActive).getTime() : 0;
+      return timeB - timeA;
+    }
+    if (filters.sort === "name") {
+      return (a.displayName || a.username || "").localeCompare(b.displayName || b.username || "");
+    }
+    // 默认按进度
+    return (b.progress || 0) - (a.progress || 0);
+  });
+  return list;
+}
+
+function updateAdminKpis(students) {
+  const total = students.length;
+  const avgProgress = total ? Math.round(students.reduce((sum, s) => sum + (s.progress || 0), 0) / total) : 0;
+  const attentionCount = students.filter((s) => s.attention).length;
+  if (adminKpiTotal) adminKpiTotal.textContent = `${total}`;
+  if (adminKpiProgress) adminKpiProgress.textContent = `${avgProgress}%`;
+  if (adminKpiAttention) adminKpiAttention.textContent = `${attentionCount} 人`;
+}
+
 function renderAdminStudentList() {
   adminStudentList.innerHTML = "";
-  if (!state.admin.students || state.admin.students.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400";
-    empty.textContent = "暂无学生数据";
-    adminStudentList.appendChild(empty);
+  const decorated = (state.admin.students || []).map(decorateAdminStudent);
+  updateAdminKpis(decorated);
+  const students = applyStudentFilters(decorated);
+  if (adminStudentTableEmpty) {
+    adminStudentTableEmpty.classList.toggle("hidden", students.length > 0);
+  }
+  if (!students || students.length === 0) {
     return;
   }
 
-  state.admin.students.forEach((student) => {
-    const li = document.createElement("li");
+  students.forEach((student) => {
+    const tr = document.createElement("tr");
     const isActive = state.admin.selectedStudentId === student.id;
-    li.className = `rounded-2xl border p-4 text-sm transition ${
-      isActive
-        ? "border-emerald-500/60 bg-emerald-500/10"
-        : "border-slate-800 bg-slate-900/70 hover:border-slate-600"
-    }`;
+    tr.className = `admin-student-row ${isActive ? "active" : ""}`;
+    const progressColor = getProgressColor(student.progress || 0);
+    const scoreLabel = student.scoreValue !== null && student.scoreValue !== undefined
+      ? `${Math.round(student.scoreValue)} 分`
+      : "未评分";
+    const displayName = escapeHtmlText(student.displayName || student.username || "学生");
+    const metaLine = escapeHtmlText(`会话 ${student.sessionCount || 0} ｜ 评估 ${student.evaluationCount || 0}`);
 
-    const header = document.createElement("div");
-    header.className = "flex items-center justify-between";
-    const name = document.createElement("span");
-    name.className = "font-semibold text-white";
-    name.textContent = `学生 ${student.displayName || student.username}`;
-    const openBtn = document.createElement("button");
-    openBtn.className = "rounded-xl border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-500 hover:text-white";
-    openBtn.textContent = "查看";
-    openBtn.dataset.studentId = student.id;
-    header.appendChild(name);
-    header.appendChild(openBtn);
-
-    const stats = document.createElement("p");
-    stats.className = "mt-2 text-xs text-slate-400";
-    stats.textContent = `会话：${student.sessionCount} · 评估：${student.evaluationCount} · 最近活跃：${student.lastActive || "-"}`;
-
-    li.appendChild(header);
-    li.appendChild(stats);
-    adminStudentList.appendChild(li);
+    tr.innerHTML = `
+      <td>
+        <div class="flex items-center gap-3">
+          <div class="admin-table-avatar">${student.initials}</div>
+          <div>
+            <div class="admin-student-name">${displayName}</div>
+            <p class="admin-student-meta">${metaLine}</p>
+          </div>
+        </div>
+      </td>
+      <td>
+        <span class="status-pill" data-tone="${student.status.tone}">${student.status.label}</span>
+        <p class="mt-1 text-[11px] text-slate-500">${student.status.detail}</p>
+      </td>
+      <td>
+        <div class="flex items-center gap-3">
+          <div class="progress-rail">
+            <div class="progress-fill" style="width: ${student.progress || 0}%; background: ${progressColor};"></div>
+          </div>
+          <span class="progress-badge">${student.progress || 0}%</span>
+        </div>
+      </td>
+      <td>
+        <div class="score-chip">${scoreLabel}</div>
+        ${student.avgScore !== null && student.avgScore !== undefined ? `<p class="mt-1 text-[11px] text-slate-400">均分 ${Math.round(student.avgScore)} 分</p>` : ""}
+      </td>
+      <td class="text-right">
+        <button class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-500 hover:text-white" data-student-id="${student.id}">👁 查看</button>
+      </td>
+    `;
+    adminStudentList.appendChild(tr);
   });
 }
 
@@ -1474,9 +1613,14 @@ function renderAdminStudentDetail(detail) {
   }
   state.admin.studentDetail = detail;
 
+  const summarySource = (state.admin.students || []).find((item) => item.id === detail.id) || detail;
+  const decorated = decorateAdminStudent(summarySource);
+  const safeName = escapeHtmlText(detail.displayName || detail.username || "学生");
+  const createdAt = escapeHtmlText(detail.createdAt || "-");
   adminStudentMeta.innerHTML = `
-    <p class="text-sm text-slate-200">学生 ${detail.displayName || detail.username}</p>
-    <p class="text-xs text-slate-400">注册时间：${detail.createdAt || "-"}</p>
+    <p class="text-sm text-slate-200">学生 ${safeName}</p>
+    <p class="text-xs text-slate-400">注册时间：${createdAt}</p>
+    <p class="text-xs text-emerald-200">进度 ${decorated.progress || 0}% ｜ 均分 ${decorated.avgScore !== null && decorated.avgScore !== undefined ? Math.round(decorated.avgScore) : "未评分"}</p>
   `;
 
   adminSessionList.innerHTML = "";
@@ -3721,41 +3865,298 @@ function renderAnalyticsList(container, items, formatItem, emptyText) {
 }
 
 // 展示后台仪表盘的关键统计（练习、评估、反馈等）。
+function renderAdminTrendChart(trends) {
+  if (!adminTrendChart) return;
+  if (adminTrendEmpty) adminTrendEmpty.classList.toggle("hidden", trends && trends.length > 0);
+
+  if (!trends || trends.length === 0) {
+    if (adminTrendChartInstance) {
+      adminTrendChartInstance.dispose();
+      adminTrendChartInstance = null;
+    }
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.echarts === "undefined") {
+    if (adminTrendEmpty) {
+      adminTrendEmpty.textContent = "ECharts 未加载，无法展示趋势图";
+      adminTrendEmpty.classList.remove("hidden");
+    }
+    return;
+  }
+
+  const grouped = new Map();
+  trends.forEach((trend) => {
+    const weekKey = trend.week || trend.weekLabel || "unknown";
+    const label = trend.weekLabel || trend.week || "周度";
+    const value =
+      trend.averageScore !== null && trend.averageScore !== undefined
+        ? Number(trend.averageScore)
+        : null;
+    if (value === null || Number.isNaN(value)) {
+      return;
+    }
+    const current = grouped.get(weekKey) || { label, sum: 0, count: 0, sample: 0 };
+    current.sum += value;
+    current.count += 1;
+    current.sample += trend.sampleSize || 0;
+    grouped.set(weekKey, current);
+  });
+
+  const data = Array.from(grouped.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, item]) => ({
+      label: item.label,
+      value: item.count ? item.sum / item.count : 0,
+      sample: item.sample,
+    }));
+
+  if (!data.length) {
+    if (adminTrendChartInstance) {
+      adminTrendChartInstance.dispose();
+      adminTrendChartInstance = null;
+    }
+    if (adminTrendEmpty) {
+      adminTrendEmpty.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (adminTrendChartInstance) {
+    adminTrendChartInstance.dispose();
+  }
+  adminTrendChartInstance = window.echarts.init(adminTrendChart);
+  adminTrendChartInstance.setOption({
+    tooltip: {
+      trigger: "axis",
+      formatter: (params) => {
+        const point = params && params[0];
+        if (!point) return "";
+        const sample = point.data && point.data.sample ? `样本 ${point.data.sample}` : "暂无样本";
+        return `${point.axisValue}<br/>周均分：${point.data ? Math.round(point.data.value) : 0}｜${sample}`;
+      },
+    },
+    grid: { left: 45, right: 20, top: 30, bottom: 30 },
+    xAxis: {
+      type: "category",
+      data: data.map((item) => item.label),
+      axisLine: { lineStyle: { color: "#64748b" } },
+      axisLabel: { color: "#cbd5e1" },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 100,
+      axisLabel: { formatter: "{value} 分", color: "#cbd5e1" },
+      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.2)" } },
+    },
+    series: [
+      {
+        type: "line",
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 6,
+        lineStyle: { color: "#60a5fa", width: 2 },
+        areaStyle: {
+          color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(96, 165, 250, 0.45)" },
+            { offset: 1, color: "rgba(59, 130, 246, 0.05)" },
+          ]),
+        },
+        data: data.map((item) => ({
+          value: Number(item.value.toFixed(2)),
+          sample: item.sample,
+        })),
+      },
+    ],
+    color: ["#60a5fa"],
+  });
+}
+
+function renderActionHotspots(items) {
+  if (!adminActionHotspots) return;
+  adminActionHotspots.innerHTML = "";
+  if (adminActionEmpty) {
+    adminActionEmpty.classList.toggle("hidden", items && items.length > 0);
+  }
+  if (!items || items.length === 0) {
+    return;
+  }
+  items.forEach((item) => {
+    const raw = item && (item.label || item.actionItem || "");
+    let title = raw;
+    let body = "";
+    const markdownMatch = raw.match(/\*\*(.+?)\*\*\s*[:：]\s*(.+)/);
+    if (markdownMatch) {
+      title = markdownMatch[1];
+      body = markdownMatch[2];
+    } else if (raw.includes("：")) {
+      const [left, right] = raw.split(/：(.+)/);
+      title = left;
+      body = right || "";
+    } else if (raw.includes(":")) {
+      const [left, right] = raw.split(/:(.+)/);
+      title = left;
+      body = right || "";
+    }
+    const card = document.createElement("div");
+    card.className = "feedback-card";
+    card.innerHTML = `
+      <div class="feedback-card__title">
+        <span>${escapeHtmlText(title || "改进建议")}</span>
+        <span class="admin-action-count">x${item.count || 0}</span>
+      </div>
+      <div class="feedback-card__body">${escapeHtmlText(body || "展开查看详细描述")}</div>
+    `;
+    card.addEventListener("click", () => {
+      card.classList.toggle("active");
+    });
+    adminActionHotspots.appendChild(card);
+  });
+}
+
+function getErrorRateColor(rate) {
+  if (rate >= 70) return "linear-gradient(90deg, #ef4444, #b91c1c)";
+  if (rate >= 40) return "linear-gradient(90deg, #fb7185, #f43f5e)";
+  return "linear-gradient(90deg, #fbbf24, #f97316)";
+}
+
+function renderKnowledgeWeakness(items) {
+  if (!adminKnowledgeWeakness) return;
+  adminKnowledgeWeakness.innerHTML = "";
+  if (adminKnowledgeEmpty) {
+    adminKnowledgeEmpty.classList.toggle("hidden", items && items.length > 0);
+  }
+  if (!items || items.length === 0) {
+    return;
+  }
+  items.forEach((item) => {
+    const label = normalizeKnowledgeLabel(item.label || item.knowledgePoint || item.name);
+    const errorRate =
+      item.averageScore !== null && item.averageScore !== undefined
+        ? Math.max(0, Math.min(100, 100 - item.averageScore))
+        : null;
+    const bar = document.createElement("button");
+    bar.type = "button";
+    bar.className = "error-bar w-full text-left";
+    bar.innerHTML = `
+      <span class="error-bar__label">${escapeHtmlText(label || "知识点")}</span>
+      <span class="error-bar__track">
+        <span class="error-bar__fill" style="width: ${errorRate !== null ? errorRate : 12}%; background: ${getErrorRateColor(errorRate || 0)};"></span>
+      </span>
+      <span class="error-bar__meta">${item.count || 0} 次${errorRate !== null ? ` · ${Math.round(errorRate)}%` : ""}</span>
+    `;
+    bar.addEventListener("click", () => openKnowledgeDrawer(item, errorRate, label));
+    adminKnowledgeWeakness.appendChild(bar);
+  });
+}
+
+function openKnowledgeDrawer(item, errorRate, labelOverride = "") {
+  if (!adminKnowledgeDrawer) return;
+  const students = Array.isArray(item.students) ? item.students : [];
+  const label = labelOverride || normalizeKnowledgeLabel(item.label || item.knowledgePoint || item.name);
+  if (adminKnowledgeDrawerTitle) adminKnowledgeDrawerTitle.textContent = label || "知识点详情";
+  if (adminKnowledgeDrawerHint) {
+    const errorText = errorRate !== null && errorRate !== undefined ? `错误率 ${Math.round(errorRate)}%` : "暂无错误率数据";
+    adminKnowledgeDrawerHint.textContent = `${label || "知识点"} ｜ ${errorText} ｜ ${item.count || 0} 次标记`;
+  }
+  if (adminKnowledgeDrawerList) {
+    adminKnowledgeDrawerList.innerHTML = "";
+    if (students.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "text-xs text-slate-400";
+      empty.textContent = "暂无关联学生";
+      adminKnowledgeDrawerList.appendChild(empty);
+    } else {
+      students.forEach((student) => {
+        const li = document.createElement("li");
+        const avgScore =
+          student.averageScore !== null && student.averageScore !== undefined
+            ? `${Math.round(student.averageScore)} 分`
+            : "未评分";
+        li.innerHTML = `
+          <span class="font-semibold">${escapeHtmlText(student.name || `学生 ${student.id || ""}`)}</span>
+          <span class="text-xs text-slate-400">出现 ${student.count || 0} 次 ｜ ${avgScore}</span>
+        `;
+        adminKnowledgeDrawerList.appendChild(li);
+      });
+    }
+  }
+  adminKnowledgeDrawer.classList.remove("hidden");
+}
+
+function closeKnowledgeDrawer() {
+  if (adminKnowledgeDrawer) {
+    adminKnowledgeDrawer.classList.add("hidden");
+  }
+}
+
 function renderAdminAnalytics(analytics) {
   state.admin.analytics = analytics || null;
-  renderAnalyticsList(
-    adminTrendList,
-    analytics ? analytics.weeklyTrends : [],
-    (trend) => {
-      const label = trend.sectionTitle || `${trend.chapterId} · ${trend.sectionId}`;
-      const week = trend.weekLabel || trend.week;
-      const avg = trend.averageScore !== null && trend.averageScore !== undefined
-        ? `平均 ${Math.round(trend.averageScore)}分`
-        : "暂无评分";
-      const samples = trend.sampleSize ? ` · 样本 ${trend.sampleSize}` : "";
-      return `${label}｜${week}｜${avg}${samples}`;
-    },
-    "暂无趋势数据"
-  );
+  const weeklyTrends = analytics ? analytics.weeklyTrends || [] : [];
+  const actionHotspots = analytics ? analytics.actionHotspots || [] : [];
+  const knowledgeWeakness = analytics ? analytics.knowledgeWeakness || [] : [];
 
-  renderAnalyticsList(
-    adminActionHotspots,
-    analytics ? analytics.actionHotspots : [],
-    (item) => `${item.label || item.actionItem}｜${item.count} 次`,
-    "暂无改进建议统计"
-  );
+  if (adminTrendSectionFilter) {
+    const uniqueSections = new Map();
+    weeklyTrends.forEach((trend) => {
+      const key = `${trend.chapterId || ""}-${trend.sectionId || ""}`;
+      if (!uniqueSections.has(key)) {
+        uniqueSections.set(key, trend.sectionTitle || key || "章节");
+      }
+    });
+    adminTrendSectionFilter.innerHTML = '<option value="all">全部章节</option>';
+    uniqueSections.forEach((label, key) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = label;
+      adminTrendSectionFilter.appendChild(option);
+    });
+    const selectValue =
+      (state.admin.selectedTrendSection && uniqueSections.has(state.admin.selectedTrendSection))
+        ? state.admin.selectedTrendSection
+        : "all";
+    adminTrendSectionFilter.value = selectValue;
+  }
 
-  renderAnalyticsList(
-    adminKnowledgeWeakness,
-    analytics ? analytics.knowledgeWeakness : [],
-    (item) => {
-      const avg = item.averageScore !== null && item.averageScore !== undefined
-        ? ` · 平均 ${Math.round(item.averageScore)}分`
-        : "";
-      return `${item.label || item.knowledgePoint}｜${item.count} 次${avg}`;
-    },
-    "暂无知识点统计"
-  );
+  const selectedKey = state.admin.selectedTrendSection || "all";
+  const filteredTrends =
+    selectedKey === "all"
+      ? weeklyTrends
+      : weeklyTrends.filter(
+          (trend) => `${trend.chapterId || ""}-${trend.sectionId || ""}` === selectedKey
+        );
+  renderAdminTrendChart(filteredTrends);
+  renderActionHotspots(actionHotspots);
+  renderKnowledgeWeakness(knowledgeWeakness);
+
+  // Fallback: if学生列表尚未加载但统计中包含学生姓名，补充一个只读列表，避免 KPI 显示 0。
+  const hasStudents = state.admin.students && state.admin.students.length > 0;
+  if (!hasStudents && Array.isArray(knowledgeWeakness) && knowledgeWeakness.length > 0) {
+    const syntheticMap = new Map();
+    knowledgeWeakness.forEach((item) => {
+      (item.students || []).forEach((stu) => {
+        if (!syntheticMap.has(stu.id)) {
+          syntheticMap.set(stu.id, {
+            id: stu.id,
+            username: stu.name || `学生 ${stu.id || ""}`,
+            displayName: stu.name || `学生 ${stu.id || ""}`,
+            sessionCount: 0,
+            evaluationCount: 0,
+            sectionCompleted: 0,
+            lastActive: "",
+            averageScore: stu.averageScore,
+            latestScore: stu.averageScore,
+            latestScoreLabel: "",
+          });
+        }
+      });
+    });
+    const syntheticStudents = Array.from(syntheticMap.values());
+    if (syntheticStudents.length > 0) {
+      state.admin.students = syntheticStudents;
+      renderAdminStudentList();
+    }
+  }
 }
 
 // 工具：根据 ID 获取章节对象。
@@ -6030,6 +6431,7 @@ async function loadAdminStudents() {
     }
     const data = await response.json();
     state.admin.students = data.students || [];
+    state.admin.totalSections = data.totalSections || state.admin.totalSections || 0;
     renderAdminStudentList();
     renderAssignmentStudents();
   } catch (error) {

@@ -607,6 +607,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && studentModalOverlay && !studentModalOverlay.classList.contains("hidden")) {
     closeStudentModal();
   }
+  if (event.key === "Escape" && adminKnowledgeDrawer && !adminKnowledgeDrawer.classList.contains("hidden")) {
+    closeKnowledgeDrawer();
+  }
 });
 
 if (reopenLevelMapBtn) {
@@ -681,7 +684,55 @@ if (adminStudentList) {
     const button = event.target.closest("button[data-student-id]");
     if (!button) return;
     const studentId = button.dataset.studentId;
+    if (state.admin.selectedStudentId === Number(studentId) || state.admin.selectedStudentId === studentId) {
+      state.admin.selectedStudentId = null;
+      state.admin.selectedSessionId = null;
+      state.admin.studentDetail = null;
+      renderAdminStudentList();
+      renderAdminStudentDetail(null);
+      return;
+    }
     loadAdminStudentDetail(studentId);
+  });
+}
+
+if (adminStudentSearch) {
+  adminStudentSearch.addEventListener("input", () => {
+    state.admin.studentFilters.search = adminStudentSearch.value.trim();
+    renderAdminStudentList();
+  });
+}
+
+if (adminStudentFilter) {
+  adminStudentFilter.addEventListener("change", () => {
+    state.admin.studentFilters.filter = adminStudentFilter.value;
+    renderAdminStudentList();
+  });
+}
+
+if (adminStudentSort) {
+  adminStudentSort.addEventListener("change", () => {
+    state.admin.studentFilters.sort = adminStudentSort.value;
+    renderAdminStudentList();
+  });
+}
+
+if (adminTrendSectionFilter) {
+  adminTrendSectionFilter.addEventListener("change", () => {
+    state.admin.selectedTrendSection = adminTrendSectionFilter.value || "all";
+    renderAdminAnalytics(state.admin.analytics);
+  });
+}
+
+if (adminKnowledgeDrawerClose) {
+  adminKnowledgeDrawerClose.addEventListener("click", closeKnowledgeDrawer);
+}
+
+if (adminKnowledgeDrawer) {
+  adminKnowledgeDrawer.addEventListener("click", (event) => {
+    if (event.target === adminKnowledgeDrawer) {
+      closeKnowledgeDrawer();
+    }
   });
 }
 

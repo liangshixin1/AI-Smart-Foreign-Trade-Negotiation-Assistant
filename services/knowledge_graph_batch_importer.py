@@ -276,6 +276,20 @@ EXAMPLE_TYPE_CN_TO_EN = {
     "谈判对话": "dialogue_sample",
 }
 
+# 词汇角色映射
+LEX_ROLE_ALIASES = {
+    "lexeme": "lexeme",
+    "词条": "lexeme",
+    "术语": "lexeme",
+    "term": "lexeme",
+    "collocation": "collocation",
+    "搭配": "collocation",
+    "短语": "collocation",
+    "construction": "construction",
+    "句式": "construction",
+    "句型": "construction",
+}
+
 
 # ============================================
 # 模板定义
@@ -318,6 +332,35 @@ EXAMPLES_TEMPLATE_HEADERS = [
     ("案例内容", "content", True, "详细内容"),
     ("关联练习关卡", "practice_id", False, "例如：6-1"),
 ]
+
+# Sheet 4: 词汇网络表模板
+LEXICON_TEMPLATE_HEADERS = [
+    ("关联知识点名称", "anchor", True, "必须存在于知识点主表"),
+    ("词汇项", "lex_item", True, "例如：offer a discount"),
+    ("词汇项类型", "lex_role", True, "词条/搭配/句式"),
+    ("词族", "family", False, "如: quote-* 或 ship-*"),
+    ("语义类", "semantic_class", False, "如: Pricing-Concession"),
+    ("语义槽位", "slots", False, "多值用分号或逗号分隔"),
+    ("搭配组成词", "components", False, "用于搭配与词条关联"),
+    ("备注", "note", False, "补充说明"),
+]
+
+
+# ============================================
+# 通用辅助
+# ============================================
+
+def _normalize_multi_value(value: Optional[str]) -> List[str]:
+    """兼容中英文分隔符, 去重并保持顺序。"""
+    if value is None:
+        return []
+    parts = re.split(r"[，,;；、]+", str(value))
+    normalized: List[str] = []
+    for part in parts:
+        token = part.strip()
+        if token and token not in normalized:
+            normalized.append(token)
+    return normalized
 
 
 # ============================================
@@ -441,6 +484,7 @@ class KnowledgeGraphBatchImporter:
                 - Sheet 1: 谈判流程（Stage节点）
                 - Sheet 2: 知识点主表（支持"所属阶段"）
                 - Sheet 3: 案例库（可选）
+                - Sheet 4: 词汇网络表（可选，词条/搭配/句式）
             mode: 导入模式 (merge/replace)
             created_by: 操作用户标识
 
@@ -506,10 +550,16 @@ class KnowledgeGraphBatchImporter:
             result.errors.extend(examples_errors)
             LOGGER.info(f"解析到 {len(examples_data)} 个案例")
 
+            # 1.4 解析词汇网络表（Sheet 4，可选）
+            lexicon_data, lexicon_errors, lexicon_warnings = self._parse_lexicon_table_from_workbook(io.BytesIO(file_content), sheet_name="词汇网络表")
+            result.errors.extend(lexicon_errors)
+            result.warnings.extend(lexicon_warnings)
+            LOGGER.info(f"解析到 {len(lexicon_data)} 条词汇记录")
+
             # Phase 2: 验证数据
             LOGGER.info("Phase 2: 验证数据...")
             validation_errors, validation_warnings = self._validate_three_sheets_data(
-                flow_data, points_data, examples_data
+                flow_data, points_data, examples_data, lexicon_data
             )
             result.errors.extend(validation_errors)
             result.warnings.extend(validation_warnings)
@@ -530,7 +580,7 @@ class KnowledgeGraphBatchImporter:
                 result.examples_stats,
                 result.topics_by_stage,
                 transaction_errors,
-            ) = self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, created_by)
+            ) = self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, lexicon_data, created_by)
             result.errors.extend(transaction_errors)
 
             result.success = True
@@ -875,6 +925,129 @@ class KnowledgeGraphBatchImporter:
             ))
 
         return examples_data, errors
+
+    def _parse_lexicon_table_from_workbook(
+        self, file: BinaryIO, sheet_name: str = "词汇网络表"
+    ) -> Tuple[List[Dict], List[ValidationError], List[ValidationError]]:
+        """解析词汇网络表（可选）"""
+        if not EXCEL_AVAILABLE:
+            raise RuntimeError("openpyxl未安装")
+
+        errors: List[ValidationError] = []
+        warnings: List[ValidationError] = []
+        lexicon: List[Dict] = []
+
+        try:
+            if hasattr(file, "seek"):
+                file.seek(0)
+
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            if sheet_name not in wb.sheetnames:
+                for candidate in ["词汇网络表", "词汇网络", "Lexicon", "Sheet4"]:
+                    if candidate in wb.sheetnames:
+                        sheet_name = candidate
+                        break
+                else:
+                    return [], errors, warnings
+
+            ws = wb[sheet_name]
+            header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            headers = [h.replace("*", "").strip() if h else "" for h in header_row]
+
+            field_map: Dict[str, int] = {}
+            for idx, header in enumerate(headers):
+                for template_header, field, _, _ in LEXICON_TEMPLATE_HEADERS:
+                    if header == template_header:
+                        field_map[field] = idx
+                        break
+
+            missing_required = [f for f in ("anchor", "lex_item", "lex_role") if f not in field_map]
+            if missing_required:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="lexicon",
+                    row=1,
+                    message=f"缺少必填列: {', '.join(missing_required)}",
+                ))
+                return [], errors, warnings
+
+            seen_pairs = set()
+
+            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+                if not any(row):
+                    continue
+
+                anchor = str(row[field_map["anchor"]]).strip() if len(row) > field_map["anchor"] and row[field_map["anchor"]] else ""
+                lex_item = str(row[field_map["lex_item"]]).strip() if len(row) > field_map["lex_item"] and row[field_map["lex_item"]] else ""
+                raw_role = str(row[field_map["lex_role"]]).strip() if len(row) > field_map["lex_role"] and row[field_map["lex_role"]] else ""
+
+                if not (anchor and lex_item and raw_role):
+                    continue
+
+                norm_role = LEX_ROLE_ALIASES.get(raw_role.lower()) or LEX_ROLE_ALIASES.get(raw_role)
+                if not norm_role:
+                    errors.append(ValidationError(
+                        severity="ERROR",
+                        table="lexicon",
+                        row=row_idx,
+                        field="词汇项类型",
+                        value=raw_role,
+                        message="词汇项类型必须是 词条/搭配/句式（或对应英文）",
+                    ))
+                    continue
+
+                pair_key = (anchor, lex_item)
+                if pair_key in seen_pairs:
+                    warnings.append(ValidationError(
+                        severity="WARNING",
+                        table="lexicon",
+                        row=row_idx,
+                        field="词汇项",
+                        value=lex_item,
+                        message="发现重复的词汇项，已自动去重",
+                        action_taken="SKIP_DUPLICATE",
+                    ))
+                    continue
+                seen_pairs.add(pair_key)
+
+                entry = {
+                    "_row": row_idx,
+                    "anchor": anchor,
+                    "lex_item": lex_item,
+                    "lex_role": norm_role,
+                    "family": "",
+                    "semantic_class": "",
+                    "slots": [],
+                    "components": [],
+                    "note": "",
+                }
+
+                if "family" in field_map and len(row) > field_map["family"] and row[field_map["family"]]:
+                    entry["family"] = str(row[field_map["family"]]).strip()
+
+                if "semantic_class" in field_map and len(row) > field_map["semantic_class"] and row[field_map["semantic_class"]]:
+                    entry["semantic_class"] = str(row[field_map["semantic_class"]]).strip()
+
+                if "slots" in field_map and len(row) > field_map["slots"] and row[field_map["slots"]]:
+                    entry["slots"] = _normalize_multi_value(row[field_map["slots"]])
+
+                if "components" in field_map and len(row) > field_map["components"] and row[field_map["components"]]:
+                    entry["components"] = _normalize_multi_value(row[field_map["components"]])
+
+                if "note" in field_map and len(row) > field_map["note"] and row[field_map["note"]]:
+                    entry["note"] = str(row[field_map["note"]]).strip()
+
+                lexicon.append(entry)
+
+        except Exception as e:
+            errors.append(ValidationError(
+                severity="ERROR",
+                table="lexicon",
+                row=0,
+                message=f"解析词汇网络表失败: {e}",
+            ))
+
+        return lexicon, errors, warnings
 
     def _parse_points_table(self, file: BinaryIO) -> Tuple[List[Dict], List[ValidationError]]:
         """解析知识点主表"""
@@ -1261,6 +1434,7 @@ class KnowledgeGraphBatchImporter:
         flow_data: List[Dict],
         points_data: List[Dict],
         examples_data: List[Dict],
+        lexicon_data: Optional[List[Dict]] = None,
     ) -> Tuple[List[ValidationError], List[ValidationError]]:
         """验证三表数据（扩展版）"""
         errors = []
@@ -1280,6 +1454,22 @@ class KnowledgeGraphBatchImporter:
         examples_errors, examples_warnings = self._validate_examples(examples_data)
         errors.extend(examples_errors)
         warnings.extend(examples_warnings)
+
+        # 4. 验证词汇网络挂载的知识点
+        lexicon_data = lexicon_data or []
+        point_names = {p.get("name") for p in points_data}
+        for entry in lexicon_data:
+            anchor = entry.get("anchor")
+            if anchor and anchor not in point_names:
+                errors.append(ValidationError(
+                    severity="ERROR",
+                    table="lexicon",
+                    row=entry.get("_row", 0),
+                    field="关联知识点名称",
+                    value=anchor,
+                    message="关联知识点在主表中不存在",
+                    suggestion="请先在知识点主表创建该知识点",
+                ))
 
         return errors, warnings
 
@@ -1619,13 +1809,14 @@ class KnowledgeGraphBatchImporter:
         flow_data: List[Dict],
         points_data: List[Dict],
         examples_data: List[Dict],
+        lexicon_data: List[Dict],
         created_by: str,
     ) -> Tuple[ImportStatistics, ImportStatistics, ImportStatistics, ImportStatistics, Dict[str, int], List[ValidationError]]:
         """三表联动事务性导入"""
 
         stages_stats = ImportStatistics(total=len(flow_data))
         topics_stats = ImportStatistics()
-        points_stats = ImportStatistics(total=len(points_data))
+        points_stats = ImportStatistics(total=len(points_data) + len(lexicon_data))
         relations_stats = ImportStatistics()
         examples_stats = ImportStatistics(total=len(examples_data))
         topics_by_stage: Dict[str, int] = {}
@@ -1805,6 +1996,155 @@ class KnowledgeGraphBatchImporter:
                     message=str(e),
                 ))
 
+        driver = graph_service._get_driver()
+
+        def _merge_related_kind(source: str, target: str, kind: str):
+            with driver.session() as session:
+                session.run(
+                    """
+                    MATCH (a:KnowledgePoint {name: $source})
+                    MATCH (b:KnowledgePoint {name: $target})
+                    MERGE (a)-[r:RELATED_TO {kind: $kind}]->(b)
+                    ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    """,
+                    {"source": source, "target": target, "kind": kind, "createdBy": created_by},
+                )
+
+        def _link_family(name: str, family: str):
+            with driver.session() as session:
+                session.run(
+                    """
+                    MERGE (wf:WordFamily {key: $family})
+                    ON CREATE SET wf.name = $family, wf.createdAt = datetime(), wf.createdBy = $createdBy
+                    SET wf.updatedAt = datetime(), wf.updatedBy = $createdBy
+                    WITH wf
+                    MERGE (k:KnowledgePoint {name: $name})
+                    MERGE (k)-[r:IN_FAMILY]->(wf)
+                    ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    """,
+                    {"family": family, "name": name, "createdBy": created_by},
+                )
+
+        def _link_class(name: str, semantic_class: str):
+            with driver.session() as session:
+                session.run(
+                    """
+                    MERGE (sc:SemanticClass {key: $class})
+                    ON CREATE SET sc.name = $class, sc.createdAt = datetime(), sc.createdBy = $createdBy
+                    SET sc.updatedAt = datetime(), sc.updatedBy = $createdBy
+                    WITH sc
+                    MERGE (k:KnowledgePoint {name: $name})
+                    MERGE (k)-[r:IN_CLASS]->(sc)
+                    ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    """,
+                    {"class": semantic_class, "name": name, "createdBy": created_by},
+                )
+
+        def _link_slot(name: str, slot: str):
+            with driver.session() as session:
+                session.run(
+                    """
+                    MERGE (slot:Slot {name: $slot})
+                    ON CREATE SET slot.createdAt = datetime(), slot.createdBy = $createdBy
+                    SET slot.updatedAt = datetime(), slot.updatedBy = $createdBy
+                    WITH slot
+                    MERGE (k:KnowledgePoint {name: $name})
+                    MERGE (k)-[r:FITS_SLOT]->(slot)
+                    ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    """,
+                    {"slot": slot, "name": name, "createdBy": created_by},
+                )
+
+        # 导入词汇网络子图
+        if lexicon_data:
+            LOGGER.info("导入词汇网络子图...")
+            for entry in lexicon_data:
+                lex_name = entry.get("lex_item")
+                if not lex_name:
+                    continue
+                anchor = entry.get("anchor")
+                lex_role = entry.get("lex_role", "")
+                note = entry.get("note", "")
+                family = entry.get("family", "")
+                semantic_class = entry.get("semantic_class", "")
+                slots = entry.get("slots", []) or []
+                components = entry.get("components", []) or []
+
+                try:
+                    try:
+                        existing_lex = knowledge_service.get_knowledge_point(lex_name)
+                    except graph_service.GraphEntityNotFoundError:
+                        existing_lex = None
+
+                    summary = note or (existing_lex.get("summary") if existing_lex else "")
+                    if existing_lex:
+                        knowledge_service.update_knowledge_point(lex_name, lex_role=lex_role, summary=summary)
+                        points_stats.updated += 1
+                    else:
+                        knowledge_service.create_knowledge_point(
+                            lex_name,
+                            lex_role=lex_role,
+                            summary=summary,
+                            type="concept",
+                            created_by=created_by,
+                        )
+                        points_stats.created += 1
+
+                    point_name_map.setdefault(lex_name, {"stage": None, "topic": None})
+
+                    if anchor:
+                        _merge_related_kind(lex_name, anchor, "lex_anchor")
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+
+                    if family:
+                        _link_family(lex_name, family)
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+
+                    if semantic_class:
+                        _link_class(lex_name, semantic_class)
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+
+                    for slot in slots:
+                        _link_slot(lex_name, slot)
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+
+                    if lex_role == "collocation":
+                        for component in components:
+                            if not component:
+                                continue
+                            try:
+                                comp_existing = knowledge_service.get_knowledge_point(component)
+                                if comp_existing:
+                                    knowledge_service.update_knowledge_point(component, lex_role="lexeme")
+                                    points_stats.updated += 1
+                            except graph_service.GraphEntityNotFoundError:
+                                knowledge_service.create_knowledge_point(
+                                    component,
+                                    lex_role="lexeme",
+                                    summary="",
+                                    type="concept",
+                                    created_by=created_by,
+                                )
+                                points_stats.created += 1
+                            _merge_related_kind(lex_name, component, "collocation")
+                            relations_stats.created += 1
+                            relations_stats.total += 1
+
+                except Exception as e:
+                    LOGGER.error(f"导入词汇项失败 {lex_name}: {e}")
+                    points_stats.failed += 1
+                    errors.append(ValidationError(
+                        severity="ERROR",
+                        table="lexicon",
+                        row=entry.get("_row", 0),
+                        field="词汇项",
+                        value=lex_name,
+                        message=str(e),
+                    ))
         # 第四步：为每个 Topic 创建 KnowledgeCategory 并建立 HAS_CATEGORY
         LOGGER.info("创建 Topic 下的 KnowledgeCategory ...")
         from services import graph_service
@@ -2120,7 +2460,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         existing_stages: 现有阶段名称列表（用于"所属阶段"下拉菜单）
 
     Returns:
-        包含三个sheet的Excel文件（谈判流程 + 知识点主表 + 案例库表）
+        包含四个sheet的Excel文件（谈判流程 + 知识点主表 + 案例库表 + 词汇网络表）
     """
     if not EXCEL_AVAILABLE:
         raise RuntimeError("openpyxl未安装，无法生成模板")
@@ -2237,7 +2577,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     _add_sample_data(ws_points)
 
     # ========================================
-    # Sheet 2: 案例库表
+    # Sheet 3: 案例库表
     # ========================================
     ws_examples = wb.create_sheet("案例库表")
 
@@ -2273,7 +2613,41 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     example_type_validation.add(f"B3:B1000")
 
     # ========================================
-    # Sheet 3: 使用说明
+    # Sheet 4: 词汇网络表
+    # ========================================
+    ws_lex = wb.create_sheet("词汇网络表")
+    lex_widths = [22, 28, 14, 16, 20, 20, 24, 30]
+    for idx, width in enumerate(lex_widths, start=1):
+        ws_lex.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
+
+    for col_idx, (header, field, required, example) in enumerate(LEXICON_TEMPLATE_HEADERS, start=1):
+        cell = ws_lex.cell(row=1, column=col_idx)
+        cell.value = f"{header}{'*' if required else ''}"
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+
+        example_cell = ws_lex.cell(row=2, column=col_idx)
+        example_cell.value = example
+        example_cell.font = example_font
+        example_cell.alignment = Alignment(wrap_text=True)
+
+    ws_lex.freeze_panes = "A3"
+
+    # 词汇项类型下拉
+    lex_role_validation = DataValidation(
+        type="list",
+        formula1='"词条,搭配,句式"',
+        allow_blank=False
+    )
+    lex_role_validation.error = "请从下拉列表中选择"
+    lex_role_validation.errorTitle = "输入错误"
+    ws_lex.add_data_validation(lex_role_validation)
+    lex_role_validation.add("C3:C1000")
+
+    # ========================================
+    # Sheet 5: 使用说明
     # ========================================
     ws_guide = wb.create_sheet("使用说明")
     ws_guide.column_dimensions['A'].width = 100
@@ -2282,7 +2656,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         ("📖 智能知识图谱批量导入指南", True, 16),
         ("", False, 10),
         ("✨ 主要特点", True, 13),
-        ("1. 只需填写两张表，无需手动编写ID", False, 11),
+        ("1. 核心只需填写知识点主表，其余表格可按需补充", False, 11),
         ("2. 关系用自然语言表达（必须先学、建议同时学、可对比学习）", False, 11),
         ("3. 下拉菜单辅助填写，避免输入错误", False, 11),
         ("4. 智能错误提示，自动推荐相似名称", False, 11),
@@ -2315,7 +2689,13 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         ("  4. 案例内容：详细内容，可以很长", False, 11),
         ("  5. 关联练习关卡：如果有对应的练习关卡，填写关卡号（例如：6-1）", False, 11),
         ("", False, 10),
-        ("第三步：上传导入", True, 12),
+        ("第三步：填写「词汇网络表」（可选）", True, 12),
+        ("  1. 关联知识点名称：必须在知识点主表存在，用于挂载词汇", False, 11),
+        ("  2. 词汇项类型：词条/搭配/句式（下拉选择）", False, 11),
+        ("  3. 多值字段（槽位/搭配组成词）支持逗号、分号或顿号，系统自动统一为分号并去重", False, 11),
+        ("  4. 同一关联点下重复的词汇项会自动去重", False, 11),
+        ("", False, 10),
+        ("第四步：上传导入", True, 12),
         ("  1. 删除第2行的示例数据", False, 11),
         ("  2. 保存文件", False, 11),
         ("  3. 在系统中选择「批量导入」并上传", False, 11),

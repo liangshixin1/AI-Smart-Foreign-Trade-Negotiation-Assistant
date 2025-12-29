@@ -25,6 +25,9 @@ function createInitialState() {
     },
     admin: {
       students: [],
+      totalSections: 0,
+      studentFilters: { search: "", filter: "all", sort: "progress" },
+      selectedTrendSection: "all",
       selectedStudentId: null,
       selectedSessionId: null,
       studentDetail: null,
