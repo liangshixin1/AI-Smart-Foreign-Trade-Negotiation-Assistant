@@ -138,6 +138,8 @@ const RECOMMENDATION_SCORE_THRESHOLD = 80;
 // 异步请求防抖 token，确保最新结果覆盖旧请求
 let theoryRelatedRequestToken = 0;
 let evaluationRecommendationToken = 0;
+let lexicalSuggestionTimer = null;
+let lexicalSuggestionAbortController = null;
 // Scenario briefing 窗口状态（拖拽偏移/最小化）
 const scenarioWindowDrag = { active: false, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
 let scenarioWindowMinimized = false;
@@ -3476,6 +3478,170 @@ function renderEvaluationKnowledge(items) {
   });
 }
 
+function setEvaluationTab(tab) {
+  if (!evaluationAnalysisPanel || !evaluationLexicalPanel || !evaluationTabAnalysis || !evaluationTabLexical) return;
+  const isLexical = tab === "lexical";
+  evaluationAnalysisPanel.classList.toggle("hidden", isLexical);
+  evaluationLexicalPanel.classList.toggle("hidden", !isLexical);
+  evaluationTabAnalysis.classList.toggle("bg-blue-600", !isLexical);
+  evaluationTabAnalysis.classList.toggle("text-white", !isLexical);
+  evaluationTabAnalysis.classList.toggle("bg-slate-200", isLexical);
+  evaluationTabAnalysis.classList.toggle("text-slate-700", isLexical);
+  evaluationTabLexical.classList.toggle("bg-blue-600", isLexical);
+  evaluationTabLexical.classList.toggle("text-white", isLexical);
+  evaluationTabLexical.classList.toggle("bg-slate-200", !isLexical);
+  evaluationTabLexical.classList.toggle("text-slate-700", !isLexical);
+}
+
+function clearLexicalSuggestions(message = "") {
+  if (lexicalSuggestionsEl) lexicalSuggestionsEl.innerHTML = "";
+  if (lexicalSuggestionsStatus) lexicalSuggestionsStatus.textContent = message;
+}
+
+function renderLexicalSuggestions(items) {
+  if (!lexicalSuggestionsEl) return;
+  lexicalSuggestionsEl.innerHTML = "";
+  if (!items || items.length === 0) {
+    clearLexicalSuggestions("未检测到可改进的语义表达");
+    return;
+  }
+  if (lexicalSuggestionsStatus) lexicalSuggestionsStatus.textContent = "";
+
+  const colorByTrigger = {
+    negative_civic: "border-red-200 bg-red-50",
+    tone_shift: "border-sky-200 bg-sky-50",
+    idiomatic_shift: "border-emerald-200 bg-emerald-50",
+  };
+
+  items.slice(0, 6).forEach((item) => {
+    const card = document.createElement("div");
+    card.className = `rounded-xl border p-3 shadow-sm ${colorByTrigger[item.trigger] || "border-slate-200 bg-slate-50"}`;
+
+    const title = document.createElement("div");
+    title.className = "flex items-center justify-between text-sm font-semibold text-slate-800";
+    title.textContent = item.lex_item || "未知词汇";
+    card.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600";
+    if (item.semantic_class) {
+      const badge = document.createElement("span");
+      badge.className = "rounded-full bg-slate-200 px-2 py-[2px]";
+      badge.textContent = `类: ${item.semantic_class}`;
+      meta.appendChild(badge);
+    }
+    if (item.slot) {
+      const badge = document.createElement("span");
+      badge.className = "rounded-full bg-slate-200 px-2 py-[2px]";
+      badge.textContent = `槽位: ${item.slot}`;
+      meta.appendChild(badge);
+    }
+    if (item.tone) {
+      const badge = document.createElement("span");
+      badge.className = "rounded-full bg-slate-200 px-2 py-[2px]";
+      badge.textContent = `tone: ${item.tone}`;
+      meta.appendChild(badge);
+    }
+    if (item.idiomatic !== undefined && item.idiomatic !== null) {
+      const badge = document.createElement("span");
+      badge.className = "rounded-full bg-slate-200 px-2 py-[2px]";
+      badge.textContent = item.idiomatic ? "更地道" : "不够地道";
+      meta.appendChild(badge);
+    }
+    if (item.civicTags && item.civicTags.length > 0) {
+      const badge = document.createElement("span");
+      badge.className = "rounded-full bg-slate-200 px-2 py-[2px]";
+      badge.textContent = `思政: ${item.civicTags.join(",")}`;
+      meta.appendChild(badge);
+    }
+    if (meta.childNodes.length > 0) {
+      card.appendChild(meta);
+    }
+
+    if (item.recommendations && item.recommendations.length > 0) {
+      const recTitle = document.createElement("div");
+      recTitle.className = "mt-2 text-xs font-semibold text-slate-700";
+      if (item.trigger === "negative_civic") {
+        recTitle.textContent = "推荐使用更正向表达";
+      } else if (item.trigger === "tone_shift") {
+        recTitle.textContent = "你可以调整语气";
+      } else if (item.trigger === "idiomatic_shift") {
+        recTitle.textContent = "更地道的说法";
+      } else {
+        recTitle.textContent = "替换建议";
+      }
+      card.appendChild(recTitle);
+
+      const list = document.createElement("div");
+      list.className = "mt-1 flex flex-wrap gap-2";
+      item.recommendations.slice(0, 5).forEach((rec) => {
+        const pill = document.createElement("span");
+        pill.className = "inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow";
+        pill.textContent = rec.lex_item || rec.name || "建议";
+        list.appendChild(pill);
+      });
+      card.appendChild(list);
+    }
+
+    if (item.knowledge_points && item.knowledge_points.length > 0) {
+      const kpTitle = document.createElement("div");
+      kpTitle.className = "mt-2 text-xs font-semibold text-slate-700";
+      kpTitle.textContent = "你也许要掌握";
+      card.appendChild(kpTitle);
+
+      const kpList = document.createElement("div");
+      kpList.className = "mt-1 flex flex-wrap gap-2";
+      item.knowledge_points.slice(0, 5).forEach((kp) => {
+        const pill = document.createElement("span");
+        pill.className = "rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700";
+        pill.textContent = kp;
+        kpList.appendChild(pill);
+      });
+      card.appendChild(kpList);
+    }
+
+    lexicalSuggestionsEl.appendChild(card);
+  });
+}
+
+async function fetchLexicalSuggestions(text) {
+  if (!text || !lexicalSuggestionsEl) {
+    clearLexicalSuggestions("输入以获取语义建议");
+    return;
+  }
+  if (lexicalSuggestionsStatus) {
+    lexicalSuggestionsStatus.textContent = "分析中…";
+  }
+  if (lexicalSuggestionAbortController) {
+    lexicalSuggestionAbortController.abort();
+  }
+  lexicalSuggestionAbortController = new AbortController();
+  try {
+    const resp = await fetch(`/api/lexical-suggestions?utterance=${encodeURIComponent(text)}`, {
+      signal: lexicalSuggestionAbortController.signal,
+    });
+    if (!resp.ok) {
+      clearLexicalSuggestions("暂时无法获取语义建议");
+      return;
+    }
+    const data = await resp.json();
+    renderLexicalSuggestions(data.suggestions || []);
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      clearLexicalSuggestions("获取语义建议失败");
+    }
+  } finally {
+    lexicalSuggestionAbortController = null;
+  }
+}
+
+function scheduleLexicalSuggestions(text) {
+  if (lexicalSuggestionTimer) {
+    clearTimeout(lexicalSuggestionTimer);
+  }
+  lexicalSuggestionTimer = setTimeout(() => fetchLexicalSuggestions(text), 400);
+}
+
 // 渲染与理论课程关联的实战关卡列表。
 function renderTheoryRelatedPracticeItems(practices) {
   if (!theoryRelatedPracticeList) {
@@ -5383,6 +5549,23 @@ if (evaluationToggle) {
 if (evaluationPanelClose) {
   evaluationPanelClose.addEventListener("click", closeEvaluationPanelDrawer);
 }
+
+if (evaluationTabAnalysis) {
+  evaluationTabAnalysis.addEventListener("click", () => setEvaluationTab("analysis"));
+}
+if (evaluationTabLexical) {
+  evaluationTabLexical.addEventListener("click", () => setEvaluationTab("lexical"));
+}
+
+if (chatInputEl) {
+  chatInputEl.addEventListener("input", (e) => {
+    const text = e.target.value || "";
+    scheduleLexicalSuggestions(text);
+  });
+}
+
+// 默认显示对话分析
+setEvaluationTab("analysis");
 window.addEventListener("resize", () => {
   if (window.innerWidth <= 768) {
     scenarioWindowMinimized = false;
