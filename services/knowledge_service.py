@@ -150,7 +150,8 @@ def update_knowledge_point(
     driver = graph_service._get_driver()
 
     allowed_fields = [
-        "category", "type", "lex_role", "difficulty", "importance",
+        "category", "type", "lex_role",
+        "difficulty", "importance",
         "summary", "description", "keywords", "tags",
         "estimatedMinutes", "imageUrl", "videoUrl",
         "documentUrl", "externalUrl"

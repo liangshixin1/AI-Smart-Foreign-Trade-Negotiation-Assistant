@@ -341,6 +341,9 @@ LEXICON_TEMPLATE_HEADERS = [
     ("词族", "family", False, "如: quote-* 或 ship-*"),
     ("语义类", "semantic_class", False, "如: Pricing-Concession"),
     ("语义槽位", "slots", False, "多值用分号或逗号分隔"),
+    ("语气/强度", "tone", False, "softer/neutral/stronger"),
+    ("思政元素", "civic_tags", False, "多选: Win-Win; Integrity; Dignity; Compliance; Zero-Sum; Dishonesty; Disrespect; Non-Compliance"),
+    ("地道/标准", "idiomatic", False, "是/否，可空"),
     ("搭配组成词", "components", False, "用于搭配与词条关联"),
     ("备注", "note", False, "补充说明"),
 ]
@@ -361,6 +364,18 @@ def _normalize_multi_value(value: Optional[str]) -> List[str]:
         if token and token not in normalized:
             normalized.append(token)
     return normalized
+
+
+def _to_bool_flag(value: Optional[str]) -> Optional[bool]:
+    """将常见是/否文本转为布尔, 其他返回None。"""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"yes", "y", "true", "1", "是", "对", "标准", "地道"}:
+        return True
+    if text in {"no", "n", "false", "0", "否", "非", "不标准", "不地道"}:
+        return False
+    return None
 
 
 # ============================================
@@ -996,14 +1011,15 @@ class KnowledgeGraphBatchImporter:
                     ))
                     continue
 
-                pair_key = (anchor, lex_item)
+                slots_signature = ";".join(entry["slots"])
+                pair_key = (anchor, lex_item, entry["semantic_class"], slots_signature)
                 if pair_key in seen_pairs:
                     warnings.append(ValidationError(
                         severity="WARNING",
                         table="lexicon",
                         row=row_idx,
                         field="词汇项",
-                        value=lex_item,
+                        value=f"{lex_item} ({entry['semantic_class']})",
                         message="发现重复的词汇项，已自动去重",
                         action_taken="SKIP_DUPLICATE",
                     ))
@@ -1018,6 +1034,9 @@ class KnowledgeGraphBatchImporter:
                     "family": "",
                     "semantic_class": "",
                     "slots": [],
+                    "tone": "",
+                    "idiomatic": None,
+                    "civic_tags": [],
                     "components": [],
                     "note": "",
                 }
@@ -1030,6 +1049,15 @@ class KnowledgeGraphBatchImporter:
 
                 if "slots" in field_map and len(row) > field_map["slots"] and row[field_map["slots"]]:
                     entry["slots"] = _normalize_multi_value(row[field_map["slots"]])
+
+                if "tone" in field_map and len(row) > field_map["tone"] and row[field_map["tone"]]:
+                    entry["tone"] = str(row[field_map["tone"]]).strip().lower()
+
+                if "idiomatic" in field_map and len(row) > field_map["idiomatic"] and row[field_map["idiomatic"]]:
+                    entry["idiomatic"] = _to_bool_flag(row[field_map["idiomatic"]])
+
+                if "civic_tags" in field_map and len(row) > field_map["civic_tags"] and row[field_map["civic_tags"]]:
+                    entry["civic_tags"] = _normalize_multi_value(row[field_map["civic_tags"]])
 
                 if "components" in field_map and len(row) > field_map["components"] and row[field_map["components"]]:
                     entry["components"] = _normalize_multi_value(row[field_map["components"]])
@@ -2025,7 +2053,7 @@ class KnowledgeGraphBatchImporter:
                     {"family": family, "name": name, "createdBy": created_by},
                 )
 
-        def _link_class(name: str, semantic_class: str):
+        def _link_class(name: str, semantic_class: str, tone: Optional[str], civic_tags: List[str], idiomatic: Optional[bool]):
             with driver.session() as session:
                 session.run(
                     """
@@ -2036,11 +2064,21 @@ class KnowledgeGraphBatchImporter:
                     MERGE (k:KnowledgePoint {name: $name})
                     MERGE (k)-[r:IN_CLASS]->(sc)
                     ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    SET r.tone = $tone,
+                        r.civicTags = $civicTags,
+                        r.idiomatic = $idiomatic
                     """,
-                    {"class": semantic_class, "name": name, "createdBy": created_by},
+                    {
+                        "class": semantic_class,
+                        "name": name,
+                        "tone": tone or "",
+                        "civicTags": civic_tags or [],
+                        "idiomatic": idiomatic,
+                        "createdBy": created_by,
+                    },
                 )
 
-        def _link_slot(name: str, slot: str):
+        def _link_slot(name: str, slot: str, tone: Optional[str], civic_tags: List[str], idiomatic: Optional[bool]):
             with driver.session() as session:
                 session.run(
                     """
@@ -2051,8 +2089,18 @@ class KnowledgeGraphBatchImporter:
                     MERGE (k:KnowledgePoint {name: $name})
                     MERGE (k)-[r:FITS_SLOT]->(slot)
                     ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+                    SET r.tone = $tone,
+                        r.civicTags = $civicTags,
+                        r.idiomatic = $idiomatic
                     """,
-                    {"slot": slot, "name": name, "createdBy": created_by},
+                    {
+                        "slot": slot,
+                        "name": name,
+                        "tone": tone or "",
+                        "civicTags": civic_tags or [],
+                        "idiomatic": idiomatic,
+                        "createdBy": created_by,
+                    },
                 )
 
         # 导入词汇网络子图
@@ -2103,12 +2151,24 @@ class KnowledgeGraphBatchImporter:
                         relations_stats.total += 1
 
                     if semantic_class:
-                        _link_class(lex_name, semantic_class)
+                        _link_class(
+                            lex_name,
+                            semantic_class,
+                            entry.get("tone"),
+                            entry.get("civic_tags", []),
+                            entry.get("idiomatic"),
+                        )
                         relations_stats.created += 1
                         relations_stats.total += 1
 
                     for slot in slots:
-                        _link_slot(lex_name, slot)
+                        _link_slot(
+                            lex_name,
+                            slot,
+                            entry.get("tone"),
+                            entry.get("civic_tags", []),
+                            entry.get("idiomatic"),
+                        )
                         relations_stats.created += 1
                         relations_stats.total += 1
 
@@ -2547,7 +2607,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     )
 
     # 设置列宽
-    column_widths = [15, 20, 15, 12, 12, 12, 40, 50, 25, 25, 25, 25]
+    column_widths = [15, 20, 15, 20, 12, 12, 12, 12, 40, 50, 25, 25, 25, 25]
     for idx, width in enumerate(column_widths, start=1):
         ws_points.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
 
@@ -2616,7 +2676,7 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     # Sheet 4: 词汇网络表
     # ========================================
     ws_lex = wb.create_sheet("词汇网络表")
-    lex_widths = [22, 28, 14, 16, 20, 20, 24, 30]
+    lex_widths = [22, 28, 14, 16, 20, 20, 14, 28, 14, 24, 30]
     for idx, width in enumerate(lex_widths, start=1):
         ws_lex.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
 
@@ -2645,6 +2705,39 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     lex_role_validation.errorTitle = "输入错误"
     ws_lex.add_data_validation(lex_role_validation)
     lex_role_validation.add("C3:C1000")
+
+    # 语气下拉
+    lex_tone_validation = DataValidation(
+        type="list",
+        formula1='"softer,neutral,stronger"',
+        allow_blank=True
+    )
+    lex_tone_validation.error = "请从下拉列表中选择：softer/neutral/stronger"
+    lex_tone_validation.errorTitle = "输入错误"
+    ws_lex.add_data_validation(lex_tone_validation)
+    lex_tone_validation.add("G3:G1000")
+
+    # 思政元素下拉
+    lex_civic_validation = DataValidation(
+        type="list",
+        formula1='"Win-Win,Integrity,Dignity,Compliance,Zero-Sum,Dishonesty,Disrespect,Non-Compliance"',
+        allow_blank=True
+    )
+    lex_civic_validation.error = "请从下拉列表选择或使用分号分隔多选项"
+    lex_civic_validation.errorTitle = "输入错误"
+    ws_lex.add_data_validation(lex_civic_validation)
+    lex_civic_validation.add("H3:H1000")
+
+    # 地道性下拉
+    lex_idiomatic_validation = DataValidation(
+        type="list",
+        formula1='"是,否"',
+        allow_blank=True
+    )
+    lex_idiomatic_validation.error = "请选择 是/否，或留空"
+    lex_idiomatic_validation.errorTitle = "输入错误"
+    ws_lex.add_data_validation(lex_idiomatic_validation)
+    lex_idiomatic_validation.add("I3:I1000")
 
     # ========================================
     # Sheet 5: 使用说明
@@ -2840,7 +2933,7 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
     minutes_validation.prompt = "填写预计学习时长（分钟），例如：30"
     minutes_validation.promptTitle = "提示"
     ws.add_data_validation(minutes_validation)
-    minutes_validation.add("H3:H1000")  # 预计学时移到第8列
+    minutes_validation.add("H3:H1000")  # 预计学时回到第8列
 
     # 如果有现有知识点，为关系列添加下拉菜单
     if existing_points and len(existing_points) > 0:

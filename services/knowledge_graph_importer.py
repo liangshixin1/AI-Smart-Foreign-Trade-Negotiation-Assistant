@@ -116,6 +116,18 @@ def _normalize_multi_value(value: Optional[str]) -> List[str]:
     return normalized
 
 
+def _to_bool_flag(value: Optional[str]) -> Optional[bool]:
+    """将常见是/否文本转为布尔, 其他返回None。"""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"yes", "y", "true", "1", "是", "对", "标准", "地道"}:
+        return True
+    if text in {"no", "n", "false", "0", "否", "非", "不标准", "不地道"}:
+        return False
+    return None
+
+
 # ============================================
 # 数据结构定义
 # ============================================
@@ -799,6 +811,12 @@ class KnowledgeGraphImporter:
                     col_map["semantic_class"] = idx
                 elif clean in ("语义槽位", "槽位"):
                     col_map["slots"] = idx
+                elif clean in ("语气/强度", "语气"):
+                    col_map["tone"] = idx
+                elif clean in ("思政元素", "思政", "价值观"):
+                    col_map["civicTags"] = idx
+                elif clean in ("地道性", "标准表达", "是否地道"):
+                    col_map["idiomatic"] = idx
                 elif clean in ("搭配组成词", "搭配词"):
                     col_map["components"] = idx
                 elif clean in ("备注", "说明"):
@@ -841,19 +859,6 @@ class KnowledgeGraphImporter:
                     ))
                     continue
 
-                pair_key = (anchor, lex_item)
-                if pair_key in seen_pairs:
-                    warnings.append(ImportError(
-                        level="WARNING",
-                        sheet=sheet_name,
-                        row=row_idx,
-                        field="词汇项",
-                        value=lex_item,
-                        message="发现重复的词汇项，已自动去重",
-                    ))
-                    continue
-                seen_pairs.add(pair_key)
-
                 entry = {
                     "_row": row_idx,
                     "anchor": anchor,
@@ -862,6 +867,9 @@ class KnowledgeGraphImporter:
                     "family": "",
                     "semantic_class": "",
                     "slots": [],
+                    "tone": "",
+                    "idiomatic": None,
+                    "civicTags": [],
                     "components": [],
                     "note": "",
                 }
@@ -875,11 +883,34 @@ class KnowledgeGraphImporter:
                 if "slots" in col_map and len(row) > col_map["slots"] and row[col_map["slots"]]:
                     entry["slots"] = _normalize_multi_value(row[col_map["slots"]])
 
+                if "tone" in col_map and len(row) > col_map["tone"] and row[col_map["tone"]]:
+                    entry["tone"] = str(row[col_map["tone"]]).strip().lower()
+
+                if "idiomatic" in col_map and len(row) > col_map["idiomatic"] and row[col_map["idiomatic"]]:
+                    entry["idiomatic"] = _to_bool_flag(row[col_map["idiomatic"]])
+
+                if "civicTags" in col_map and len(row) > col_map["civicTags"] and row[col_map["civicTags"]]:
+                    entry["civicTags"] = _normalize_multi_value(row[col_map["civicTags"]])
+
                 if "components" in col_map and len(row) > col_map["components"] and row[col_map["components"]]:
                     entry["components"] = _normalize_multi_value(row[col_map["components"]])
 
                 if "note" in col_map and len(row) > col_map["note"] and row[col_map["note"]]:
                     entry["note"] = str(row[col_map["note"]]).strip()
+
+                slots_signature = ";".join(entry["slots"])
+                pair_key = (anchor, lex_item, entry["semantic_class"], slots_signature)
+                if pair_key in seen_pairs:
+                    warnings.append(ImportError(
+                        level="WARNING",
+                        sheet=sheet_name,
+                        row=row_idx,
+                        field="词汇项",
+                        value=f"{lex_item} ({entry['semantic_class']})",
+                        message="发现重复的词汇项，已自动去重",
+                    ))
+                    continue
+                seen_pairs.add(pair_key)
 
                 lexicon.append(entry)
 
@@ -1178,13 +1209,29 @@ class KnowledgeGraphImporter:
 
                     # 同类
                     if semantic_class:
-                        self._link_in_class(tx, lex_name, semantic_class, created_by)
+                        self._link_in_class(
+                            tx,
+                            lex_name,
+                            semantic_class,
+                            entry.get("tone"),
+                            entry.get("civicTags", []),
+                            entry.get("idiomatic"),
+                            created_by,
+                        )
                         result.relations.created += 1
                         result.relations.total += 1
 
                     # 槽位
                     for slot in slots:
-                        self._link_fits_slot(tx, lex_name, slot, created_by)
+                        self._link_fits_slot(
+                            tx,
+                            lex_name,
+                            slot,
+                            entry.get("tone"),
+                            entry.get("civicTags", []),
+                            entry.get("idiomatic"),
+                            created_by,
+                        )
                         result.relations.created += 1
                         result.relations.total += 1
 
@@ -1619,8 +1666,17 @@ class KnowledgeGraphImporter:
             {"family": family, "name": kp_name, "createdBy": created_by},
         )
 
-    def _link_in_class(self, tx, kp_name: str, semantic_class: str, created_by: str):
-        """建立语义类关系。"""
+    def _link_in_class(
+        self,
+        tx,
+        kp_name: str,
+        semantic_class: str,
+        tone: Optional[str],
+        civic_tags: List[str],
+        idiomatic: Optional[bool],
+        created_by: str,
+    ):
+        """建立语义类关系,附带语气/思政/地道性标签（可空）。"""
         tx.run(
             """
             MERGE (sc:SemanticClass {key: $class})
@@ -1630,12 +1686,31 @@ class KnowledgeGraphImporter:
             MERGE (k:KnowledgePoint {name: $name})
             MERGE (k)-[r:IN_CLASS]->(sc)
             ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            SET r.tone = $tone,
+                r.civicTags = $civicTags,
+                r.idiomatic = $idiomatic
             """,
-            {"class": semantic_class, "name": kp_name, "createdBy": created_by},
+            {
+                "class": semantic_class,
+                "name": kp_name,
+                "tone": tone or "",
+                "civicTags": civic_tags or [],
+                "idiomatic": idiomatic,
+                "createdBy": created_by,
+            },
         )
 
-    def _link_fits_slot(self, tx, kp_name: str, slot_name: str, created_by: str):
-        """建立槽位映射关系。"""
+    def _link_fits_slot(
+        self,
+        tx,
+        kp_name: str,
+        slot_name: str,
+        tone: Optional[str],
+        civic_tags: List[str],
+        idiomatic: Optional[bool],
+        created_by: str,
+    ):
+        """建立槽位映射关系,附带语气/思政/地道性标签（可空）。"""
         tx.run(
             """
             MERGE (slot:Slot {name: $slot})
@@ -1645,6 +1720,16 @@ class KnowledgeGraphImporter:
             MERGE (k:KnowledgePoint {name: $name})
             MERGE (k)-[r:FITS_SLOT]->(slot)
             ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            SET r.tone = $tone,
+                r.civicTags = $civicTags,
+                r.idiomatic = $idiomatic
             """,
-            {"slot": slot_name, "name": kp_name, "createdBy": created_by},
+            {
+                "slot": slot_name,
+                "name": kp_name,
+                "tone": tone or "",
+                "civicTags": civic_tags or [],
+                "idiomatic": idiomatic,
+                "createdBy": created_by,
+            },
         )
