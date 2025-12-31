@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -9,6 +10,8 @@ import numpy as np
 
 from services import embedding_service
 from services import graph_service
+
+logger = logging.getLogger(__name__)
 
 
 NEGATIVE_CIVICS = {"Zero-Sum", "Dishonesty", "Disrespect", "Non-Compliance"}
@@ -142,7 +145,7 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
                    k.lex_role AS lex_role,
                    classes,
                    slots
-            LIMIT 2000
+            LIMIT 10000
             """
         ).data()
 
@@ -150,6 +153,8 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
     texts: List[str] = []
     for rec in records:
         lex_item = rec.get("lex_item")
+        if not lex_item or not lex_item.strip():
+            continue
         lex_role = rec.get("lex_role") or ""
         classes = rec.get("classes") or []
         slots = rec.get("slots") or []
@@ -172,6 +177,11 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
             slot_labels = [s.get("slot") for s in slots if s.get("slot")]
             if slot_labels:
                 text_parts.append(f"slots={'|'.join(slot_labels)}")
+
+        full_text = " ".join(text_parts).strip()
+        if not full_text:
+            continue
+
         items.append(
             {
                 "lex_item": lex_item,
@@ -180,12 +190,19 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
                 "slots": slots,
             }
         )
-        texts.append(" ".join(text_parts))
+        texts.append(full_text)
+
+    if not texts:
+        _LEXICON_CACHE["items"] = []
+        _LEXICON_CACHE["vectors"] = None
+        return [], None
 
     vectors = embedding_service.embed_texts(texts)
-    if vectors:
+    if vectors and len(vectors) == len(texts):
         vectors_np = np.array(vectors, dtype=np.float32)
+        vectors_np = np.nan_to_num(vectors_np, nan=0.0, posinf=0.0, neginf=0.0)
     else:
+        logger.warning("Embedding unavailable or length mismatch (texts=%d, vectors=%d)", len(texts), len(vectors) if vectors else 0)
         vectors_np = None
     _LEXICON_CACHE["items"] = items
     _LEXICON_CACHE["vectors"] = vectors_np
@@ -197,18 +214,26 @@ def _vector_hits(utterance: str, top_k: int = 20) -> List[Dict]:
     items, vectors = _fetch_lexicon_index()
     if vectors is None or not items:
         return []
+    if len(items) != vectors.shape[0]:
+        logger.warning("Lexical index mismatch: %d items but %d vectors", len(items), vectors.shape[0])
+        return []
     query_vecs = embedding_service.embed_texts([utterance])
     if not query_vecs:
         return []
     q = np.array(query_vecs[0], dtype=np.float32)
-    scores = vectors @ q  # 因为向量已归一化，可直接点乘
+    q = np.nan_to_num(q, nan=0.0)
+    try:
+        scores = vectors @ q  # 因为向量已归一化，可直接点乘
+    except Exception as e:
+        logger.error("Vector calculation error: %s", e)
+        return []
     if scores.size == 0:
         return []
     top_idx = np.argsort(-scores)[:top_k]
     hits = []
     for idx in top_idx:
         score = float(scores[idx])
-        if score < 0.2:  # 简单阈值，避免噪声
+        if score < 0.65:  # 更高阈值，过滤噪声
             continue
         payload = dict(items[int(idx)])
         payload["score"] = score
@@ -239,10 +264,10 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
     hits_graph = _collect_hits(tokens)
     hits_vec = _vector_hits(utterance, top_k=30)
 
-    # 合并 graph + vector 命中，按 lex_item 去重，保留更高分或 graph 命中
+    # 合并 graph + vector 命中，graph 优先（score 置 1.0）
     merged: Dict[str, Dict] = {}
     for hit in hits_graph:
-        merged[hit.get("lex_item")] = hit
+        merged[hit.get("lex_item")] = {**hit, "score": 1.0}
     for hit in hits_vec:
         key = hit.get("lex_item")
         if key in merged:
