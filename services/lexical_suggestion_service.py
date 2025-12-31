@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
+
+from services import embedding_service
 from services import graph_service
 
 
@@ -85,24 +88,132 @@ def _query_alternatives_by_slot(
 
 def _collect_hits(tokens: List[str]) -> List[Dict]:
     """Return matched lex items and their relations."""
+    filtered_tokens = [t for t in tokens if len(t) >= 3]
+    if not filtered_tokens:
+        return []
     driver = graph_service._get_driver()
     with driver.session() as session:
         records = session.run(
             """
             WITH $tokens AS tokens
             MATCH (k:KnowledgePoint)
-            WHERE any(t IN tokens WHERE toLower(k.name) CONTAINS t)
+            WHERE any(t IN tokens WHERE size(t) >= 3 AND toLower(k.name) CONTAINS t)
             OPTIONAL MATCH (k)-[rc:IN_CLASS]->(sc:SemanticClass)
             OPTIONAL MATCH (k)-[rs:FITS_SLOT]->(s:Slot)
             OPTIONAL MATCH (k)-[:RELATED_TO {kind:'lex_anchor'}]->(anchor:KnowledgePoint)
             RETURN k.name AS lex_item,
-                   collect(DISTINCT {class: sc.key, tone: rc.tone, civicTags: rc.civicTags, idiomatic: rc.idiomatic}) AS classes,
-                   collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) AS slots,
+                   [c IN collect(DISTINCT {class: sc.key, tone: rc.tone, civicTags: rc.civicTags, idiomatic: rc.idiomatic}) WHERE c.class IS NOT NULL] AS classes,
+                   [s IN collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) WHERE s.slot IS NOT NULL] AS slots,
                    collect(DISTINCT anchor.name) AS anchors
+            LIMIT 200
             """,
-            {"tokens": tokens},
+            {"tokens": filtered_tokens},
         ).data()
     return records or []
+
+
+# ==============================
+# 向量召回（可选，模型可用时）
+# ==============================
+
+_LEXICON_CACHE: Dict[str, object] = {
+    "items": [],  # list of payloads
+    "vectors": None,  # numpy array
+}
+
+
+def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
+    """Load lexical items with class/slot relations and compute embeddings if模型可用."""
+    if _LEXICON_CACHE.get("items") and _LEXICON_CACHE.get("vectors") is not None:
+        return _LEXICON_CACHE["items"], _LEXICON_CACHE["vectors"]
+
+    driver = graph_service._get_driver()
+    with driver.session() as session:
+        records = session.run(
+            """
+            MATCH (k:KnowledgePoint)
+            OPTIONAL MATCH (k)-[rc:IN_CLASS]->(sc:SemanticClass)
+            OPTIONAL MATCH (k)-[rs:FITS_SLOT]->(s:Slot)
+            WITH k,
+                 [c IN collect(DISTINCT {class: sc.key, tone: rc.tone, civicTags: rc.civicTags, idiomatic: rc.idiomatic}) WHERE c.class IS NOT NULL] AS classes,
+                 [s IN collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) WHERE s.slot IS NOT NULL] AS slots
+            WHERE size(classes) > 0 OR size(slots) > 0
+            RETURN k.name AS lex_item,
+                   k.lex_role AS lex_role,
+                   classes,
+                   slots
+            LIMIT 2000
+            """
+        ).data()
+
+    items: List[Dict] = []
+    texts: List[str] = []
+    for rec in records:
+        lex_item = rec.get("lex_item")
+        lex_role = rec.get("lex_role") or ""
+        classes = rec.get("classes") or []
+        slots = rec.get("slots") or []
+        text_parts = [lex_item]
+        if lex_role:
+            text_parts.append(f"[role={lex_role}]")
+        if classes:
+            class_labels = [c.get("class") for c in classes if c.get("class")]
+            if class_labels:
+                text_parts.append(f"class={'|'.join(class_labels)}")
+            tones = [c.get("tone") for c in classes if c.get("tone")]
+            if tones:
+                text_parts.append(f"tone={'|'.join(tones)}")
+            civics = []
+            for c in classes:
+                civics.extend(c.get("civicTags") or [])
+            if civics:
+                text_parts.append(f"civic={'|'.join(civics)}")
+        if slots:
+            slot_labels = [s.get("slot") for s in slots if s.get("slot")]
+            if slot_labels:
+                text_parts.append(f"slots={'|'.join(slot_labels)}")
+        items.append(
+            {
+                "lex_item": lex_item,
+                "lex_role": lex_role,
+                "classes": classes,
+                "slots": slots,
+            }
+        )
+        texts.append(" ".join(text_parts))
+
+    vectors = embedding_service.embed_texts(texts)
+    if vectors:
+        vectors_np = np.array(vectors, dtype=np.float32)
+    else:
+        vectors_np = None
+    _LEXICON_CACHE["items"] = items
+    _LEXICON_CACHE["vectors"] = vectors_np
+    return items, vectors_np
+
+
+def _vector_hits(utterance: str, top_k: int = 20) -> List[Dict]:
+    """返回向量召回的词汇项，并附带其类/槽位关系。"""
+    items, vectors = _fetch_lexicon_index()
+    if vectors is None or not items:
+        return []
+    query_vecs = embedding_service.embed_texts([utterance])
+    if not query_vecs:
+        return []
+    q = np.array(query_vecs[0], dtype=np.float32)
+    scores = vectors @ q  # 因为向量已归一化，可直接点乘
+    if scores.size == 0:
+        return []
+    top_idx = np.argsort(-scores)[:top_k]
+    hits = []
+    for idx in top_idx:
+        score = float(scores[idx])
+        if score < 0.2:  # 简单阈值，避免噪声
+            continue
+        payload = dict(items[int(idx)])
+        payload["score"] = score
+        hits.append(payload)
+    return hits
 
 
 def _build_suggestion(base: Dict, trigger_type: str, recommendations: List[Dict], knowledge_points: List[str]) -> Dict:
@@ -113,6 +224,7 @@ def _build_suggestion(base: Dict, trigger_type: str, recommendations: List[Dict]
         "tone": base.get("tone"),
         "civicTags": base.get("civicTags") or [],
         "idiomatic": base.get("idiomatic"),
+        "score": base.get("score"),
         "trigger": trigger_type,
         "recommendations": recommendations,
         "knowledge_points": knowledge_points,
@@ -124,10 +236,27 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
     if not tokens:
         return {"suggestions": []}
 
-    hits = _collect_hits(tokens)
+    hits_graph = _collect_hits(tokens)
+    hits_vec = _vector_hits(utterance, top_k=30)
+
+    # 合并 graph + vector 命中，按 lex_item 去重，保留更高分或 graph 命中
+    merged: Dict[str, Dict] = {}
+    for hit in hits_graph:
+        merged[hit.get("lex_item")] = hit
+    for hit in hits_vec:
+        key = hit.get("lex_item")
+        if key in merged:
+            continue
+        merged[key] = {
+            "lex_item": hit.get("lex_item"),
+            "classes": hit.get("classes"),
+            "slots": hit.get("slots"),
+            "score": hit.get("score"),
+        }
+
     suggestions: List[Dict] = []
 
-    for hit in hits:
+    for hit in merged.values():
         lex_item = hit.get("lex_item")
         anchors = [a for a in (hit.get("anchors") or []) if a]
 
@@ -152,6 +281,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "negative_civic",
                             recs,
@@ -171,6 +301,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "tone_shift",
                             tone_recs,
@@ -190,6 +321,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "idiomatic_shift",
                             idiomatic_recs,
@@ -216,6 +348,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "negative_civic",
                             recs,
@@ -234,6 +367,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "tone_shift",
                             tone_recs,
@@ -252,6 +386,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                                 "tone": tone,
                                 "civicTags": civic_tags,
                                 "idiomatic": idiomatic,
+                                "score": hit.get("score"),
                             },
                             "idiomatic_shift",
                             idiomatic_recs,
@@ -259,4 +394,7 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                         )
                     )
 
-    return {"suggestions": suggestions}
+    # 降噪：按 trigger 排序、score 降序、最多返回 12 条
+    trigger_order = {"negative_civic": 0, "tone_shift": 1, "idiomatic_shift": 2}
+    suggestions.sort(key=lambda x: (trigger_order.get(x.get("trigger"), 99), -(x.get("score") or 0)))
+    return {"suggestions": suggestions[:12]}

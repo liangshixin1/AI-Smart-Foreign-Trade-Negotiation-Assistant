@@ -1011,21 +1011,6 @@ class KnowledgeGraphBatchImporter:
                     ))
                     continue
 
-                slots_signature = ";".join(entry["slots"])
-                pair_key = (anchor, lex_item, entry["semantic_class"], slots_signature)
-                if pair_key in seen_pairs:
-                    warnings.append(ValidationError(
-                        severity="WARNING",
-                        table="lexicon",
-                        row=row_idx,
-                        field="词汇项",
-                        value=f"{lex_item} ({entry['semantic_class']})",
-                        message="发现重复的词汇项，已自动去重",
-                        action_taken="SKIP_DUPLICATE",
-                    ))
-                    continue
-                seen_pairs.add(pair_key)
-
                 entry = {
                     "_row": row_idx,
                     "anchor": anchor,
@@ -1064,6 +1049,21 @@ class KnowledgeGraphBatchImporter:
 
                 if "note" in field_map and len(row) > field_map["note"] and row[field_map["note"]]:
                     entry["note"] = str(row[field_map["note"]]).strip()
+
+                slots_signature = ";".join(entry["slots"])
+                pair_key = (anchor, lex_item, entry["semantic_class"], slots_signature)
+                if pair_key in seen_pairs:
+                    warnings.append(ValidationError(
+                        severity="WARNING",
+                        table="lexicon",
+                        row=row_idx,
+                        field="词汇项",
+                        value=f"{lex_item} ({entry['semantic_class']})",
+                        message="发现重复的词汇项，已自动去重",
+                        action_taken="SKIP_DUPLICATE",
+                    ))
+                    continue
+                seen_pairs.add(pair_key)
 
                 lexicon.append(entry)
 
