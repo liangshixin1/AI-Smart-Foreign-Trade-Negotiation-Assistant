@@ -6,6 +6,8 @@ import os
 import threading
 from typing import List, Optional
 
+import numpy as np
+
 _model = None
 _model_lock = threading.Lock()
 
@@ -42,10 +44,9 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
         return []
     try:
         vectors = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
-    except Exception:
-        return []
-    # sentence-transformers 返回 ndarray；统一转 python list 方便序列化
-    try:
+        # 清洗 nan/inf，避免后续向量运算异常
+        vectors = np.nan_to_num(vectors, nan=0.0, posinf=0.0, neginf=0.0)
+        # sentence-transformers 返回 ndarray；统一转 python list 方便序列化
         return vectors.tolist()
     except Exception:
         return []

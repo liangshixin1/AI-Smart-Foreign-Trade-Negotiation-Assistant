@@ -30,6 +30,7 @@ def _tokenize(text: str) -> List[str]:
 def _query_alternatives_by_class(
     class_key: str,
     *,
+    context_anchors: Optional[List[str]] = None,
     tones: Optional[Sequence[str]] = None,
     civic_positive_only: bool = False,
     idiomatic: Optional[bool] = None,
@@ -41,6 +42,10 @@ def _query_alternatives_by_class(
             """
             MATCH (k:KnowledgePoint)-[r:IN_CLASS]->(sc:SemanticClass {key: $class})
             WHERE ($tones IS NULL OR r.tone IN $tones)
+              AND ($anchors IS NULL OR size($anchors) = 0 OR exists {
+                MATCH (k)-[:RELATED_TO*1..2]->(kp:KnowledgePoint)
+                WHERE kp.name IN $anchors
+              })
               AND ($civicPositive = false OR any(c IN r.civicTags WHERE c IN $positive))
               AND ($idiomatic IS NULL OR r.idiomatic = $idiomatic)
             RETURN k.name AS lex_item, r.tone AS tone, r.civicTags AS civicTags, r.idiomatic AS idiomatic, sc.key AS semantic_class
@@ -48,6 +53,7 @@ def _query_alternatives_by_class(
             """,
             {
                 "class": class_key,
+                "anchors": list(context_anchors) if context_anchors else [],
                 "tones": list(tones) if tones else None,
                 "civicPositive": bool(civic_positive_only),
                 "positive": list(POSITIVE_CIVICS),
@@ -61,6 +67,7 @@ def _query_alternatives_by_class(
 def _query_alternatives_by_slot(
     slot: str,
     *,
+    context_anchors: Optional[List[str]] = None,
     tones: Optional[Sequence[str]] = None,
     civic_positive_only: bool = False,
     idiomatic: Optional[bool] = None,
@@ -72,6 +79,10 @@ def _query_alternatives_by_slot(
             """
             MATCH (k:KnowledgePoint)-[r:FITS_SLOT]->(s:Slot {name: $slot})
             WHERE ($tones IS NULL OR r.tone IN $tones)
+              AND ($anchors IS NULL OR size($anchors) = 0 OR exists {
+                MATCH (k)-[:RELATED_TO*1..2]->(kp:KnowledgePoint)
+                WHERE kp.name IN $anchors
+              })
               AND ($civicPositive = false OR any(c IN r.civicTags WHERE c IN $positive))
               AND ($idiomatic IS NULL OR r.idiomatic = $idiomatic)
             RETURN k.name AS lex_item, r.tone AS tone, r.civicTags AS civicTags, r.idiomatic AS idiomatic, s.name AS slot
@@ -79,6 +90,7 @@ def _query_alternatives_by_slot(
             """,
             {
                 "slot": slot,
+                "anchors": list(context_anchors) if context_anchors else [],
                 "tones": list(tones) if tones else None,
                 "civicPositive": bool(civic_positive_only),
                 "positive": list(POSITIVE_CIVICS),
@@ -89,28 +101,49 @@ def _query_alternatives_by_slot(
     return records or []
 
 
-def _collect_hits(tokens: List[str]) -> List[Dict]:
+def _collect_hits(utterance: str, tokens: List[str]) -> List[Dict]:
     """Return matched lex items and their relations."""
-    filtered_tokens = [t for t in tokens if len(t) >= 3]
-    if not filtered_tokens:
+    # Graph 命中用于“精确/半精确”匹配：避免仅靠单个高频词（如 price/ship）把召回范围拉爆。
+    # 这里仅保留更有区分度的 token，并在 Cypher 侧要求至少 2 个 token 命中（除非是精确/强包含命中）。
+    filtered_tokens = [t for t in tokens if (len(t) >= 4 or t.isdigit())]
+    utterance_lower = (utterance or "").strip().lower()
+    if not utterance_lower and not filtered_tokens:
         return []
     driver = graph_service._get_driver()
     with driver.session() as session:
         records = session.run(
             """
-            WITH $tokens AS tokens
+            WITH $tokens AS tokens, $utterance AS utterance, $roles AS roles
             MATCH (k:KnowledgePoint)
-            WHERE any(t IN tokens WHERE size(t) >= 3 AND toLower(k.name) CONTAINS t)
+            WHERE k.lex_role IN roles
+              AND (
+                (utterance <> '' AND toLower(k.name) = utterance)
+                OR (utterance <> '' AND size(k.name) >= 8 AND utterance CONTAINS toLower(k.name))
+                OR (utterance <> '' AND size(utterance) >= 8 AND toLower(k.name) CONTAINS utterance)
+                OR any(t IN tokens WHERE size(t) >= 3 AND toLower(k.name) CONTAINS t)
+              )
+            WITH k, tokens, utterance,
+                 size([t IN tokens WHERE size(t) >= 3 AND toLower(k.name) CONTAINS t]) AS tokenHits,
+                 CASE
+                   WHEN (utterance <> '' AND toLower(k.name) = utterance) THEN 3
+                   WHEN (utterance <> '' AND size(k.name) >= 8 AND utterance CONTAINS toLower(k.name)) THEN 2
+                   WHEN (utterance <> '' AND size(utterance) >= 8 AND toLower(k.name) CONTAINS utterance) THEN 1
+                   ELSE 0
+                 END AS matchScore
+            WHERE matchScore > 0 OR tokenHits >= 2
             OPTIONAL MATCH (k)-[rc:IN_CLASS]->(sc:SemanticClass)
             OPTIONAL MATCH (k)-[rs:FITS_SLOT]->(s:Slot)
             OPTIONAL MATCH (k)-[:RELATED_TO {kind:'lex_anchor'}]->(anchor:KnowledgePoint)
             RETURN k.name AS lex_item,
                    [c IN collect(DISTINCT {class: sc.key, tone: rc.tone, civicTags: rc.civicTags, idiomatic: rc.idiomatic}) WHERE c.class IS NOT NULL] AS classes,
                    [s IN collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) WHERE s.slot IS NOT NULL] AS slots,
-                   collect(DISTINCT anchor.name) AS anchors
-            LIMIT 200
+                   collect(DISTINCT anchor.name) AS anchors,
+                   tokenHits AS tokenHits,
+                   matchScore AS matchScore
+            ORDER BY matchScore DESC, tokenHits DESC, size(k.name) DESC
+            LIMIT 20
             """,
-            {"tokens": filtered_tokens},
+            {"tokens": filtered_tokens, "utterance": utterance_lower, "roles": ["lexeme", "collocation", "construction"]},
         ).data()
     return records or []
 
@@ -122,12 +155,13 @@ def _collect_hits(tokens: List[str]) -> List[Dict]:
 _LEXICON_CACHE: Dict[str, object] = {
     "items": [],  # list of payloads
     "vectors": None,  # numpy array
+    "loaded": False,  # cache populated at least once
 }
 
 
 def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
     """Load lexical items with class/slot relations and compute embeddings if模型可用."""
-    if _LEXICON_CACHE.get("items") and _LEXICON_CACHE.get("vectors") is not None:
+    if _LEXICON_CACHE.get("loaded"):
         return _LEXICON_CACHE["items"], _LEXICON_CACHE["vectors"]
 
     driver = graph_service._get_driver()
@@ -137,14 +171,17 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
             MATCH (k:KnowledgePoint)
             OPTIONAL MATCH (k)-[rc:IN_CLASS]->(sc:SemanticClass)
             OPTIONAL MATCH (k)-[rs:FITS_SLOT]->(s:Slot)
+            OPTIONAL MATCH (k)-[:RELATED_TO {kind:'lex_anchor'}]->(anchor:KnowledgePoint)
             WITH k,
                  [c IN collect(DISTINCT {class: sc.key, tone: rc.tone, civicTags: rc.civicTags, idiomatic: rc.idiomatic}) WHERE c.class IS NOT NULL] AS classes,
-                 [s IN collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) WHERE s.slot IS NOT NULL] AS slots
+                 [s IN collect(DISTINCT {slot: s.name, tone: rs.tone, civicTags: rs.civicTags, idiomatic: rs.idiomatic}) WHERE s.slot IS NOT NULL] AS slots,
+                 collect(DISTINCT anchor.name) AS anchors
             WHERE size(classes) > 0 OR size(slots) > 0
             RETURN k.name AS lex_item,
                    k.lex_role AS lex_role,
                    classes,
-                   slots
+                   slots,
+                   anchors
             LIMIT 10000
             """
         ).data()
@@ -158,27 +195,11 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
         lex_role = rec.get("lex_role") or ""
         classes = rec.get("classes") or []
         slots = rec.get("slots") or []
-        text_parts = [lex_item]
+        # 向量召回只用于“这句话像不像某个 lex_item”，不要把 tone/civic/slot 等标签拼进文本，
+        # 否则会显著拉低相似度并引入跨领域噪声。
+        full_text = lex_item.strip()
         if lex_role:
-            text_parts.append(f"[role={lex_role}]")
-        if classes:
-            class_labels = [c.get("class") for c in classes if c.get("class")]
-            if class_labels:
-                text_parts.append(f"class={'|'.join(class_labels)}")
-            tones = [c.get("tone") for c in classes if c.get("tone")]
-            if tones:
-                text_parts.append(f"tone={'|'.join(tones)}")
-            civics = []
-            for c in classes:
-                civics.extend(c.get("civicTags") or [])
-            if civics:
-                text_parts.append(f"civic={'|'.join(civics)}")
-        if slots:
-            slot_labels = [s.get("slot") for s in slots if s.get("slot")]
-            if slot_labels:
-                text_parts.append(f"slots={'|'.join(slot_labels)}")
-
-        full_text = " ".join(text_parts).strip()
+            full_text = f"{full_text} [role={lex_role}]"
         if not full_text:
             continue
 
@@ -188,6 +209,7 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
                 "lex_role": lex_role,
                 "classes": classes,
                 "slots": slots,
+                "anchors": [a for a in (rec.get("anchors") or []) if a],
             }
         )
         texts.append(full_text)
@@ -195,6 +217,7 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
     if not texts:
         _LEXICON_CACHE["items"] = []
         _LEXICON_CACHE["vectors"] = None
+        _LEXICON_CACHE["loaded"] = True
         return [], None
 
     vectors = embedding_service.embed_texts(texts)
@@ -206,6 +229,7 @@ def _fetch_lexicon_index() -> Tuple[List[Dict], Optional[np.ndarray]]:
         vectors_np = None
     _LEXICON_CACHE["items"] = items
     _LEXICON_CACHE["vectors"] = vectors_np
+    _LEXICON_CACHE["loaded"] = True
     return items, vectors_np
 
 
@@ -221,9 +245,14 @@ def _vector_hits(utterance: str, top_k: int = 20) -> List[Dict]:
     if not query_vecs:
         return []
     q = np.array(query_vecs[0], dtype=np.float32)
-    q = np.nan_to_num(q, nan=0.0)
+    q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
+    vectors = np.nan_to_num(vectors, nan=0.0, posinf=0.0, neginf=0.0)
     try:
-        scores = vectors @ q  # 因为向量已归一化，可直接点乘
+        # numpy matmul 在部分环境下会产生“divide by zero/overflow”误报 warning（即使结果是有限值）。
+        # 这里用 dot 并在局部屏蔽浮点 warning，避免日志噪音和误判。
+        with np.errstate(all="ignore"):
+            scores = np.dot(vectors, q)  # 因为向量已归一化，可直接点乘
+            scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
     except Exception as e:
         logger.error("Vector calculation error: %s", e)
         return []
@@ -233,7 +262,7 @@ def _vector_hits(utterance: str, top_k: int = 20) -> List[Dict]:
     hits = []
     for idx in top_idx:
         score = float(scores[idx])
-        if score < 0.65:  # 更高阈值，过滤噪声
+        if np.isnan(score) or score < 0.65:  # 更高阈值，过滤噪声
             continue
         payload = dict(items[int(idx)])
         payload["score"] = score
@@ -256,35 +285,70 @@ def _build_suggestion(base: Dict, trigger_type: str, recommendations: List[Dict]
     }
 
 
+def _rank_context_anchors(utterance: str, anchors: List[str]) -> List[str]:
+    """Rank anchors by semantic similarity to the utterance (embedding-based), best-effort."""
+    anchors = [a for a in anchors if a]
+    if not utterance or not anchors:
+        return anchors
+
+    vecs = embedding_service.embed_texts([utterance] + anchors)
+    if not vecs or len(vecs) != (1 + len(anchors)):
+        return anchors
+
+    try:
+        q = np.array(vecs[0], dtype=np.float32)
+        a = np.array(vecs[1:], dtype=np.float32)
+        q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
+        a = np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)
+        with np.errstate(all="ignore"):
+            scores = np.dot(a, q)
+        order = np.argsort(-scores)
+        return [anchors[int(i)] for i in order]
+    except Exception:
+        return anchors
+
+
 def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
     tokens = _tokenize(utterance)
     if not tokens:
         return {"suggestions": []}
 
-    hits_graph = _collect_hits(tokens)
+    hits_graph = _collect_hits(utterance, tokens)
     hits_vec = _vector_hits(utterance, top_k=30)
 
-    # 合并 graph + vector 命中，graph 优先（score 置 1.0）
+    # 1) 召回与合并：Graph 优先；向量命中补充（若 Graph 已存在则不覆盖其结构信息）
     merged: Dict[str, Dict] = {}
     for hit in hits_graph:
         merged[hit.get("lex_item")] = {**hit, "score": 1.0}
+
     for hit in hits_vec:
         key = hit.get("lex_item")
         if key in merged:
             continue
         merged[key] = {
             "lex_item": hit.get("lex_item"),
-            "classes": hit.get("classes"),
-            "slots": hit.get("slots"),
+            "classes": hit.get("classes") or [],
+            "slots": hit.get("slots") or [],
+            "anchors": hit.get("anchors") or [],
             "score": hit.get("score"),
         }
 
-    suggestions: List[Dict] = []
+    # 2) 去重与聚合：同一 lex_item + trigger 只保留 1 条
+    unique_suggestions: Dict[Tuple[str, str], Dict] = {}
 
     for hit in merged.values():
-        lex_item = hit.get("lex_item")
+        lex_item = hit.get("lex_item") or ""
         anchors = [a for a in (hit.get("anchors") or []) if a]
+        if not anchors:
+            # 没有业务锚点就不生成“语义网”替换建议，避免跨领域错配。
+            continue
+        ranked_anchors = _rank_context_anchors(utterance, anchors)
+        context_anchors = ranked_anchors[:15]  # 业务围栏：只用更相关的锚点
+        knowledge_points = ranked_anchors[:6]  # UI：避免过载
+        if not context_anchors:
+            continue
 
+        # 3) 生成建议（带上下文约束）
         for cls_rel in hit.get("classes") or []:
             cls_key = cls_rel.get("class")
             if not cls_key:
@@ -294,79 +358,92 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
             tone = (cls_rel.get("tone") or "").lower()
             idiomatic = cls_rel.get("idiomatic")
 
-            # 负面思政 -> 推荐正面
             if any(tag in NEGATIVE_CIVICS for tag in civic_tags):
-                recs = _query_alternatives_by_class(cls_key, civic_positive_only=True, limit=5)
+                recs = _query_alternatives_by_class(
+                    cls_key,
+                    civic_positive_only=True,
+                    context_anchors=context_anchors,
+                    limit=5,
+                )
                 if recs:
-                    suggestions.append(
-                        _build_suggestion(
-                            {
-                                "lex_item": lex_item,
-                                "semantic_class": cls_key,
-                                "tone": tone,
-                                "civicTags": civic_tags,
-                                "idiomatic": idiomatic,
-                                "score": hit.get("score"),
-                            },
-                            "negative_civic",
-                            recs,
-                            anchors,
-                        )
+                    unique_suggestions[(lex_item, "negative_civic")] = _build_suggestion(
+                        {
+                            "lex_item": lex_item,
+                            "semantic_class": cls_key,
+                            "tone": tone,
+                            "civicTags": civic_tags,
+                            "idiomatic": idiomatic,
+                            "score": hit.get("score"),
+                        },
+                        "negative_civic",
+                        recs,
+                        knowledge_points,
                     )
 
-            # neutral 语气 -> softer/stronger
             if tone == NEUTRAL:
-                tone_recs = _query_alternatives_by_class(cls_key, tones=SOFTER_SET | STRONGER_SET, limit=6)
+                tone_recs = _query_alternatives_by_class(
+                    cls_key,
+                    tones=SOFTER_SET | STRONGER_SET,
+                    context_anchors=context_anchors,
+                    limit=6,
+                )
                 if tone_recs:
-                    suggestions.append(
-                        _build_suggestion(
-                            {
-                                "lex_item": lex_item,
-                                "semantic_class": cls_key,
-                                "tone": tone,
-                                "civicTags": civic_tags,
-                                "idiomatic": idiomatic,
-                                "score": hit.get("score"),
-                            },
-                            "tone_shift",
-                            tone_recs,
-                            anchors,
-                        )
+                    unique_suggestions[(lex_item, "tone_shift")] = _build_suggestion(
+                        {
+                            "lex_item": lex_item,
+                            "semantic_class": cls_key,
+                            "tone": tone,
+                            "civicTags": civic_tags,
+                            "idiomatic": idiomatic,
+                            "score": hit.get("score"),
+                        },
+                        "tone_shift",
+                        tone_recs,
+                        knowledge_points,
                     )
 
-            # idiomatic = False -> 推荐 idiomatic=True
             if idiomatic is False:
-                idiomatic_recs = _query_alternatives_by_class(cls_key, idiomatic=True, limit=5)
+                idiomatic_recs = _query_alternatives_by_class(
+                    cls_key,
+                    idiomatic=True,
+                    context_anchors=context_anchors,
+                    limit=5,
+                )
                 if idiomatic_recs:
-                    suggestions.append(
-                        _build_suggestion(
-                            {
-                                "lex_item": lex_item,
-                                "semantic_class": cls_key,
-                                "tone": tone,
-                                "civicTags": civic_tags,
-                                "idiomatic": idiomatic,
-                                "score": hit.get("score"),
-                            },
-                            "idiomatic_shift",
-                            idiomatic_recs,
-                            anchors,
-                        )
+                    unique_suggestions[(lex_item, "idiomatic_shift")] = _build_suggestion(
+                        {
+                            "lex_item": lex_item,
+                            "semantic_class": cls_key,
+                            "tone": tone,
+                            "civicTags": civic_tags,
+                            "idiomatic": idiomatic,
+                            "score": hit.get("score"),
+                        },
+                        "idiomatic_shift",
+                        idiomatic_recs,
+                        knowledge_points,
                     )
 
         for slot_rel in hit.get("slots") or []:
             slot_name = slot_rel.get("slot")
             if not slot_name:
                 continue
+
             civic_tags = slot_rel.get("civicTags") or []
             tone = (slot_rel.get("tone") or "").lower()
             idiomatic = slot_rel.get("idiomatic")
 
             if any(tag in NEGATIVE_CIVICS for tag in civic_tags):
-                recs = _query_alternatives_by_slot(slot_name, civic_positive_only=True, limit=5)
-                if recs:
-                    suggestions.append(
-                        _build_suggestion(
+                key = (lex_item, "negative_civic")
+                if key not in unique_suggestions:
+                    recs = _query_alternatives_by_slot(
+                        slot_name,
+                        civic_positive_only=True,
+                        context_anchors=context_anchors,
+                        limit=5,
+                    )
+                    if recs:
+                        unique_suggestions[key] = _build_suggestion(
                             {
                                 "lex_item": lex_item,
                                 "slot": slot_name,
@@ -377,15 +454,20 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                             },
                             "negative_civic",
                             recs,
-                            anchors,
+                            knowledge_points,
                         )
-                    )
 
             if tone == NEUTRAL:
-                tone_recs = _query_alternatives_by_slot(slot_name, tones=SOFTER_SET | STRONGER_SET, limit=6)
-                if tone_recs:
-                    suggestions.append(
-                        _build_suggestion(
+                key = (lex_item, "tone_shift")
+                if key not in unique_suggestions:
+                    tone_recs = _query_alternatives_by_slot(
+                        slot_name,
+                        tones=SOFTER_SET | STRONGER_SET,
+                        context_anchors=context_anchors,
+                        limit=6,
+                    )
+                    if tone_recs:
+                        unique_suggestions[key] = _build_suggestion(
                             {
                                 "lex_item": lex_item,
                                 "slot": slot_name,
@@ -396,15 +478,20 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                             },
                             "tone_shift",
                             tone_recs,
-                            anchors,
+                            knowledge_points,
                         )
-                    )
 
             if idiomatic is False:
-                idiomatic_recs = _query_alternatives_by_slot(slot_name, idiomatic=True, limit=5)
-                if idiomatic_recs:
-                    suggestions.append(
-                        _build_suggestion(
+                key = (lex_item, "idiomatic_shift")
+                if key not in unique_suggestions:
+                    idiomatic_recs = _query_alternatives_by_slot(
+                        slot_name,
+                        idiomatic=True,
+                        context_anchors=context_anchors,
+                        limit=5,
+                    )
+                    if idiomatic_recs:
+                        unique_suggestions[key] = _build_suggestion(
                             {
                                 "lex_item": lex_item,
                                 "slot": slot_name,
@@ -415,11 +502,10 @@ def get_lexical_suggestions(utterance: str) -> Dict[str, List[Dict]]:
                             },
                             "idiomatic_shift",
                             idiomatic_recs,
-                            anchors,
+                            knowledge_points,
                         )
-                    )
 
-    # 降噪：按 trigger 排序、score 降序、最多返回 12 条
+    suggestions = list(unique_suggestions.values())
     trigger_order = {"negative_civic": 0, "tone_shift": 1, "idiomatic_shift": 2}
     suggestions.sort(key=lambda x: (trigger_order.get(x.get("trigger"), 99), -(x.get("score") or 0)))
     return {"suggestions": suggestions[:12]}
