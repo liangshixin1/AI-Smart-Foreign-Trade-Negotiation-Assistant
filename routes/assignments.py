@@ -230,7 +230,7 @@ def chat():
                 ctx = evaluation_service.prepare_evaluation_context(session_id, session)
                 # 快速知识点召回（不依赖 LLM），用于提前渲染 evaluation-knowledge
                 try:
-                    recalled = evaluation_service.recall_knowledge_points_from_context(ctx, limit=8)
+                    recalled = evaluation_service.recall_knowledge_points_from_context(ctx, limit=5)
                 except Exception:
                     recalled = []
                 if recalled:

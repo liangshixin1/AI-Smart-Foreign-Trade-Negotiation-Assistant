@@ -3445,14 +3445,51 @@ function renderKnowledge(container, items) {
 
 function renderEvaluationKnowledge(items) {
   if (!evaluationKnowledgeEl) return;
+  const statusEl = document.getElementById("evaluation-knowledge-status");
   evaluationKnowledgeEl.innerHTML = "";
   const values = Array.isArray(items) ? items : items ? [items] : [];
   if (values.length === 0) {
+    if (statusEl) statusEl.textContent = "";
     const pill = document.createElement("span");
     pill.className = "knowledge-pill";
     pill.textContent = "暂无知识点";
     evaluationKnowledgeEl.appendChild(pill);
     return;
+  }
+  const hasKeyword = values.some((item) => item && typeof item === "object" && item.source === "keyword");
+  const hasAi = values.some((item) => item && typeof item === "object" && item.source === "ai");
+  if (statusEl) {
+    statusEl.innerHTML = "";
+    const main = document.createElement("span");
+    if (hasAi) {
+      main.textContent = "AI 识别并补充相关知识点";
+    } else if (hasKeyword) {
+      main.textContent = "你可能需要了解...";
+    } else {
+      main.textContent = "";
+    }
+    statusEl.appendChild(main);
+
+    const badgeText = hasAi ? "AI识别" : hasKeyword ? "关键字识别" : "";
+    if (badgeText) {
+      const badge = document.createElement("span");
+      badge.style.marginLeft = "0.5rem";
+      badge.style.display = "inline-flex";
+      badge.style.alignItems = "center";
+      badge.style.gap = "0.3rem";
+      badge.style.fontSize = "11px";
+      badge.style.color = "rgb(100, 116, 139)";
+      const dot = document.createElement("span");
+      dot.style.width = "6px";
+      dot.style.height = "6px";
+      dot.style.borderRadius = "9999px";
+      dot.style.background = hasAi ? "#10b981" : "#3b82f6";
+      badge.appendChild(dot);
+      const txt = document.createElement("span");
+      txt.textContent = badgeText;
+      badge.appendChild(txt);
+      statusEl.appendChild(badge);
+    }
   }
   values.forEach((item) => {
     const pill = document.createElement("button");
@@ -3463,12 +3500,19 @@ function renderEvaluationKnowledge(items) {
     const label = typeof labelSource === "string" ? labelSource : String(labelSource || "知识点");
     const detail =
       (item && (item.description || item.detail || item.summary || item.text || item.content)) || "";
+    const source = item && typeof item === "object" ? item.source : "";
+    const isKeyword = source === "keyword";
+    const pillBg = isKeyword ? "rgba(59, 130, 246, 0.14)" : "rgba(16, 185, 129, 0.14)";
+    const pillColor = isKeyword ? "#2563eb" : "#059669";
     const graphPayload = {
       name: item && (item.name || item.label || label),
       prerequisites: item && item.prerequisites,
       relations: item && item.relations,
       lessonId: item && item.lessonId,
     };
+    pill.style.background = pillBg;
+    pill.style.color = pillColor;
+    pill.style.cursor = "pointer";
     pill.textContent = label;
     pill.addEventListener("click", () => {
       showKnowledgePeek(label, detail);
@@ -4518,21 +4562,31 @@ async function sendMessageWithContent(message, options = {}) {
   const mergeKnowledgePoints = (base, incoming) => {
     const baseList = Array.isArray(base) ? base : base ? [base] : [];
     const incomingList = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
-    const seen = new Set();
-    const merged = [];
-    baseList.forEach((item) => {
-      const key = item && typeof item === "object" ? item.name || item.label || item.title : String(item || "");
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      merged.push(item);
-    });
-    incomingList.forEach((item) => {
-      const key = item && typeof item === "object" ? item.name || item.label || item.title : String(item || "");
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      merged.push(item);
-    });
-    return merged;
+    const mergedMap = new Map();
+    const toKey = (item) =>
+      item && typeof item === "object" ? item.name || item.label || item.title : String(item || "");
+    const scoreSource = (item) => {
+      if (!item || typeof item !== "object") return 0;
+      if (item.source === "ai") return 2;
+      if (item.source === "keyword") return 1;
+      return 0;
+    };
+    const upsert = (item) => {
+      const key = toKey(item);
+      if (!key) return;
+      const existing = mergedMap.get(key);
+      if (!existing) {
+        mergedMap.set(key, item);
+        return;
+      }
+      // Final（AI）若与快速同名，升级为 AI；否则保留原有。
+      if (scoreSource(item) > scoreSource(existing)) {
+        mergedMap.set(key, item);
+      }
+    };
+    baseList.forEach(upsert);
+    incomingList.forEach(upsert);
+    return Array.from(mergedMap.values());
   };
 
   const parseEvent = (raw) => {

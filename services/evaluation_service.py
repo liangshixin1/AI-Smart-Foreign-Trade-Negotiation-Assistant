@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import json
 import threading
+import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import logging
@@ -16,13 +17,8 @@ from utils.validators import extract_json_block
 
 LOGGER = logging.getLogger(__name__)
 
-try:
-    import numpy as np  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    np = None
-
-_EVAL_RECALL_INDEX: Dict[str, object] = {"model": None, "items": [], "vectors": None, "texts": [], "loaded": False}
-_EVAL_RECALL_LOCK = threading.Lock()
+_FAST_RECALL_INDEX: Dict[str, object] = {"loaded": False, "items": []}
+_FAST_RECALL_LOCK = threading.Lock()
 
 
 def _score_to_label(score: Optional[object]) -> Optional[str]:
@@ -77,6 +73,65 @@ def _parse_score(raw: str) -> Optional[int]:
         num = max(0, min(100, num))
         return num
     return None
+
+
+def _normalize_text_for_match(text: str) -> str:
+    value = (text or "").strip().lower()
+    value = re.sub(r"\s+", " ", value)
+    return value
+
+
+def _extract_tokens(value: str) -> List[str]:
+    """适配中英文的轻量分词：中文拆成2-3字 ngram，英文按单词。"""
+
+    normalized = _normalize_text_for_match(value)
+    raw_parts = re.findall(r"[\w\d]+|[\u4e00-\u9fa5]+", normalized)
+    tokens: List[str] = []
+    for part in raw_parts:
+        if not part or len(part) <= 1:
+            continue
+        if re.search(r"[\u4e00-\u9fa5]", part):
+            ngrams = set()
+            for n in (2, 3):
+                for i in range(0, max(len(part) - n + 1, 0)):
+                    ngrams.add(part[i : i + n])
+            tokens.extend([ng for ng in ngrams if len(ng) >= 2])
+        else:
+            tokens.append(part)
+    return tokens
+
+
+def _build_fast_recall_index() -> List[Dict[str, object]]:
+    try:
+        all_candidates = graph_service.list_knowledge_points()
+    except Exception:
+        all_candidates = []
+
+    items: List[Dict[str, object]] = []
+    for node in all_candidates or []:
+        if node.get("lex_role"):
+            continue
+        name = (node.get("name") or "").strip()
+        if not name:
+            continue
+        summary = (node.get("summary") or "").strip()
+        tags = node.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        if not isinstance(tags, list):
+            tags = []
+        tag_text = " ".join([str(t) for t in tags if t])
+
+        items.append(
+            {
+                "node": node,
+                "name_norm": _normalize_text_for_match(name),
+                "name_tokens": set(_extract_tokens(name)),
+                "tag_tokens": set(_extract_tokens(tag_text)),
+                "summary_tokens": set(_extract_tokens(summary)) if summary else set(),
+            }
+        )
+    return items
 
 
 def prepare_evaluation_context(session_id: str, session: Dict[str, object]) -> Dict[str, object]:
@@ -275,6 +330,9 @@ def build_evaluation_result(
         scenario_hint=scenario,
     )
     knowledge_points = matched.get("flat", [])
+    for kp in knowledge_points or []:
+        if isinstance(kp, dict):
+            kp.setdefault("source", "ai")
     return {
         "score": score,
         "scoreLabel": score_label,
@@ -549,15 +607,9 @@ def _evaluation_reranker_model_name() -> str:
 def recall_knowledge_points_from_context(
     ctx: Dict[str, object],
     *,
-    limit: int = 8,
-    rerank_top_k: int = 24,
-    min_score: float = 0.35,
+    limit: int = 5,
 ) -> List[Dict[str, object]]:
-    """Fast, local knowledge-point recall from transcript/context (no LLM needed).
-
-    - Uses in-memory embeddings (BGE-M3 by default) + optional reranker.
-    - Filters out lexical-network nodes via `lex_role`.
-    """
+    """快速知识点召回（关键字匹配，不用 embedding/reranker）。"""
 
     if limit <= 0:
         return []
@@ -571,16 +623,12 @@ def recall_knowledge_points_from_context(
                 (ctx.get("lastUser") or "").strip(),
                 (ctx.get("lastAi") or "").strip(),
                 (ctx.get("contextText") or "").strip(),
-                (ctx.get("transcript") or "").strip(),
                 (scenario_text or "").strip(),
             ],
         )
     ).strip()
     if not query:
         return []
-
-    model_name = _evaluation_embedding_model_name()
-    reranker_name = _evaluation_reranker_model_name()
 
     def _node_to_payload(node: Dict[str, object], score: float) -> Dict[str, object]:
         category = node.get("category") or node.get("nodeType") or "KnowledgePoint"
@@ -596,100 +644,41 @@ def recall_knowledge_points_from_context(
             "lessonCount": node.get("lessonCount"),
             "practiceCount": node.get("practiceCount"),
             "matchScore": float(score) if score is not None else 0.0,
+            "source": "keyword",
         }
 
-    # Build/refresh cached candidate vectors once per process per model.
-    with _EVAL_RECALL_LOCK:
-        cache_model = _EVAL_RECALL_INDEX.get("model")
-        loaded = bool(_EVAL_RECALL_INDEX.get("loaded"))
-        if (not loaded) or (cache_model != model_name):
-            try:
-                all_candidates = graph_service.list_knowledge_points()
-            except Exception:
-                all_candidates = []
+    with _FAST_RECALL_LOCK:
+        if not _FAST_RECALL_INDEX.get("loaded"):
+            _FAST_RECALL_INDEX["items"] = _build_fast_recall_index()
+            _FAST_RECALL_INDEX["loaded"] = True
 
-            filtered = [c for c in (all_candidates or []) if not c.get("lex_role")]
-            # Keep it bounded for speed; recall is best-effort and runs every user turn.
-            filtered = sorted(filtered, key=lambda n: n.get("name", ""))[:800]
-
-            texts: List[str] = []
-            for node in filtered:
-                parts = [
-                    node.get("name") or "",
-                    node.get("summary") or "",
-                    node.get("bodyHtml") or "",
-                    node.get("category") or "",
-                    node.get("topic") or "",
-                ]
-                texts.append(" ".join([p for p in parts if p])[:900])
-
-            vectors = []
-            if texts:
-                vectors = embedding_service.embed_texts(texts, model_name=model_name)
-
-            dense = None
-            if vectors and np is not None:
-                dense = np.array(vectors, dtype=np.float32)
-                dense = np.nan_to_num(dense, nan=0.0, posinf=0.0, neginf=0.0)
-
-            _EVAL_RECALL_INDEX["model"] = model_name
-            _EVAL_RECALL_INDEX["items"] = filtered
-            _EVAL_RECALL_INDEX["texts"] = texts
-            _EVAL_RECALL_INDEX["vectors"] = dense
-            _EVAL_RECALL_INDEX["loaded"] = True
-
-    items: List[Dict[str, object]] = _EVAL_RECALL_INDEX.get("items") or []
-    texts = _EVAL_RECALL_INDEX.get("texts") or []
-    matrix = _EVAL_RECALL_INDEX.get("vectors")
-    if not items or not texts or matrix is None or np is None:
+    items: List[Dict[str, object]] = _FAST_RECALL_INDEX.get("items") or []
+    if not items:
         return []
 
-    q_vecs = embedding_service.embed_texts([query], model_name=model_name)
-    if not q_vecs:
-        return []
-    q = np.array(q_vecs[0], dtype=np.float32)
-    q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
-    if q.size == 0:
-        return []
+    query_norm = _normalize_text_for_match(query)
+    query_tokens = set(_extract_tokens(query))
 
-    try:
-        with np.errstate(all="ignore"):
-            scores = np.dot(matrix, q)  # normalized embeddings => cosine
-        scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
-    except Exception:
-        return []
+    scored: List[Tuple[Dict[str, object], float]] = []
+    for item in items:
+        node = item.get("node") or {}
+        name_norm = item.get("name_norm") or ""
+        name_tokens = item.get("name_tokens") or set()
+        tag_tokens = item.get("tag_tokens") or set()
+        summary_tokens = item.get("summary_tokens") or set()
 
-    if scores.size == 0:
-        return []
-
-    # Candidate shortlist by embedding score.
-    shortlist_k = min(max(rerank_top_k, limit), int(scores.size))
-    top_idx = np.argsort(-scores)[:shortlist_k].tolist()
-
-    # Optional rerank within shortlist.
-    rerank_model = reranker_service.get_model(model_name=reranker_name)
-    order_idx = top_idx
-    if rerank_model is not None:
-        top_docs = [texts[int(i)] for i in top_idx]
-        rerank_scores = reranker_service.rerank(query, top_docs, model_name=reranker_name)
-        if rerank_scores and len(rerank_scores) == len(top_idx):
-            order_idx = [top_idx[i] for i in sorted(range(len(top_idx)), key=lambda j: rerank_scores[j], reverse=True)]
-
-    results: List[Dict[str, object]] = []
-    seen: set[str] = set()
-    for idx in order_idx:
-        idx_int = int(idx)
-        score = float(scores[idx_int]) if idx_int < len(scores) else 0.0
-        if score < float(min_score):
+        score = 0.0
+        if name_norm and name_norm in query_norm:
+            score += 6.0
+        overlap_name = len(set(name_tokens) & query_tokens) if name_tokens else 0
+        overlap_tags = len(set(tag_tokens) & query_tokens) if tag_tokens else 0
+        overlap_summary = len(set(summary_tokens) & query_tokens) if summary_tokens else 0
+        score += min(6.0, 1.5 * overlap_name)
+        score += min(3.0, 0.8 * overlap_tags)
+        score += min(2.0, 0.2 * overlap_summary)
+        if score <= 0:
             continue
-        node = items[idx_int] if idx_int < len(items) else None
-        if not node:
-            continue
-        name = (node.get("name") or "").strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        results.append(_node_to_payload(node, score))
-        if len(results) >= limit:
-            break
-    return results
+        scored.append((node, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [_node_to_payload(node, score) for node, score in scored[:limit]]
