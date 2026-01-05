@@ -45,6 +45,9 @@ def refresh_knowledge_index() -> int:
     texts: List[str] = []
     metas: List[Dict[str, object]] = []
     for kp in points or []:
+        # 过滤“词汇网”节点：它们同样挂在 KnowledgePoint 下，但不应参与评估/知识点对齐。
+        if kp.get("lex_role"):
+            continue
         name = kp.get("name") or ""
         if not name:
             continue

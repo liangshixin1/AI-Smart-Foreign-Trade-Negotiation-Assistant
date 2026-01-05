@@ -228,6 +228,13 @@ def chat():
             # 流式评估：先推送分数，再推送详情
             try:
                 ctx = evaluation_service.prepare_evaluation_context(session_id, session)
+                # 快速知识点召回（不依赖 LLM），用于提前渲染 evaluation-knowledge
+                try:
+                    recalled = evaluation_service.recall_knowledge_points_from_context(ctx, limit=8)
+                except Exception:
+                    recalled = []
+                if recalled:
+                    yield f"event: knowledge\ndata: {json.dumps({'knowledgePoints': recalled, 'source': 'recall'})}\n\n"
                 score_key = os.getenv("DEEPSEEK_CRITIC_SCORE_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
                 detail_key = os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
 

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import threading
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
-_model = None
+_models: Dict[str, object] = {}
 _model_lock = threading.Lock()
 
 
@@ -16,30 +16,45 @@ def _get_model_name() -> str:
     return os.getenv("EMBEDDING_MODEL_NAME") or "paraphrase-multilingual-MiniLM-L12-v2"
 
 
-def get_model():
-    """Lazy-load embedding模型；加载失败返回 None。"""
+def get_model(model_name: Optional[str] = None):
+    """Lazy-load embedding 模型；加载失败返回 None。
 
-    global _model
-    if _model is not None:
-        return _model
+    支持按 model_name 缓存多套模型，避免不同业务互相干扰。
+    """
+
+    name = (model_name or _get_model_name() or "").strip()
+    if not name:
+        return None
+    cached = _models.get(name)
+    if cached is not None:
+        return cached
     with _model_lock:
-        if _model is not None:
-            return _model
+        cached = _models.get(name)
+        if cached is not None:
+            return cached
         try:
             from sentence_transformers import SentenceTransformer
         except Exception:
             return None
+        model = None
         try:
-            _model = SentenceTransformer(_get_model_name())
+            # 部分社区模型（如 BGE-M3）需要 trust_remote_code；在旧版本 sentence-transformers 中该参数可能不存在。
+            try:
+                model = SentenceTransformer(name, trust_remote_code=True)
+            except TypeError:
+                model = SentenceTransformer(name)
         except Exception:
-            _model = None
-        return _model
+            model = None
+        if model is None:
+            return None
+        _models[name] = model
+        return model
 
 
-def embed_texts(texts: List[str]) -> List[List[float]]:
+def embed_texts(texts: List[str], *, model_name: Optional[str] = None) -> List[List[float]]:
     """Embed 多个文本，返回归一化向量列表；若模型不可用则返回空列表。"""
 
-    model = get_model()
+    model = get_model(model_name=model_name)
     if model is None or not texts:
         return []
     try:

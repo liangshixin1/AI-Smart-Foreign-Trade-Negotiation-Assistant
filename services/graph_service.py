@@ -1417,6 +1417,7 @@ def list_knowledge_points() -> List[Dict[str, object]]:
                k.orderIndex AS orderIndex,
                k.sourceId AS knowledgeId,
                k.tags AS tags,
+               k.lex_role AS lex_role,
                t.name AS topic,
                CASE
                    WHEN 'Terminology' IN labels(k) THEN 'Terminology'
@@ -1835,6 +1836,7 @@ def list_knowledge_points_enhanced(
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               k.lex_role AS lex_role,
                CASE
                    WHEN 'Terminology' IN labels(k) THEN 'Terminology'
                    WHEN 'Skill' IN labels(k) THEN 'Skill'

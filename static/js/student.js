@@ -4502,7 +4502,6 @@ async function sendMessageWithContent(message, options = {}) {
   }
 
   setEvaluationLoading(true);
-  if (chatInputEl) chatInputEl.disabled = true;
   if (sendMessageBtn) sendMessageBtn.disabled = true;
 
   const userMessageIndex = appendMessage("user", message, options);
@@ -4515,6 +4514,26 @@ async function sendMessageWithContent(message, options = {}) {
   let evaluationResult = null;
   let shouldTerminate = false;
   let streamError = null;
+
+  const mergeKnowledgePoints = (base, incoming) => {
+    const baseList = Array.isArray(base) ? base : base ? [base] : [];
+    const incomingList = Array.isArray(incoming) ? incoming : incoming ? [incoming] : [];
+    const seen = new Set();
+    const merged = [];
+    baseList.forEach((item) => {
+      const key = item && typeof item === "object" ? item.name || item.label || item.title : String(item || "");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(item);
+    });
+    incomingList.forEach((item) => {
+      const key = item && typeof item === "object" ? item.name || item.label || item.title : String(item || "");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(item);
+    });
+    return merged;
+  };
 
   const parseEvent = (raw) => {
     const lines = raw.split("\n");
@@ -4566,11 +4585,32 @@ async function sendMessageWithContent(message, options = {}) {
         knowledgePoints: evaluationResult ? evaluationResult.knowledgePoints : [],
       };
       renderEvaluation(evaluationResult);
+    } else if (eventType === "knowledge") {
+      const recalled = payload.knowledgePoints || payload.knowledge_points || [];
+      if (!evaluationResult) {
+        evaluationResult = {
+          score: null,
+          scoreLabel: "",
+          commentary: "等待详细评语…",
+          actionItems: [],
+          knowledgePoints: [],
+        };
+      }
+      evaluationResult.knowledgePoints = mergeKnowledgePoints(evaluationResult.knowledgePoints, recalled);
+      renderEvaluation(evaluationResult);
     } else if (eventType === "evaluation") {
-      evaluationResult = payload.evaluation || null;
+      const incoming = payload.evaluation || null;
+      if (incoming && evaluationResult) {
+        incoming.knowledgePoints = mergeKnowledgePoints(evaluationResult.knowledgePoints, incoming.knowledgePoints || []);
+      }
+      evaluationResult = incoming;
       renderEvaluation(evaluationResult);
     } else if (eventType === "detail") {
-      evaluationResult = payload.evaluation || null;
+      const incoming = payload.evaluation || null;
+      if (incoming && evaluationResult) {
+        incoming.knowledgePoints = mergeKnowledgePoints(evaluationResult.knowledgePoints, incoming.knowledgePoints || []);
+      }
+      evaluationResult = incoming;
       renderEvaluation(evaluationResult);
     } else if (eventType === "error") {
       streamError = new Error(payload.error || "对话失败");
@@ -4632,7 +4672,6 @@ async function sendMessageWithContent(message, options = {}) {
     renderChat();
   } finally {
     setEvaluationLoading(false);
-    if (chatInputEl) chatInputEl.disabled = false;
     if (sendMessageBtn) sendMessageBtn.disabled = false;
   }
 }

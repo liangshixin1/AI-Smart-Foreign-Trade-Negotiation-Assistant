@@ -4,16 +4,25 @@ from __future__ import annotations
 
 import os
 import json
+import threading
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import logging
 import database
-from services import embedding_service, graph_service, rag_matcher
+from services import embedding_service, graph_service, rag_matcher, reranker_service
 from services.document_composer import build_transcript
 from services.llm_service import complete_chat
 from utils.validators import extract_json_block
 
 LOGGER = logging.getLogger(__name__)
+
+try:
+    import numpy as np  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    np = None
+
+_EVAL_RECALL_INDEX: Dict[str, object] = {"model": None, "items": [], "vectors": None, "texts": [], "loaded": False}
+_EVAL_RECALL_LOCK = threading.Lock()
 
 
 def _score_to_label(score: Optional[object]) -> Optional[str]:
@@ -250,8 +259,9 @@ def build_evaluation_result(
         )
         if linked and linked not in grounded_names:
             grounded_names.append(linked)
-    if not grounded_names and raw_candidates:
-        grounded_names = _normalize_names(raw_candidates)
+    # 若无法对齐到真实图谱（常见于“幻觉/误把词汇项当知识点”），优先回退到场景知识点，避免把 raw 文本直接渲染成知识点 pill。
+    if not grounded_names:
+        grounded_names = _normalize_names(scenario_knowledge or [])
     if match_debug:
         LOGGER.info("Knowledge grounding results: %s", match_debug)
 
@@ -338,7 +348,9 @@ def _match_to_existing_knowledge(
         return {"grouped": grouped, "flat": minimal}
 
     # 不再按关卡/场景收窄候选，统一使用全量知识点集合
-    scoped_candidates = sorted(all_candidates, key=lambda n: n.get("name", ""))[:400]
+    # 同时过滤掉“词汇网”节点（lex_role），避免把 lex_item 当作知识点返回到 evaluation-knowledge。
+    filtered_candidates = [c for c in (all_candidates or []) if not c.get("lex_role")]
+    scoped_candidates = sorted(filtered_candidates, key=lambda n: n.get("name", ""))[:400]
 
     name_to_node: Dict[str, Dict[str, object]] = {}
     lower_index: Dict[str, str] = {}
@@ -402,13 +414,18 @@ def _match_to_existing_knowledge(
             card_names.append(node.get("name") or "")
             candidate_texts.append(" ".join(text_parts)[:600])
 
-        model = embedding_service.get_model()
+        eval_embed_model = _evaluation_embedding_model_name()
+        eval_reranker_model = _evaluation_reranker_model_name()
+
+        model = embedding_service.get_model(model_name=eval_embed_model)
         candidate_vecs = []
         if model and candidate_texts:
             try:
-                candidate_vecs = embedding_service.embed_texts(candidate_texts)
+                candidate_vecs = embedding_service.embed_texts(candidate_texts, model_name=eval_embed_model)
             except Exception:
                 candidate_vecs = []
+
+        reranker = reranker_service.get_model(model_name=eval_reranker_model)
 
         def _cosine_dense(a: List[float], b: List[float]) -> float:
             if not a or not b or len(a) != len(b):
@@ -424,18 +441,37 @@ def _match_to_existing_knowledge(
             )[:600]
             score_best = 0.0
             best_name = ""
+            best_type = "KnowledgePoint"
             if model and candidate_vecs:
                 try:
-                    q_vec = embedding_service.embed_texts([query])[0]
+                    q_vecs = embedding_service.embed_texts([query], model_name=eval_embed_model)
+                    q_vec = q_vecs[0] if q_vecs else []
                 except Exception:
                     q_vec = []
-                if q_vec:
-                    for name, vec, card in zip(card_names, candidate_vecs, cards):
-                        score = _cosine_dense(q_vec, vec)
-                        if score > score_best:
-                            score_best = score
-                            best_name = name
-                            best_type = card.get("nodeType") or "KnowledgePoint"
+                if q_vec and candidate_vecs:
+                    embed_scores: List[float] = []
+                    for vec in candidate_vecs:
+                        embed_scores.append(_cosine_dense(q_vec, vec))
+
+                    if reranker is not None:
+                        top_k = min(24, len(embed_scores))
+                        top_idx = sorted(range(len(embed_scores)), key=lambda i: embed_scores[i], reverse=True)[:top_k]
+                        top_docs = [candidate_texts[i] for i in top_idx]
+                        rerank_scores = reranker_service.rerank(query, top_docs, model_name=eval_reranker_model)
+                        if rerank_scores and len(rerank_scores) == len(top_idx):
+                            best_local = max(range(len(rerank_scores)), key=lambda i: rerank_scores[i])
+                            best_global_idx = top_idx[best_local]
+                            best_name = card_names[best_global_idx] if best_global_idx < len(card_names) else ""
+                            score_best = float(embed_scores[best_global_idx])
+                            best_type = (cards[best_global_idx].get("nodeType") or "KnowledgePoint") if best_global_idx < len(cards) else "KnowledgePoint"
+                        else:
+                            reranker = None
+
+                    if not best_name:
+                        best_global_idx = max(range(len(embed_scores)), key=lambda i: embed_scores[i])
+                        best_name = card_names[best_global_idx] if best_global_idx < len(card_names) else ""
+                        score_best = float(embed_scores[best_global_idx])
+                        best_type = (cards[best_global_idx].get("nodeType") or "KnowledgePoint") if best_global_idx < len(cards) else "KnowledgePoint"
             else:
                 best, score, _ = rag_matcher.match(query, cards)
                 best_name = (best or {}).get("name") or ""
@@ -500,3 +536,160 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
     if session.get("assignment_id"):
         database.mark_assignment_completed_by_session(session_id)
     return result
+
+
+def _evaluation_embedding_model_name() -> str:
+    return os.getenv("EVALUATION_EMBEDDING_MODEL_NAME") or "BAAI/bge-m3"
+
+
+def _evaluation_reranker_model_name() -> str:
+    return os.getenv("EVALUATION_RERANKER_MODEL_NAME") or os.getenv("RERANKER_MODEL_NAME") or "BAAI/bge-reranker-v2-m3"
+
+
+def recall_knowledge_points_from_context(
+    ctx: Dict[str, object],
+    *,
+    limit: int = 8,
+    rerank_top_k: int = 24,
+    min_score: float = 0.35,
+) -> List[Dict[str, object]]:
+    """Fast, local knowledge-point recall from transcript/context (no LLM needed).
+
+    - Uses in-memory embeddings (BGE-M3 by default) + optional reranker.
+    - Filters out lexical-network nodes via `lex_role`.
+    """
+
+    if limit <= 0:
+        return []
+
+    scenario = ctx.get("scenario") or {}
+    scenario_text = scenario.get("scenario_summary") or scenario.get("description") or scenario.get("scenario_title") or ""
+    query = "\n".join(
+        filter(
+            None,
+            [
+                (ctx.get("lastUser") or "").strip(),
+                (ctx.get("lastAi") or "").strip(),
+                (ctx.get("contextText") or "").strip(),
+                (ctx.get("transcript") or "").strip(),
+                (scenario_text or "").strip(),
+            ],
+        )
+    ).strip()
+    if not query:
+        return []
+
+    model_name = _evaluation_embedding_model_name()
+    reranker_name = _evaluation_reranker_model_name()
+
+    def _node_to_payload(node: Dict[str, object], score: float) -> Dict[str, object]:
+        category = node.get("category") or node.get("nodeType") or "KnowledgePoint"
+        return {
+            "label": node.get("name") or "",
+            "name": node.get("name") or "",
+            "summary": node.get("summary") or "",
+            "category": category,
+            "nodeType": node.get("nodeType") or category,
+            "knowledgeId": node.get("knowledgeId"),
+            "graphNodeId": node.get("nodeId"),
+            "topic": node.get("topic"),
+            "lessonCount": node.get("lessonCount"),
+            "practiceCount": node.get("practiceCount"),
+            "matchScore": float(score) if score is not None else 0.0,
+        }
+
+    # Build/refresh cached candidate vectors once per process per model.
+    with _EVAL_RECALL_LOCK:
+        cache_model = _EVAL_RECALL_INDEX.get("model")
+        loaded = bool(_EVAL_RECALL_INDEX.get("loaded"))
+        if (not loaded) or (cache_model != model_name):
+            try:
+                all_candidates = graph_service.list_knowledge_points()
+            except Exception:
+                all_candidates = []
+
+            filtered = [c for c in (all_candidates or []) if not c.get("lex_role")]
+            # Keep it bounded for speed; recall is best-effort and runs every user turn.
+            filtered = sorted(filtered, key=lambda n: n.get("name", ""))[:800]
+
+            texts: List[str] = []
+            for node in filtered:
+                parts = [
+                    node.get("name") or "",
+                    node.get("summary") or "",
+                    node.get("bodyHtml") or "",
+                    node.get("category") or "",
+                    node.get("topic") or "",
+                ]
+                texts.append(" ".join([p for p in parts if p])[:900])
+
+            vectors = []
+            if texts:
+                vectors = embedding_service.embed_texts(texts, model_name=model_name)
+
+            dense = None
+            if vectors and np is not None:
+                dense = np.array(vectors, dtype=np.float32)
+                dense = np.nan_to_num(dense, nan=0.0, posinf=0.0, neginf=0.0)
+
+            _EVAL_RECALL_INDEX["model"] = model_name
+            _EVAL_RECALL_INDEX["items"] = filtered
+            _EVAL_RECALL_INDEX["texts"] = texts
+            _EVAL_RECALL_INDEX["vectors"] = dense
+            _EVAL_RECALL_INDEX["loaded"] = True
+
+    items: List[Dict[str, object]] = _EVAL_RECALL_INDEX.get("items") or []
+    texts = _EVAL_RECALL_INDEX.get("texts") or []
+    matrix = _EVAL_RECALL_INDEX.get("vectors")
+    if not items or not texts or matrix is None or np is None:
+        return []
+
+    q_vecs = embedding_service.embed_texts([query], model_name=model_name)
+    if not q_vecs:
+        return []
+    q = np.array(q_vecs[0], dtype=np.float32)
+    q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
+    if q.size == 0:
+        return []
+
+    try:
+        with np.errstate(all="ignore"):
+            scores = np.dot(matrix, q)  # normalized embeddings => cosine
+        scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
+    except Exception:
+        return []
+
+    if scores.size == 0:
+        return []
+
+    # Candidate shortlist by embedding score.
+    shortlist_k = min(max(rerank_top_k, limit), int(scores.size))
+    top_idx = np.argsort(-scores)[:shortlist_k].tolist()
+
+    # Optional rerank within shortlist.
+    rerank_model = reranker_service.get_model(model_name=reranker_name)
+    order_idx = top_idx
+    if rerank_model is not None:
+        top_docs = [texts[int(i)] for i in top_idx]
+        rerank_scores = reranker_service.rerank(query, top_docs, model_name=reranker_name)
+        if rerank_scores and len(rerank_scores) == len(top_idx):
+            order_idx = [top_idx[i] for i in sorted(range(len(top_idx)), key=lambda j: rerank_scores[j], reverse=True)]
+
+    results: List[Dict[str, object]] = []
+    seen: set[str] = set()
+    for idx in order_idx:
+        idx_int = int(idx)
+        score = float(scores[idx_int]) if idx_int < len(scores) else 0.0
+        if score < float(min_score):
+            continue
+        node = items[idx_int] if idx_int < len(items) else None
+        if not node:
+            continue
+        name = (node.get("name") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        results.append(_node_to_payload(node, score))
+        if len(results) >= limit:
+            break
+    return results
