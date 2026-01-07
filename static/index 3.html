@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>外贸谈判知识图谱构建与实战 Beta 3</title>
+    <title>外贸英语谈判实战互动 Beta 1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -32,10 +32,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
         <style>
@@ -774,64 +770,6 @@
         margin-top: 0.75rem;
       }
 
-      .compass-highlight {
-        background: rgba(74, 222, 128, 0.25);
-        border-radius: 6px;
-        padding: 0 2px;
-        cursor: pointer;
-        border-bottom: 2px dashed #60a5fa;
-      }
-
-      #theory-knowledge-compass {
-        max-height: 320px;
-        overflow: auto;
-      }
-
-      .kp-viewer-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.55);
-        backdrop-filter: blur(6px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
-      }
-
-      .kp-viewer-card {
-        width: min(720px, 92vw);
-        background: linear-gradient(180deg, #f8fafc, #eef2ff);
-        border-radius: 18px;
-        box-shadow: 0 25px 60px -28px rgba(15, 23, 42, 0.35);
-        border: 1px solid rgba(99, 102, 241, 0.18);
-        padding: 20px 24px;
-        color: #0f172a;
-        position: relative;
-      }
-
-      .kp-viewer-close {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        background: transparent;
-        border: none;
-        color: #334155;
-        cursor: pointer;
-        font-size: 18px;
-      }
-
-      .kp-viewer-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: rgba(99, 102, 241, 0.12);
-        color: #4338ca;
-        font-size: 12px;
-        border: 1px solid rgba(99, 102, 241, 0.24);
-      }
-
       .app-hero {
         position: relative;
       background: linear-gradient(120deg, #5fc0c5, #8bd8dc);
@@ -975,186 +913,10 @@
       }
 
       .chat-bubble {
-        max-width: 78%;
-        padding: 0.8rem 1rem;
-        border-radius: 1.1rem;
-        border: 1px solid rgba(15, 23, 42, 0.06);
-        box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.35);
-        line-height: 1.6;
-      }
-      .bubble-assistant {
-        background: #fff;
-        color: #0f172a;
-      }
-      .bubble-user {
-        background: #10b981;
-        color: #ecfdf3;
-        border-color: rgba(16, 185, 129, 0.4);
-        box-shadow: 0 12px 28px -16px rgba(16, 185, 129, 0.5);
-      }
-      .email-card {
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        border-radius: 1rem;
-        background: #fff;
-        box-shadow: 0 10px 30px -20px rgba(15, 23, 42, 0.45);
-        padding: 1rem 1.2rem;
-      }
-      .email-card__meta {
-        font-size: 12px;
-        color: #475569;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem 1rem;
-        margin-bottom: 0.5rem;
-      }
-      .email-card__subject {
-        font-weight: 700;
-        color: #0f172a;
-        margin-bottom: 0.4rem;
-      }
-      .email-card__body {
-        font-size: 14px;
-        color: #1f2937;
-        white-space: pre-wrap;
-        line-height: 1.6;
-      }
-      .email-card--user {
-        border-color: rgba(16, 185, 129, 0.35);
-        background: #ecfdf3;
-      }
-      .email-card--assistant {
-        border-color: rgba(59, 130, 246, 0.35);
-        background: #eef2ff;
-      }
-      .copilot-fab {
-        position: fixed;
-        right: 1.25rem;
-        bottom: 6.5rem;
-        z-index: 50;
-        display: none;
-        align-items: center;
-        gap: 0.4rem;
+        max-width: 80%;
         padding: 0.75rem 1rem;
-        border-radius: 9999px;
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color: #fff;
-        font-weight: 600;
-        box-shadow: 0 15px 35px -18px rgba(37, 99, 235, 0.65);
-        cursor: pointer;
-      }
-      .copilot-panel {
-        position: fixed;
-        right: 1rem;
-        bottom: 6rem;
-        z-index: 60;
-        width: min(420px, 92vw);
-        border-radius: 16px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        background: #0f172a;
-        color: #e2e8f0;
-        box-shadow: 0 25px 45px -20px rgba(15, 23, 42, 0.6);
-        display: none;
-        flex-direction: column;
-        overflow: hidden;
-        cursor: grab;
-      }
-      .copilot-panel--dragging {
-        box-shadow: 0 30px 55px -22px rgba(37, 99, 235, 0.45);
-        cursor: grabbing;
-      }
-      .copilot-panel button,
-      .copilot-panel input,
-      .copilot-panel textarea,
-      .copilot-panel select,
-      .copilot-panel option {
-        cursor: auto;
-      }
-      .copilot-panel__header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 12px 14px;
-        background: rgba(37, 99, 235, 0.08);
-        border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-        user-select: none;
-        touch-action: none;
-      }
-      .copilot-panel--dragging .copilot-panel__header {
-        cursor: grabbing;
-      }
-      .copilot-panel__body {
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .copilot-panel textarea {
-        width: 100%;
-        border-radius: 12px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(15, 23, 42, 0.8);
-        color: #e2e8f0;
-        padding: 10px 12px;
-        min-height: 96px;
-      }
-      .copilot-suggestion {
-        border-radius: 12px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(255, 255, 255, 0.04);
-        padding: 10px 12px;
-        min-height: 64px;
-        font-size: 13px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-      }
-      @media (max-width: 768px) {
-        .copilot-panel {
-          top: 0;
-          bottom: 0;
-          left: 0;
-          right: auto;
-          width: min(86vw, 360px);
-          border-radius: 0 16px 16px 0;
-          transform: translateX(-105%);
-          transition: transform 0.28s ease, box-shadow 0.28s ease;
-          box-shadow: 0 22px 42px -28px rgba(15, 23, 42, 0.55);
-          pointer-events: none;
-        }
-        .copilot-panel--open {
-          transform: translateX(0);
-          pointer-events: auto;
-        }
-        .copilot-panel--closing {
-          pointer-events: none;
-        }
-        .copilot-panel__body {
-          overflow-y: auto;
-        }
-      }
-      .review-doc {
-        font-family: "Noto Sans SC", "Segoe UI", sans-serif;
-        line-height: 1.7;
-        letter-spacing: 0.01em;
-      }
-      .review-doc h1,
-      .review-doc h2,
-      .review-doc h3 {
-        font-weight: 700;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-      }
-      .review-doc p {
-        margin: 0.35rem 0;
-      }
-      .review-doc mark[data-review-annotation-id] {
-        background: rgba(252, 211, 77, 0.35);
-        border-bottom: 1px solid rgba(234, 179, 8, 0.8);
-        padding: 0.15rem 0.2rem;
-        border-radius: 0.25rem;
-      }
-      .review-doc .review-highlight-pending {
-        background: rgba(59, 130, 246, 0.15);
+        border-radius: 1rem;
+        box-shadow: 0 14px 30px rgba(255, 64, 64, 0.12);
       }
 
       .bubble-assistant {
@@ -2532,1008 +2294,6 @@
         display: block;
       }
 
-      .admin-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-      }
-
-      .admin-kpi-card {
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        background: radial-gradient(circle at 30% 20%, rgba(59, 130, 246, 0.18), rgba(15, 23, 42, 0.6));
-        border-radius: 1.1rem;
-        padding: 1rem 1.2rem;
-        box-shadow: 0 20px 45px -30px rgba(0, 0, 0, 0.8);
-      }
-
-      .admin-kpi-label {
-        font-size: 0.8rem;
-        color: #cbd5e1;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-
-      .admin-kpi-value {
-        margin-top: 0.2rem;
-        font-size: 2rem;
-        font-weight: 700;
-        color: #fff;
-      }
-
-      .admin-kpi-caption {
-        margin-top: 0.25rem;
-        font-size: 0.85rem;
-        color: #94a3b8;
-      }
-
-      .admin-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 0.85rem 1rem;
-        border-radius: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.65));
-      }
-
-      .admin-toolbar-left {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: center;
-      }
-
-      .admin-search {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.45rem 0.75rem;
-        border-radius: 0.9rem;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(15, 23, 42, 0.6);
-        color: #cbd5e1;
-      }
-
-      .admin-search input {
-        background: transparent;
-        border: none;
-        outline: none;
-        color: #fff;
-        width: 190px;
-      }
-
-      .admin-search input::placeholder {
-        color: #94a3b8;
-      }
-
-      .admin-select {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.35rem 0.65rem;
-        border-radius: 0.9rem;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(15, 23, 42, 0.6);
-        color: #cbd5e1;
-        font-size: 0.85rem;
-      }
-
-      .admin-select select {
-        border: none;
-        background: transparent;
-        color: #fff;
-        outline: none;
-        font-size: 0.85rem;
-      }
-
-      .admin-import-form {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.6rem;
-        padding: 0.6rem 0.8rem;
-        border-radius: 0.9rem;
-        border: 1px dashed rgba(16, 185, 129, 0.45);
-        background: rgba(5, 150, 105, 0.08);
-      }
-
-      .admin-table-wrap {
-        margin-top: 1rem;
-        border-radius: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(15, 23, 42, 0.55);
-        overflow: hidden;
-        box-shadow: 0 18px 46px -32px rgba(0, 0, 0, 0.85);
-      }
-
-      .admin-student-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-        color: #e2e8f0;
-      }
-
-      .admin-student-table thead {
-        background: rgba(255, 255, 255, 0.02);
-      }
-
-      .admin-student-table th {
-        text-align: left;
-        padding: 0.75rem 1rem;
-        font-size: 11px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #94a3b8;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      }
-
-      .admin-student-table td {
-        padding: 0.9rem 1rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        vertical-align: middle;
-      }
-
-      .admin-student-row {
-        background: linear-gradient(90deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.3));
-        transition: background 0.2s ease, box-shadow 0.2s ease;
-      }
-
-      .admin-student-row:hover {
-        background: linear-gradient(90deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.45));
-      }
-
-      .admin-student-row.active {
-        box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);
-      }
-
-      .admin-student-name {
-        font-weight: 700;
-        color: #fff;
-      }
-
-      .admin-student-meta {
-        font-size: 12px;
-        color: #94a3b8;
-      }
-
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        padding: 0.3rem 0.7rem;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        font-size: 12px;
-        white-space: nowrap;
-      }
-
-      .status-pill[data-tone="good"] {
-        color: #34d399;
-        border-color: rgba(52, 211, 153, 0.4);
-        background: rgba(16, 185, 129, 0.08);
-      }
-
-      .status-pill[data-tone="warn"] {
-        color: #fbbf24;
-        border-color: rgba(251, 191, 36, 0.35);
-        background: rgba(250, 204, 21, 0.08);
-      }
-
-      .status-pill[data-tone="bad"] {
-        color: #f87171;
-        border-color: rgba(248, 113, 113, 0.4);
-        background: rgba(248, 113, 113, 0.08);
-      }
-
-      .progress-rail {
-        position: relative;
-        width: 100%;
-        height: 10px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.06);
-        overflow: hidden;
-      }
-
-      .progress-fill {
-        position: absolute;
-        inset: 0;
-        width: 0;
-        border-radius: inherit;
-        background: linear-gradient(90deg, #22d3ee, #22c55e);
-        transition: width 0.3s ease, background 0.3s ease;
-      }
-
-      .progress-badge {
-        font-size: 12px;
-        color: #cbd5e1;
-      }
-
-      .score-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        padding: 0.35rem 0.65rem;
-        border-radius: 0.8rem;
-        background: rgba(79, 70, 229, 0.12);
-        color: #e0e7ff;
-        border: 1px solid rgba(99, 102, 241, 0.3);
-        font-weight: 600;
-      }
-
-      .admin-empty {
-        padding: 1rem;
-        text-align: center;
-        color: #94a3b8;
-        background: rgba(15, 23, 42, 0.55);
-        border-top: 1px solid rgba(255, 255, 255, 0.04);
-      }
-
-      .admin-analytics-card {
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        background: radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.75));
-        border-radius: 1.25rem;
-        padding: 1.2rem;
-        box-shadow: 0 22px 40px -26px rgba(0, 0, 0, 0.85);
-      }
-
-      .admin-analytics-select {
-        background: rgba(255, 255, 255, 0.06);
-        color: #e2e8f0;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 0.65rem;
-        padding: 0.35rem 0.6rem;
-        font-size: 12px;
-      }
-
-      .admin-trend-chart {
-        height: 260px;
-        width: 100%;
-      }
-
-      .admin-action-deck {
-        margin-top: 0.75rem;
-        display: grid;
-        gap: 0.6rem;
-      }
-
-      .admin-action-count {
-        font-size: 12px;
-        color: #f472b6;
-      }
-
-      .error-bar {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem;
-        border: 1px solid rgba(248, 113, 113, 0.2);
-        border-radius: 0.9rem;
-        background: rgba(127, 29, 29, 0.18);
-        cursor: pointer;
-        transition: transform 0.15s ease, border-color 0.15s ease;
-      }
-
-      .error-bar:hover {
-        transform: translateY(-2px);
-        border-color: rgba(248, 113, 113, 0.35);
-      }
-
-      .error-bar__label {
-        flex: 1;
-        color: #fecdd3;
-        font-weight: 600;
-      }
-
-      .error-bar__track {
-        position: relative;
-        flex: 2;
-        height: 10px;
-        border-radius: 999px;
-        background: rgba(248, 113, 113, 0.16);
-        overflow: hidden;
-      }
-
-      .error-bar__fill {
-        position: absolute;
-        inset: 0;
-        width: 0;
-        background: linear-gradient(90deg, #f43f5e, #fb7185);
-      }
-
-      .error-bar__meta {
-        font-size: 12px;
-        color: #fecdd3;
-        min-width: 88px;
-        text-align: right;
-      }
-
-      .knowledge-drawer {
-        position: fixed;
-        inset: 0;
-        z-index: 80;
-        background: rgba(0, 0, 0, 0.55);
-        display: flex;
-        justify-content: flex-end;
-      }
-
-      .knowledge-drawer__panel {
-        width: min(420px, 100%);
-        height: 100%;
-        background: #0f172a;
-        border-left: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 1.25rem;
-        box-shadow: -12px 0 32px -18px rgba(0, 0, 0, 0.7);
-        overflow-y: auto;
-      }
-
-      .knowledge-drawer__panel li {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 0.8rem;
-        padding: 0.65rem 0.8rem;
-        color: #e2e8f0;
-      }
-
-      .knowledge-drawer__panel li span {
-        display: block;
-      }
-
-      .admin-table-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 999px;
-        background: linear-gradient(135deg, #2563eb, #38bdf8);
-        display: grid;
-        place-items: center;
-        color: #fff;
-        font-weight: 700;
-      }
-
-      .glass-loading-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 120;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 1.5rem;
-        background: radial-gradient(circle at 50% 50%, rgba(20, 20, 20, 0.8), #000);
-        backdrop-filter: blur(12px);
-      }
-
-      .glass-loader {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.8rem 2rem;
-        border-radius: 9999px;
-        color: #f3f4f6;
-        font-weight: 500;
-        font-size: 1rem;
-        letter-spacing: 0.02em;
-        text-transform: none;
-        background: linear-gradient(
-          180deg,
-          rgba(30, 30, 30, 0.6) 0%,
-          rgba(0, 0, 0, 0.8) 100%
-        );
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow:
-          inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
-          inset 0 -1px 0 0 rgba(255, 255, 255, 0.03),
-          0 0 0 1px rgba(0, 0, 0, 0.4),
-          0 10px 30px -10px rgba(0, 0, 0, 0.8);
-        backdrop-filter: blur(10px);
-        overflow: hidden;
-        isolation: isolate;
-      }
-
-      .glass-loader::after {
-        content: "";
-        position: absolute;
-        inset: 1px;
-        border-radius: inherit;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-        opacity: 0.6;
-      }
-
-      .glass-shimmer {
-        position: absolute;
-        inset: 0;
-        overflow: hidden;
-        border-radius: inherit;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .glass-shimmer::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-        transform: skewX(-20deg);
-        animation: glass-sheen 3s ease-in-out infinite;
-      }
-
-      .glass-stars {
-        display: inline-flex;
-        gap: 0.18rem;
-        font-size: 1rem;
-        color: #9ca3af;
-        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
-        animation: glass-pulse 2s ease-in-out infinite;
-        position: relative;
-        z-index: 2;
-      }
-
-      .glass-stars-alt {
-        animation-delay: 0.8s;
-      }
-
-      .glass-text {
-        position: relative;
-        z-index: 2;
-        font-size: 1.05rem;
-      }
-
-      .glass-loader--compact {
-        padding: 0.65rem 1.6rem;
-        gap: 0.6rem;
-        font-size: 0.95rem;
-      }
-
-      /* High-tech demo loading overlay */
-      #loading-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 240;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem;
-        color: #e2f2ff;
-        font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
-        background:
-          radial-gradient(120% 140% at 50% 0%, rgba(56, 189, 248, 0.2), rgba(8, 12, 26, 0.92) 60%),
-          linear-gradient(145deg, rgba(6, 10, 18, 0.96), rgba(4, 8, 16, 0.98));
-        overflow: hidden;
-      }
-
-      #loading-overlay.hidden {
-        display: none;
-      }
-
-      #loading-overlay::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background-image:
-          linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
-        background-size: 36px 36px;
-        opacity: 0.45;
-        mask-image: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.9), transparent 68%);
-        pointer-events: none;
-      }
-
-      #loading-overlay::after {
-        content: "";
-        position: absolute;
-        inset: -40%;
-        background: conic-gradient(
-          from 120deg,
-          rgba(56, 189, 248, 0.18),
-          rgba(34, 211, 238, 0.08),
-          rgba(52, 211, 153, 0.12),
-          rgba(56, 189, 248, 0.18)
-        );
-        animation: fx-spin 16s linear infinite;
-        opacity: 0.55;
-        pointer-events: none;
-      }
-
-      .loading-shell {
-        position: relative;
-        width: min(900px, 92vw);
-        padding: 2.5rem 3rem;
-        border-radius: 36px;
-        background: rgba(7, 14, 24, 0.78);
-        border: 1px solid rgba(96, 165, 250, 0.25);
-        box-shadow:
-          0 40px 90px -50px rgba(59, 130, 246, 0.8),
-          0 0 0 1px rgba(15, 23, 42, 0.8),
-          inset 0 0 0 1px rgba(148, 163, 184, 0.12);
-        backdrop-filter: blur(18px);
-        overflow: hidden;
-        z-index: 1;
-      }
-
-      .loading-shell::before {
-        content: "";
-        position: absolute;
-        inset: -20%;
-        background: radial-gradient(
-          circle at 20% 10%,
-          rgba(56, 189, 248, 0.22),
-          transparent 55%
-        );
-        opacity: 0.6;
-        pointer-events: none;
-      }
-
-      .loading-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 2rem;
-        flex-wrap: wrap;
-      }
-
-      .loading-mark {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.35rem 0.75rem;
-        border-radius: 9999px;
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        text-transform: uppercase;
-        letter-spacing: 0.2em;
-        font-size: 0.65rem;
-        color: rgba(148, 163, 184, 0.95);
-      }
-
-      .loading-mark span {
-        width: 6px;
-        height: 6px;
-        border-radius: 9999px;
-        background: #38bdf8;
-        box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
-        animation: fx-pulse 1.6s ease-in-out infinite;
-      }
-
-      .loading-mark span:nth-child(2) {
-        animation-delay: 0.3s;
-      }
-
-      .loading-mark span:nth-child(3) {
-        animation-delay: 0.6s;
-      }
-
-      .loading-title-group {
-        flex: 1;
-        min-width: 220px;
-      }
-
-      .loading-kicker {
-        margin: 0;
-        font-size: 0.7rem;
-        letter-spacing: 0.34em;
-        text-transform: uppercase;
-        color: rgba(148, 163, 184, 0.75);
-      }
-
-      .loading-title {
-        margin: 0.5rem 0 0.35rem;
-        font-size: clamp(1.6rem, 2.5vw, 2.3rem);
-        font-weight: 700;
-        color: #e0f2fe;
-      }
-
-      .loading-subtitle {
-        margin: 0;
-        color: rgba(226, 232, 240, 0.72);
-        font-size: 0.95rem;
-      }
-
-      .loading-core {
-        position: relative;
-        width: min(220px, 50vw);
-        aspect-ratio: 1 / 1;
-        margin: 2rem auto;
-      }
-
-      .core-ring {
-        position: absolute;
-        border-radius: 50%;
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        box-shadow: inset 0 0 18px rgba(56, 189, 248, 0.12);
-      }
-
-      .core-ring--outer {
-        inset: 0;
-        animation: fx-spin 12s linear infinite;
-      }
-
-      .core-ring--mid {
-        inset: 18px;
-        border-style: dashed;
-        border-color: rgba(34, 211, 238, 0.45);
-        animation: fx-spin-reverse 9s linear infinite;
-      }
-
-      .core-ring--inner {
-        inset: 44px;
-        border-color: rgba(52, 211, 153, 0.45);
-        box-shadow:
-          0 0 20px rgba(52, 211, 153, 0.22),
-          inset 0 0 18px rgba(52, 211, 153, 0.18);
-        animation: fx-pulse 3s ease-in-out infinite;
-      }
-
-      .core-orbit {
-        position: absolute;
-        inset: 8px;
-        border-radius: 50%;
-        animation: fx-spin 6s linear infinite;
-      }
-
-      .core-orbit::after {
-        content: "";
-        position: absolute;
-        top: -4px;
-        left: 50%;
-        width: 10px;
-        height: 10px;
-        transform: translateX(-50%);
-        border-radius: 9999px;
-        background: #38bdf8;
-        box-shadow: 0 0 12px rgba(56, 189, 248, 0.9);
-      }
-
-      .core-center {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 0.35rem;
-        text-align: center;
-      }
-
-      .core-label {
-        font-size: 1.05rem;
-        letter-spacing: 0.35em;
-        text-transform: uppercase;
-        font-weight: 700;
-        color: #7dd3fc;
-      }
-
-      .core-status {
-        font-size: 0.75rem;
-        color: rgba(226, 232, 240, 0.65);
-      }
-
-      .loading-progress {
-        margin-top: 1.2rem;
-      }
-
-      .progress-track {
-        position: relative;
-        height: 12px;
-        border-radius: 9999px;
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        overflow: hidden;
-      }
-
-      #progress-bar {
-        height: 100%;
-        width: 0%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, rgba(52, 211, 153, 0.9), rgba(56, 189, 248, 0.95));
-        box-shadow: 0 0 16px rgba(56, 189, 248, 0.8);
-        transition: width 0.2s ease;
-        position: relative;
-      }
-
-      #progress-bar::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-        animation: fx-sheen 1.8s linear infinite;
-      }
-
-      .progress-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 0.5rem;
-        font-size: 0.75rem;
-        color: rgba(226, 232, 240, 0.65);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .loading-log {
-        margin-top: 1.6rem;
-        padding: 0.9rem 1.2rem;
-        border-radius: 18px;
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(56, 189, 248, 0.2);
-        box-shadow: inset 0 0 18px rgba(15, 23, 42, 0.7);
-        min-height: 3.2rem;
-      }
-
-      .log-text {
-        margin: 0;
-        font-size: 0.9rem;
-        color: rgba(226, 232, 240, 0.85);
-        letter-spacing: 0.03em;
-      }
-
-      @keyframes fx-spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      @keyframes fx-spin-reverse {
-        to {
-          transform: rotate(-360deg);
-        }
-      }
-
-      @keyframes fx-pulse {
-        0%,
-        100% {
-          opacity: 0.6;
-          transform: scale(0.98);
-        }
-        50% {
-          opacity: 1;
-          transform: scale(1.03);
-        }
-      }
-
-      @keyframes fx-sheen {
-        0% {
-          transform: translateX(-120%);
-        }
-        100% {
-          transform: translateX(120%);
-        }
-      }
-
-      @media (max-width: 640px) {
-        .loading-shell {
-          padding: 2rem 1.5rem;
-        }
-
-        .loading-top {
-          gap: 1rem;
-        }
-
-        .loading-title {
-          font-size: 1.6rem;
-        }
-
-        .loading-core {
-          width: min(180px, 70vw);
-        }
-      }
-
-      .evaluation-animate {
-        opacity: 0;
-        transform: translateY(8px);
-        animation: evaluation-float-in 0.35s ease forwards;
-      }
-
-      @keyframes evaluation-float-in {
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      .evaluation-panel {
-        position: relative;
-        overflow: hidden;
-        max-height: calc(100vh - 160px);
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .evaluation-loading {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(6px);
-        transition: opacity 0.2s ease;
-      }
-
-      .evaluation-loading.hidden {
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .evaluation-loading:not(.hidden) {
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      .score-ring {
-        width: 140px;
-        height: 140px;
-      }
-
-      .score-ring circle {
-        transition: stroke-dashoffset 0.4s ease, stroke 0.2s ease;
-      }
-
-      .score-card {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-      }
-
-      .feedback-card {
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        background: #fff;
-        border-radius: 0.9rem;
-        padding: 0.85rem 0.95rem;
-        box-shadow: 0 12px 28px -20px rgba(15, 23, 42, 0.45);
-        cursor: pointer;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-      }
-
-      .feedback-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 16px 36px -22px rgba(15, 23, 42, 0.5);
-      }
-
-      .feedback-card__title {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        font-weight: 800;
-        color: #0f172a;
-      }
-
-      .feedback-card__body {
-        margin-top: 0.35rem;
-        color: #475569;
-        line-height: 1.5;
-        display: none;
-      }
-
-      .feedback-card.active .feedback-card__body {
-        display: block;
-      }
-
-      .evaluation-toggle {
-        display: none;
-      }
-
-      @media (max-width: 768px) {
-        .evaluation-panel {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          width: min(84vw, 360px);
-          max-height: none;
-          border-left: 1px solid rgba(148, 163, 184, 0.35);
-          box-shadow: -18px 0 40px -28px rgba(15, 23, 42, 0.45);
-          background: #fff;
-          transform: translateX(105%);
-          transition: transform 0.28s ease, opacity 0.28s ease;
-          z-index: 76;
-          pointer-events: none;
-          padding-bottom: max(16px, env(safe-area-inset-bottom, 12px));
-        }
-        .evaluation-panel.evaluation-panel--open {
-          transform: translateX(0);
-          pointer-events: auto;
-        }
-        .evaluation-panel.evaluation-panel--closing {
-          pointer-events: none;
-        }
-        .evaluation-panel__close {
-          display: inline-flex;
-          align-self: flex-end;
-          height: 34px;
-          width: 34px;
-          align-items: center;
-          justify-content: center;
-          border-radius: 12px;
-          border: 1px solid rgba(148, 163, 184, 0.35);
-          background: rgba(248, 250, 252, 0.95);
-          color: #0f172a;
-        }
-        .evaluation-toggle {
-          position: fixed;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          z-index: 75;
-          height: 46px;
-          width: 46px;
-          border-radius: 999px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: #fff;
-          box-shadow: 0 18px 34px -22px rgba(37, 99, 235, 0.65);
-          border: 1px solid rgba(255, 255, 255, 0.35);
-        }
-      }
-
-      .knowledge-pill {
-        border: 1px solid rgba(148, 163, 184, 0.5);
-        background: #f8fafc;
-        color: #0f172a;
-        border-radius: 999px;
-        padding: 0.4rem 0.85rem;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: all 0.15s ease;
-      }
-
-      .knowledge-pill:hover {
-        border-color: #2563eb;
-        background: #e0f2fe;
-      }
-
-      .knowledge-peek {
-        position: fixed;
-        inset: 0;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        background: rgba(15, 23, 42, 0.35);
-        backdrop-filter: blur(6px);
-        z-index: 120;
-      }
-
-      .knowledge-peek.active {
-        display: flex;
-      }
-
-      .knowledge-peek__card {
-        width: min(960px, 96vw);
-        border-radius: 18px;
-        background: linear-gradient(180deg, #f8fafc, #eef2ff);
-        color: #0f172a;
-        border: 1px solid rgba(99, 102, 241, 0.18);
-        box-shadow: 0 25px 60px -28px rgba(15, 23, 42, 0.35);
-        padding: 20px 24px;
-      }
-
-      @keyframes glass-sheen {
-        0% {
-          left: -100%;
-        }
-        100% {
-          left: 200%;
-        }
-      }
-
-      @keyframes glass-pulse {
-        0%,
-        100% {
-          opacity: 0.6;
-          text-shadow: none;
-        }
-        50% {
-          opacity: 1;
-          text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-        }
-      }
-
       @keyframes floaty {
         0% {
           transform: translateY(0px);
@@ -3552,290 +2312,14 @@
         }
       }
 
-      /* Scenario briefing windowed overlay */
-      #scenario-drawer-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 70;
-        display: none;
-        align-items: flex-start;
-        justify-content: flex-end;
-        padding: 20px;
-        pointer-events: none;
-      }
-      #scenario-drawer-overlay:not(.hidden) {
-        display: flex;
-        pointer-events: auto;
-      }
-      #scenario-drawer {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        width: min(560px, 94vw);
-        max-height: 82vh;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        box-shadow: 0 28px 60px -32px rgba(15, 23, 42, 0.45);
-        color: #0f172a;
-        overflow: hidden;
-        pointer-events: auto;
-        resize: both;
-        min-height: 260px;
-        min-width: 340px;
-        touch-action: none;
-        cursor: grab;
-      }
-      #scenario-drawer.scenario-drawer--dragging {
-        box-shadow: 0 32px 70px -30px rgba(59, 130, 246, 0.48);
-        cursor: grabbing;
-      }
-      .scenario-window__header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 14px 16px;
-        background: rgba(59, 130, 246, 0.08);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-        user-select: none;
-        touch-action: none;
-      }
-      .scenario-window__meta p {
-        margin: 0;
-      }
-      .scenario-window__actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .scenario-window__btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: 32px;
-        width: 32px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(255, 255, 255, 0.7);
-        color: #0f172a;
-        font-weight: 600;
-        transition: all 0.2s ease;
-      }
-      .scenario-window__btn:hover {
-        background: rgba(59, 130, 246, 0.12);
-        border-color: rgba(59, 130, 246, 0.35);
-      }
-      .scenario-window__body {
-        padding: 16px;
-        overflow: auto;
-        max-height: calc(82vh - 68px);
-        flex: 1;
-        min-height: 0;
-        -webkit-overflow-scrolling: touch;
-      }
-      #scenario-drawer.minimized {
-        width: min(360px, 85vw);
-        height: auto;
-        resize: none;
-      }
-      #scenario-drawer.minimized .scenario-window__body {
-        display: none;
-      }
-      .scenario-drag-handle {
-        position: absolute;
-        background: transparent;
-        z-index: 4;
-        user-select: none;
-        touch-action: none;
-      }
-      .scenario-drag-handle--top,
-      .scenario-drag-handle--bottom {
-        left: 12px;
-        right: 42px;
-        height: 12px;
-        cursor: grab;
-      }
-      .scenario-drag-handle--top {
-        top: -6px;
-      }
-      .scenario-drag-handle--bottom {
-        bottom: -6px;
-      }
-      .scenario-drag-handle--left,
-      .scenario-drag-handle--right {
-        top: 12px;
-        bottom: 42px;
-        width: 12px;
-        cursor: grab;
-      }
-      .scenario-drag-handle--left {
-        left: -6px;
-      }
-      .scenario-drag-handle--right {
-        right: -6px;
-      }
-      #scenario-drawer .rounded-2xl {
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-      }
-      @media (max-width: 768px) {
-        #scenario-drawer-overlay {
-          padding: 0;
-          align-items: flex-end;
-          justify-content: center;
-        }
-        #scenario-drawer {
-          width: 100%;
-          max-height: 78vh;
-          border-radius: 18px 18px 0 0;
-          resize: none;
-          cursor: default;
-          touch-action: auto;
-          transform: translateY(104%);
-          transition: transform 0.28s ease, box-shadow 0.28s ease;
-        }
-        #scenario-drawer-overlay.scenario-mobile-open #scenario-drawer {
-          transform: translateY(0);
-          box-shadow: 0 -12px 38px -24px rgba(15, 23, 42, 0.35);
-        }
-        #scenario-drawer-overlay.scenario-mobile-closing #scenario-drawer {
-          transform: translateY(104%);
-        }
-        .scenario-window__body {
-          max-height: none;
-        }
-        .scenario-drag-handle {
-          display: none;
-        }
-      }
-
-      #voice-call-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 80;
-        pointer-events: none;
-      }
-
-      .voice-call-window {
-        position: absolute;
-        right: 24px;
-        bottom: 24px;
-        width: 320px;
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        box-shadow: 0 26px 60px -30px rgba(15, 23, 42, 0.25);
-        backdrop-filter: blur(12px);
-        color: #0f172a;
-        pointer-events: auto;
-        transition: transform 0.2s ease, width 0.2s ease, height 0.2s ease;
-      }
-
-      .voice-call-window.minimized {
-        width: 210px;
-      }
-
-      .voice-call-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-        cursor: grab;
-      }
-
-      .voice-call-avatar {
-        display: flex;
-        height: 44px;
-        width: 44px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        background: rgba(16, 185, 129, 0.16);
-        color: #047857;
-        font-weight: 700;
-        box-shadow: 0 12px 22px -10px rgba(16, 185, 129, 0.35);
-      }
-
-      .voice-call-minimize {
-        display: inline-flex;
-        height: 30px;
-        width: 30px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.2);
-        color: #0f172a;
-        font-size: 14px;
-      }
-
-      .voice-call-body {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 0 16px 16px;
-      }
-
-      .voice-call-window.minimized .voice-call-body {
-        display: none;
-      }
-
-      .voice-call-action {
-        display: flex;
-        height: 64px;
-        width: 64px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        font-size: 14px;
-        font-weight: 600;
-        color: #ffffff;
-        cursor: pointer;
-        transition: transform 0.2s ease, background 0.2s ease;
-      }
-
-      .voice-call-action--hangup {
-        background: #f43f5e;
-        box-shadow: 0 14px 26px -12px rgba(244, 63, 94, 0.65);
-      }
-
-      .voice-call-action--accept {
-        background: #10b981;
-        box-shadow: 0 14px 26px -12px rgba(16, 185, 129, 0.65);
-      }
-
-      @media (max-width: 768px) {
-        .voice-call-window {
-          position: fixed;
-          inset: auto;
-          top: 10px;
-          left: 10px;
-          right: 10px;
-          bottom: auto;
-          width: auto;
-          height: auto;
-          border-radius: 12px;
-          transform: translateY(-130%);
-          transition: transform 0.25s ease;
-          box-shadow: 0 16px 32px -22px rgba(15, 23, 42, 0.35);
-        }
-        .voice-call-window.minimized {
-          transform: translateY(-130%);
-          width: auto;
-          height: auto;
-        }
-        .voice-call-window.voice-call-open {
-          transform: translateY(0);
-        }
-      }
-
     </style>
   </head>
   <body class="bg-transparent min-h-screen antialiased">
     <header class="app-hero">
       <div class="app-hero__inner">
         <div class="app-hero__title">
-          <h1>外贸谈判知识图谱构建与实战 Beta 3</h1>
-          <p>Construction and Practical Application of Knowledge Graphs in Foreign Trade Negotiations Beta 3</p>
+          <h1>外贸英语谈判实战互动 Beta 1</h1>
+          <p>AI Smart Foreign Trade Negotiation Platform Beta 1</p>
         </div>
         <div class="app-hero__meta">
           <div id="user-status" class="app-hero__user">
@@ -3870,14 +2354,14 @@
             </button>
   </div>
 </div>
-<!-- 知识点详情弹窗 -->
+<!-- 知识点详情抽屉 -->
 <div
   id="graph-detail-overlay"
   class="fixed inset-0 z-40 hidden backdrop-blur-sm bg-slate-900/40 transition-opacity"
 ></div>
 <div
   id="graph-detail-drawer"
-  class="fixed left-1/2 top-1/2 z-50 hidden w-[min(820px,92vw)] -translate-x-1/2 -translate-y-1/2 transform rounded-2xl border border-slate-800 bg-slate-900/95 p-6 text-slate-100 shadow-2xl transition-transform"
+  class="fixed bottom-0 left-0 right-0 z-50 hidden translate-y-full transform rounded-t-2xl border border-slate-800 bg-slate-900/95 p-6 text-slate-100 shadow-2xl transition-transform"
 >
   <div class="flex items-center justify-between">
     <div>
@@ -3961,7 +2445,7 @@
       </div>
     </header>
 
-    <main class="w-full space-y-6 px-3 py-8 sm:px-4">
+    <main class="mx-auto max-w-6xl space-y-6 px-3 py-8 sm:px-4">
       <section id="auth-panel" class="surface-card p-5 sm:p-6">
         <div class="grid gap-6 md:grid-cols-2">
           <div class="space-y-4">
@@ -4152,29 +2636,6 @@
                 <article class="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-inner shadow-slate-950/20">
                   <div id="theory-lesson-html" class="prose-invert theory-lesson-content space-y-4 text-sm leading-relaxed"></div>
                 </article>
-                <div class="rounded-3xl border border-slate-200 bg-white p-4">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <p class="text-xs uppercase tracking-widest text-slate-500">Knowledge Graph</p>
-                      <h4 class="text-sm font-semibold text-slate-900">本课知识图谱</h4>
-                    </div>
-                    <button id="student-lesson-graph-refresh" class="text-xs text-emerald-600 rounded-lg border border-emerald-500/60 px-2 py-1 hover:border-emerald-500 hover:text-emerald-700">
-                      刷新
-                    </button>
-                  </div>
-                  <div id="student-lesson-graph" class="mt-3 h-72 w-full rounded-2xl border border-slate-200 bg-white"></div>
-                </div>
-                <aside
-                  id="theory-knowledge-compass"
-                  class="hidden rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-900"
-                >
-                  <div class="flex flex-col gap-1">
-                    <p class="text-[11px] uppercase tracking-widest text-slate-500">Knowledge Compass</p>
-                    <h4 class="text-base font-semibold text-slate-900">本课关联知识点</h4>
-                    <p id="theory-knowledge-compass-status" class="text-xs text-slate-500"></p>
-                  </div>
-                  <ul id="theory-knowledge-compass-list" class="mt-3 space-y-2"></ul>
-                </aside>
                 <div
                   id="theory-challenge"
                   class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-100 shadow-inner shadow-blue-500/10"
@@ -4213,386 +2674,89 @@
 
         <section
           id="loading-panel"
-          class="glass-loading-overlay hidden"
-          role="status"
-          aria-live="polite"
-          aria-label="场景生成中"
+          class="hidden rounded-3xl border border-blue-500/40 bg-blue-500/10 p-8 text-center text-blue-800"
         >
-          <div class="glass-loader">
-            <span class="glass-stars" aria-hidden="true">✦</span>
-            <span class="glass-text">Generating</span>
-            <span class="glass-stars glass-stars-alt" aria-hidden="true">✧</span>
-            <div class="glass-shimmer" aria-hidden="true"></div>
+          <div class="mx-auto flex max-w-md flex-col items-center gap-4">
+            <div class="h-12 w-12 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
+            <p class="text-lg font-semibold text-blue-900">场景生成中...</p>
+            <p class="text-sm text-blue-700">构建背景中，请稍后。</p>
+            <div class="w-full space-y-2 rounded-2xl bg-slate-900/60 p-4 text-left text-sm text-slate-300">
+              <p>AI：正在读取贸易数据库...</p>
+              <p>AI：匹配行业案例...</p>
+              <p>AI：生成角色设定与谈判目标...</p>
+            </div>
           </div>
         </section>
 
       </section>
 
-      <section id="experience" class="hidden h-[calc(100vh-120px)] bg-slate-50 lg:h-[calc(100vh-90px)]">
-        <div class="flex h-full flex-col">
-          <header id="workbench-header" class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:px-6">
-            <div class="flex items-center gap-3">
-              <div id="chat-client-avatar" class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-800 text-base font-semibold text-white">
-                <span id="chat-client-initials">AI</span>
-              </div>
-              <div class="leading-tight">
-                <p id="chat-client-name" class="text-base font-semibold text-slate-900">Virtual Partner</p>
-                <p id="chat-client-meta" class="text-xs text-slate-500">
-                  <span id="chat-client-status" class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">● Online</span>
-                  <span id="chat-client-time" class="ml-2 text-slate-500">Local Time: --:--</span>
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <button
-                id="scenario-drawer-toggle"
-                class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                ℹ️ 场景简介
-              </button>
-              <button
-                id="reset-session"
-                class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                重置对话
-              </button>
-              <button
-                id="reopen-level-map"
-                class="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
-              >
-                关卡地图
-              </button>
-            </div>
-          </header>
-
-          <div class="flex flex-1 overflow-hidden">
-            <aside id="session-rail" class="hidden w-64 flex-shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-              <div class="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p class="text-xs uppercase tracking-widest text-slate-400">Sessions</p>
-                  <p class="text-sm font-semibold text-slate-800">多会话面板</p>
-                </div>
-              </div>
-              <div id="session-list" class="flex-1 overflow-y-auto divide-y divide-slate-100"></div>
-            </aside>
-
-            <main class="flex min-w-0 flex-1 flex-col bg-slate-100">
-              <div
-                id="email-mode-banner"
-                class="hidden border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm font-medium text-amber-900"
-              >
-                邮件模式 · 请以商务函电格式（Subject/称呼/正文/结尾/签名）撰写。可使用右下角 Copilot 辅助。
-              </div>
-              <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto px-6 py-6"></div>
-              <div
-                id="email-thread"
-                class="hidden flex-1 space-y-4 overflow-y-auto bg-slate-50 px-6 py-6"
-              ></div>
-              <div id="chat-input-panel" class="border-t border-slate-200 bg-white px-6 py-4">
-                <div class="flex gap-3">
-                  <textarea
-                    id="chat-input"
-                    rows="2"
-                    class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
-                    placeholder="请输入你的回复，按 Enter 发送"
-                  ></textarea>
-                  <div class="flex flex-col gap-3">
-                    <div class="flex items-center gap-2">
-                      <button
-                        id="voice-call-btn"
-                        class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
-                        type="button"
-                        aria-label="语音通话"
-                        title="语音通话（电话模式）"
-                      >
-                        语音通话
-                      </button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <button
-                        id="chat-voice-toggle"
-                        class="inline-flex h-[48px] w-[48px] items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-600 shadow-sm transition hover:border-emerald-400 hover:text-emerald-600"
-                        type="button"
-                        title="语音通话"
-                        aria-label="语音通话"
-                      >
-                        🎤
-                      </button>
-                      <button
-                        id="send-message"
-                        class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
-                      >
-                        发送
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <p class="mt-2 text-xs text-slate-400">
-                  提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
-                </p>
-              </div>
-              <div id="voice-call-overlay" class="hidden">
-                <div id="voice-call-window" class="voice-call-window">
-                  <div id="voice-call-header" class="voice-call-header">
-                    <div id="voice-call-avatar" class="voice-call-avatar">AI</div>
-                    <div class="flex-1">
-                      <div id="voice-call-name" class="text-base font-semibold text-slate-900">正在连接...</div>
-                      <div id="voice-call-title" class="text-xs text-slate-500">语音通话</div>
-                    </div>
-                    <button id="voice-call-minimize" class="voice-call-minimize" title="缩小到悬浮窗">
-                      ⤢
-                    </button>
-                  </div>
-                  <div class="voice-call-body">
-                    <div id="voice-call-status" class="text-sm text-slate-700">等待接听...</div>
-                    <div class="flex items-center gap-2 text-xs text-slate-500">
-                      <span class="relative inline-flex h-3 w-3">
-                      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                      <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-500"></span>
-                    </span>
-                    <span id="voice-call-hint">请保持安静，系统正在聆听</span>
-                  </div>
-                  <button
-                    id="voice-call-send"
-                    class="w-full rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner shadow-slate-100 transition hover:bg-slate-200"
-                  >
-                    按住说话
-                  </button>
-                    <div class="mt-3 flex w-full items-center justify-center gap-16">
-                      <div id="voice-call-hangup-wrap" class="flex flex-col items-center gap-2">
-                        <div
-                          id="voice-call-hangup"
-                          class="voice-call-action voice-call-action--hangup"
-                          title="挂断"
-                        >
-                          挂断
-                        </div>
-                      </div>
-                      <div id="voice-call-accept-wrap" class="hidden flex flex-col items-center gap-2">
-                        <div
-                          id="voice-call-accept"
-                          class="voice-call-action voice-call-action--accept"
-                          title="接听"
-                        >
-                          接听
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                id="email-composer"
-                class="hidden border-t border-slate-200 bg-white px-6 py-4"
-              >
-                <div class="flex flex-wrap items-center justify-between gap-3 pb-3">
-                  <div class="flex items-center gap-2">
-                    <button
-                      id="email-draft"
-                      class="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
-                    >
-                      ✨ 帮我写
-                    </button>
-                    <button
-                      id="email-polish"
-                      class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
-                    >
-                      🔧 帮我润色
-                    </button>
-                    <span id="email-copilot-status" class="text-xs text-slate-500"></span>
-                  </div>
-                  <div class="flex items-center gap-2 text-xs text-slate-500">
-                    <span class="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700">邮件模式</span>
-                    <button id="email-send" class="rounded-full bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-emerald-500/40 transition hover:bg-emerald-600">发送邮件</button>
-                  </div>
-                </div>
-                <div class="space-y-2">
-                  <input id="email-subject" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="Subject" />
-                  <div class="grid grid-cols-2 gap-2">
-                    <input id="email-to" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="To" />
-                    <input id="email-from" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="From" />
-                  </div>
-                  <textarea id="email-body" rows="6" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none" placeholder="邮件正文"></textarea>
-                  <input id="email-signature" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none" placeholder="Signature" />
-                </div>
-              </div>
-            </main>
-
-            <aside
-              id="evaluation-panel"
-              data-experience-module="evaluation"
-              class="evaluation-panel hidden w-80 flex-shrink-0 flex-col gap-4 border-l border-slate-200 bg-white px-4 py-5 lg:flex"
-            >
-              <button
-                id="evaluation-panel-close"
-                class="evaluation-panel__close lg:hidden"
-                aria-label="关闭即时反馈"
-                type="button"
-              >
-                ✕
-              </button>
+      <section id="experience" class="hidden pb-24 lg:pb-0">
+        <div class="space-y-6">
+          <section
+            id="scenario-panel"
+            data-experience-module="scenario"
+            class="surface-card shadow-xl"
+          >
+            <div class="flex items-start justify-between gap-4 px-6 py-5">
               <div>
-                <p class="text-xs uppercase tracking-widest text-slate-400">
-                  Live Feedback
+                <p class="text-xs uppercase tracking-widest text-slate-500">
+                  Scenario Briefing
                 </p>
-                <h2 class="mt-1 text-lg font-semibold text-slate-900">即时反馈</h2>
+                <h2 id="scenario-title" class="mt-2 text-xl font-semibold text-white"></h2>
+                <p id="scenario-summary" class="mt-3 text-sm text-slate-300"></p>
               </div>
-              <div class="flex gap-2">
-                <button
-                  id="evaluation-tab-analysis"
-                  class="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-sm"
-                  type="button"
-                >
-                  对话分析
-                </button>
-                <button
-                  id="evaluation-tab-lexical"
-                  class="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
-                  type="button"
-                >
-                  语义网
-                </button>
-              </div>
-              <div id="evaluation-analysis-panel" class="space-y-4">
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div class="score-card">
-                    <svg class="score-ring" viewBox="0 0 120 120">
-                      <circle
-                        cx="60"
-                        cy="60"
-                        r="54"
-                        stroke="#e2e8f0"
-                        stroke-width="12"
-                        fill="none"
-                      />
-                      <circle
-                        id="evaluation-ring-progress"
-                        cx="60"
-                        cy="60"
-                        r="54"
-                        stroke="#10b981"
-                        stroke-width="12"
-                        fill="none"
-                        stroke-linecap="round"
-                        stroke-dasharray="339.292"
-                        stroke-dashoffset="339.292"
-                        transform="rotate(-90 60 60)"
-                      />
-                    </svg>
-                    <div class="space-y-1">
-                      <p class="text-[11px] uppercase tracking-widest text-slate-500">当前得分 / 胜率</p>
-                      <p id="evaluation-score" class="text-4xl font-bold text-slate-900">--</p>
-                      <p id="evaluation-score-label" class="text-sm text-slate-600"></p>
+              <button
+                id="scenario-collapse-btn"
+                type="button"
+                class="shrink-0 rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
+                aria-expanded="true"
+                aria-controls="scenario-panel-body"
+              >
+                收起 ▲
+              </button>
+            </div>
+            <div
+              id="scenario-panel-body"
+              class="space-y-6 border-t border-slate-800/60 px-6 py-6"
+            >
+              <div class="grid gap-6 lg:grid-cols-3">
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">角色与公司</h3>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
+                      <p class="font-semibold text-blue-200">学生</p>
+                      <p id="student-role" class="mt-1 text-slate-300"></p>
+                      <p id="student-company" class="mt-1 text-xs text-slate-400"></p>
+                      <div class="mt-3 h-px bg-slate-800"></div>
+                      <p class="mt-3 font-semibold text-emerald-200">AI</p>
+                      <p id="ai-role" class="mt-1 text-slate-300"></p>
+                      <p id="ai-company" class="mt-1 text-xs text-slate-400"></p>
                     </div>
                   </div>
-                </div>
-                <div class="space-y-3">
-                  <h3 class="text-sm font-semibold text-slate-800">重点</h3>
-                  <div id="evaluation-feedback-cards" class="grid grid-cols-1 gap-2"></div>
-                </div>
-	                <div class="space-y-2">
-	                  <h3 class="text-sm font-semibold text-slate-800">知识点</h3>
-	                  <p id="evaluation-knowledge-status" class="text-xs text-slate-500"></p>
-	                  <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
-	                </div>
-                <div
-                  id="evaluation-recommendations-section"
-                  class="hidden space-y-3"
-                >
-                  <h3 class="text-sm font-semibold text-slate-800">推荐巩固课程</h3>
-                  <p
-                    id="evaluation-recommendations-status"
-                    class="text-xs text-slate-500"
-                  ></p>
-                  <div
-                    id="evaluation-recommendations-list"
-                    class="space-y-2"
-                  ></div>
-                </div>
-              </div>
-              <div id="evaluation-lexical-panel" class="hidden space-y-3">
-                <h3 class="text-sm font-semibold text-slate-800">语义网</h3>
-                <p id="lexical-suggestions-status" class="text-xs text-slate-500">输入时实时分析语义网络…</p>
-                <div id="lexical-suggestions" class="space-y-2"></div>
-              </div>
-            </aside>
-            <button
-              id="evaluation-toggle"
-              class="evaluation-toggle lg:hidden"
-              type="button"
-              title="打开即时反馈"
-            >
-              ⚡
-            </button>
-          </div>
-        </div>
-
-        <div id="scenario-drawer-overlay" class="hidden">
-          <aside id="scenario-drawer" class="scenario-window" role="dialog" aria-modal="true">
-            <div class="scenario-drag-handle scenario-drag-handle--top" data-scenario-drag></div>
-            <div class="scenario-drag-handle scenario-drag-handle--bottom" data-scenario-drag></div>
-            <div class="scenario-drag-handle scenario-drag-handle--left" data-scenario-drag></div>
-            <div class="scenario-drag-handle scenario-drag-handle--right" data-scenario-drag></div>
-            <div class="scenario-window__header" data-scenario-drag>
-              <div class="scenario-window__meta">
-                <p class="text-xs uppercase tracking-widest text-slate-500">Scenario Briefing</p>
-                <h3 id="scenario-title" class="text-lg font-semibold text-slate-900"></h3>
-              </div>
-              <div class="scenario-window__actions">
-                <button
-                  id="scenario-drawer-minimize"
-                  class="scenario-window__btn"
-                  title="最小化"
-                  aria-label="最小化情景简介"
-                >
-                  —
-                </button>
-                <button
-                  id="scenario-drawer-close"
-                  class="scenario-window__btn"
-                  title="关闭"
-                  aria-label="关闭情景简介"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div id="scenario-drawer-body" class="scenario-window__body space-y-5">
-              <p id="scenario-summary" class="text-sm text-slate-700"></p>
-              <div class="grid gap-4 lg:grid-cols-3">
-                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 class="text-sm font-semibold text-slate-800">角色信息</h3>
-                  <div class="text-sm text-slate-700">
-                    <p class="font-semibold text-emerald-700">学生</p>
-                    <p id="student-role" class="mt-1"></p>
-                    <p id="student-company" class="mt-1 text-xs text-slate-500"></p>
-                    <div class="my-3 h-px bg-slate-200"></div>
-                    <p class="font-semibold text-blue-700">AI</p>
-                    <p id="ai-role" class="mt-1"></p>
-                    <p id="ai-company" class="mt-1 text-xs text-slate-500"></p>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">交易要点</h3>
+                    <ul id="product-details" class="space-y-1 text-sm text-slate-300"></ul>
                   </div>
                 </div>
-                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 class="text-sm font-semibold text-slate-800">产品参数</h3>
-                  <ul id="product-details" class="space-y-2 text-sm text-slate-700"></ul>
-                </div>
-                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 class="text-sm font-semibold text-slate-800">任务清单</h3>
-                  <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-700"></ol>
-                  <div class="space-y-1">
-                    <p class="text-sm font-semibold text-slate-800">难度设定</p>
-                    <p id="scenario-difficulty" class="text-sm text-slate-700"></p>
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">谈判焦点</h3>
+                    <ul id="negotiation-focus" class="list-disc space-y-1 pl-5 text-sm text-slate-300"></ul>
+                  </div>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">风险提示</h3>
+                    <ul id="risk-list" class="list-disc space-y-1 pl-5 text-sm text-slate-400"></ul>
                   </div>
                 </div>
-              </div>
-              <div class="grid gap-4 lg:grid-cols-2">
-                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 class="text-sm font-semibold text-slate-800">谈判焦点</h3>
-                  <ul id="negotiation-focus" class="space-y-2 text-sm text-slate-700"></ul>
-                </div>
-                <div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 class="text-sm font-semibold text-slate-800">风险提示</h3>
-                  <ul id="risk-list" class="space-y-2 text-sm text-amber-700"></ul>
+                <div class="space-y-4">
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">任务清单</h3>
+                    <ol id="task-checklist" class="list-decimal space-y-1 pl-5 text-sm text-slate-300"></ol>
+                  </div>
+                  <div class="space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-200">难度设定</h3>
+                    <p id="scenario-difficulty" class="text-sm text-slate-300"></p>
+                  </div>
                 </div>
               </div>
               <div
@@ -4600,107 +2764,139 @@
                 class="hidden grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
               ></div>
             </div>
-          </aside>
+          </section>
+
+          <div class="space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)] lg:items-start lg:gap-6 lg:space-y-0">
+            <section
+              data-experience-module="chat"
+              class="flex min-h-[520px] flex-col rounded-3xl border border-slate-800 bg-slate-100"
+            >
+              <div
+                id="chat-header"
+                class="flex items-center justify-between bg-blue-600 px-6 py-4 text-sm text-blue-50"
+              >
+                <div>
+                  <p class="text-xs uppercase tracking-wider text-blue-200">对话对象</p>
+                  <p id="chat-company" class="text-base font-semibold"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span id="chat-tone" class="rounded-full bg-blue-500/30 px-3 py-1 text-xs text-blue-800"></span>
+                  <button
+                    id="reset-session"
+                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-600 transition hover:border-blue-200 hover:text-blue-800"
+                  >
+                    重置对话
+                  </button>
+                  <button
+                    id="reopen-level-map"
+                    class="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-600 transition hover:border-blue-200 hover:text-blue-800"
+                  >
+                    关卡地图
+                  </button>
+                </div>
+              </div>
+              <div id="chat-body" class="flex-1 space-y-4 overflow-y-auto bg-slate-100 px-6 py-6"></div>
+              <div class="border-t border-slate-200 bg-white px-6 py-4">
+                <div class="flex gap-3">
+                  <textarea
+                    id="chat-input"
+                    rows="2"
+                    class="flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-inner focus:border-blue-500 focus:outline-none"
+                    placeholder="请输入你的回复，按 Enter 发送"
+                  ></textarea>
+                  <button
+                    id="send-message"
+                    class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600"
+                  >
+                    发送
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">
+                  提示：请保持专业礼貌的商务表达，系统会自动记录并发送到评价 API。
+                </p>
+              </div>
+            </section>
+
+            <aside
+              data-experience-module="evaluation"
+              class="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-6"
+            >
+              <div>
+                <p class="text-xs uppercase tracking-widest text-slate-500">
+                  Evaluation
+                </p>
+                <h2 class="mt-2 text-xl font-semibold text-white">即时反馈</h2>
+              </div>
+              <div class="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+                <p class="text-xs uppercase tracking-widest text-emerald-700">
+                  当前得分 / 胜率
+                </p>
+                <p id="evaluation-score" class="mt-3 text-4xl font-bold text-emerald-700">--</p>
+                <p id="evaluation-score-label" class="text-sm text-emerald-600"></p>
+              </div>
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-200">评语</h3>
+                <p id="evaluation-commentary" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"></p>
+              </div>
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-200">改进建议</h3>
+                <ul id="evaluation-actions" class="list-disc space-y-2 pl-5 text-sm text-slate-300"></ul>
+              </div>
+	              <div class="space-y-3">
+	                <h3 class="text-sm font-semibold text-slate-200">知识点</h3>
+	                <p id="evaluation-knowledge-status" class="text-xs text-slate-400"></p>
+	                <div id="evaluation-knowledge" class="flex flex-wrap gap-2"></div>
+	              </div>
+              <div
+                id="evaluation-recommendations-section"
+                class="hidden space-y-3"
+              >
+                <h3 class="text-sm font-semibold text-slate-200">推荐巩固课程</h3>
+                <p
+                  id="evaluation-recommendations-status"
+                  class="text-xs text-slate-400"
+                ></p>
+                <div
+                  id="evaluation-recommendations-list"
+                  class="space-y-2"
+                ></div>
+              </div>
+            </aside>
+          </div>
         </div>
 
-        <div id="knowledge-peek" class="knowledge-peek" role="dialog" aria-modal="true">
-          <div class="knowledge-peek__card kp-viewer-card">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-widest text-slate-500">Knowledge Peek</p>
-                <h3 id="knowledge-peek-title" class="text-lg font-semibold text-slate-900"></h3>
-              </div>
-              <button
-                id="knowledge-peek-close"
-                class="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-600 transition hover:bg-slate-100"
-              >
-                关闭
-              </button>
-            </div>
-            <div class="mt-3 grid gap-4 lg:grid-cols-[1fr_2fr]">
-              <div class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-inner">
-                <div class="flex items-center justify-between">
-                  <span class="kp-viewer-chip">知识卡</span>
-                  <button id="knowledge-peek-jump" class="text-xs text-blue-600 hover:text-blue-800">↗ 前往课程</button>
-                </div>
-                <p id="knowledge-peek-summary" class="mt-2 text-sm text-slate-600"></p>
-                <div id="knowledge-peek-body" class="mt-3 space-y-2 text-sm text-slate-800"></div>
-              </div>
-              <div class="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-inner">
-                <div class="flex items-center justify-between text-xs text-slate-500 px-1">
-                  <span>知识图谱</span>
-                  <span id="knowledge-peek-graph-status" class="text-[11px] text-slate-500"></span>
-                </div>
-                <div id="knowledge-peek-graph" class="mt-2 h-[320px] w-full rounded-xl border border-slate-200 bg-slate-50"></div>
-              </div>
-            </div>
-          </div>
+        <div
+          id="mobile-experience-tabs"
+          class="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden"
+        >
+          <nav class="flex items-stretch justify-around">
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="scenario"
+              aria-controls="scenario-panel"
+            >
+              <span>场景简报</span>
+            </button>
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="chat"
+              aria-controls="chat-body"
+            >
+              <span>模拟实训</span>
+            </button>
+            <button
+              type="button"
+              class="experience-tab flex flex-1 flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+              data-experience-tab="evaluation"
+              aria-controls="evaluation-score"
+            >
+              <span>即时反馈</span>
+            </button>
+          </nav>
         </div>
       </section>
-
-      <button id="copilot-fab" class="copilot-fab">
-        🤖 场外援助
-      </button>
-      <div id="copilot-panel" class="copilot-panel">
-        <div id="copilot-header" class="copilot-panel__header">
-          <div>
-            <p class="text-xs uppercase tracking-widest text-slate-300">Copilot</p>
-            <p class="text-sm font-semibold text-white">场外援助（仅供参考体验）</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              id="copilot-minimize"
-              class="text-slate-300 hover:text-white"
-              title="最小化"
-            >
-              -
-            </button>
-            <button id="copilot-close" class="text-slate-300 hover:text-white" title="关闭">
-              ✕
-            </button>
-          </div>
-        </div>
-        <div class="copilot-panel__body">
-          <textarea id="copilot-input" placeholder="描述你想要的帮助，如“帮我回一段柔和的还盘”"></textarea>
-          <div class="flex flex-wrap items-center gap-3">
-            <button
-              id="copilot-assist"
-              class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              📄 助手模式
-            </button>
-            <button
-              id="copilot-agent"
-              class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            >
-              ⚡ Agent 自动回
-            </button>
-            <button
-              id="copilot-stop"
-              class="hidden rounded-lg border border-rose-400 px-3 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/10"
-            >
-              停止自动
-            </button>
-            <span id="copilot-status" class="text-xs text-slate-400"></span>
-          </div>
-          <div class="copilot-suggestion">
-            <div class="flex items-center justify-between">
-              <p class="text-xs uppercase tracking-wider text-slate-300">建议</p>
-              <button
-                id="copilot-copy"
-                class="text-xs text-slate-400 hover:text-white"
-                title="复制段落"
-              >
-                ⧉
-              </button>
-            </div>
-            <div id="copilot-output" class="chat-markdown mt-2 text-sm text-slate-100"></div>
-          </div>
-          <p class="text-[11px] text-amber-300">
-            提示：Copilot 内容仅供体验与学习，回复前请自行判断。
-          </p>
-        </div>
-      </div>
 
       <section id="admin-panel" class="hidden surface-card p-6">
         <div class="flex flex-col gap-6">
@@ -4752,205 +2948,92 @@
 
 
           <div class="tab-panel tab-panel-active" data-admin-panel="students">
-            <div class="space-y-6">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <div class="space-y-4">
                 <div>
-                  <p class="text-sm text-slate-400">教师视角 · 一眼看清班级节奏</p>
+                  <p class="text-sm text-slate-400">教师视角</p>
                   <h2 class="text-xl font-semibold text-white">学生学习总览</h2>
                   <p class="text-xs text-slate-400">
-                    Overiew。
+                    跟踪每位学生的谈判会话、评估得分与最近活跃时间，实现教学闭环追踪。
                   </p>
-                </div>
-                <div class="flex flex-wrap gap-2 text-[11px] text-slate-400">
-                  <span class="rounded-full border border-slate-700/80 px-3 py-1">👁 可查看对话</span>
-                  <span class="rounded-full border border-slate-700/80 px-3 py-1">⚡ 进度低于 65% 自动标红</span>
-                </div>
-              </div>
-
-              <div class="admin-kpi-grid">
-                <div class="admin-kpi-card">
-                  <div class="admin-kpi-label">总人数</div>
-                  <div id="admin-kpi-total" class="admin-kpi-value">0</div>
-                  <p class="admin-kpi-caption">已导入的学生</p>
-                </div>
-                <div class="admin-kpi-card">
-                  <div class="admin-kpi-label">平均进度</div>
-                  <div id="admin-kpi-progress" class="admin-kpi-value text-emerald-200">0%</div>
-                  <p class="admin-kpi-caption">按章节完成度自动计算</p>
-                </div>
-                <div class="admin-kpi-card">
-                  <div class="admin-kpi-label">需关注</div>
-                  <div id="admin-kpi-attention" class="admin-kpi-value text-amber-200">0 人</div>
-                  <p class="admin-kpi-caption">均分低于 65 分的学生</p>
-                </div>
-              </div>
-
-              <div class="admin-toolbar">
-                <div class="admin-toolbar-left">
-                  <label class="admin-search">
-                    <span>🔍</span>
-                    <input id="admin-student-search" type="text" placeholder="搜索学生姓名或账号..." />
-                  </label>
-                  <label class="admin-select">
-                    <span>筛选</span>
-                    <select id="admin-student-filter">
-                      <option value="all">全部学生</option>
-                      <option value="attention">需关注（< 65 分）</option>
-                      <option value="active">最近活跃</option>
-                    </select>
-                  </label>
-                  <label class="admin-select">
-                    <span>排序</span>
-                    <select id="admin-student-sort">
-                      <option value="progress">进度优先</option>
-                      <option value="score">分数优先</option>
-                      <option value="activity">活跃优先</option>
-                      <option value="name">姓名 A-Z</option>
-                    </select>
-                  </label>
-                </div>
-                <form
-                  id="admin-student-import-form"
-                  class="admin-import-form"
-                >
-                  <input
-                    id="admin-student-import-file"
-                    type="file"
-                    accept=".xlsx,.xls"
-                    class="file-upload-input"
-                  />
-                  <button
-                    type="submit"
-                    class="rounded-lg bg-emerald-500 px-3 py-1 font-semibold text-white hover:bg-emerald-600"
+                  <form
+                    id="admin-student-import-form"
+                    class="mt-3 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs"
                   >
-                    导入学生名单
-                  </button>
-                  <span id="admin-student-import-status" class="text-xs text-emerald-300"></span>
-                </form>
-              </div>
-
-              <div class="grid gap-6 xl:grid-cols-[1.7fr_minmax(360px,1fr)]">
-                <div class="admin-panel-card rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <h3 class="text-sm font-semibold text-slate-100">学生列表</h3>
-                      <p class="text-xs text-slate-400">点击 👁 可查看学生的对话历史（测试中）</p>
-                    </div>
-                    <span class="text-[11px] text-slate-500">默认按进度降序排列</span>
-                  </div>
-                  <div class="admin-table-wrap">
-                    <table class="admin-student-table">
-                      <thead>
-                        <tr>
-                          <th>学生姓名</th>
-                          <th>当前状态</th>
-                          <th>课程进度</th>
-                          <th>最新分数</th>
-                          <th class="text-right">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody id="admin-student-list"></tbody>
-                    </table>
-                    <div id="admin-student-table-empty" class="admin-empty hidden">暂无学生数据</div>
-                  </div>
-                </div>
-                <div
-                  id="admin-student-detail"
-                  class="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5"
-                >
-                  <div>
-                    <div id="admin-student-meta" class="text-sm text-slate-300">
-                      <p class="text-slate-400">请选择学生查看详情</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 class="text-sm font-semibold text-slate-200">谈判会话</h3>
-                    <ul id="admin-session-list" class="mt-2 space-y-2 text-sm"></ul>
-                  </div>
-                  <div>
-                    <div class="flex items-center justify-between">
-                      <h3 class="text-sm font-semibold text-slate-200">会话详情</h3>
-                      <span class="text-[11px] text-slate-500">👁 打开后可查看学生端对话历史</span>
-                    </div>
-                    <div id="admin-session-scenario" class="mt-2 space-y-1 text-xs text-slate-400"></div>
-                    <div
-                      id="admin-session-conversation"
-                      class="mt-3 max-h-60 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-200"
-                    ></div>
-                    <div id="admin-session-evaluation" class="mt-3 space-y-1 text-xs text-emerald-200"></div>
-                    <form
-                      id="admin-student-password-form"
-                      class="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs"
+                    <input
+                      id="admin-student-import-file"
+                      type="file"
+                      accept=".xlsx,.xls"
+                      class="file-upload-input"
+                    />
+                    <button
+                      type="submit"
+                      class="rounded-lg bg-emerald-500 px-3 py-1 font-semibold text-white hover:bg-emerald-600"
                     >
-                      <input
-                        id="admin-student-new-password"
-                        type="text"
-                        placeholder="设置新密码"
-                        class="w-40 rounded-lg border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        class="rounded-lg bg-emerald-500 px-3 py-1 font-semibold text-white hover:bg-emerald-600"
-                      >
-                        重置学生密码
-                      </button>
-                      <span id="admin-student-password-status" class="text-xs text-emerald-300"></span>
-                    </form>
-                  </div>
+                      导入学生名单
+                    </button>
+                    <span id="admin-student-import-status" class="text-xs text-emerald-300"></span>
+                  </form>
                 </div>
+                <ul id="admin-student-list" class="space-y-3 text-sm"></ul>
               </div>
-
-              <section
-                id="admin-analytics"
-                class="grid gap-6 xl:grid-cols-3"
+              <div
+                id="admin-student-detail"
+                class="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
               >
-                <div class="admin-analytics-card">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 class="text-sm font-semibold text-slate-100">章节周平均趋势</h3>
-                      <p class="text-xs text-slate-400">平滑面积图，悬停可查看周均与样本量</p>
-                    </div>
-                    <select id="admin-trend-section-filter" class="admin-analytics-select">
-                      <option value="all">全部章节</option>
-                    </select>
-                  </div>
-                  <div id="admin-trend-chart" class="admin-trend-chart"></div>
-                  <p id="admin-trend-empty" class="admin-empty hidden">暂无趋势数据</p>
+                <div id="admin-student-meta" class="text-sm text-slate-300">
+                  <p class="text-slate-400">请选择学生查看详情</p>
                 </div>
-                <div class="admin-analytics-card">
-                  <h3 class="text-sm font-semibold text-slate-100">高频改进建议</h3>
-                  <p class="text-xs text-slate-400">聚合呈现，展开后显示详细提示</p>
-                  <div id="admin-action-hotspots" class="admin-action-deck"></div>
-                  <p id="admin-action-empty" class="admin-empty hidden">暂无改进建议统计</p>
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-200">谈判会话</h3>
+                  <ul id="admin-session-list" class="mt-2 space-y-2 text-sm"></ul>
                 </div>
-                <div class="admin-analytics-card">
-                  <h3 class="text-sm font-semibold text-slate-100">薄弱知识点</h3>
-                  <p class="text-xs text-slate-400">红色逆向进度条：错误率越高越长</p>
-                  <div id="admin-knowledge-weakness" class="space-y-3"></div>
-                  <p id="admin-knowledge-empty" class="admin-empty hidden">暂无知识点统计</p>
-                </div>
-              </section>
-            </div>
-
-            <div id="admin-knowledge-drawer" class="knowledge-drawer hidden">
-              <div class="knowledge-drawer__panel">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-xs uppercase tracking-[0.2em] text-rose-300">Knowledge Gap</p>
-                    <h4 id="admin-knowledge-drawer-title" class="text-lg font-semibold text-white"></h4>
-                  </div>
-                  <button
-                    type="button"
-                    id="admin-knowledge-drawer-close"
-                    class="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:border-slate-500"
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-200">会话详情</h3>
+                  <div id="admin-session-scenario" class="mt-2 space-y-1 text-xs text-slate-400"></div>
+                  <div
+                    id="admin-session-conversation"
+                    class="mt-3 max-h-60 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-200"
+                  ></div>
+                  <div id="admin-session-evaluation" class="mt-3 space-y-1 text-xs text-emerald-200"></div>
+                  <form
+                    id="admin-student-password-form"
+                    class="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs"
                   >
-                    关闭
-                  </button>
+                    <input
+                      id="admin-student-new-password"
+                      type="text"
+                      placeholder="设置新密码"
+                      class="w-40 rounded-lg border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      class="rounded-lg bg-emerald-500 px-3 py-1 font-semibold text-white hover:bg-emerald-600"
+                    >
+                      重置学生密码
+                    </button>
+                    <span id="admin-student-password-status" class="text-xs text-emerald-300"></span>
+                  </form>
                 </div>
-                <p id="admin-knowledge-drawer-hint" class="mt-2 text-xs text-slate-400"></p>
-                <ul id="admin-knowledge-drawer-list" class="mt-3 space-y-2"></ul>
               </div>
             </div>
+            <section
+              id="admin-analytics"
+              class="mt-6 grid gap-6 lg:grid-cols-3"
+            >
+              <div class="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
+                <h3 class="text-sm font-semibold text-purple-700">章节周平均趋势</h3>
+                <ul id="admin-trend-list" class="mt-3 space-y-2 text-xs text-purple-700"></ul>
+              </div>
+              <div class="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
+                <h3 class="text-sm font-semibold text-rose-700">高频改进建议</h3>
+                <ul id="admin-action-hotspots" class="mt-3 space-y-2 text-xs text-rose-700"></ul>
+              </div>
+              <div class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <h3 class="text-sm font-semibold text-amber-700">薄弱知识点</h3>
+                <ul id="admin-knowledge-weakness" class="mt-3 space-y-2 text-xs text-amber-700"></ul>
+              </div>
+            </section>
           </div>
 
           <div class="tab-panel" data-admin-panel="theory">
@@ -5366,9 +3449,9 @@
                       id="admin-graph-toggle-renderer"
                       type="button"
                       class="rounded-xl border border-slate-700/70 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-300 hover:text-emerald-100"
-                      title="Stage 环形开花布局"
+                      title="G6 TreeGraph 渲染"
                     >
-                      当前 开花
+                      当前 TreeGraph
                     </button>
                   </div>
                 </div>
@@ -5764,9 +3847,9 @@
     </div>
 
     <footer class="border-t border-slate-800 bg-slate-950/70 py-4 text-center text-xs text-slate-500">
-      © 2025 《外贸谈判知识图谱构建与实战》项目组
+      © 2025 《AI赋能：智能时代的外贸谈判策略与实战》项目组
       <br />
-      Contributed by Nanyan Shen, Shixin Liang (Haoying Liang), Xiaoyan Quan, Yanli Zhou, Ting Wu, Xin Huang
+      梁诗忻 程序设计 · 基于 Flask 和 AI 技术构建
     </footer>
 
     <div
@@ -5816,60 +3899,12 @@
     </div>
     </div>
 
-    <!-- 2. 前景层：Loading 遮罩 -->
-    <div
-      id="loading-overlay"
-      class="hidden"
-      role="status"
-      aria-live="polite"
-      aria-label="场景生成中"
-    >
-      <div class="loading-shell">
-        <div class="loading-top">
-          <div class="loading-mark" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-            Sync
-          </div>
-          <div class="loading-title-group">
-            <p class="loading-kicker">Negotiation Engine</p>
-            <h2 class="loading-title">个性化实训场景编排中</h2>
-            <p class="loading-subtitle">AI 模型正在构建你的实战任务</p>
-          </div>
-        </div>
-        <div class="loading-core" aria-hidden="true">
-          <div class="core-ring core-ring--outer"></div>
-          <div class="core-ring core-ring--mid"></div>
-          <div class="core-ring core-ring--inner"></div>
-          <div class="core-orbit"></div>
-          <div class="core-center">
-            <div class="core-label">Sync</div>
-            <div class="core-status">System linking</div>
-          </div>
-        </div>
-        <div class="loading-progress">
-          <div class="progress-track">
-            <div id="progress-bar"></div>
-          </div>
-          <div class="progress-meta">
-            <span>Scenario Fabrication</span>
-            <span>Locking 95%</span>
-          </div>
-        </div>
-        <div class="loading-log">
-          <p id="log-text" class="log-text">> 初始化多维数据库...</p>
-        </div>
-      </div>
-    </div>
-
     <script src="/static/js/elements.js"></script>
     <script src="/static/js/state.js"></script>
     <script src="/static/js/api.js"></script>
     <script src="/static/js/student.js"></script>
     <script src="/static/js/graph-knowledge.js"></script>
     <script src="/static/js/graph-transformer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <script src="/static/js/admin.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/main.js"></script>

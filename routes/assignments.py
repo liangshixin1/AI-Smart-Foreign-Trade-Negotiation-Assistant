@@ -2,26 +2,23 @@
 
 from __future__ import annotations
 
-import copy
 import json
+import os
 import uuid
 from typing import Dict, List, Optional
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 import database
+from services import evaluation_service
 from services.auth_service import current_user, require_role
-from services.document_composer import generate_opening_message
+from services.document_composer import compose_review_document, generate_opening_message
 from services.evaluation_service import evaluate_session
 from services.llm_service import complete_chat, stream_chat
 from services.scenario_generator import (
     DIFFICULTY_PROFILES,
     DEFAULT_DIFFICULTY,
-    apply_difficulty_profile,
-    assemble_scenario_from_blueprint,
-    build_custom_assignment_prompts,
     generate_scenario_for_section,
-    get_difficulty_profile,
     inject_difficulty_metadata,
     prepare_scenario_payload,
     render_prompts_from_section,
@@ -74,37 +71,26 @@ def _ensure_english_reply(collab_key: str, reply: str) -> str:
     )
 
 
-def _serialize_assignment(record: Dict[str, object]) -> Dict[str, object]:
-    scenario_data = record.get("scenario", {}) or {}
-    payload = {
-        "id": record["id"],
-        "title": record.get("title", ""),
-        "description": record.get("description", ""),
-        "difficulty": record.get("difficulty", DEFAULT_DIFFICULTY),
-        "chapterId": record.get("chapterId"),
-        "sectionId": record.get("sectionId"),
-        "blueprintId": record.get("blueprintId"),
-        "scenario": prepare_scenario_payload(scenario_data),
-        "createdAt": record.get("createdAt"),
-        "updatedAt": record.get("updatedAt"),
-        "dueAt": record.get("dueAt"),
-    }
-    if "assignedCount" in record:
-        payload["assignedCount"] = record.get("assignedCount", 0)
-    if "completedCount" in record:
-        payload["completedCount"] = record.get("completedCount", 0)
-    if "inProgressCount" in record:
-        payload["inProgressCount"] = record.get("inProgressCount", 0)
-    if "studentIds" in record and isinstance(record.get("studentIds"), list):
-        payload["studentIds"] = record.get("studentIds")
-    if "status" in record:
-        payload["status"] = record.get("status")
-    if "sessionId" in record:
-        payload["sessionId"] = record.get("sessionId")
-    if "submittedAt" in record:
-        payload["submittedAt"] = record.get("submittedAt")
-    inject_difficulty_metadata(payload)
-    return payload
+REVIEW_SECTION_IDS = {
+    "chapter-4-section-1",
+    "chapter-4-section-2",
+    "chapter-4-section-5",
+    "chapter-5-section-4",
+    "chapter-6-section-1",
+}
+
+
+def _attach_review_document(section_id: Optional[str], scenario: Dict[str, object]) -> Optional[str]:
+    """Generate and persist a review document into the scenario payload when applicable."""
+    if not section_id or not scenario or section_id not in REVIEW_SECTION_IDS:
+        return None
+    existing = scenario.get("document_text") or scenario.get("documentText")
+    if isinstance(existing, str) and existing.strip():
+        return existing
+    doc = compose_review_document(section_id, scenario)
+    if doc:
+        scenario["document_text"] = doc
+    return doc
 
 
 @bp.post("/api/start_level")
@@ -133,6 +119,8 @@ def start_level():
     except Exception as exc:
         return jsonify({"error": f"Failed to generate scenario: {exc}"}), 500
 
+    scenario["mode"] = section.get("mode") or scenario.get("mode") or ""
+    document_text = _attach_review_document(section_id, scenario)
     conversation_prompt, evaluation_prompt = render_prompts_from_section(
         section, scenario, difficulty_key, difficulty_profile
     )
@@ -159,184 +147,14 @@ def start_level():
         "scenario": prepare_scenario_payload(scenario),
         "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "documentText": document_text or scenario.get("document_text") or "",
+        "reviewHints": scenario.get("review_hints") or {},
+        "mode": section.get("mode") or "",
         "chapterId": chapter_id,
         "sectionId": section_id,
         "difficulty": difficulty_key,
     }
     return jsonify(payload)
-
-
-@bp.post("/api/assignments")
-@require_role("teacher")
-def create_assignment():
-    """教师布置作业入口，可选择蓝图或自定义场景。"""
-    user = current_user()
-    data = request.get_json(force=True)
-    blueprint_id = data.get("blueprintId")
-    raw_scenario = data.get("scenario")
-    blueprint_raw = data.get("blueprint")
-
-    difficulty_key = str(
-        data.get("difficulty")
-        or (raw_scenario or {}).get("difficulty")
-        or (blueprint_raw or {}).get("difficulty")
-        or DEFAULT_DIFFICULTY
-    ).lower()
-    if difficulty_key not in DIFFICULTY_PROFILES:
-        difficulty_key = DEFAULT_DIFFICULTY
-
-    scenario: Optional[Dict[str, object]] = None
-    profile: Dict[str, str] = get_difficulty_profile(difficulty_key)
-
-    if blueprint_id:
-        blueprint = database.get_blueprint(blueprint_id)
-        if not blueprint or int(blueprint.get("ownerId")) != user.id:
-            return jsonify({"error": "Blueprint not found"}), 404
-        scenario = copy.deepcopy(blueprint.get("blueprint") or {})
-        scenario, profile = apply_difficulty_profile(scenario, difficulty_key)
-    elif isinstance(raw_scenario, dict) and "scenario_title" in raw_scenario:
-        scenario = copy.deepcopy(raw_scenario)
-        scenario, profile = apply_difficulty_profile(scenario, difficulty_key)
-    elif isinstance(blueprint_raw, dict):
-        scenario, profile = assemble_scenario_from_blueprint(blueprint_raw, difficulty_key)
-    else:
-        return jsonify({"error": "scenario or blueprint data is required"}), 400
-
-    chapter_id = data.get("chapterId")
-    section_id = data.get("sectionId")
-    description = normalize_text(data.get("description")) or scenario.get("scenario_summary", "")
-    title = normalize_text(data.get("title")) or scenario.get("scenario_title") or "统一作业"
-
-    if chapter_id and section_id:
-        section = database.get_section_template(chapter_id, section_id)
-        if not section:
-            return jsonify({"error": "Invalid chapterId or sectionId"}), 404
-        conversation_prompt, evaluation_prompt = render_prompts_from_section(
-            section, scenario, difficulty_key, profile
-        )
-    else:
-        conversation_prompt, evaluation_prompt = build_custom_assignment_prompts(
-            scenario, profile
-        )
-
-    student_ids: List[int] = []
-    raw_students = data.get("studentIds") or []
-    if isinstance(raw_students, list):
-        for value in raw_students:
-            try:
-                student_ids.append(int(value))
-            except (TypeError, ValueError):
-                continue
-
-    assignment_id = f"assignment-{uuid.uuid4().hex[:12]}"
-    record = database.create_assignment(
-        assignment_id=assignment_id,
-        owner_id=user.id,
-        title=title,
-        description=description,
-        chapter_id=chapter_id,
-        section_id=section_id,
-        scenario=scenario,
-        conversation_prompt=conversation_prompt,
-        evaluation_prompt=evaluation_prompt,
-        difficulty=difficulty_key,
-        blueprint_id=blueprint_id,
-        due_at=data.get("dueAt"),
-        student_ids=student_ids,
-    )
-
-    response_payload = _serialize_assignment(record)
-    response_payload["difficultyDescription"] = profile.get("description")
-    response_payload["studentIds"] = student_ids
-    return jsonify({"assignment": response_payload}), 201
-
-
-@bp.get("/api/assignments")
-@require_role("teacher")
-def list_assignments():
-    user = current_user()
-    records = database.list_assignments_by_teacher(user.id)
-    payload = [_serialize_assignment(record) for record in records]
-    return jsonify({"assignments": payload})
-
-
-@bp.get("/api/student/assignments")
-@require_role("student")
-def list_student_assignments():
-    user = current_user()
-    records = database.list_assignments_for_student(user.id)
-    payload = [_serialize_assignment(record) for record in records]
-    return jsonify({"assignments": payload})
-
-
-@bp.post("/api/assignments/<assignment_id>/start")
-@require_role("student")
-def start_assignment(assignment_id: str):
-    user = current_user()
-    record = database.get_assignment_for_student(assignment_id, user.id)
-    if not record:
-        return jsonify({"error": "Assignment not found"}), 404
-
-    scenario = record.get("scenario") or {}
-    difficulty_key = record.get("difficulty") or DEFAULT_DIFFICULTY
-    if record.get("sessionId"):
-        session = database.get_session(record["sessionId"])
-        if session and int(session["user_id"]) == user.id:
-            evaluation = database.get_latest_evaluation(session["id"])
-            if evaluation:
-                inject_difficulty_metadata(evaluation)
-            payload = {
-                "sessionId": session["id"],
-                "scenario": prepare_scenario_payload(scenario),
-                "assignmentId": assignment_id,
-                "knowledgePoints": scenario.get("knowledge_points", []) or [],
-                "openingMessage": record.get("openingMessage", ""),
-                "difficulty": difficulty_key,
-            }
-            inject_difficulty_metadata(payload)
-            return jsonify(payload)
-
-    session_id = uuid.uuid4().hex
-    expects_bargaining = False
-    product = scenario.get("product") if isinstance(scenario, dict) else {}
-    if isinstance(product, dict):
-        price_expectation = product.get("price_expectation") or {}
-        expects_bargaining = bool(
-            isinstance(price_expectation, dict)
-            and (
-                normalize_text(price_expectation.get("student_target"))
-                or normalize_text(price_expectation.get("ai_bottom_line"))
-            )
-        )
-
-    database.create_session(
-        session_id=session_id,
-        user_id=user.id,
-        chapter_id=record.get("chapterId"),
-        section_id=record.get("sectionId"),
-        system_prompt=record.get("conversationPrompt"),
-        evaluation_prompt=record.get("evaluationPrompt"),
-        scenario=scenario,
-        expects_bargaining=expects_bargaining,
-        difficulty=difficulty_key,
-        assignment_id=assignment_id,
-    )
-    database.link_assignment_session(assignment_id, user.id, session_id)
-
-    opening_message = generate_opening_message(record.get("sectionId"), scenario)
-    if opening_message:
-        database.add_message(session_id, "assistant", opening_message)
-
-    payload = {
-        "sessionId": session_id,
-        "scenario": prepare_scenario_payload(scenario),
-        "assignmentId": assignment_id,
-        "knowledgePoints": scenario.get("knowledge_points", []) or [],
-        "openingMessage": opening_message or "",
-        "difficulty": difficulty_key,
-    }
-    inject_difficulty_metadata(payload)
-    return jsonify(payload), 201
 
 
 @bp.post("/api/chat")
@@ -404,18 +222,50 @@ def chat():
             )
             database.add_message(session_id, "assistant", ai_reply)
 
-            evaluation = evaluate_session(session_id, session)
-            latest_evaluation = database.get_latest_evaluation(session_id)
-            if latest_evaluation:
-                evaluation = latest_evaluation
-
             reply_payload = json.dumps({"reply": ai_reply})
             yield f"event: summary\ndata: {reply_payload}\n\n"
 
-            evaluation_payload = json.dumps({"evaluation": evaluation})
-            yield f"event: evaluation\ndata: {evaluation_payload}\n\n"
+            # 流式评估：先推送分数，再推送详情
+            try:
+                ctx = evaluation_service.prepare_evaluation_context(session_id, session)
+                # 快速知识点召回（不依赖 LLM），用于提前渲染 evaluation-knowledge
+                try:
+                    recalled = evaluation_service.recall_knowledge_points_from_context(ctx, limit=5)
+                except Exception:
+                    recalled = []
+                if recalled:
+                    yield f"event: knowledge\ndata: {json.dumps({'knowledgePoints': recalled, 'source': 'recall'})}\n\n"
+                score_key = os.getenv("DEEPSEEK_CRITIC_SCORE_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
+                detail_key = os.getenv("DEEPSEEK_CRITIC_DETAIL_KEY") or os.getenv("DEEPSEEK_CRITIC_KEY")
 
-            yield "event: done\ndata: {}\n\n"
+                score_data, raw_score = evaluation_service.compute_score(ctx, score_key)
+                score_payload = {
+                    "score": score_data.get("score"),
+                    "scoreLabel": evaluation_service._score_to_label(score_data.get("score")),
+                    "debug": {"rawScore": raw_score, "parsedScore": score_data},
+                }
+                yield f"event: score\ndata: {json.dumps(score_payload)}\n\n"
+
+                detail_data, raw_detail = evaluation_service.compute_detail(ctx, detail_key)
+                evaluation = evaluation_service.build_evaluation_result(
+                    ctx, session, score_data, detail_data, raw_score, raw_detail
+                )
+                database.save_evaluation(session_id, evaluation)
+                detail_payload = json.dumps({"evaluation": evaluation})
+                yield f"event: detail\ndata: {detail_payload}\n\n"
+            except Exception as exc:  # pragma: no cover - fallback to avoid SSE break
+                LOGGER.exception("evaluate_session streaming failed: %s", exc)
+                fallback_eval = {
+                    "score": None,
+                    "scoreLabel": None,
+                    "commentary": "評估暫時不可用，請稍後再試。",
+                    "actionItems": [],
+                    "knowledgePoints": session.get("scenario", {}).get("knowledge_points", []) or [],
+                    "bargainingWinRate": None,
+                }
+                yield f"event: detail\ndata: {json.dumps({'evaluation': fallback_eval})}\n\n"
+
+            yield "event: close\ndata: {}\n\n"
 
         response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache"
@@ -430,10 +280,24 @@ def chat():
     ai_reply = _ensure_english_reply(collab_key, raw_reply)
     database.add_message(session_id, "assistant", ai_reply)
 
-    evaluation = evaluate_session(session_id, session)
+    try:
+        evaluation = evaluate_session(session_id, session)
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        LOGGER.exception("evaluate_session failed: %s", exc)
+        evaluation = {
+            "score": None,
+            "scoreLabel": None,
+            "commentary": "評估暫時不可用，請稍後再試。",
+            "actionItems": [],
+            "knowledgePoints": session.get("scenario", {}).get("knowledge_points", []) or [],
+            "bargainingWinRate": None,
+        }
     latest_evaluation = database.get_latest_evaluation(session_id)
     if latest_evaluation:
-        evaluation = latest_evaluation
+        merged = {**latest_evaluation, **evaluation}
+        if evaluation.get("debug"):
+            merged["debug"] = evaluation.get("debug")
+        evaluation = merged
 
     return jsonify({"reply": ai_reply, "evaluation": evaluation})
 
@@ -478,15 +342,18 @@ def get_session_detail(session_id: str):
 
     history = database.get_messages(session_id)
     evaluation = database.get_latest_evaluation(session_id)
+    scenario_raw = session["scenario"]
+    _attach_review_document(session.get("section_id"), scenario_raw)
 
     payload = {
         "session": {
             "id": session["id"],
             "chapterId": session["chapter_id"],
             "sectionId": session["section_id"],
-            "scenario": prepare_scenario_payload(session["scenario"]),
+            "scenario": prepare_scenario_payload(scenario_raw),
             "expectsBargaining": session["expects_bargaining"],
             "difficulty": session.get("difficulty"),
+            "mode": scenario_raw.get("mode") or "",
         },
         "messages": history,
         "evaluation": evaluation,
@@ -505,6 +372,7 @@ def reset_session(session_id: str):
 
     database.reset_session(session_id)
     scenario = session["scenario"]
+    _attach_review_document(session.get("section_id"), scenario)
     opening_message = generate_opening_message(session.get("section_id"), scenario)
     if opening_message:
         database.add_message(session_id, "assistant", opening_message)
@@ -514,8 +382,11 @@ def reset_session(session_id: str):
         "scenario": prepare_scenario_payload(scenario),
         "openingMessage": opening_message or "",
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
+        "documentText": scenario.get("document_text") or "",
+        "reviewHints": scenario.get("review_hints") or {},
         "chapterId": session["chapter_id"],
         "sectionId": session["section_id"],
         "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,
+        "mode": scenario.get("mode") or "",
     }
     return jsonify(payload)

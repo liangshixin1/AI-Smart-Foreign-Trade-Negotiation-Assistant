@@ -14,12 +14,13 @@ def create_client(api_key: str) -> OpenAI:
     return OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE)
 
 
-def complete_chat(api_key: str, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
+def complete_chat(api_key: str, messages: List[Dict[str, str]], temperature: float = 0.7, **kwargs) -> str:
     client = create_client(api_key)
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
         temperature=temperature,
+        **kwargs,
     )
     if not response.choices:
         raise RuntimeError("Empty response from chat completion API")

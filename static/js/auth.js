@@ -124,7 +124,6 @@ async function handleLogin(event) {
 
     if (state.auth.user.role === "student") {
       await loadSessions();
-      await loadStudentAssignments();
       await loadStudentDashboardInsights();
       showStudentDashboardHome();
     } else {
@@ -132,7 +131,6 @@ async function handleLogin(event) {
       await loadAdminAnalytics();
       await loadAdminLevels();
       await loadAdminBlueprints();
-      await loadAdminAssignments();
     }
   } catch (error) {
     console.error(error);
@@ -151,15 +149,6 @@ function handleLogout() {
   adminSessionScenario.innerHTML = "";
   adminSessionConversation.innerHTML = "";
   adminSessionEvaluation.innerHTML = "";
-  if (studentAssignmentListEl) {
-    studentAssignmentListEl.innerHTML = "";
-  }
-  if (studentAssignmentStatus) {
-    studentAssignmentStatus.textContent = "";
-  }
-  if (adminAssignmentStatus) {
-    adminAssignmentStatus.textContent = "";
-  }
   if (adminTheoryStatus) {
     adminTheoryStatus.textContent = "";
   }
@@ -183,14 +172,6 @@ function handleLogout() {
   if (adminProfileNameInput) {
     adminProfileNameInput.value = "";
   }
-  if (adminAssignmentForm) {
-    adminAssignmentForm.reset();
-  }
-  populateAssignmentForm(null);
-  populateAssignmentChapterOptions();
-  populateAssignmentBlueprintOptions();
-  renderAssignmentList();
-  renderAssignmentStudents();
   if (adminBlueprintForm) {
     adminBlueprintForm.reset();
   }
@@ -215,12 +196,6 @@ function handleLogout() {
   renderAdminTheoryDocxPreview();
   goToLevelSelection({ clearSelection: true });
   renderLevelMap();
-  if (startAssignmentBtn) {
-    startAssignmentBtn.dataset.assignmentId = "";
-    startAssignmentBtn.disabled = true;
-    startAssignmentBtn.removeAttribute("title");
-    startAssignmentBtn.removeAttribute("aria-label");
-  }
   closeStudentModal();
   closeStudentPasswordModal();
   activateAdminTab();
@@ -237,7 +212,6 @@ function handleUnauthorizedResponse() {
     loginErrorEl.textContent = message;
   }
   updateInlineStatus(adminTheoryStatus, message, "error");
-  updateInlineStatus(adminAssignmentStatus, message, "error");
   updateInlineStatus(adminBlueprintStatus, message, "error");
   updateInlineStatus(adminStudentImportStatus, message, "error");
   updateInlineStatus(adminStudentPasswordStatus, message, "error");
@@ -246,6 +220,5 @@ function handleUnauthorizedResponse() {
 }
 
 window.handleUnauthorizedResponse = handleUnauthorizedResponse;
-
 
 

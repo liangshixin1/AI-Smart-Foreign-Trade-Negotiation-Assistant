@@ -9,8 +9,8 @@ function createInitialState() {
     scenario: null,
     messages: [],
     sessions: [],
-    selectedLevel: { chapterId: null, sectionId: null },
-    activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced" },
+    selectedLevel: { chapterId: null, sectionId: null, mode: "" },
+    activeLevel: { chapterId: null, sectionId: null, difficulty: "balanced", mode: "" },
     isLevelSelectionCollapsed: false,
     studentActiveView: "home",
     expandedChapters: new Set(),
@@ -25,6 +25,9 @@ function createInitialState() {
     },
     admin: {
       students: [],
+      totalSections: 0,
+      studentFilters: { search: "", filter: "all", sort: "progress" },
+      selectedTrendSection: "all",
       selectedStudentId: null,
       selectedSessionId: null,
       studentDetail: null,
@@ -52,6 +55,24 @@ function createInitialState() {
     studentInsights: null,
     studentAssignments: [],
     levelVictories: new Set(),
+    review: {
+      documentText: "",
+      hints: null,
+      annotations: [],
+      pendingSelection: null,
+    },
+    emailDraft: {
+      subject: "",
+      body: "",
+      signature: "",
+    },
+    currentScenario: null,
+    voice: {
+      mode: "asr_only", // asr_only | realtime(call)
+      callActive: false,
+      incoming: false,
+      awaitingListen: false,
+    },
   };
 }
 

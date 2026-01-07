@@ -20,6 +20,7 @@ class Scenario:
     ai_role: str = ""
     ai_company: Dict[str, str] = field(default_factory=dict)
     ai_rules: List[str] = field(default_factory=list)
+    mode: str = ""
     product: Dict[str, object] = field(default_factory=dict)
     market_landscape: str = ""
     timeline: str = ""
@@ -44,6 +45,7 @@ class Scenario:
             ai_role=normalize_text(payload.get("ai_role")),
             ai_company=normalize_company(payload.get("ai_company")),
             ai_rules=normalize_text_list(payload.get("ai_rules")),
+            mode=normalize_text(payload.get("mode")),
             product=normalize_product(payload.get("product")),
             market_landscape=normalize_text(payload.get("market_landscape")),
             timeline=normalize_text(payload.get("timeline")),
@@ -139,6 +141,7 @@ class Scenario:
             "ai_role": self.ai_role,
             "ai_company": self.ai_company,
             "ai_rules": self.ai_rules,
+            "mode": self.mode,
             "product": self.product,
             "market_landscape": self.market_landscape,
             "timeline": self.timeline,

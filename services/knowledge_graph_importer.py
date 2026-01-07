@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from typing import Dict, List, Optional, BinaryIO, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -96,6 +97,35 @@ CATEGORY_NAME_ALIASES = {
     "doc": "文档",
     "文档": "文档",
 }
+
+
+# ============================================
+# 通用辅助
+# ============================================
+
+def _normalize_multi_value(value: Optional[str]) -> List[str]:
+    """兼容中英文分隔符, 去重并保持顺序。"""
+    if value is None:
+        return []
+    parts = re.split(r"[，,;；、]+", str(value))
+    normalized: List[str] = []
+    for part in parts:
+        token = part.strip()
+        if token and token not in normalized:
+            normalized.append(token)
+    return normalized
+
+
+def _to_bool_flag(value: Optional[str]) -> Optional[bool]:
+    """将常见是/否文本转为布尔, 其他返回None。"""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"yes", "y", "true", "1", "是", "对", "标准", "地道"}:
+        return True
+    if text in {"no", "n", "false", "0", "否", "非", "不标准", "不地道"}:
+        return False
+    return None
 
 
 # ============================================
@@ -288,12 +318,18 @@ class KnowledgeGraphImporter:
             practices_data, practices_errors = self._parse_practices(file_content)
             result.errors.extend(practices_errors)
 
+            lexicon_data, lexicon_errors, lexicon_warnings = self._parse_lexicon(file_content)
+            result.errors.extend(lexicon_errors)
+            result.warnings.extend(lexicon_warnings)
+
             LOGGER.info(f"  解析结果: {len(stages_data)}个阶段, {len(points_data)}个知识点, {len(practices_data)}个案例")
+            if lexicon_data:
+                LOGGER.info(f"  解析词汇网络: {len(lexicon_data)} 条词汇项")
 
             # 步骤3: 验证数据
             LOGGER.info("步骤3: 验证数据...")
             validation_errors, validation_warnings = self._validate_data(
-                stages_data, points_data, practices_data
+                stages_data, points_data, practices_data, lexicon_data
             )
             result.errors.extend(validation_errors)
             result.warnings.extend(validation_warnings)
@@ -311,7 +347,7 @@ class KnowledgeGraphImporter:
                 # 使用 execute_write 确保事务正确管理（Neo4j driver 5.x+）
                 def import_work(tx):
                     self._import_to_neo4j(
-                        tx, stages_data, points_data, practices_data,
+                        tx, stages_data, points_data, practices_data, lexicon_data,
                         result, created_by
                     )
 
@@ -721,6 +757,176 @@ class KnowledgeGraphImporter:
 
         return practices, errors
 
+    def _parse_lexicon(self, file_content: bytes) -> Tuple[List[Dict], List[ImportError], List[ImportError]]:
+        """
+        解析词汇网络表（可选）
+
+        Returns:
+            (词汇数据列表, 错误列表, 警告列表)
+        """
+        errors: List[ImportError] = []
+        warnings: List[ImportError] = []
+        lexicon: List[Dict] = []
+
+        LEX_ROLE_ALIASES = {
+            "lexeme": "lexeme",
+            "词条": "lexeme",
+            "术语": "lexeme",
+            "term": "lexeme",
+            "collocation": "collocation",
+            "搭配": "collocation",
+            "短语": "collocation",
+            "construction": "construction",
+            "句式": "construction",
+            "句型": "construction",
+        }
+
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+            sheet_name = None
+            for possible in ["词汇网络表", "词汇网络", "Lexicon"]:
+                if possible in wb.sheetnames:
+                    sheet_name = possible
+                    break
+
+            if not sheet_name:
+                wb.close()
+                return [], errors, warnings
+
+            ws = wb[sheet_name]
+
+            headers = [str(cell).strip() if cell else "" for cell in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
+            col_map: Dict[str, int] = {}
+            for idx, header in enumerate(headers):
+                clean = header.replace("*", "").strip()
+                if clean in ("关联知识点名称", "关联知识点"):
+                    col_map["anchor"] = idx
+                elif clean in ("词汇项", "词汇"):
+                    col_map["lex_item"] = idx
+                elif clean in ("词汇项类型", "词汇类型"):
+                    col_map["lex_role"] = idx
+                elif clean in ("词族", "同族"):
+                    col_map["family"] = idx
+                elif clean in ("语义类", "同类"):
+                    col_map["semantic_class"] = idx
+                elif clean in ("语义槽位", "槽位"):
+                    col_map["slots"] = idx
+                elif clean in ("语气/强度", "语气"):
+                    col_map["tone"] = idx
+                elif clean in ("思政元素", "思政", "价值观"):
+                    col_map["civicTags"] = idx
+                elif clean in ("地道性", "标准表达", "是否地道"):
+                    col_map["idiomatic"] = idx
+                elif clean in ("搭配组成词", "搭配词"):
+                    col_map["components"] = idx
+                elif clean in ("备注", "说明"):
+                    col_map["note"] = idx
+
+            # 必填列校验
+            missing_required = [col for col in ("anchor", "lex_item", "lex_role") if col not in col_map]
+            if missing_required:
+                errors.append(ImportError(
+                    level="ERROR",
+                    sheet=sheet_name,
+                    row=1,
+                    message=f"缺少必填列: {', '.join(missing_required)}",
+                ))
+                wb.close()
+                return [], errors, warnings
+
+            seen_pairs = set()
+
+            for row_idx, row in enumerate(ws.iter_rows(min_row=EXCEL_DATA_START_ROW, values_only=True), start=EXCEL_DATA_START_ROW):
+                if not any(row):
+                    continue
+
+                anchor = str(row[col_map["anchor"]]).strip() if len(row) > col_map["anchor"] and row[col_map["anchor"]] else ""
+                lex_item = str(row[col_map["lex_item"]]).strip() if len(row) > col_map["lex_item"] and row[col_map["lex_item"]] else ""
+                raw_role = str(row[col_map["lex_role"]]).strip() if len(row) > col_map["lex_role"] and row[col_map["lex_role"]] else ""
+
+                if not (anchor and lex_item and raw_role):
+                    continue
+
+                norm_role = LEX_ROLE_ALIASES.get(raw_role.lower()) or LEX_ROLE_ALIASES.get(raw_role)
+                if not norm_role:
+                    errors.append(ImportError(
+                        level="ERROR",
+                        sheet=sheet_name,
+                        row=row_idx,
+                        field="词汇项类型",
+                        value=raw_role,
+                        message="词汇项类型必须是 词条/搭配/句式（或对应英文）",
+                    ))
+                    continue
+
+                entry = {
+                    "_row": row_idx,
+                    "anchor": anchor,
+                    "lex_item": lex_item,
+                    "lex_role": norm_role,
+                    "family": "",
+                    "semantic_class": "",
+                    "slots": [],
+                    "tone": "",
+                    "idiomatic": None,
+                    "civicTags": [],
+                    "components": [],
+                    "note": "",
+                }
+
+                if "family" in col_map and len(row) > col_map["family"] and row[col_map["family"]]:
+                    entry["family"] = str(row[col_map["family"]]).strip()
+
+                if "semantic_class" in col_map and len(row) > col_map["semantic_class"] and row[col_map["semantic_class"]]:
+                    entry["semantic_class"] = str(row[col_map["semantic_class"]]).strip()
+
+                if "slots" in col_map and len(row) > col_map["slots"] and row[col_map["slots"]]:
+                    entry["slots"] = _normalize_multi_value(row[col_map["slots"]])
+
+                if "tone" in col_map and len(row) > col_map["tone"] and row[col_map["tone"]]:
+                    entry["tone"] = str(row[col_map["tone"]]).strip().lower()
+
+                if "idiomatic" in col_map and len(row) > col_map["idiomatic"] and row[col_map["idiomatic"]]:
+                    entry["idiomatic"] = _to_bool_flag(row[col_map["idiomatic"]])
+
+                if "civicTags" in col_map and len(row) > col_map["civicTags"] and row[col_map["civicTags"]]:
+                    entry["civicTags"] = _normalize_multi_value(row[col_map["civicTags"]])
+
+                if "components" in col_map and len(row) > col_map["components"] and row[col_map["components"]]:
+                    entry["components"] = _normalize_multi_value(row[col_map["components"]])
+
+                if "note" in col_map and len(row) > col_map["note"] and row[col_map["note"]]:
+                    entry["note"] = str(row[col_map["note"]]).strip()
+
+                slots_signature = ";".join(entry["slots"])
+                pair_key = (anchor, lex_item, entry["semantic_class"], slots_signature)
+                if pair_key in seen_pairs:
+                    warnings.append(ImportError(
+                        level="WARNING",
+                        sheet=sheet_name,
+                        row=row_idx,
+                        field="词汇项",
+                        value=f"{lex_item} ({entry['semantic_class']})",
+                        message="发现重复的词汇项，已自动去重",
+                    ))
+                    continue
+                seen_pairs.add(pair_key)
+
+                lexicon.append(entry)
+
+            wb.close()
+
+        except Exception as e:
+            LOGGER.exception("解析词汇网络表失败")
+            errors.append(ImportError(
+                level="ERROR",
+                sheet="词汇网络表",
+                row=0,
+                message=f"解析失败: {str(e)}",
+            ))
+
+        return lexicon, errors, warnings
+
     # ========================================
     # 验证方法
     # ========================================
@@ -730,6 +936,7 @@ class KnowledgeGraphImporter:
         stages: List[Dict],
         points: List[Dict],
         practices: List[Dict],
+        lexicon: Optional[List[Dict]] = None,
     ) -> Tuple[List[ImportError], List[ImportError]]:
         """
         验证数据完整性
@@ -772,7 +979,22 @@ class KnowledgeGraphImporter:
                         value=practice["knowledgePoint"],
                         message=f"知识点'{practice['knowledgePoint']}'不存在",
                         suggestion="该案例将被跳过",
-                    ))
+                ))
+
+        # 验证词汇网络挂载的知识点是否存在
+        lexicon = lexicon or []
+        for entry in lexicon:
+            anchor = entry.get("anchor")
+            if anchor and anchor not in point_names:
+                errors.append(ImportError(
+                    level="ERROR",
+                    sheet="词汇网络表",
+                    row=entry.get("_row", 0),
+                    field="关联知识点名称",
+                    value=anchor,
+                    message=f"关联知识点'{anchor}'在主表中不存在",
+                    suggestion="请先在知识点主表中创建该知识点",
+                ))
 
         return errors, warnings
 
@@ -786,6 +1008,7 @@ class KnowledgeGraphImporter:
         stages: List[Dict],
         points: List[Dict],
         practices: List[Dict],
+        lexicon: List[Dict],
         result: ImportResult,
         created_by: str,
     ):
@@ -803,7 +1026,7 @@ class KnowledgeGraphImporter:
 
         # 设置统计
         result.stages.total = len(stages)
-        result.knowledge_points.total = len(points)
+        result.knowledge_points.total = len(points) + len(lexicon)
         result.practices.total = len(practices)
 
         # 第1步：创建Stage节点
@@ -948,9 +1171,90 @@ class KnowledgeGraphImporter:
                 result.relations.failed += 1
                 result.relations.total += 1
 
-        # 第6步：创建Practice节点和关系（如果有）
+        # 第6步：创建词汇网络子图
+        if lexicon:
+            LOGGER.info(f"第6步: 导入 {len(lexicon)} 条词汇网络记录...")
+            for entry in lexicon:
+                lex_name = entry.get("lex_item")
+                lex_role = entry.get("lex_role", "")
+                anchor = entry.get("anchor")
+                note = entry.get("note", "")
+                family = entry.get("family", "")
+                semantic_class = entry.get("semantic_class", "")
+                slots = entry.get("slots", []) or []
+                components = entry.get("components", []) or []
+
+                if not lex_name:
+                    continue
+
+                try:
+                    created_point = self._ensure_lex_point(tx, lex_name, lex_role, note, created_by)
+                    if created_point:
+                        result.knowledge_points.created += 1
+                    else:
+                        result.knowledge_points.updated += 1
+                    point_names.add(lex_name)
+
+                    # 锚点关联
+                    if anchor:
+                        self._create_related_with_kind(tx, lex_name, anchor, "lex_anchor", created_by)
+                        result.relations.created += 1
+                        result.relations.total += 1
+
+                    # 同族
+                    if family:
+                        self._link_in_family(tx, lex_name, family, created_by)
+                        result.relations.created += 1
+                        result.relations.total += 1
+
+                    # 同类
+                    if semantic_class:
+                        self._link_in_class(
+                            tx,
+                            lex_name,
+                            semantic_class,
+                            entry.get("tone"),
+                            entry.get("civicTags", []),
+                            entry.get("idiomatic"),
+                            created_by,
+                        )
+                        result.relations.created += 1
+                        result.relations.total += 1
+
+                    # 槽位
+                    for slot in slots:
+                        self._link_fits_slot(
+                            tx,
+                            lex_name,
+                            slot,
+                            entry.get("tone"),
+                            entry.get("civicTags", []),
+                            entry.get("idiomatic"),
+                            created_by,
+                        )
+                        result.relations.created += 1
+                        result.relations.total += 1
+
+                    # 搭配组成词 -> RELATED_TO {kind:'collocation'}
+                    if lex_role == "collocation":
+                        for component in components:
+                            if not component:
+                                continue
+                            component_created = self._ensure_lex_point(tx, component, "lexeme", "", created_by)
+                            if component_created:
+                                result.knowledge_points.created += 1
+                            point_names.add(component)
+                            self._create_related_with_kind(tx, lex_name, component, "collocation", created_by)
+                            result.relations.created += 1
+                            result.relations.total += 1
+
+                except Exception as e:
+                    LOGGER.error(f"  导入词汇项失败 {lex_name}: {e}")
+                    result.knowledge_points.failed += 1
+
+        # 第7步：创建Practice节点和关系（如果有）
         if practices:
-            LOGGER.info(f"第6步: 创建 {len(practices)} 个Practice节点...")
+            LOGGER.info(f"第7步: 创建 {len(practices)} 个Practice节点...")
             for practice in practices:
                 kp_name = practice.pop("knowledgePoint", None)
                 practice.pop("_row", None)
@@ -1132,6 +1436,7 @@ class KnowledgeGraphImporter:
         }})
         ON CREATE SET
             k.type = $type,
+            k.lex_role = $lex_role,
             k.difficulty = $difficulty,
             k.importance = $importance,
             k.summary = $summary,
@@ -1158,6 +1463,7 @@ class KnowledgeGraphImporter:
         params = {
             "name": point.get("name"),
             "type": point_type,
+            "lex_role": point.get("lex_role", ""),
             "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
             "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
@@ -1175,6 +1481,7 @@ class KnowledgeGraphImporter:
         MATCH (k:KnowledgePoint {{name: $name}})
         SET k:{label}
         SET k.type = $type,
+            k.lex_role = $lex_role,
             k.difficulty = $difficulty,
             k.importance = $importance,
             k.summary = $summary,
@@ -1189,6 +1496,7 @@ class KnowledgeGraphImporter:
         params = {
             "name": name,
             "type": point_type,
+            "lex_role": point.get("lex_role", ""),
             "difficulty": point.get("difficulty", DEFAULT_POINT_DIFFICULTY),
             "importance": point.get("importance", DEFAULT_POINT_IMPORTANCE),
             "summary": point.get("summary", ""),
@@ -1310,3 +1618,118 @@ class KnowledgeGraphImporter:
         }
 
         tx.run(query, params)
+
+    def _ensure_lex_point(self, tx, name: str, lex_role: str, note: str, created_by: str) -> bool:
+        """确保词汇节点存在并带有lex_role标签。返回是否新建。"""
+        existing = self._get_knowledge_point(tx, name)
+        payload = {
+            "name": name,
+            "lex_role": lex_role,
+            "summary": note or (existing.get("summary") if existing else ""),
+            "description": existing.get("description") if existing else "",
+            "type": existing.get("type") if existing else DEFAULT_POINT_TYPE,
+            "difficulty": existing.get("difficulty") if existing else DEFAULT_POINT_DIFFICULTY,
+            "importance": existing.get("importance") if existing else DEFAULT_POINT_IMPORTANCE,
+            "chapter": existing.get("chapter") if existing else "",
+            "nodeType": existing.get("nodeType") if existing else "KnowledgePoint",
+        }
+        if existing:
+            self._update_knowledge_point(tx, name, payload, existing.get("nodeType") or "KnowledgePoint", created_by)
+            return False
+        self._create_knowledge_point(tx, payload, "Terminology" if lex_role == "lexeme" else "KnowledgePoint", created_by)
+        return True
+
+    def _create_related_with_kind(self, tx, source: str, target: str, kind: str, created_by: str):
+        """在 KnowledgePoint 之间创建带 kind 的 RELATED_TO 关系。"""
+        tx.run(
+            """
+            MATCH (a:KnowledgePoint {name: $source})
+            MATCH (b:KnowledgePoint {name: $target})
+            MERGE (a)-[r:RELATED_TO {kind: $kind}]->(b)
+            ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            """,
+            {"source": source, "target": target, "kind": kind, "createdBy": created_by},
+        )
+
+    def _link_in_family(self, tx, kp_name: str, family: str, created_by: str):
+        """建立词族关系。"""
+        tx.run(
+            """
+            MERGE (wf:WordFamily {key: $family})
+            ON CREATE SET wf.name = $family, wf.createdAt = datetime(), wf.createdBy = $createdBy
+            SET wf.updatedAt = datetime(), wf.updatedBy = $createdBy
+            WITH wf
+            MERGE (k:KnowledgePoint {name: $name})
+            MERGE (k)-[r:IN_FAMILY]->(wf)
+            ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            """,
+            {"family": family, "name": kp_name, "createdBy": created_by},
+        )
+
+    def _link_in_class(
+        self,
+        tx,
+        kp_name: str,
+        semantic_class: str,
+        tone: Optional[str],
+        civic_tags: List[str],
+        idiomatic: Optional[bool],
+        created_by: str,
+    ):
+        """建立语义类关系,附带语气/思政/地道性标签（可空）。"""
+        tx.run(
+            """
+            MERGE (sc:SemanticClass {key: $class})
+            ON CREATE SET sc.name = $class, sc.createdAt = datetime(), sc.createdBy = $createdBy
+            SET sc.updatedAt = datetime(), sc.updatedBy = $createdBy
+            WITH sc
+            MERGE (k:KnowledgePoint {name: $name})
+            MERGE (k)-[r:IN_CLASS]->(sc)
+            ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            SET r.tone = $tone,
+                r.civicTags = $civicTags,
+                r.idiomatic = $idiomatic
+            """,
+            {
+                "class": semantic_class,
+                "name": kp_name,
+                "tone": tone or "",
+                "civicTags": civic_tags or [],
+                "idiomatic": idiomatic,
+                "createdBy": created_by,
+            },
+        )
+
+    def _link_fits_slot(
+        self,
+        tx,
+        kp_name: str,
+        slot_name: str,
+        tone: Optional[str],
+        civic_tags: List[str],
+        idiomatic: Optional[bool],
+        created_by: str,
+    ):
+        """建立槽位映射关系,附带语气/思政/地道性标签（可空）。"""
+        tx.run(
+            """
+            MERGE (slot:Slot {name: $slot})
+            ON CREATE SET slot.createdAt = datetime(), slot.createdBy = $createdBy
+            SET slot.updatedAt = datetime(), slot.updatedBy = $createdBy
+            WITH slot
+            MERGE (k:KnowledgePoint {name: $name})
+            MERGE (k)-[r:FITS_SLOT]->(slot)
+            ON CREATE SET r.createdAt = datetime(), r.createdBy = $createdBy
+            SET r.tone = $tone,
+                r.civicTags = $civicTags,
+                r.idiomatic = $idiomatic
+            """,
+            {
+                "slot": slot_name,
+                "name": kp_name,
+                "tone": tone or "",
+                "civicTags": civic_tags or [],
+                "idiomatic": idiomatic,
+                "createdBy": created_by,
+            },
+        )

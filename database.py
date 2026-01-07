@@ -156,6 +156,7 @@ def init_database() -> None:
                 chapter_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
+                mode TEXT DEFAULT '',
                 environment_prompt_template TEXT NOT NULL,
                 environment_user_message TEXT NOT NULL,
                 conversation_prompt_template TEXT NOT NULL,
@@ -328,6 +329,10 @@ def ensure_schema() -> None:
             conn.execute(
                 "ALTER TABLE level_sections ADD COLUMN order_index INTEGER DEFAULT 0"
             )
+        if section_columns and "mode" not in section_columns:
+            conn.execute(
+                "ALTER TABLE level_sections ADD COLUMN mode TEXT DEFAULT ''"
+            )
 
         lesson_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(theory_lessons)").fetchall()
@@ -402,17 +407,18 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                     conn.execute(
                         """
                         INSERT INTO level_sections (
-                            id, chapter_id, title, description,
+                            id, chapter_id, title, description, mode,
                             environment_prompt_template, environment_user_message,
                             conversation_prompt_template, evaluation_prompt_template,
                             expects_bargaining, order_index, is_default
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                         """,
                         (
                             section.id,
                             chapter.id,
                             section.title,
                             section.description,
+                            getattr(section, "mode", "") if section else "",
                             section.environment_prompt_template,
                             section.environment_user_message,
                             section.conversation_prompt_template,
@@ -431,6 +437,10 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                             "UPDATE level_sections SET order_index = ? WHERE id = ?",
                             (section_order, section.id),
                         )
+                conn.execute(
+                    "UPDATE level_sections SET mode = ? WHERE id = ?",
+                    (getattr(section, "mode", "") if section else "", section.id),
+                )
         conn.commit()
 
 
@@ -450,6 +460,7 @@ def list_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object
                 chapter_id,
                 title,
                 description,
+                mode,
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -482,6 +493,7 @@ def list_level_hierarchy(include_prompts: bool = False) -> List[Dict[str, object
             "chapterId": section["chapter_id"],
             "title": section["title"],
             "description": section["description"],
+            "mode": section["mode"] or "",
             "expectsBargaining": bool(section["expects_bargaining"]),
             "orderIndex": section["order_index"],
             "isDefault": bool(section["is_default"]),
@@ -533,6 +545,7 @@ def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str,
                 chapter_id,
                 title,
                 description,
+                mode,
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -552,6 +565,7 @@ def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str,
             "chapter_id": row["chapter_id"],
             "title": row["title"],
             "description": row["description"],
+            "mode": row["mode"] or "",
             "environment_prompt_template": row["environment_prompt_template"],
             "environment_user_message": row["environment_user_message"],
             "conversation_prompt_template": row["conversation_prompt_template"],
@@ -659,17 +673,18 @@ def create_section(
         conn.execute(
             """
             INSERT INTO level_sections (
-                id, chapter_id, title, description,
+                id, chapter_id, title, description, mode,
                 environment_prompt_template, environment_user_message,
                 conversation_prompt_template, evaluation_prompt_template,
                 expects_bargaining, order_index, is_default
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 section_id,
                 chapter_id,
                 title,
                 description,
+                "",
                 environment_prompt_template,
                 environment_user_message,
                 conversation_prompt_template,
@@ -693,6 +708,7 @@ def update_section(
     conversation_prompt_template: Optional[str] = None,
     evaluation_prompt_template: Optional[str] = None,
     expects_bargaining: Optional[bool] = None,
+    mode: Optional[str] = None,
     order_index: Optional[int] = None,
 ) -> Optional[Dict[str, object]]:
     section = get_section(section_id)
@@ -733,6 +749,9 @@ def update_section(
         if expects_bargaining is not None:
             updates.append("expects_bargaining = ?")
             params.append(1 if expects_bargaining else 0)
+        if mode is not None:
+            updates.append("mode = ?")
+            params.append(mode)
         target_chapter_id = chapter_id if chapter_id is not None else section["chapter_id"]
         if order_index is not None:
             updates.append("order_index = ?")
@@ -1565,14 +1584,36 @@ def get_latest_evaluation(session_id: str) -> Optional[Dict[str, object]]:
         }
 
 
-def list_students_progress() -> List[Dict[str, object]]:
+def list_students_progress() -> Tuple[List[Dict[str, object]], int]:
+    with get_connection() as conn:
+        total_sections_row = conn.execute("SELECT COUNT(*) AS total FROM sections").fetchone()
+        total_sections = total_sections_row["total"] if total_sections_row and total_sections_row["total"] else 0
+
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT u.id, u.username, u.display_name,
                    COUNT(DISTINCT s.id) AS session_count,
                    COUNT(DISTINCT e.id) AS evaluation_count,
-                   MAX(s.updated_at) AS last_active
+                   COUNT(DISTINCT s.section_id) AS section_completed,
+                   MAX(s.updated_at) AS last_active,
+                   AVG(COALESCE(e.score, e.bargaining_win_rate)) AS avg_score,
+                   (
+                       SELECT COALESCE(ev.score, ev.bargaining_win_rate)
+                       FROM evaluations ev
+                       JOIN chat_sessions cs ON cs.id = ev.session_id
+                       WHERE cs.user_id = u.id
+                       ORDER BY ev.created_at DESC, ev.id DESC
+                       LIMIT 1
+                   ) AS latest_score,
+                   (
+                       SELECT ev.score_label
+                       FROM evaluations ev
+                       JOIN chat_sessions cs ON cs.id = ev.session_id
+                       WHERE cs.user_id = u.id
+                       ORDER BY ev.created_at DESC, ev.id DESC
+                       LIMIT 1
+                   ) AS latest_score_label
             FROM users u
             LEFT JOIN chat_sessions s ON s.user_id = u.id
             LEFT JOIN evaluations e ON e.session_id = s.id
@@ -1581,17 +1622,22 @@ def list_students_progress() -> List[Dict[str, object]]:
             ORDER BY u.username
             """
         ).fetchall()
-        return [
+        students = [
             {
                 "id": row["id"],
                 "username": row["username"],
                 "displayName": row["display_name"] or row["username"],
                 "sessionCount": row["session_count"],
                 "evaluationCount": row["evaluation_count"],
+                "sectionCompleted": row["section_completed"],
+                "averageScore": row["avg_score"],
+                "latestScore": row["latest_score"],
+                "latestScoreLabel": row["latest_score_label"],
                 "lastActive": row["last_active"],
             }
             for row in rows
         ]
+        return students, total_sections
 
 
 def get_student_detail(student_id: int) -> Optional[Dict[str, object]]:
@@ -1714,16 +1760,24 @@ def get_student_dashboard(user_id: int) -> Dict[str, object]:
             }
         )
 
+        def _kp_name(item: object) -> str:
+            if isinstance(item, dict):
+                return (item.get("name") or item.get("label") or item.get("title") or "").strip()
+            return str(item).strip() if item is not None else ""
+
         for kp in knowledge:
-            stats = knowledge_totals[kp]
+            name = _kp_name(kp)
+            if not name:
+                continue
+            stats = knowledge_totals[name]
             stats["count"] += 1
             if score_for_skill is not None:
                 stats["score_sum"] += score_for_skill
                 stats["score_count"] += 1
 
-            latest = knowledge_latest.get(kp)
+            latest = knowledge_latest.get(name)
             if not latest or row["created_at"] >= latest.get("created_at", ""):
-                knowledge_latest[kp] = {
+                knowledge_latest[name] = {
                     "latest_score": score_for_skill,
                     "created_at": row["created_at"],
                 }
@@ -2174,6 +2228,24 @@ def verify_user_password(user_id: int, password: str) -> bool:
 
 
 def get_class_analytics() -> Dict[str, object]:
+    def normalize_knowledge_label(raw: object) -> str:
+        if raw is None:
+            return ""
+        if isinstance(raw, str):
+            text = raw.strip()
+            if text.startswith("{") or text.startswith("["):
+                try:
+                    parsed = json.loads(text)
+                    return normalize_knowledge_label(parsed)
+                except json.JSONDecodeError:
+                    return text
+            return text
+        if isinstance(raw, dict):
+            for key in ("label", "name", "title", "knowledgePoint"):
+                if raw.get(key):
+                    return str(raw.get(key)).strip()
+        return str(raw).strip()
+
     with get_connection() as conn:
         trend_rows = conn.execute(
             """
@@ -2193,8 +2265,9 @@ def get_class_analytics() -> Dict[str, object]:
 
         knowledge_rows = conn.execute(
             """
-            SELECT kp.value AS knowledge_point, e.score, e.bargaining_win_rate
+            SELECT kp.value AS knowledge_point, e.score, e.bargaining_win_rate, s.user_id
             FROM evaluations e
+            JOIN chat_sessions s ON s.id = e.session_id
             JOIN json_each(e.knowledge_points_json) AS kp
             WHERE kp.value IS NOT NULL AND kp.value != ''
             """
@@ -2208,6 +2281,15 @@ def get_class_analytics() -> Dict[str, object]:
             WHERE kp.value IS NOT NULL AND kp.value != ''
             """
         ).fetchall()
+
+        user_rows = conn.execute(
+            "SELECT id, display_name, username FROM users WHERE role = 'student'"
+        ).fetchall()
+
+    user_name_map = {
+        row["id"]: (row["display_name"] or row["username"] or f"学生 {row['id']}")
+        for row in user_rows
+    }
 
     weekly_trends: List[Dict[str, object]] = []
     for row in trend_rows:
@@ -2229,23 +2311,53 @@ def get_class_analytics() -> Dict[str, object]:
         )
 
     knowledge_stats: Dict[str, Dict[str, float]] = defaultdict(
-        lambda: {"count": 0, "score_sum": 0.0, "score_count": 0}
+        lambda: {
+            "count": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "students": defaultdict(lambda: {"count": 0, "score_sum": 0.0, "score_count": 0}),
+        }
     )
     for row in knowledge_rows:
-        kp = row["knowledge_point"]
+        kp_raw = row["knowledge_point"]
+        kp = normalize_knowledge_label(kp_raw)
         stats = knowledge_stats[kp]
         stats["count"] += 1
         value = row["score"] if row["score"] is not None else row["bargaining_win_rate"]
         if value is not None:
             stats["score_sum"] += float(value)
             stats["score_count"] += 1
+        user_id = row["user_id"]
+        if user_id is not None:
+            student_stats = stats["students"][user_id]
+            student_stats["count"] += 1
+            if value is not None:
+                student_stats["score_sum"] += float(value)
+                student_stats["score_count"] += 1
 
     knowledge_weakness = []
-    for kp, stats in knowledge_stats.items():
+    for kp_label, stats in knowledge_stats.items():
+        students_detail = []
+        for user_id, s_stats in stats["students"].items():
+            avg_score = (
+                s_stats["score_sum"] / s_stats["score_count"]
+                if s_stats["score_count"]
+                else None
+            )
+            students_detail.append(
+                {
+                    "id": user_id,
+                    "name": user_name_map.get(user_id, f"学生 {user_id}"),
+                    "count": s_stats["count"],
+                    "averageScore": avg_score,
+                }
+            )
+        students_detail.sort(key=lambda item: (-item["count"], item["name"]))
         entry = {
-            "label": kp,
-            "knowledgePoint": kp,
+            "label": kp_label,
+            "knowledgePoint": kp_label,
             "count": stats["count"],
+            "students": students_detail,
         }
         if stats["score_count"]:
             entry["averageScore"] = stats["score_sum"] / stats["score_count"]

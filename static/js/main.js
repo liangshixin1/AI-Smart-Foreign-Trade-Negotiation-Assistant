@@ -10,21 +10,16 @@ if (startLevelBtn) {
   startLevelBtn.addEventListener("click", startLevel);
 }
 
-if (startAssignmentBtn) {
-  startAssignmentBtn.addEventListener("click", () => {
-    const assignmentId = startAssignmentBtn.dataset.assignmentId;
-    if (!assignmentId) {
-      if (studentAssignmentStatus) {
-        studentAssignmentStatus.textContent = "请先选择关卡或等待教师分配案例挑战";
-      }
-      return;
-    }
-    startAssignmentSession(assignmentId);
-  });
-}
-
 if (sendMessageBtn) {
   sendMessageBtn.addEventListener("click", sendMessage);
+}
+
+if (voiceCallBtn) {
+  voiceCallBtn.addEventListener("click", startVoiceCallManually);
+}
+
+if (chatVoiceBtn) {
+  chatVoiceBtn.addEventListener("click", startVoiceCallManually);
 }
 
 if (chatInputEl) {
@@ -34,6 +29,65 @@ if (chatInputEl) {
       sendMessage();
     }
   });
+}
+
+if (emailSendBtn) {
+  emailSendBtn.addEventListener("click", sendEmailMessage);
+}
+
+if (emailDraftBtn) {
+  emailDraftBtn.addEventListener("click", handleEmailDraft);
+}
+
+if (emailPolishBtn) {
+  emailPolishBtn.addEventListener("click", handleEmailPolish);
+}
+
+if (copilotFab) {
+  copilotFab.addEventListener("click", openCopilotPanel);
+}
+
+if (copilotCloseBtn) {
+  copilotCloseBtn.addEventListener("click", closeCopilotPanel);
+}
+
+if (copilotMinimizeBtn) {
+  copilotMinimizeBtn.addEventListener("click", closeCopilotPanel);
+}
+
+if (copilotAssistBtn) {
+  copilotAssistBtn.addEventListener("click", handleCopilotAssist);
+}
+
+if (copilotAgentBtn) {
+  copilotAgentBtn.addEventListener("click", handleCopilotAgent);
+}
+
+if (copilotStopBtn) {
+  copilotStopBtn.addEventListener("click", handleCopilotStop);
+}
+
+if (copilotCopyBtn) {
+  copilotCopyBtn.addEventListener("click", () => {
+    const text = copilotOutput ? copilotOutput.textContent || "" : "";
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        if (copilotStatus) copilotStatus.textContent = "已复制到剪贴板";
+      })
+      .catch(() => {
+        if (copilotStatus) copilotStatus.textContent = "复制失败，请手动选中文本";
+      });
+  });
+}
+
+if (reviewDocumentEl) {
+  reviewDocumentEl.addEventListener("mouseup", captureReviewSelection);
+}
+
+if (reviewSaveBtn) {
+  reviewSaveBtn.addEventListener("click", saveReviewAnnotation);
 }
 
 if (theoryTree) {
@@ -66,6 +120,34 @@ if (theoryChallengeAction) {
       levelSelectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   });
+}
+
+if (voiceCallAccept) {
+  voiceCallAccept.addEventListener("click", acceptIncomingCall);
+}
+
+if (voiceCallHangup) {
+  voiceCallHangup.addEventListener("click", hangupVoiceCall);
+}
+
+if (voiceCallSendBtn) {
+  const startTalk = (event) => {
+    event.preventDefault();
+    sendManualVoiceMessage();
+  };
+  const stopTalk = (event) => {
+    event.preventDefault();
+    stopVoiceRecording();
+  };
+  voiceCallSendBtn.addEventListener("mousedown", startTalk);
+  voiceCallSendBtn.addEventListener("touchstart", startTalk, { passive: false });
+  voiceCallSendBtn.addEventListener("mouseup", stopTalk);
+  voiceCallSendBtn.addEventListener("mouseleave", stopTalk);
+  voiceCallSendBtn.addEventListener("touchend", stopTalk);
+}
+
+if (voiceCallMinimize) {
+  voiceCallMinimize.addEventListener("click", toggleVoiceCallMinimize);
 }
 
 if (studentPracticeEntryBtn) {
@@ -479,7 +561,6 @@ if (studentPasswordModalClose) {
 if (refreshSessionsBtn) {
   refreshSessionsBtn.addEventListener("click", () => {
     loadSessions();
-    loadStudentAssignments();
   });
 }
 
@@ -525,6 +606,9 @@ if (studentModalOverlay) {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && studentModalOverlay && !studentModalOverlay.classList.contains("hidden")) {
     closeStudentModal();
+  }
+  if (event.key === "Escape" && adminKnowledgeDrawer && !adminKnowledgeDrawer.classList.contains("hidden")) {
+    closeKnowledgeDrawer();
   }
 });
 
@@ -577,10 +661,6 @@ if (adminTabButtons) {
         await loadAdminStudents();
         await loadAdminAnalytics();
       }
-      if (target === "assignments") {
-        await loadAdminStudents();
-        await loadAdminAssignments();
-      }
       if (target === "blueprints") {
         await loadAdminBlueprints();
       }
@@ -604,54 +684,55 @@ if (adminStudentList) {
     const button = event.target.closest("button[data-student-id]");
     if (!button) return;
     const studentId = button.dataset.studentId;
+    if (state.admin.selectedStudentId === Number(studentId) || state.admin.selectedStudentId === studentId) {
+      state.admin.selectedStudentId = null;
+      state.admin.selectedSessionId = null;
+      state.admin.studentDetail = null;
+      renderAdminStudentList();
+      renderAdminStudentDetail(null);
+      return;
+    }
     loadAdminStudentDetail(studentId);
   });
 }
 
-if (adminAssignmentForm) {
-  adminAssignmentForm.addEventListener("submit", submitAssignment);
+if (adminStudentSearch) {
+  adminStudentSearch.addEventListener("input", () => {
+    state.admin.studentFilters.search = adminStudentSearch.value.trim();
+    renderAdminStudentList();
+  });
 }
 
-if (adminAssignmentChapter) {
-  adminAssignmentChapter.addEventListener("change", () => {
-    updateAssignmentSectionOptions();
-    state.admin.selectedAssignmentId = null;
-    renderAssignmentList();
-    if (adminAssignmentStatus) {
-      adminAssignmentStatus.textContent = "";
+if (adminStudentFilter) {
+  adminStudentFilter.addEventListener("change", () => {
+    state.admin.studentFilters.filter = adminStudentFilter.value;
+    renderAdminStudentList();
+  });
+}
+
+if (adminStudentSort) {
+  adminStudentSort.addEventListener("change", () => {
+    state.admin.studentFilters.sort = adminStudentSort.value;
+    renderAdminStudentList();
+  });
+}
+
+if (adminTrendSectionFilter) {
+  adminTrendSectionFilter.addEventListener("change", () => {
+    state.admin.selectedTrendSection = adminTrendSectionFilter.value || "all";
+    renderAdminAnalytics(state.admin.analytics);
+  });
+}
+
+if (adminKnowledgeDrawerClose) {
+  adminKnowledgeDrawerClose.addEventListener("click", closeKnowledgeDrawer);
+}
+
+if (adminKnowledgeDrawer) {
+  adminKnowledgeDrawer.addEventListener("click", (event) => {
+    if (event.target === adminKnowledgeDrawer) {
+      closeKnowledgeDrawer();
     }
-    updateInlineStatus(adminAssignmentGeneratorStatus, "");
-  });
-}
-
-if (adminAssignmentSection) {
-  adminAssignmentSection.addEventListener("change", () => {
-    updateInlineStatus(adminAssignmentGeneratorStatus, "");
-  });
-}
-
-if (adminAssignmentList) {
-  adminAssignmentList.addEventListener("click", (event) => {
-    const item = event.target.closest("li[data-assignment-id]");
-    if (!item) return;
-    selectAdminAssignment(item.dataset.assignmentId);
-  });
-  adminAssignmentList.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    const item = event.target.closest("li[data-assignment-id]");
-    if (!item) return;
-    event.preventDefault();
-    selectAdminAssignment(item.dataset.assignmentId);
-  });
-}
-
-if (studentAssignmentListEl) {
-  studentAssignmentListEl.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-assignment-id]");
-    if (!button) return;
-    startAssignmentSession(button.dataset.assignmentId);
   });
 }
 
@@ -677,13 +758,6 @@ if (adminStudentPasswordForm) {
 
 if (adminBlueprintForm) {
   adminBlueprintForm.addEventListener("submit", submitBlueprint);
-}
-
-if (adminAssignmentGenerateBtn) {
-  adminAssignmentGenerateBtn.addEventListener(
-    "click",
-    handleAssignmentScenarioGeneration,
-  );
 }
 
 if (adminBlueprintGenerateBtn) {

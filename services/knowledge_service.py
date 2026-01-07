@@ -65,6 +65,7 @@ def create_knowledge_point(
     *,
     category: Optional[str] = None,
     type: str = "concept",
+    lex_role: str = "",
     difficulty: str = "intermediate",
     importance: str = "recommended",
     summary: str = "",
@@ -86,6 +87,7 @@ def create_knowledge_point(
     SET k.code = COALESCE(k.code, $code),
         k.category = $category,
         k.type = $type,
+        k.lex_role = $lex_role,
         k.difficulty = $difficulty,
         k.importance = $importance,
         k.summary = $summary,
@@ -115,6 +117,7 @@ def create_knowledge_point(
             "code": code,
             "category": category or "uncategorized",
             "type": type,
+            "lex_role": lex_role,
             "difficulty": difficulty,
             "importance": importance,
             "summary": summary,
@@ -147,7 +150,8 @@ def update_knowledge_point(
     driver = graph_service._get_driver()
 
     allowed_fields = [
-        "category", "type", "difficulty", "importance",
+        "category", "type", "lex_role",
+        "difficulty", "importance",
         "summary", "description", "keywords", "tags",
         "estimatedMinutes", "imageUrl", "videoUrl",
         "documentUrl", "externalUrl"
@@ -585,6 +589,7 @@ def _format_knowledge_point(node) -> Dict[str, object]:
         "code": node.get("code"),
         "category": node.get("category"),
         "type": node.get("type"),
+        "lex_role": node.get("lex_role", ""),
         "difficulty": node.get("difficulty"),
         "importance": node.get("importance"),
         "summary": node.get("summary", ""),

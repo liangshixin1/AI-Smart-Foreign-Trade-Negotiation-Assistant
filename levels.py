@@ -15,6 +15,7 @@ class SectionConfig:
     environment_user_message: str
     conversation_prompt_template: str
     evaluation_prompt_template: str
+    mode: str = ""
     expects_bargaining: bool = False
 
 
@@ -601,6 +602,35 @@ def _inquiry_evaluation_prompt() -> str:
 """.strip()
 
 
+def _inquiry_email_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}。请一次性输出一封英文询盘邮件回复，而不是聊天：
+- 结构：Subject、Salutation、开场感谢、对需求的理解、澄清/追问要点、下一步请求、Closing、Signature。
+- 引用场景信息：产品 {product_name}/{product_specs}，数量 {product_quantity}，对方期望 {student_target_price}，你的底线 {ai_bottom_line}。
+- 刻意保留 1-2 个信息空缺或澄清问题（如交期、包装、付款方式），鼓励对方补充。
+- 语气正式、简洁；避免寒暄和口语；不使用多轮问答格式。
+输出仅包含邮件正文文本，不要额外解释。
+""".strip()
+
+
+def _inquiry_email_evaluation_prompt() -> str:
+    return """
+你是一名商务函电教练，评估学生的英文询盘邮件写作。请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{
+  "score": 0-100 的整数,
+  "score_label": "如 Formal / Adequate / Risky",
+  "commentary": "中文详细点评，聚焦邮件格式与商务逻辑",
+  "action_items": ["列出 3 条可执行的改进建议"],
+  "knowledge_points": ["优先覆盖：邮件结构、称呼与结尾、询盘要素、{knowledge_points_hint}"]
+}
+
+重点检查：
+- 是否包含 Subject、称呼、正文分段、Closing 与签名。
+- 是否清晰陈述需求/背景，并提出具体澄清问题。
+- 语气与措辞是否专业、礼貌且简洁。
+""".strip()
+
+
 def _offer_conversation_prompt() -> str:
     return """
 你是 {ai_company_name} 的 {ai_role}，正在与 {student_company_name} 的 {student_role} 进行报盘/议价。
@@ -639,6 +669,34 @@ def _offer_evaluation_prompt() -> str:
 """.strip()
 
 
+def _offer_email_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}。请一次性输出一封英文报价/发盘邮件，而非聊天：
+- 结构：Subject、Salutation、简短背景、报价明细（产品/数量/单价/总价/Incoterm/交期/付款/有效期）、附加条件、行动呼吁、Closing、Signature。
+- 引用场景价格锚点：学生期望 {student_target_price}，你的底线 {ai_bottom_line}；可附阶梯或条件式让步。
+- 埋入 1-2 个待核实点（如交期、附加费用或付款比例），保持专业、精炼、条列化。
+- 不做问答或口语提醒，输出仅含邮件正文。
+""".strip()
+
+
+def _offer_email_evaluation_prompt() -> str:
+    return """
+你是一名商务函电与报价写作教练，评估学生的英文报价/发盘邮件。请依据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{
+  "score": 0-100 的整数,
+  "score_label": "如 Structured / Adequate / Risky",
+  "commentary": "中文点评，关注格式、条款完整性与说服力",
+  "action_items": ["列出 3 条改进建议"],
+  "knowledge_points": ["优先覆盖：邮件结构、报价要素、让步条件、{knowledge_points_hint}"]
+}
+
+关注点：
+- 是否包含 Subject/称呼/结尾/签名，格式规范。
+- 报价要素是否完整（价格、数量、Incoterm、付款、有效期、交期等）。
+- 是否提出清晰的下一步/Call-to-action，语气专业。
+""".strip()
+
+
 def _quotation_review_conversation_prompt() -> str:
     return """
 你是 {ai_company_name} 的 {ai_role}，你不需要做任何问候，需首先向 {student_company_name} 的 {student_role} 审阅一份存在隐患的报价单。
@@ -672,13 +730,12 @@ def _quotation_review_evaluation_prompt() -> str:
 
 def _proforma_invoice_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，你不需要做任何问候，你必须首先、直接向 {student_company_name} 的 {student_role} 展示一份存在漏洞的形式发票（PI），不作解释，不作问候。
-对话目标：
-1. 发送一份简要的形式发票，其中包含与场景简报不一致或有隐患、遗漏的内容。
-2. 不要引导学生核对买卖双方信息、产品描述、数量、金额、贸易术语、附加条款是否与前序沟通一致。
-3. 学生可能指出不利条款或潜在风险，并要求 AI 更正。
-4. 你绝对不要急于承认这些风险，你需要尝试做出推脱、狡辩或者掩饰，以考验学生能力；如果学生态度继续强硬，你可以软化语气或承认问题；如果学生信以为真，或者语气软弱，请进一步否认风险。
-5. 和正常人类聊天习惯一致，每次回复3-4句话。请使用全英与学生对话。
+你是 {ai_company_name} 的 {ai_role}。请直接生成一份“形式发票 PI 草稿（存在刻意错误）”，一次性输出全文，不要寒暄，不要问答。
+生成要求（英文）：
+- 固定版式：抬头、卖方/买方信息、PI 号/日期、商品描述、数量、单价、总价、贸易术语、付款、交期、包装、有效期、附加条款。
+- 必须埋入 3-5 个与场景不一致或风险点（参考 {document_snapshot}、{issues_to_verify}、{compliance_red_flags}）：如价格/币种错、数量与 RFQ 不符、Incoterm/港口错、付款条款偏向对方、有效期过短、额外费用/检验要求缺失。
+- 用简洁句子或条目呈现；避免解释和对话语气；不要提醒学生去核对。
+- 在“附加条款”区再藏 1 个软条款（如卖方免责、单方面变更、不可退款的费用）。
 """.strip()
 
 
@@ -766,12 +823,12 @@ def _payment_negotiation_evaluation_prompt() -> str:
 
 def _lc_review_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，代表买方或其开证行，与 {student_company_name} 的 {student_role} 协商信用证条款。
-任务要求：
-1. 首轮回复必须直接抛出一份存在软条款与模糊要求的信用证草稿摘要，引用 {document_snapshot} 与 {payment_terms_matrix} 中的问题点，并以“客检证”“模糊单据描述”等方式制造风险。
-2. 在后续互动中，当学生要求改证或澄清时，先坚持原条款或提供模糊回应；若学生给出充分理由，可逐步让步，但须保留谈判张力。
-3. 将 {special_background} 作为谈判压力来源，强调时间紧迫、合规审查或买方内部流程的束缚。
-4. 每次回复 2-3 段，全程使用英文，语气专业但不完全配合。
+你是 {ai_company_name} 的 {ai_role}，代表买方/开证行。请一次性输出“信用证 MT700 草稿（含软条款）”，英文正文，避免寒暄与多轮对话。
+格式要求：按常见字段顺序列出 40A、50、59、32B、41D、42C、42A、44C、44E、45A、46A、47A、71B、78、57A 等关键段，逐行呈现。
+风险设置：
+- 至少 4 条软条款/模糊要求，结合 {document_snapshot}、{payment_terms_matrix}、{compliance_red_flags}，例如：第三方检验证书缺失/模糊、装运期/港口与合同不符、保险责任转嫁、模糊的单据描述或不合理的分批装运限制。
+- 在 46A/47A 中故意留下模糊或苛刻要求；在 71B/78 中安排额外费用或不可退款条款。
+风格：简洁、字段化，不要说明风险或引导学生检查。
 """.strip()
 
 
@@ -859,12 +916,11 @@ def _tt_balancing_evaluation_prompt() -> str:
 
 def _final_contract_conversation_prompt() -> str:
     return """
-你是 {ai_company_name} 的 {ai_role}，向 {student_company_name} 的 {student_role} 递交整合背景的正式合同/销售确认书。
-请在对话中：
-1. 提供合同关键信息摘要，并埋入规格、违约责任、争议解决或附加费用等潜在漏洞。
-2. 邀请学生逐条核对价格、数量、品质、交货、付款、违约责任等条款。
-3. 当学生指出问题时，你不要急于承认这些风险，你需要尝试做出狡辩或者掩饰，以考验学生能力；如果学生态度继续强硬，你可以软化语气或承认问题；如果学生信以为真，或者语气软弱，请进一步否认风险。
-4. 每次回复 2 段左右，不可以提供知识解释或英文术语说明。请使用全英与学生对话。
+你是 {ai_company_name} 的 {ai_role}。请一次性生成“销售合同/销售确认书草稿（含隐患）”，英文输出纯文本，不要寒暄、不要多轮对话。
+结构要求：
+1. 标题、合同号、买卖双方、商品规格/数量/单价/总价、贸易术语/港口、装运期、包装与检验、付款条款、违约责任、争议解决、不可抗力、其他条款、签字栏。
+2. 至少植入 4 处风险/不一致点（结合 {document_snapshot}、{issues_to_verify}、{compliance_red_flags}）：如仲裁地偏向卖方、预付款比例异常、装运期与前序不符、附加费用模糊、品质检验缺失或只接受卖方内检。
+3. 用短句/条目表达；保持正式合同语气；不要解释风险或提示学生检查；确保每条款编号清晰便于批注。
 """.strip()
 
 
@@ -1484,6 +1540,34 @@ def _claim_preparation_evaluation_prompt() -> str:
 """.strip()
 
 
+def _claim_email_conversation_prompt() -> str:
+    return """
+你是 {ai_company_name} 的 {ai_role}（违约方/责任方）。请一次性输出一封英文索赔函/索赔回应邮件（含隐患），而非聊天：
+- 结构：Subject、Salutation、背景说明、索赔主张/责任回应、证据与损失陈述（或质疑点）、预期解决方案与时限、Closing、Signature。
+- 引用场景：违约摘要 {breach_summary}、证据需求 {evidence_list}、损失计算依据 {loss_calculation_basis}、索赔金额预期 {claim_amount_expectation}、法律依据 {legal_basis}。
+- 至少嵌入 2-3 个谈判焦点或待澄清处（如证据不充分、金额争议、时间线要求），保持正式、简洁、条列化。
+- 输出仅含邮件正文，不要额外解释或问答。
+""".strip()
+
+
+def _claim_email_evaluation_prompt() -> str:
+    return """
+你是一名商务函电与索赔写作教练，评估学生的英文索赔函/回应邮件。请根据【场景摘要】与【对话逐字稿】仅输出 JSON：
+{
+  "score": 0-100 的整数,
+  "score_label": "如 Well-structured / Adequate / Risky",
+  "commentary": "中文点评，关注格式、证据陈述与诉求清晰度",
+  "action_items": ["列出 3 条改进建议"],
+  "knowledge_points": ["优先覆盖：邮件结构、证据与损失描述、法律依据、{knowledge_points_hint}"]
+}
+
+重点检查：
+- 是否包含 Subject、称呼、分段、Closing、签名，格式规范。
+- 事实、证据、金额、责任与预期解决路径是否清晰。
+- 语气是否正式且兼顾谈判空间。
+""".strip()
+
+
 def _claim_review_conversation_prompt() -> str:
     return """
 你是 {ai_company_name} 的 {ai_role}，代表受损方正式向学生提交索赔。
@@ -1554,9 +1638,10 @@ CHAPTERS: List[ChapterConfig] = [
                     extra_fields=_INQUIRY_SCENARIO_FIELDS,
                 ),
                 environment_user_message="为上述询盘训练情境生成 JSON 场景设定。",
-                conversation_prompt_template=_inquiry_conversation_prompt(),
-                evaluation_prompt_template=_inquiry_evaluation_prompt(),
+                conversation_prompt_template=_inquiry_email_conversation_prompt(),
+                evaluation_prompt_template=_inquiry_email_evaluation_prompt(),
                 expects_bargaining=False,
+                mode="email",
             ),
             SectionConfig(
                 id="chapter-1-section-2",
@@ -1592,9 +1677,10 @@ CHAPTERS: List[ChapterConfig] = [
                     extra_fields=_OFFER_SCENARIO_FIELDS,
                 ),
                 environment_user_message="生成报盘方案设计的 JSON 情境设定。",
-                conversation_prompt_template=_offer_conversation_prompt(),
-                evaluation_prompt_template=_offer_evaluation_prompt(),
+                conversation_prompt_template=_offer_email_conversation_prompt(),
+                evaluation_prompt_template=_offer_email_evaluation_prompt(),
                 expects_bargaining=True,
+                mode="email",
             ),
             SectionConfig(
                 id="chapter-2-section-2",
@@ -2104,9 +2190,10 @@ CHAPTERS: List[ChapterConfig] = [
                     extra_fields=_CLAIM_PREPARATION_FIELDS,
                 ),
                 environment_user_message="生成围绕违约索赔的 JSON 场景设定，列明证据清单、损失计算与法律依据。",
-                conversation_prompt_template=_claim_preparation_conversation_prompt(),
-                evaluation_prompt_template=_claim_preparation_evaluation_prompt(),
+                conversation_prompt_template=_claim_email_conversation_prompt(),
+                evaluation_prompt_template=_claim_email_evaluation_prompt(),
                 expects_bargaining=True,
+                mode="email",
             ),
             SectionConfig(
                 id="chapter-10-section-2",

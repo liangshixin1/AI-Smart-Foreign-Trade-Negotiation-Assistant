@@ -8,7 +8,7 @@ from typing import Callable, Tuple
 
 from flask import Blueprint, jsonify, request, send_file
 
-from services import graph_service, knowledge_service
+from services import graph_service, knowledge_service, lexical_suggestion_service
 from services.auth_service import current_user, require_role
 
 
@@ -435,6 +435,22 @@ def fetch_graph_network():
     def _handler() -> Tuple[dict, int]:
         snapshot = graph_service.fetch_graph_snapshot(limit=limit)
         return snapshot, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/lexical-suggestions")
+def lexical_suggestions():
+    """轻量开放：未登录则返回空建议，登录则正常查询。"""
+    utterance = request.args.get("utterance", "", type=str)
+    try:
+        current_user()
+    except Exception:
+        return jsonify({"suggestions": []}), 200
+
+    def _handler() -> Tuple[dict, int]:
+        payload = lexical_suggestion_service.get_lexical_suggestions(utterance)
+        return payload, 200
 
     return _graph_operation(_handler)
 
