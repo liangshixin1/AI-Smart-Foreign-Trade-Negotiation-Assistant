@@ -1,60 +1,117 @@
-# AI Smart Foreign Trade Negotiation Assistant (Beta 2)
+# AI Smart Foreign Trade Negotiation Assistant (Beta 3)
 
 **AI智能外贸谈判助手** - 面向职业院校与高校外贸英语教学的智能训练平台
 
-基于Flask + DeepSeek + Neo4j技术栈，为教师和学生提供沉浸式的外贸谈判实战训练与知识图谱管理能力。
+基于Flask + DeepSeek + Neo4j + DashScope技术栈，为教师和学生提供沉浸式的外贸谈判实战训练、语义网络知识图谱与智能语音交互能力。
 
 ---
 
-## ✨ Beta 2 核心功能
+## Beta 3 核心功能
 
-### 🎯 沉浸式关卡式训练
+### 沉浸式关卡式训练
 - **10章关卡地图** - 询盘、报盘、还盘、签约、备货、报检报关、装运、保险、结汇、纠纷处理
 - **3档难度系统** - balanced（标准）、challenging（挑战）、realistic（真实场景）
 - **AI场景生成** - DeepSeek自动生成多样化谈判情境
 - **实时AI对手** - 模拟真实外贸伙伴，支持流式对话
-- **智能评估** - 自动打分并提供改进建议
+- **智能评估** - 自动打分并提供改进建议，支持SSE流式反馈
 
-### 🧠 知识图谱管理（核心亮点）
-- **Neo4j本地部署** - Docker一键启动，无云端依赖，<10ms延迟
-- **完整知识点CRUD** - Web UI + 13个REST API端点
-- **批量导入导出** - Excel模板，支持一次性导入100+知识点
-- **关系可视化** - AntV G6图谱，支持前置依赖、关联关系
-- **Beta功能**：
-  - **自动构建** - 上传Word教材 → AI生成知识点草稿 → 教师审核 → 写入图谱
-  - **智能匹配** - 选中课文片段 → DeepSeek精排/RAG匹配 → 自动插入知识卡
+### 实战练习界面（Beta 3 新增）
+- **Review Mode（单证审查模式）** - 模拟真实单证审核流程
+- **界面重塑** - 接近真实阿里外贸软件体验
+- **即时评估** - 评分与建议分离，实时展示评估结果
+- **知识点匹配** - 理论实践与知识图谱实时关联
 
-### 👨‍🏫 教师工作台
-- **作业管理** - 布置作业、查看进度、批量导出成绩
-- **场景蓝图编辑** - 自定义关卡参数（公司、产品、市场、风险）
-- **班级分析** - Chart.js可视化学生能力分布、成长趋势
-- **学生名册导入** - Excel批量导入账号
-- **理论课时编辑** - 富文本编辑器，支持知识点关联
-- **知识图谱管理** - 可视化界面管理25+字段的知识点
+### 语义网络知识图谱（Beta 3 核心升级）
+- **DAG风格架构** - 有向无环图结构，支持复杂知识依赖
+- **心理语言学概念** - 引入语义网络、同族/同类/搭配关系
+- **新增节点类型**：
+  - `SemanticClass` - 语义类别节点
+  - `Slot` - 槽位节点，支持上下文替换
+- **新增关系类型**：
+  - `IN_CLASS` - 语义类别归属
+  - `FITS_SLOT` - 槽位匹配关系
+- **知识点预计算** - 教师上传理论内容后自动预匹配，避免运行时负载
+- **Neo4j本地部署** - Docker一键启动，<10ms延迟
 
-### 👨‍🎓 学生成长中心
-- **谈判会话存档** - 保存所有对话历史与评估结果
-- **知识点讲解** - DeepSeek生成个性化解释
+### "词汇网"功能（Beta 3 新增）
+- **语气替换** - 提供更柔和/更强硬/中性的表达替代
+- **思政元素** - Win-Win、诚信、尊严、合规导向建议
+- **地道性替换** - 更自然的本地化表达推荐
+- **上下文锚点** - 基于相关知识点的精准建议
+- **向量召回+图谱融合** - 多路召回，按得分排序
+
+### 语音交互系统（Beta 3 新增）
+- **语音输入（ASR）**
+  - 实时语音转写，支持流式识别
+  - WebSocket持续监听模式
+  - PCM格式处理优化
+  - DashScope语音识别集成
+- **语音合成（TTS）**
+  - 文本转语音功能
+  - 多种音色选择（Ryan、Cherry、Jennifer等）
+  - 24kHz高质量音频输出
+  - 流式音频合成
+- **语音通话模式**
+  - 手动发送按钮，优化用户控制
+  - 拖动操作支持
+  - 挂断功能
+  - 语音录制逻辑优化
+
+### AI辅助功能（Beta 3 新增）
+- **邮件助手** - `/api/ai/email/assist`
+  - 生成邮件草稿
+  - 润色现有邮件
+  - 基于场景上下文的智能建议
+- **聊天Copilot** - `/api/ai/chat/copilot`
+  - 实时聊天建议
+  - 流式响应输出
+  - 谈判策略推荐
+
+### 知识点召回增强（Beta 3 优化）
+- **快速本地检索** - 优化知识点匹配速度
+- **多模型嵌入缓存** - 支持模型热切换，避免冲突
+- **召回限制优化** - 默认召回5条高相关知识点
+- **来源区分** - 前端标识AI识别 vs 关键字识别
+- **Reranker服务** - 结果重排序提升准确性
+
+### 教师工作台（Beta 3 增强）
+- **学生分析增强**
+  - 知识标签标准化处理
+  - 学生状态判定系统
+  - 学习进度颜色标识
+  - 学生列表筛选、排序与搜索
+- **数据可视化**
+  - 学习趋势图表（每周表现变化）
+  - 行为热点渲染
+  - 知识薄弱点详情视图
+- **场景蓝图编辑** - 自定义关卡参数
+- **理论课时编辑** - 富文本+知识点关联
+
+### 学生成长中心
+- **谈判会话存档** - 保存对话历史与评估
+- **知识点讲解** - 个性化解释
 - **学习档案** - 能力雷达图、成长曲线
-- **练习推荐** - 基于知识图谱的个性化推荐
+- **即时反馈面板** - 分数先行显示
 
 ---
 
-## 🏗️ 技术架构
+## 技术架构
 
 ### 后端
 ```
-Python 3.8+  Flask  SQLite  Neo4j 5.15  DeepSeek API (OpenAI兼容)
+Python 3.8+  Flask  SQLite  Neo4j 5.15  DeepSeek API  DashScope API
+sentence-transformers (嵌入模型)
 ```
 
 ### 前端
 ```
 Vanilla JavaScript  Tailwind CSS  Chart.js  AntV G6
+Vite + React (新增模板工程)
 ```
 
 ### 数据库
-- **SQLite** (`app.db`) - 用户、会话、作业、课时等业务数据（13张表）
-- **Neo4j** (Docker) - 知识图谱（8种节点类型、12种关系类型）
+- **SQLite** (`app.db`) - 用户、会话、课时等业务数据（13张表）
+- **Neo4j** (Docker) - 知识图谱（10种节点类型、15+种关系类型）
 
 ### 核心文件
 ```
@@ -62,44 +119,52 @@ AI-Smart-Foreign-Trade-Negotiation-Assistant/
 ├── app.py                      # Flask应用入口
 ├── database.py                 # SQLite持久层
 ├── levels.py                   # 10章关卡配置 + Prompt模板
-├── routes/                     # 7个蓝图模块
+├── routes/                     # 11个蓝图模块
 │   ├── auth.py                 # 登录、个人信息
+│   ├── admin.py                # 教师端管理 (35KB)
 │   ├── scenarios.py            # 场景生成
-│   ├── assignments.py          # 作业与会话流程
-│   ├── admin.py                # 教师端管理
+│   ├── assignments.py          # 会话流程 + SSE评估
+│   ├── assistants.py           # AI邮件/聊天辅助
 │   ├── theory.py               # 理论课时
 │   ├── graph.py                # 知识图谱API (13个端点)
-│   └── knowledge.py            # 知识点讲解
-├── services/                   # 18个业务服务
+│   ├── knowledge.py            # 知识点讲解
+│   ├── asr.py                  # 语音识别 (Beta 3)
+│   └── tts.py                  # 语音合成 (Beta 3)
+├── services/                   # 20个业务服务
 │   ├── llm_service.py          # DeepSeek API封装
-│   ├── scenario_generator.py  # 场景生成引擎
-│   ├── evaluation_service.py  # 会话评估
-│   ├── graph_service.py        # Neo4j核心服务 (115KB)
+│   ├── scenario_generator.py   # 场景生成引擎
+│   ├── evaluation_service.py   # 会话评估 (SSE增强)
+│   ├── graph_service.py        # Neo4j核心服务 (120KB)
 │   ├── knowledge_service.py    # 知识点CRUD
 │   ├── knowledge_importer.py   # Excel批量导入导出
+│   ├── lexical_suggestion_service.py  # 词汇网服务 (Beta 3)
+│   ├── embedding_service.py    # 多模型嵌入缓存 (Beta 3)
+│   ├── reranker_service.py     # 结果重排序 (Beta 3)
 │   ├── ai_matching.py          # DeepSeek精排知识点
-│   ├── rag_matcher.py          # RAG相似度匹配 (Beta)
+│   ├── rag_matcher.py          # RAG相似度匹配
 │   ├── docx_importer.py        # Word教材解析
-│   └── knowledge_job_service.py # 知识图谱构建任务
+│   └── knowledge_graph_batch_importer.py # 批量导入
 ├── static/
 │   ├── index.html              # 单页应用 (4124行)
 │   └── js/
 │       ├── main.js             # 路由控制
-│       ├── student.js          # 学生端功能 (95KB)
-│       ├── admin.js            # 管理端功能 (253KB)
-│       ├── graph-knowledge.js  # 知识图谱UI (56KB)
+│       ├── student.js          # 学生端功能 (193KB)
+│       ├── admin.js            # 管理端功能 (275KB)
+│       ├── graph-knowledge.js  # 知识图谱UI (55KB)
 │       └── admin/              # 模块化脚本 (8个文件)
+├── foreign-trade/              # Vite+React前端模板 (Beta 3)
 └── docs/                       # 完整文档
 ```
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 前置要求
 - Python 3.8+
 - Docker 20.10+ (用于Neo4j)
 - DeepSeek API Key ([获取地址](https://platform.deepseek.com))
+- DashScope API Key (用于语音功能，可选)
 
 ### 1. 克隆项目
 ```bash
@@ -137,6 +202,9 @@ DEEPSEEK_KP_API_KEY=sk-xxx       # 知识点匹配
 
 # 或使用单个通用Key
 DEEPSEEK_API_KEY=sk-xxx
+
+# DashScope配置（语音功能，可选）
+DASHSCOPE_API_KEY=sk-xxx
 ```
 
 ### 4. 安装依赖
@@ -158,50 +226,52 @@ python app.py
 
 ---
 
-## 📖 主要功能演示
+## 主要功能演示
 
 ### 学生端：谈判训练
-1. 选择章节（如"第一章 询盘"）→ 选择小节（如"1-1 产品询盘"）
+1. 选择章节（如"第一章 询盘"）→ 选择小节
 2. 选择难度 → 点击"开始训练"
 3. AI生成场景（开场邮件 + 对手信息）
-4. 实时对话（支持流式输出）
+4. 实时对话（支持流式输出 + 语音输入）
 5. 结束会话 → 查看评估结果与改进建议
+
+### 学生端：语音通话模式（Beta 3）
+1. 开始谈判训练后，点击语音模式切换
+2. 按住录音按钮进行语音输入
+3. 系统实时转写并发送消息
+4. AI回复可选择语音播放
 
 ### 教师端：知识图谱管理
 1. 进入"知识图谱"标签页
-2. **方式1：手动创建**
-   - 点击"新增" → 填写知识点信息（名称、分类、难度等）
-   - 添加前置依赖和关联关系 → 保存
-3. **方式2：Excel批量导入**
-   - 下载模板 → 填写100+知识点 → 上传导入
-   - 系统显示导入统计（创建/更新/失败数量）
-4. **方式3：Word教材自动构建 (Beta)**
-   - 上传教材DOCX → AI生成知识点草稿
-   - 教师勾选审核通过 → 批量写入Neo4j
+2. **方式1：手动创建** - 填写知识点信息
+3. **方式2：Excel批量导入** - 下载模板填写上传
+4. **方式3：Word教材自动构建** - 上传教材自动生成草稿
 
-### 教师端：作业管理
-1. 进入"作业管理"标签页
-2. 点击"布置作业" → 选择章节、难度、截止时间
-3. 选择学生名单 → 发布
-4. 查看学生完成进度 → 导出成绩Excel
+### 教师端：学生分析（Beta 3）
+1. 进入学生管理界面
+2. 使用筛选/排序/搜索功能
+3. 查看学习趋势图表
+4. 分析行为热点与知识薄弱点
 
 ---
 
-## 🧩 知识图谱Schema
+## 知识图谱Schema
 
-### 节点类型 (8种)
+### 节点类型 (10种)
 ```cypher
-KnowledgePoint      # 知识点（25+属性：name, category, difficulty, tags等）
+KnowledgePoint      # 知识点（25+属性）
 KnowledgeCategory   # 知识分类（三级分类体系）
-Stage               # 谈判阶段（询盘、报盘、还盘等）
+Stage               # 谈判阶段
 Topic               # 理论主题
 Practice            # 实战练习
 TheoryLesson        # 理论课时
 ProcessStep         # 流程步骤
 Terminology         # 术语 (FOB, CIF等)
+SemanticClass       # 语义类别 (Beta 3)
+Slot                # 槽位节点 (Beta 3)
 ```
 
-### 关系类型 (12种)
+### 关系类型 (15+种)
 ```cypher
 REQUIRES            # 前置依赖 (strict: true/false)
 RELATES_TO          # 关联 (prerequisite/similar/contrast/extension)
@@ -215,6 +285,9 @@ HAS_LESSON          # 包含课时
 TESTS               # 考察知识点
 EXPLAINS            # 解释知识点
 NEXT_STEP           # 流程顺序
+IN_CLASS            # 语义类别归属 (Beta 3)
+FITS_SLOT           # 槽位匹配 (Beta 3)
+RELATED_TO          # 同族/同类/搭配 (Beta 3)
 ```
 
 ### 典型查询示例
@@ -223,102 +296,95 @@ NEXT_STEP           # 流程顺序
 MATCH path = (k:KnowledgePoint {name: '信用证操作'})<-[:REQUIRES*]-(pre)
 RETURN path ORDER BY length(path);
 
-// 按分类浏览知识点
-MATCH (k:KnowledgePoint)-[:BELONGS_TO]->(c:KnowledgeCategory {id: 'incoterms'})
-RETURN k.name, k.difficulty, k.importance;
+// 按语义类别查找同类词汇
+MATCH (k:KnowledgePoint)-[:IN_CLASS]->(c:SemanticClass {name: '价格术语'})
+RETURN k.name, k.difficulty;
 
-// 查看谈判流程骨架
-MATCH (s:Stage)-[:NEXT_STEP]->(next:Stage)
-RETURN s.name, next.name;
+// 查找槽位替换建议
+MATCH (k:KnowledgePoint)-[:FITS_SLOT]->(s:Slot {type: 'tone'})
+RETURN k.name, s.suggestion;
 ```
 
 ---
 
-## 🔌 API接口示例
+## API接口示例
 
 ### 知识点管理API (13个端点)
 ```bash
-# 获取知识点列表（支持过滤）
-GET /api/graph/knowledge-points/enhanced?category=贸易术语&difficulty=beginner
-
-# 创建知识点
-POST /api/graph/knowledge-points
-Content-Type: application/json
-{
-  "name": "FOB价格计算",
-  "category": "贸易术语",
-  "difficulty": "beginner",
-  "importance": "required",
-  "summary": "FOB价格的构成及计算方法",
-  "tags": ["FOB", "价格", "计算"]
-}
-
-# 更新知识点
-PUT /api/graph/knowledge-points/FOB价格计算
-
-# 删除知识点
-DELETE /api/graph/knowledge-points/FOB价格计算
-
-# 添加前置依赖
-POST /api/graph/knowledge-points/信用证操作/prerequisites
-{"prerequisite_name": "国际支付工具", "is_strict": true}
-
-# Excel导入导出
-GET  /api/graph/import/template      # 下载模板
-POST /api/graph/import/excel         # 导入
-GET  /api/graph/export/excel         # 导出
+GET  /api/graph/knowledge-points/enhanced   # 列表查询
+POST /api/graph/knowledge-points            # 创建
+PUT  /api/graph/knowledge-points/<name>     # 更新
+DELETE /api/graph/knowledge-points/<name>   # 删除
 ```
 
-### 场景生成API
+### 词汇建议API (Beta 3)
 ```bash
-POST /api/generator/scenario
+POST /api/graph/lexical-suggestions
 {
-  "chapter_id": "chapter-1",
-  "section_id": "section-1-1",
-  "difficulty": "balanced",
-  "custom_params": {
-    "student_company": "XX进出口公司",
-    "target_product": "儿童玩具"
-  }
+  "text": "请给我报价",
+  "context_anchors": ["询盘", "价格谈判"],
+  "suggestion_types": ["tone", "civics", "idiomatic"]
 }
 ```
 
-### 聊天API
+### 语音API (Beta 3)
 ```bash
-POST /api/chat
+# 语音识别
+POST /api/asr/transcribe    # 文件上传转写
+WS   /api/asr/stream        # WebSocket流式识别
+
+# 语音合成
+POST /api/tts/synthesize
 {
-  "session_id": "session-xxx",
-  "message": "Hello, I'm interested in your toy products.",
-  "stream": true  # 流式输出
+  "text": "Hello, thank you for your inquiry.",
+  "voice": "Ryan"
 }
 ```
 
-完整API文档请查看 `routes/` 目录下的蓝图定义。
+### AI辅助API (Beta 3)
+```bash
+# 邮件助手
+POST /api/ai/email/assist
+{
+  "action": "draft",  # draft/polish
+  "context": "询盘回复",
+  "content": "..."
+}
+
+# 聊天Copilot
+POST /api/ai/chat/copilot
+{
+  "session_id": "xxx",
+  "message": "对方要求降价10%",
+  "stream": true
+}
+```
 
 ---
 
-## 📊 系统对比 (Beta 1 → Beta 2)
+## 系统对比 (Beta 2 → Beta 3)
 
-| 功能 | Beta 1 | Beta 2 |
+| 功能 | Beta 2 | Beta 3 |
 |------|--------|--------|
-| 知识图谱部署 | Neo4j Aura云端（不稳定） | Docker本地部署（<10ms） |
-| 知识点属性 | 1个 (name) | 25+ 个 |
-| 知识图谱可视化 | ECharts | AntV G6 |
-| 知识点管理 | 无UI | 完整Web UI + 13个API |
-| 批量导入 | 无 | Excel/CSV批量导入 |
-| 自动构建图谱 | 无 | ✅ Word教材自动解析 (Beta) |
-| 智能匹配 | 无 | ✅ DeepSeek精排 + RAG (Beta) |
-| 关系类型 | 7种 | 12种 |
-| 节点类型 | 5种 | 8种 |
-| 前端模块化 | 单文件 | 8个模块化脚本 |
+| 知识图谱架构 | 普通图结构 | DAG风格 + 语义网络 |
+| 节点类型 | 8种 | 10种 (新增SemanticClass, Slot) |
+| 关系类型 | 12种 | 15+种 (新增IN_CLASS, FITS_SLOT等) |
+| 语音交互 | 无 | ASR + TTS + 语音通话 |
+| 词汇建议 | 无 | 词汇网（语气/思政/地道性） |
+| AI辅助 | 无 | 邮件助手 + 聊天Copilot |
+| 实战界面 | 基础 | 接近真实阿里外贸软件 |
+| 知识点匹配 | 运行时计算 | 预计算 + 快速检索 |
+| 嵌入模型 | 单一 | 多模型缓存 |
+| 学生分析 | 基础 | 趋势图表 + 热点分析 |
 
 ---
 
-## 📁 重要文档
+## 重要文档
 
 | 文档 | 说明 |
 |------|------|
 | [快速开始指南](QUICK_START.md) | 5分钟快速部署 |
+| [Beta 3功能总结](docs/BETA3_FEATURES.md) | 完整新功能介绍 |
 | [Neo4j本地部署](docs/NEO4J_LOCAL_SETUP.md) | Docker配置详解 |
 | [知识图谱Schema](docs/KNOWLEDGE_GRAPH_SCHEMA.md) | 节点/关系设计 |
 | [知识点管理UI使用指南](docs/知识点管理UI使用指南.md) | 教师操作手册 |
@@ -328,7 +394,7 @@ POST /api/chat
 
 ---
 
-## 🛠️ 生产环境部署
+## 生产环境部署
 
 ### 1. 使用Gunicorn
 ```bash
@@ -348,12 +414,12 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # 禁止访问敏感文件
-    location ~ /\. {
-        deny all;
-    }
-    location ~ \.env$ {
-        deny all;
+    # WebSocket支持（语音功能）
+    location /api/asr/stream {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 ```
@@ -368,41 +434,9 @@ docker exec foreign-trade-neo4j neo4j-admin database dump neo4j \
   --to-path=/data/backups/backup-$(date +%Y%m%d).dump
 ```
 
-### 4. 安全加固
-- 修改默认账号密码（0000/0001）
-- 修改Neo4j默认密码
-- 启用HTTPS
-- 限制Neo4j远程访问（127.0.0.1:7687）
-- 定期更新依赖包
-
 ---
 
-## 🔧 故障排查
-
-### 问题1：Neo4j连接失败
-```bash
-# 检查Neo4j是否运行
-docker ps | grep neo4j
-
-# 查看日志
-docker-compose -f docker-compose.neo4j.yml logs neo4j
-
-# 重启Neo4j
-docker-compose -f docker-compose.neo4j.yml restart
-```
-
-### 问题2：DeepSeek API调用失败
-- 检查API Key是否正确
-- 检查账户余额
-- 检查网络连接
-- 查看后端日志：`tail -f app.log`
-
-### 问题3：理论内容无法创建（401错误）
-详见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-
----
-
-## 🤝 贡献指南
+## 贡献指南
 
 欢迎提交Issue和Pull Request：
 
@@ -412,20 +446,15 @@ docker-compose -f docker-compose.neo4j.yml restart
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 提交Pull Request
 
-**代码规范**：
-- 遵循现有代码风格
-- 添加必要的注释
-- 更新相关文档
-
 ---
 
-## 📜 开源协议
+## 开源协议
 
 MIT License
 
 ---
 
-## 👥 致谢
+## 致谢
 
 **项目组成员**：
 - 梁诗忻 - 程序设计与实现
@@ -434,7 +463,9 @@ MIT License
 - [Flask](https://flask.palletsprojects.com/) - Web框架
 - [Neo4j](https://neo4j.com/) - 图数据库
 - [DeepSeek](https://www.deepseek.com/) - 大语言模型
+- [DashScope](https://dashscope.aliyun.com/) - 语音服务
 - [AntV G6](https://g6.antv.antgroup.com/) - 图可视化
+- [sentence-transformers](https://www.sbert.net/) - 向量嵌入
 - [Tailwind CSS](https://tailwindcss.com/) - UI框架
 
 **教材参考**：
@@ -442,11 +473,11 @@ MIT License
 
 ---
 
-## 📞 联系方式
+## 联系方式
 
 - GitHub Issues: [提交问题](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant/issues)
 - 项目地址: https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant
 
 ---
 
-**© 2025 AI赋能：智能时代的外贸谈判策略与实战 项目组**
+**2025 AI赋能：智能时代的外贸谈判策略与实战 项目组**
