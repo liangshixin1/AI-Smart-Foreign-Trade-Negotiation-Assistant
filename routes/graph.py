@@ -441,12 +441,8 @@ def fetch_graph_network():
 
 @bp.get("/api/lexical-suggestions")
 def lexical_suggestions():
-    """轻量开放：未登录则返回空建议，登录则正常查询。"""
+    """公开端点：根据输入文本返回可改进的表达建议。"""
     utterance = request.args.get("utterance", "", type=str)
-    try:
-        current_user()
-    except Exception:
-        return jsonify({"suggestions": []}), 200
 
     def _handler() -> Tuple[dict, int]:
         payload = lexical_suggestion_service.get_lexical_suggestions(utterance)

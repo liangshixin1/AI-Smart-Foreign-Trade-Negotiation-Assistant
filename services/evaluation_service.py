@@ -597,7 +597,12 @@ def evaluate_session(session_id: str, session: Dict[str, object]) -> Dict[str, o
 
 
 def _evaluation_embedding_model_name() -> str:
-    return os.getenv("EVALUATION_EMBEDDING_MODEL_NAME") or "BAAI/bge-m3"
+    return (
+        os.getenv("EVALUATION_EMBEDDING_MODEL_NAME")
+        or os.getenv("EMBEDDING_MODEL_NAME")
+        or os.getenv("EMBEDDING_MODEL")
+        or "BAAI/bge-m3"
+    )
 
 
 def _evaluation_reranker_model_name() -> str:
