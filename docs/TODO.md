@@ -243,7 +243,7 @@
 DASHSCOPE_API_KEY=sk-xxx
 
 # 嵌入模型配置
-EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+EMBEDDING_MODEL_NAME=BAAI/bge-m3  # 或 EMBEDDING_MODEL=BAAI/bge-m3（兼容旧变量名）
 EMBEDDING_CACHE_DIR=./models
 
 # 词汇网配置

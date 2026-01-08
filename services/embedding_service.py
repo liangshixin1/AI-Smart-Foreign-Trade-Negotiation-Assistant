@@ -13,7 +13,8 @@ _model_lock = threading.Lock()
 
 
 def _get_model_name() -> str:
-    return os.getenv("EMBEDDING_MODEL_NAME") or "paraphrase-multilingual-MiniLM-L12-v2"
+    # EMBEDDING_MODEL 为历史兼容；优先使用 EMBEDDING_MODEL_NAME
+    return os.getenv("EMBEDDING_MODEL_NAME") or os.getenv("EMBEDDING_MODEL") or "BAAI/bge-m3"
 
 
 def get_model(model_name: Optional[str] = None):
@@ -38,11 +39,16 @@ def get_model(model_name: Optional[str] = None):
             return None
         model = None
         try:
+            cache_dir = (os.getenv("EMBEDDING_CACHE_DIR") or "").strip() or None
+            kwargs = {"cache_folder": cache_dir} if cache_dir else {}
             # 部分社区模型（如 BGE-M3）需要 trust_remote_code；在旧版本 sentence-transformers 中该参数可能不存在。
             try:
-                model = SentenceTransformer(name, trust_remote_code=True)
+                model = SentenceTransformer(name, trust_remote_code=True, **kwargs)
             except TypeError:
-                model = SentenceTransformer(name)
+                try:
+                    model = SentenceTransformer(name, **kwargs)
+                except TypeError:
+                    model = SentenceTransformer(name)
         except Exception:
             model = None
         if model is None:

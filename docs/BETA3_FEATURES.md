@@ -434,7 +434,8 @@ class EmbeddingService:
 
 | 模型 | 维度 | 语言 | 场景 |
 |------|------|------|------|
-| paraphrase-multilingual-MiniLM-L12-v2 | 384 | 多语言 | 默认 |
+| BAAI/bge-m3 | 1024 | 多语言 | 默认 |
+| paraphrase-multilingual-MiniLM-L12-v2 | 384 | 多语言 | 轻量/CPU |
 | shibing624/text2vec-base-chinese | 768 | 中文 | 中文优化 |
 | all-MiniLM-L6-v2 | 384 | 英文 | 英文场景 |
 
@@ -629,7 +630,7 @@ POST /api/ai/chat/copilot (stream)    首字符 200ms
 DASHSCOPE_API_KEY=sk-xxx
 
 # 嵌入模型配置
-EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+EMBEDDING_MODEL_NAME=BAAI/bge-m3  # 或 EMBEDDING_MODEL=BAAI/bge-m3（兼容旧变量名）
 EMBEDDING_CACHE_DIR=./models
 
 # 词汇网配置
