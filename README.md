@@ -105,9 +105,17 @@ sentence-transformers (嵌入模型)
 
 ### 前端
 ```
-Vanilla JavaScript  Tailwind CSS  Chart.js  AntV G6
-Vite + React (新增模板工程)
+React 19 + TypeScript + Vite（渐进式现代化入口）
+Vanilla JavaScript + Tailwind CSS + Chart.js + AntV G6（兼容旧版，逐域迁移）
 ```
+
+### 渐进式现代化架构
+- **可测试应用工厂** - `negotiation_assistant/` 统一配置、蓝图、启动任务和错误契约
+- **运行状态可观测** - `/api/system/health` 展示基础设施启动与降级状态
+- **React 迁移入口** - `/modern/` 承载模块化新前端，旧版 `/` 保持可用
+- **按业务域迁移** - 训练、教学管理、知识智能独立演进，避免再次形成巨型脚本
+
+详细设计请参阅 [`docs/MODERNIZATION_ARCHITECTURE.md`](docs/MODERNIZATION_ARCHITECTURE.md)。
 
 ### 数据库
 - **SQLite** (`app.db`) - 用户、会话、课时等业务数据（13张表）
