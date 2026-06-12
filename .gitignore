@@ -5,8 +5,4 @@ app.db
 *.log
 app.log
 .DS_Store
-.gitignore
-.DS_Store
-.gitignore
-.DS_Store
 thesis.md
