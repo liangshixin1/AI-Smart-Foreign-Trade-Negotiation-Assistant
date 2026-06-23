@@ -2384,50 +2384,28 @@ async function renderLessonSubgraph(lessonId) {
       studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>G6 未加载</p>";
       return;
     }
+    if (typeof renderKnowledgeGraphG6 !== "function") {
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>图谱渲染器未就绪</p>";
+      return;
+    }
     studentLessonGraph.innerHTML = "";
-    studentLessonGraphInstance = new G6.Graph({
+    // 复用统一的分层渲染器：阶段→主题→知识点横向分层，叠加流程/语义连线，并高亮本课关联知识点。
+    studentLessonGraphInstance = renderKnowledgeGraphG6({
       container: studentLessonGraph,
-      width: studentLessonGraph.clientWidth || 600,
-      height: studentLessonGraph.clientHeight || 300,
-      layout: { type: "force", preventOverlap: true, linkDistance: 200, nodeStrength: -360 },
-      modes: { default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }] },
-      defaultNode: {
-        labelCfg: { position: "bottom", style: { fill: "#0f172a", fontSize: 12, fontWeight: 600 } },
-        style: { fill: "#38bdf8", stroke: "#0ea5e9" },
-        stateStyles: { highlight: { shadowColor: "#22c55e", shadowBlur: 18, lineWidth: 2 } },
+      nodes,
+      edges,
+      direction: "LR",
+      compact: true,
+      theme: "light",
+      highlightNames: highlights,
+      onNodeClick: (id, model) => {
+        if (model && (model.nodeType === "Stage" || model.nodeType === "Topic")) return;
+        showStudentKnowledgeCard((model && (model.name || model.fullTitle)) || id);
       },
-      defaultEdge: {
-        type: "line",
-        style: { stroke: "rgba(148,163,184,0.5)", endArrow: true },
-      },
-      animate: true,
-      fitCenter: true,
     });
-    studentLessonGraphInstance.node((n) => {
-      const type = n.nodeType || n.label;
-      if (type === "Stage") {
-        return { size: 46, style: { fill: "#3b82f6", stroke: "#2563eb" } };
-      }
-      if (type === "Topic") {
-        return { type: "rect", size: [36, 24], style: { fill: "#f97316", stroke: "#ea580c" } };
-      }
-      const highlighted = highlights.has(n.name) || highlights.has(n.id);
-      return {
-        size: highlighted ? 22 : 14,
-        style: { fill: highlighted ? "#22c55e" : "#94a3b8", stroke: highlighted ? "#16a34a" : "#64748b" },
-      };
-    });
-    studentLessonGraphInstance.data({ nodes, edges });
-    studentLessonGraphInstance.render();
-    studentLessonGraphInstance.fitView(40);
-    studentLessonGraphInstance.on("node:click", (evt) => {
-      const model = evt.item?.getModel();
-      if (!model) return;
-      if (model.label === "KnowledgePoint" || model.key || model.id) {
-        const name = model.name || model.id;
-        showStudentKnowledgeCard(name);
-      }
-    });
+    if (!studentLessonGraphInstance) {
+      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>本课暂无可展示的知识图谱</p>";
+    }
   } catch (error) {
     console.error("[LessonSubgraph]", error);
     studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>加载失败</p>";

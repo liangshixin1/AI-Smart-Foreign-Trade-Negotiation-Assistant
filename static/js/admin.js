@@ -10,6 +10,8 @@ let adminG6Graph = null;
 let adminGraphSelectionKey = null;
 // 后台知识图谱渲染模式，默认采用“关系优先”的语义网络。
 let adminGraphRenderer = "semantic";
+// 知识图谱分层方向：TB=纵向（阶段在上），LR=横向（阶段在左）。可通过工具栏按钮切换。
+let adminGraphDirection = "TB";
 const expandedStages = new Set();
 const expandedTopics = new Set();
 // 知识卡弹窗的本地状态缓存，记录当前编辑节点、选中知识点等。
@@ -2564,269 +2566,321 @@ function truncateGraphLabel(text, max = 12) {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function buildSemanticGraphModel(nodesRaw, edgesRaw, width, height) {
-  const nodeMap = new Map();
-  nodesRaw.forEach((node) => {
-    const id = getGraphNodeId(node);
-    if (id) nodeMap.set(id, { ...node, id });
-  });
+// 层级（结构）关系：决定 dagre 分层布局的上下层级；其余关系作为语义/流程/跨文化连线叠加。
+const HIERARCHY_RELATION_TYPES = new Set([
+  "CONTAIN_TOPIC",
+  "INCLUDE_POINT",
+  "HAS_CATEGORY",
+  "CONTAINS",
+]);
 
-  const stageByNode = new Map();
-  const stageTopicEdges = edgesRaw.filter((e) => e.type === "CONTAIN_TOPIC");
-  const topicPointEdges = edgesRaw.filter((e) => ["INCLUDE_POINT", "HAS_CATEGORY", "CONTAINS"].includes(e.type));
-
-  nodeMap.forEach((node, id) => {
-    if (node.label === "Stage") stageByNode.set(id, getGraphNodeTitle(node));
-    if (node.stage || node.stageName) stageByNode.set(id, node.stage || node.stageName);
-  });
-  stageTopicEdges.forEach((edge) => {
-    const source = edge.source || edge.from;
-    const target = edge.target || edge.to;
-    const stage = nodeMap.get(source);
-    if (stage && target) stageByNode.set(target, getGraphNodeTitle(stage));
-  });
-  topicPointEdges.forEach((edge) => {
-    const source = edge.source || edge.from;
-    const target = edge.target || edge.to;
-    if (!source || !target) return;
-    if (stageByNode.has(source)) stageByNode.set(target, stageByNode.get(source));
-  });
-
-  const stages = [...nodeMap.values()].filter((n) => n.label === "Stage").sort((a, b) => (a.order || 0) - (b.order || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
-  const stageNames = stages.map(getGraphNodeTitle);
-  const stageX = new Map();
-  const marginX = 90;
-  const stageY = 96;
-  const usableWidth = Math.max(600, width - marginX * 2);
-  stages.forEach((stage, index) => {
-    const x = stages.length <= 1 ? width / 2 : marginX + (usableWidth * index) / Math.max(1, stages.length - 1);
-    stageX.set(getGraphNodeId(stage), x);
-    stageX.set(getGraphNodeTitle(stage), x);
-  });
-
-  const grouped = new Map(stageNames.map((name) => [name, { topics: [], points: [], resources: [] }]));
-  const culture = [];
-  const ungrouped = [];
-  nodeMap.forEach((node, id) => {
-    if (node.label === "Stage") return;
-    if (node.label === "CultureDimension") {
-      culture.push(node);
-      return;
+// 将较长中文标题按每行字数折行，避免节点标签溢出与相互遮挡。
+function wrapGraphLabel(text, perLine = 6, maxLines = 3) {
+  const value = String(text || "");
+  if (!value) return "";
+  const lines = [];
+  for (let i = 0; i < value.length; i += perLine) {
+    lines.push(value.slice(i, i + perLine));
+    if (lines.length === maxLines) {
+      if (i + perLine < value.length) {
+        lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, Math.max(1, perLine - 1))}…`;
+      }
+      break;
     }
-    const stageName = stageByNode.get(id);
-    const bucket = stageName && grouped.get(stageName);
-    if (!bucket) {
-      ungrouped.push(node);
-      return;
-    }
-    if (node.label === "Topic" || node.label === "KnowledgeCategory") bucket.topics.push(node);
-    else if (["Practice", "TheoryLesson", "Chapter"].includes(node.label)) bucket.resources.push(node);
-    else bucket.points.push(node);
-  });
-
-  const positions = new Map();
-  stages.forEach((stage) => positions.set(getGraphNodeId(stage), { x: stageX.get(getGraphNodeId(stage)), y: stageY }));
-
-  const placeRow = (items, baseX, y, maxPerRow, gapX, gapY) => {
-    const sorted = [...items].sort((a, b) => (a.order || 0) - (b.order || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
-    sorted.forEach((node, index) => {
-      const row = Math.floor(index / maxPerRow);
-      const col = index % maxPerRow;
-      const countInRow = Math.min(maxPerRow, sorted.length - row * maxPerRow);
-      const offset = (col - (countInRow - 1) / 2) * gapX;
-      positions.set(getGraphNodeId(node), { x: Math.max(46, Math.min(width - 46, baseX + offset)), y: y + row * gapY });
-    });
-  };
-
-  stages.forEach((stage) => {
-    const name = getGraphNodeTitle(stage);
-    const bucket = grouped.get(name) || { topics: [], points: [], resources: [] };
-    const x = stageX.get(name) || width / 2;
-    placeRow(bucket.topics, x, 220, 2, 115, 54);
-    placeRow(bucket.points, x, 340, 3, 92, 66);
-    placeRow(bucket.resources, x, Math.max(520, height - 124), 2, 110, 46);
-  });
-
-  const cultureX = Math.max(width - 130, marginX);
-  culture.sort((a, b) => getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
-  culture.forEach((node, index) => {
-    const y = 170 + index * Math.max(54, Math.min(90, (height - 300) / Math.max(1, culture.length - 1 || 1)));
-    positions.set(getGraphNodeId(node), { x: cultureX, y: Math.min(height - 90, y) });
-  });
-  placeRow(ungrouped, width / 2, Math.max(560, height - 80), 7, 120, 58);
-
-  const nodes = [...nodeMap.values()].filter((node) => positions.has(getGraphNodeId(node))).map((node) => ({ ...node, position: positions.get(getGraphNodeId(node)) }));
-  const edges = edgesRaw
-    .map((edge) => ({ ...edge, source: edge.source || edge.from, target: edge.target || edge.to }))
-    .filter((edge) => positions.has(edge.source) && positions.has(edge.target));
-  return { nodes, edges, positions };
+  }
+  return lines.join("\n");
 }
 
-function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
-  if (adminGraphCanvas) {
-    adminGraphCanvas.innerHTML = "";
-    adminGraphCanvas.style.position = "relative";
-    adminGraphCanvas.style.overflow = "hidden";
+// 根据节点类型返回 G6 形状、尺寸与文字样式，保证不同层级视觉可区分。
+function getG6NodeVisual(type) {
+  const palette = GRAPH_NODE_STYLES[type] || { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" };
+  if (type === "Stage") {
+    return { shape: "rect", size: [132, 44], fontSize: 13, fontWeight: 700, radius: 22, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
   }
-  const { nodes, edges, positions } = buildSemanticGraphModel(nodesRaw, edgesRaw, width, height);
-  const keyword = (state.admin.graph.searchKeyword || "").trim().toLowerCase();
-  const semanticCount = edges.filter((e) => !["CONTAIN_TOPIC", "INCLUDE_POINT", "HAS_CATEGORY", "CONTAINS"].includes(e.type)).length;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "100%");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "外贸谈判知识图谱语义关系网络");
-  svg.style.background = "linear-gradient(180deg, rgba(15,23,42,.92), rgba(2,6,23,.98))";
+  if (type === "Topic" || type === "KnowledgeCategory") {
+    return { shape: "rect", size: [120, 38], fontSize: 12, fontWeight: 600, radius: 9, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
+  }
+  if (type === "Practice" || type === "TheoryLesson" || type === "Chapter") {
+    return { shape: "rect", size: [110, 34], fontSize: 11, fontWeight: 500, radius: 8, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
+  }
+  if (palette.shape === "diamond") {
+    return { shape: "diamond", size: [48, 48], fontSize: 11, fontWeight: 500, labelInside: false, perLine: 6, fill: palette.fill, stroke: palette.stroke };
+  }
+  return { shape: "circle", size: 32, fontSize: 11, fontWeight: 500, labelInside: false, perLine: 6, fill: palette.fill, stroke: palette.stroke };
+}
 
-  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-  const usedMarkers = new Set();
-  edges.forEach((edge) => {
-    const style = getRelationStyle(edge.type);
-    const markerId = `arrow-${String(edge.type || "other").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    if (usedMarkers.has(markerId)) return;
-    usedMarkers.add(markerId);
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-    marker.setAttribute("id", markerId);
-    marker.setAttribute("viewBox", "0 0 10 10");
-    marker.setAttribute("refX", "9");
-    marker.setAttribute("refY", "5");
-    marker.setAttribute("markerWidth", "6");
-    marker.setAttribute("markerHeight", "6");
-    marker.setAttribute("orient", "auto-start-reverse");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-    path.setAttribute("fill", style.color);
-    marker.appendChild(path);
-    defs.appendChild(marker);
+// 统一的 G6 分层知识图谱渲染器。
+// 设计目标（满足高校教学/展示需求）：
+//   1) 清晰的层级结构 —— 仅用“包含/收录”等结构关系驱动 dagre 分层（阶段→主题→知识点）；
+//   2) 显性的联系连线 —— 流程顺序/前置依赖/跨文化等关系叠加为带箭头、带标签的彩色连线；
+//   3) 教学友好交互 —— 悬停节点高亮其关联关系、可拖拽/缩放/平移、点击查看详情。
+// 同时服务教师端总览（admin-graph-canvas）与学生端本课图谱（student-lesson-graph）。
+function renderKnowledgeGraphG6(options) {
+  const {
+    container,
+    nodes: rawNodes = [],
+    edges: rawEdges = [],
+    direction = "TB",
+    highlightKeyword = "",
+    highlightNames = null,
+    onNodeClick = null,
+    compact = false,
+    theme = "dark",
+  } = options || {};
+  if (!container || typeof window === "undefined" || !window.G6) return null;
+
+  const nodeMap = new Map();
+  rawNodes.forEach((n) => {
+    const id = getGraphNodeId(n);
+    if (id && !nodeMap.has(id)) nodeMap.set(id, { ...n, id });
   });
-  svg.appendChild(defs);
+  if (nodeMap.size === 0) return null;
 
-  const edgeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  svg.appendChild(edgeLayer);
-  svg.appendChild(nodeLayer);
+  const labelColor = theme === "light" ? "#0f172a" : "#e2e8f0";
+  const labelStroke = theme === "light" ? "rgba(255,255,255,.9)" : "rgba(2,6,23,.85)";
+  const kw = String(highlightKeyword || "").trim().toLowerCase();
+  const highlightSet = highlightNames instanceof Set ? highlightNames : null;
 
-  const sortedEdges = [...edges].sort((a, b) => {
-    const order = { hierarchy: 0, resource: 1, flow: 2, semantic: 3, culture: 4, other: 5 };
-    return (order[getRelationStyle(a.type).group] ?? 9) - (order[getRelationStyle(b.type).group] ?? 9);
+  const g6Nodes = [...nodeMap.values()].map((n) => {
+    const type = n.label || n.nodeType || "KnowledgePoint";
+    const vis = getG6NodeVisual(type);
+    const title = getGraphNodeTitle(n);
+    const matched =
+      (kw && title.toLowerCase().includes(kw)) ||
+      (highlightSet && (highlightSet.has(n.name) || highlightSet.has(n.id) || highlightSet.has(title)));
+    return {
+      id: n.id,
+      nodeType: type,
+      fullTitle: title,
+      name: n.name || title,
+      label: wrapGraphLabel(title, vis.perLine, vis.labelInside ? 2 : 3),
+      type: vis.shape,
+      size: vis.size,
+      matched: !!matched,
+      style: {
+        fill: vis.fill,
+        stroke: matched ? "#fde047" : vis.stroke,
+        lineWidth: matched ? 3 : 1.5,
+        radius: vis.radius,
+        cursor: "pointer",
+      },
+      labelCfg: {
+        position: vis.labelInside ? "center" : "bottom",
+        offset: vis.labelInside ? 0 : 6,
+        style: {
+          fill: vis.labelInside ? "#f8fafc" : labelColor,
+          fontSize: vis.fontSize,
+          fontWeight: vis.fontWeight,
+          lineHeight: vis.fontSize + 3,
+          ...(vis.labelInside ? {} : { stroke: labelStroke, lineWidth: 3 }),
+        },
+      },
+    };
   });
 
-  sortedEdges.forEach((edge) => {
-    const source = positions.get(edge.source);
-    const target = positions.get(edge.target);
-    if (!source || !target) return;
-    const style = getRelationStyle(edge.type);
-    const markerId = `arrow-${String(edge.type || "other").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    const dx = target.x - source.x;
-    const dy = target.y - source.y;
-    const curve = style.group === "flow" ? 0 : Math.max(-70, Math.min(70, dx * 0.12));
-    const c1x = source.x + dx * 0.42;
-    const c1y = source.y + dy * 0.42 - curve;
-    const c2x = source.x + dx * 0.58;
-    const c2y = source.y + dy * 0.58 + curve;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", style.color);
-    path.setAttribute("stroke-width", String(style.width));
-    path.setAttribute("stroke-opacity", style.group === "hierarchy" ? "0.35" : "0.78");
-    if (style.dash) path.setAttribute("stroke-dasharray", style.dash);
-    path.setAttribute("marker-end", `url(#${markerId})`);
-    edgeLayer.appendChild(path);
+  const idSet = new Set(g6Nodes.map((n) => n.id));
+  const normEdges = rawEdges
+    .map((e) => ({ ...e, source: e.source || e.from, target: e.target || e.to }))
+    .filter((e) => e.source && e.target && e.source !== e.target && idSet.has(e.source) && idSet.has(e.target));
 
-    if (style.group !== "hierarchy") {
-      const midX = (source.x + target.x) / 2;
-      const midY = (source.y + target.y) / 2 - curve * 0.3;
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", String(midX));
-      text.setAttribute("y", String(midY));
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("font-size", "10");
-      text.setAttribute("fill", style.color);
-      text.setAttribute("paint-order", "stroke");
-      text.setAttribute("stroke", "rgba(2,6,23,.9)");
-      text.setAttribute("stroke-width", "4");
-      text.textContent = edge.label || style.label;
-      edgeLayer.appendChild(text);
+  const hierarchyEdges = normEdges.filter((e) => HIERARCHY_RELATION_TYPES.has(e.type));
+  const relationEdges = normEdges.filter((e) => !HIERARCHY_RELATION_TYPES.has(e.type));
+  const hierarchyCurve = direction === "LR" ? "cubic-horizontal" : "cubic-vertical";
+
+  const buildEdgeModel = (edge, isHierarchy) => {
+    const s = getRelationStyle(edge.type);
+    const dash = s.dash ? s.dash.split(/\s+/).map(Number).filter((v) => !Number.isNaN(v)) : null;
+    return {
+      source: edge.source,
+      target: edge.target,
+      relType: edge.type,
+      relGroup: s.group,
+      type: isHierarchy ? hierarchyCurve : "quadratic",
+      label: isHierarchy ? "" : edge.label || s.label || "",
+      curveOffset: isHierarchy ? 0 : 20,
+      labelCfg: {
+        autoRotate: true,
+        refY: 4,
+        style: {
+          fill: s.color,
+          fontSize: 10,
+          background: {
+            fill: theme === "light" ? "rgba(255,255,255,.92)" : "rgba(2,6,23,.82)",
+            padding: [2, 4, 2, 4],
+            radius: 3,
+          },
+        },
+      },
+      style: {
+        stroke: s.color,
+        lineWidth: s.width,
+        lineDash: dash || undefined,
+        opacity: isHierarchy ? 0.45 : 0.9,
+        endArrow: isHierarchy ? false : { path: window.G6.Arrow.triangle(7, 9, 2), fill: s.color, stroke: s.color },
+      },
+    };
+  };
+
+  const padding = compact ? [16, 18, 16, 18] : [28, 40, 28, 40];
+  const graph = new window.G6.Graph({
+    container,
+    width: container.clientWidth || (compact ? 600 : 960),
+    height: container.clientHeight || (compact ? 280 : 660),
+    fitView: true,
+    fitViewPadding: padding,
+    minZoom: 0.2,
+    maxZoom: 2.6,
+    layout: {
+      type: "dagre",
+      rankdir: direction,
+      nodesep: compact ? 12 : 22,
+      ranksep: compact ? 55 : 85,
+      preventOverlap: true,
+      controlPoints: true,
+    },
+    modes: {
+      default: [
+        "drag-canvas",
+        "zoom-canvas",
+        { type: "drag-node", enableDelegate: true },
+        { type: "activate-relations", trigger: "mouseenter", resetSelected: true },
+      ],
+    },
+    defaultNode: { type: "circle" },
+    defaultEdge: { type: hierarchyCurve },
+    nodeStateStyles: {
+      active: { lineWidth: 3, shadowColor: "rgba(250,204,21,.85)", shadowBlur: 16 },
+      inactive: { opacity: 0.25 },
+      highlight: { lineWidth: 4, stroke: "#fde047", shadowColor: "rgba(250,204,21,.9)", shadowBlur: 18 },
+    },
+    edgeStateStyles: {
+      active: { lineWidth: 2.6, opacity: 1 },
+      inactive: { opacity: 0.1 },
+    },
+  });
+
+  graph.data({ nodes: g6Nodes, edges: hierarchyEdges.map((e) => buildEdgeModel(e, true)) });
+  graph.render();
+  relationEdges.forEach((edge) => {
+    try {
+      graph.addItem("edge", buildEdgeModel(edge, false));
+    } catch (err) {
+      /* 叠加边渲染失败时忽略，不影响主体层级结构 */
     }
   });
+  graph.fitView(padding);
 
-  nodes.forEach((node) => {
-    const id = getGraphNodeId(node);
-    const pos = positions.get(id);
-    const type = node.label || node.nodeType || "KnowledgePoint";
-    const style = GRAPH_NODE_STYLES[type] || { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" };
-    const title = getGraphNodeTitle(node);
-    const highlighted = keyword && title.toLowerCase().includes(keyword);
-    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    group.setAttribute("class", "semantic-graph-node");
-    group.setAttribute("transform", `translate(${pos.x}, ${pos.y})`);
-    group.style.cursor = "pointer";
-    group.addEventListener("click", () => handleGraphNodeSelection(id));
+  if (kw || highlightSet) {
+    graph.getNodes().forEach((node) => {
+      if (node.getModel().matched) graph.setItemState(node, "highlight", true);
+    });
+  }
 
-    if (style.shape === "diamond") {
-      const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      polygon.setAttribute("points", "0,-22 22,0 0,22 -22,0");
-      polygon.setAttribute("fill", style.fill);
-      polygon.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
-      polygon.setAttribute("stroke-width", highlighted ? "3" : "1.5");
-      group.appendChild(polygon);
-    } else if (style.shape === "rect" || style.shape === "pill") {
-      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      const w = type === "Stage" ? 86 : 76;
-      const h = type === "Stage" ? 36 : 30;
-      rect.setAttribute("x", String(-w / 2));
-      rect.setAttribute("y", String(-h / 2));
-      rect.setAttribute("width", String(w));
-      rect.setAttribute("height", String(h));
-      rect.setAttribute("rx", style.shape === "pill" ? "18" : "8");
-      rect.setAttribute("fill", style.fill);
-      rect.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
-      rect.setAttribute("stroke-width", highlighted ? "3" : "1.5");
-      group.appendChild(rect);
-    } else {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("r", type === "KnowledgePoint" ? "17" : "18");
-      circle.setAttribute("fill", style.fill);
-      circle.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
-      circle.setAttribute("stroke-width", highlighted ? "3" : "1.5");
-      group.appendChild(circle);
-    }
+  if (typeof onNodeClick === "function") {
+    graph.on("node:click", (evt) => {
+      const model = evt.item && evt.item.getModel();
+      if (model) onNodeClick(model.id, model);
+    });
+  }
 
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("y", type === "Stage" ? "5" : "32");
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("font-size", type === "Stage" ? "12" : "10");
-    text.setAttribute("font-weight", type === "Stage" ? "700" : "500");
-    text.setAttribute("fill", "#e2e8f0");
-    text.setAttribute("paint-order", "stroke");
-    text.setAttribute("stroke", "rgba(2,6,23,.85)");
-    text.setAttribute("stroke-width", "3");
-    text.textContent = truncateGraphLabel(title, type === "Stage" ? 6 : 10);
-    group.appendChild(text);
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      if (!graph || graph.get("destroyed")) {
+        observer.disconnect();
+        return;
+      }
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w && h) {
+        graph.changeSize(w, h);
+        graph.fitView(padding);
+      }
+    });
+    observer.observe(container);
+  }
 
-    const browserTitle = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    browserTitle.textContent = `${title}（${type}）`;
-    group.appendChild(browserTitle);
-    nodeLayer.appendChild(group);
-  });
+  return graph;
+}
+
+// 构建图谱图例（节点类型 + 关系类型），帮助教学场景下快速读懂图谱语义。
+function buildKnowledgeGraphLegend() {
+  const nodeLegendItems = [
+    { type: "Stage", text: "谈判阶段" },
+    { type: "Topic", text: "主题" },
+    { type: "KnowledgePoint", text: "知识点" },
+    { type: "Skill", text: "技能" },
+    { type: "Terminology", text: "术语" },
+    { type: "CultureDimension", text: "文化维度" },
+    { type: "Practice", text: "实战/课时" },
+  ];
+  const relationLegendItems = ["CONTAIN_TOPIC", "PRECEDES", "REQUIRES", "RELATED_TO", "APPLIES_TO_SCENARIO", "HAS_CULTURAL_SENSITIVITY"];
 
   const legend = document.createElement("div");
-  legend.className = "absolute bottom-3 left-3 max-w-[720px] rounded-xl border border-slate-700/70 bg-slate-950/85 p-3 text-[11px] text-slate-300 shadow-lg";
+  legend.className =
+    "absolute bottom-3 left-3 max-w-[760px] rounded-xl border border-slate-700/70 bg-slate-950/85 p-3 text-[11px] text-slate-300 shadow-lg backdrop-blur";
+  const nodeRow = nodeLegendItems
+    .map((item) => {
+      const v = getG6NodeVisual(item.type);
+      const shapeCss =
+        v.shape === "circle"
+          ? "border-radius:50%;width:12px;height:12px;"
+          : v.shape === "diamond"
+          ? "width:11px;height:11px;transform:rotate(45deg);"
+          : "width:16px;height:11px;border-radius:3px;";
+      return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;${shapeCss}background:${v.fill};border:1px solid ${v.stroke};"></i>${sanitizeSvgText(item.text)}</span>`;
+    })
+    .join("");
+  const relationRow = relationLegendItems
+    .map((type) => {
+      const s = getRelationStyle(type);
+      return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? "dashed" : "solid"} ${s.color};vertical-align:middle;"></i>${sanitizeSvgText(s.label)}</span>`;
+    })
+    .join("");
   legend.innerHTML = `
-    <div class="mb-2 font-semibold text-slate-100">关系优先视图：不再按思维导图发散，而是把客户要求的“联系性”显性编码</div>
-    <div class="flex flex-wrap gap-x-4 gap-y-1">
-      ${["PRECEDES", "CONTAIN_TOPIC", "REQUIRES", "RELATED_TO", "APPLIES_TO_SCENARIO", "HAS_CULTURAL_SENSITIVITY", "TESTS", "EXPLAINS"].map((type) => {
-        const s = getRelationStyle(type);
-        return `<span><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? 'dashed' : 'solid'} ${s.color};vertical-align:middle;margin-right:4px"></i>${sanitizeSvgText(s.label)}</span>`;
-      }).join("")}
-    </div>`;
+    <div class="mb-1.5 font-semibold text-slate-100">层级 + 联系视图</div>
+    <div class="mb-2 flex flex-wrap gap-x-3 gap-y-1">${nodeRow}</div>
+    <div class="flex flex-wrap gap-x-3 gap-y-1">${relationRow}</div>`;
+  return legend;
+}
 
-  adminGraphCanvas.appendChild(svg);
-  adminGraphCanvas.appendChild(legend);
+// 渲染教师端知识图谱：以分层结构为主、语义/跨文化联系为辅的关系视图。
+function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
+  if (!adminGraphCanvas) return;
+  adminGraphCanvas.innerHTML = "";
+  adminGraphCanvas.style.position = "relative";
+  adminGraphCanvas.style.overflow = "hidden";
+
+  if (typeof window === "undefined" || !window.G6) {
+    adminGraphCanvas.innerHTML = "<p class='p-4 text-sm text-slate-400'>图谱引擎 (G6) 未加载，请检查 /static/vendor/g6 资源。</p>";
+    return;
+  }
+
+  const keyword = (state.admin.graph.searchKeyword || "").trim();
+  adminG6Graph = renderKnowledgeGraphG6({
+    container: adminGraphCanvas,
+    nodes: nodesRaw,
+    edges: edgesRaw,
+    direction: adminGraphDirection,
+    highlightKeyword: keyword,
+    onNodeClick: (id) => handleGraphNodeSelection(id),
+    theme: "dark",
+  });
+
+  if (!adminG6Graph) {
+    if (adminGraphStatus) adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
+    return;
+  }
+
+  adminGraphCanvas.appendChild(buildKnowledgeGraphLegend());
+
   if (adminGraphStatus) {
-    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length} · 语义/跨文化联系 ${semanticCount}`;
+    const nodeCount = adminG6Graph.getNodes().length;
+    const edgeCount = adminG6Graph.getEdges().length;
+    const semanticCount = (edgesRaw || []).filter(
+      (e) => !HIERARCHY_RELATION_TYPES.has(e.type)
+    ).length;
+    const dirText = adminGraphDirection === "TB" ? "纵向分层" : "横向分层";
+    adminGraphStatus.textContent = `${dirText} · 节点 ${nodeCount} · 关系 ${edgeCount} · 语义/跨文化联系 ${semanticCount}`;
   }
 }
 
