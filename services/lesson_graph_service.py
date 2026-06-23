@@ -133,6 +133,7 @@ def build_lesson_network_view(
         "Topic",
         "KnowledgeCategory",
         "KnowledgePoint",
+        "CultureDimension",
         "Skill",
         "Terminology",
         "Practice",

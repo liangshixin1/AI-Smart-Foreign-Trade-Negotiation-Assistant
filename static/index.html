@@ -17,7 +17,7 @@
     <script src="/static/vendor/quill-2.0.2/quill.js"></script>
     <script
       src="/static/vendor/g6-4.8.17/g6.min.js"
-      onerror="console.error('[G6] ❌ 本地资源加载失败，知识图谱无法渲染。');"
+      onerror="console.warn('[G6] 本地资源加载失败，将继续使用自研 SVG 语义网络。');"
     ></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -3928,6 +3928,36 @@
         <span class="text-xs text-slate-300">标签（逗号分隔）</span>
         <input id="admin-graph-form-tags" type="text" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none" />
       </label>
+      <div class="grid gap-3 md:grid-cols-2">
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">布鲁姆认知层级</span>
+          <select id="admin-graph-form-bloom-level" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none">
+            <option value="">未设置</option>
+            <option value="remember">识记</option>
+            <option value="understand">理解</option>
+            <option value="apply">应用</option>
+            <option value="analyze">分析</option>
+            <option value="evaluate">评价</option>
+            <option value="create">创造</option>
+          </select>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">跨文化标签（逗号分隔）</span>
+          <input id="admin-graph-form-culture-tags" type="text" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none" placeholder="权力距离, 不确定性回避" />
+        </label>
+      </div>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">思政标签（逗号分隔）</span>
+        <input id="admin-graph-form-civic-tags" type="text" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none" placeholder="诚信经营, 契约精神" />
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">教学目标</span>
+        <textarea id="admin-graph-form-teaching-objective" rows="2" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"></textarea>
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">测评提示</span>
+        <textarea id="admin-graph-form-assessment-hint" rows="2" class="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"></textarea>
+      </label>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-xs text-slate-300">前置依赖</span>
@@ -5357,9 +5387,9 @@
                       id="admin-graph-toggle-renderer"
                       type="button"
                       class="rounded-xl border border-slate-700/70 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-300 hover:text-emerald-100"
-                      title="Stage 环形开花布局"
+                      title="关系优先语义网络布局：展示流程、包含、前置、策略、跨文化等联系"
                     >
-                      当前 开花
+                      当前 语义网络
                     </button>
                   </div>
                 </div>
@@ -5369,8 +5399,20 @@
                 ></div>
                 <p id="admin-graph-status" class="text-xs text-slate-500">加载知识图谱中...</p>
                 <p class="text-xs text-slate-500">
-                  提示：可拖拽节点查看层级关系，滚轮缩放视图。节点颜色区分章节、关卡、知识点与流程步骤。
+                  提示：默认采用关系优先语义网络视图；蓝线表示流程顺序，红线表示前置依赖，紫线表示跨文化联系，灰色虚线表示层级包含。点击节点可查看详情。
                 </p>
+              </section>
+
+              <section class="admin-panel-card space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">客户技术路线对齐检查</h3>
+                    <p class="text-xs text-slate-400">检查十大环节、文化维度、布鲁姆层级、思政标签和课时/练习绑定的 P0 完成度。</p>
+                  </div>
+                  <button id="admin-graph-apply-customer-route" type="button" class="rounded-xl border border-emerald-500/70 px-3 py-1 text-xs text-emerald-300 transition hover:border-emerald-300 hover:text-emerald-100">补齐P0模板</button>
+                </div>
+                <div id="admin-graph-alignment-report" class="grid gap-2 text-xs text-slate-200 md:grid-cols-2"></div>
+                <p id="admin-graph-alignment-status" class="text-xs text-slate-500"></p>
               </section>
               <section class="admin-panel-card space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
                 <div>

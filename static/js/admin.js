@@ -4,12 +4,12 @@ let adminTheoryLessonEditor = null;
 // 是否已注册 Quill 自定义 blots，避免重复注册。
 let challengeBubbleBlotRegistered = false;
 let knowledgePointCardBlotRegistered = false;
-// 图谱渲染相关实例（G6/vis-network 均可能使用）。
+// 图谱渲染相关实例：默认使用自研 SVG 语义网络，G6 仅作为历史/兜底能力保留。
 let adminGraphNetwork = null;
 let adminG6Graph = null;
 let adminGraphSelectionKey = null;
-// 后台知识图谱渲染模式，默认采用开花布局。
-let adminGraphRenderer = "burst"; // 仅保留开花布局
+// 后台知识图谱渲染模式，默认采用“关系优先”的语义网络。
+let adminGraphRenderer = "semantic";
 const expandedStages = new Set();
 const expandedTopics = new Set();
 // 知识卡弹窗的本地状态缓存，记录当前编辑节点、选中知识点等。
@@ -2415,9 +2415,9 @@ function applyGraphDrawerTheme(mode) {
   }
 }
 
-// 渲染后台知识图谱（当前默认走开花布局）。
+// 渲染后台知识图谱（默认走关系优先的语义网络，而不是开花/思维导图）。
 function renderAdminGraphNetwork() {
-  if (!adminGraphCanvas || !window.G6) {
+  if (!adminGraphCanvas) {
     return;
   }
 
@@ -2444,113 +2444,8 @@ function renderAdminGraphNetwork() {
   const width = adminGraphCanvas.clientWidth || 960;
   const height = adminGraphCanvas.clientHeight || 820;
 
-  // 仅保留开花模式
-  renderBurstGraph(nodesRaw, edgesRaw, width, height);
-  return;
-
-  const colorMap = {
-    Stage: "#3b82f6",
-    Topic: "#f97316",
-    KnowledgeCategory: "#94a3b8",
-    KnowledgePoint: "#22c55e",
-    Skill: "#0ea5e9",
-    Terminology: "#475569",
-    Practice: "#0f766e",
-    TheoryLesson: "#9a3412",
-    ProcessStep: "#64748b",
-  };
-
-  const nodes = nodesRaw.map((n) => {
-    const labelVisible = ["Stage", "Topic", "KnowledgeCategory"].includes(n.label);
-    let size = 20;
-    if (n.label === "Stage") size = 46;
-    else if (n.label === "Topic") size = 34;
-    else if (n.label === "KnowledgeCategory") size = 26;
-    else if (["KnowledgePoint", "Skill", "Terminology"].includes(n.label)) size = 18;
-    return {
-      id: n.key || n.id,
-      label: labelVisible ? (n.title || n.name || n.key) : "",
-      originLabel: n.title || n.name || "",
-      type: ["Topic", "KnowledgeCategory"].includes(n.label) ? "rect" : "circle",
-      style: {
-        fill: colorMap[n.label] || "#94a3b8",
-        stroke: "rgba(15,23,42,0.35)",
-        lineWidth: 1.2,
-      },
-      size,
-      nodeType: n.label,
-    };
-  });
-
-  const edges = edgesRaw.map((e) => {
-    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "HAS_CATEGORY", "CONTAINS"].includes(e.type);
-    return {
-      source: e.source || e.from,
-      target: e.target || e.to,
-      label: showLabel ? (e.label || e.type) : "",
-      style: {
-        stroke: "rgba(148,163,184,0.5)",
-        lineWidth: 1.1,
-        endArrow: true,
-      },
-    };
-  });
-
-  const layout = createGraphLayout(adminGraphRenderer, nodes, edges);
-
-  adminG6Graph = new G6.Graph({
-    container: adminGraphCanvas,
-    width,
-    height,
-    layout,
-    modes: {
-      default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }],
-    },
-    defaultNode: {
-      labelCfg: {
-        position: "bottom",
-        style: { fill: "#0f172a", fontSize: 12, opacity: 0.9 },
-      },
-    },
-    defaultEdge: {
-      type: adminGraphRenderer === "force" ? "line" : "polyline",
-      labelCfg: {
-        autoRotate: true,
-        style: { fill: "#94a3b8", fontSize: 10 },
-      },
-      style: { endArrow: true },
-    },
-    animate: true,
-    minZoom: 0.25,
-    maxZoom: 2.8,
-    fitView: false,
-    fitCenter: true,
-    fitViewPadding: 40,
-  });
-
-  adminG6Graph.data({ nodes, edges });
-  adminG6Graph.render();
-  adminG6Graph.fitView(40);
-
-  if (adminGraphStatus) {
-    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length}`;
-  }
-
-  adminG6Graph.on("node:click", (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const id = item.getID();
-    handleGraphNodeSelection(id);
-  });
-
-  window.addEventListener("resize", () => {
-    if (adminG6Graph) {
-      const w = adminGraphCanvas?.clientWidth || 800;
-      const h = adminGraphCanvas?.clientHeight || 820;
-      adminG6Graph.changeSize(w, h);
-      adminG6Graph.fitView(40);
-    }
-  });
+  // 关系优先语义网络：显式呈现流程、包含、前置、策略、跨文化等多类型联系。
+  renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height);
 }
 
 // 根据不同渲染模式生成 G6 布局配置。
@@ -2608,6 +2503,331 @@ function createGraphLayout(mode, nodes, edges) {
     preventOverlap: true,
     nodeSize: 34,
   };
+}
+
+
+const GRAPH_NODE_STYLES = {
+  Stage: { fill: "#2563eb", stroke: "#93c5fd", shape: "pill" },
+  Topic: { fill: "#f97316", stroke: "#fed7aa", shape: "rect" },
+  KnowledgePoint: { fill: "#22c55e", stroke: "#bbf7d0", shape: "circle" },
+  Skill: { fill: "#0ea5e9", stroke: "#bae6fd", shape: "circle" },
+  Terminology: { fill: "#475569", stroke: "#cbd5e1", shape: "circle" },
+  CultureDimension: { fill: "#a855f7", stroke: "#e9d5ff", shape: "diamond" },
+  Practice: { fill: "#0f766e", stroke: "#99f6e4", shape: "rect" },
+  TheoryLesson: { fill: "#9a3412", stroke: "#fed7aa", shape: "rect" },
+  Chapter: { fill: "#64748b", stroke: "#cbd5e1", shape: "rect" },
+  ProcessStep: { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" },
+};
+
+const GRAPH_RELATION_STYLES = {
+  PRECEDES: { color: "#2563eb", label: "流程顺序", dash: "", width: 2.4, group: "flow" },
+  NEXT: { color: "#2563eb", label: "流程顺序", dash: "", width: 2.4, group: "flow" },
+  CONTAIN_TOPIC: { color: "#94a3b8", label: "包含", dash: "4 5", width: 1.2, group: "hierarchy" },
+  INCLUDE_POINT: { color: "#94a3b8", label: "收录", dash: "4 5", width: 1.1, group: "hierarchy" },
+  HAS_CATEGORY: { color: "#94a3b8", label: "分类", dash: "4 5", width: 1.1, group: "hierarchy" },
+  CONTAINS: { color: "#94a3b8", label: "包含", dash: "4 5", width: 1.1, group: "hierarchy" },
+  REQUIRES: { color: "#ef4444", label: "前置依赖", dash: "", width: 2.1, group: "semantic" },
+  RELATED_TO: { color: "#14b8a6", label: "横向关联", dash: "6 4", width: 1.8, group: "semantic" },
+  RELATES_TO: { color: "#14b8a6", label: "横向关联", dash: "6 4", width: 1.8, group: "semantic" },
+  CONTRASTS_WITH: { color: "#f59e0b", label: "相似/对比", dash: "3 3", width: 1.9, group: "semantic" },
+  APPLIES_TO_SCENARIO: { color: "#06b6d4", label: "情境-策略", dash: "", width: 2, group: "semantic" },
+  SUGGESTS_STRATEGY: { color: "#06b6d4", label: "策略建议", dash: "", width: 2, group: "semantic" },
+  HAS_EXCEPTION: { color: "#f97316", label: "规则-例外", dash: "2 5", width: 2, group: "semantic" },
+  COMBINES_WITH: { color: "#84cc16", label: "策略组合", dash: "", width: 1.9, group: "semantic" },
+  CONFLICTS_WITH: { color: "#dc2626", label: "策略冲突", dash: "2 4", width: 2, group: "semantic" },
+  HAS_CULTURAL_SENSITIVITY: { color: "#a855f7", label: "跨文化敏感", dash: "", width: 2.2, group: "culture" },
+  INVOLVES_CULTURE: { color: "#a855f7", label: "涉及文化", dash: "", width: 2.2, group: "culture" },
+  CULTURE_SENSITIVE_TO: { color: "#a855f7", label: "文化映射", dash: "", width: 2.2, group: "culture" },
+  MAPS_TO_STAGE: { color: "#6366f1", label: "映射阶段", dash: "5 3", width: 1.7, group: "semantic" },
+  TESTS: { color: "#0f766e", label: "练习考察", dash: "", width: 1.8, group: "resource" },
+  EXPLAINS: { color: "#9a3412", label: "课时讲解", dash: "", width: 1.8, group: "resource" },
+};
+
+function getGraphNodeId(node) {
+  return node?.key || node?.id || node?.name || "";
+}
+
+function getGraphNodeTitle(node) {
+  return node?.title || node?.name || node?.key || node?.id || "未命名";
+}
+
+function getRelationStyle(type) {
+  return GRAPH_RELATION_STYLES[type] || { color: "#64748b", label: type || "关系", dash: "4 4", width: 1.4, group: "other" };
+}
+
+function sanitizeSvgText(text) {
+  return String(text || "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+}
+
+function truncateGraphLabel(text, max = 12) {
+  const value = String(text || "");
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function buildSemanticGraphModel(nodesRaw, edgesRaw, width, height) {
+  const nodeMap = new Map();
+  nodesRaw.forEach((node) => {
+    const id = getGraphNodeId(node);
+    if (id) nodeMap.set(id, { ...node, id });
+  });
+
+  const stageByNode = new Map();
+  const stageTopicEdges = edgesRaw.filter((e) => e.type === "CONTAIN_TOPIC");
+  const topicPointEdges = edgesRaw.filter((e) => ["INCLUDE_POINT", "HAS_CATEGORY", "CONTAINS"].includes(e.type));
+
+  nodeMap.forEach((node, id) => {
+    if (node.label === "Stage") stageByNode.set(id, getGraphNodeTitle(node));
+    if (node.stage || node.stageName) stageByNode.set(id, node.stage || node.stageName);
+  });
+  stageTopicEdges.forEach((edge) => {
+    const source = edge.source || edge.from;
+    const target = edge.target || edge.to;
+    const stage = nodeMap.get(source);
+    if (stage && target) stageByNode.set(target, getGraphNodeTitle(stage));
+  });
+  topicPointEdges.forEach((edge) => {
+    const source = edge.source || edge.from;
+    const target = edge.target || edge.to;
+    if (!source || !target) return;
+    if (stageByNode.has(source)) stageByNode.set(target, stageByNode.get(source));
+  });
+
+  const stages = [...nodeMap.values()].filter((n) => n.label === "Stage").sort((a, b) => (a.order || 0) - (b.order || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
+  const stageNames = stages.map(getGraphNodeTitle);
+  const stageX = new Map();
+  const marginX = 90;
+  const stageY = 96;
+  const usableWidth = Math.max(600, width - marginX * 2);
+  stages.forEach((stage, index) => {
+    const x = stages.length <= 1 ? width / 2 : marginX + (usableWidth * index) / Math.max(1, stages.length - 1);
+    stageX.set(getGraphNodeId(stage), x);
+    stageX.set(getGraphNodeTitle(stage), x);
+  });
+
+  const grouped = new Map(stageNames.map((name) => [name, { topics: [], points: [], resources: [] }]));
+  const culture = [];
+  const ungrouped = [];
+  nodeMap.forEach((node, id) => {
+    if (node.label === "Stage") return;
+    if (node.label === "CultureDimension") {
+      culture.push(node);
+      return;
+    }
+    const stageName = stageByNode.get(id);
+    const bucket = stageName && grouped.get(stageName);
+    if (!bucket) {
+      ungrouped.push(node);
+      return;
+    }
+    if (node.label === "Topic" || node.label === "KnowledgeCategory") bucket.topics.push(node);
+    else if (["Practice", "TheoryLesson", "Chapter"].includes(node.label)) bucket.resources.push(node);
+    else bucket.points.push(node);
+  });
+
+  const positions = new Map();
+  stages.forEach((stage) => positions.set(getGraphNodeId(stage), { x: stageX.get(getGraphNodeId(stage)), y: stageY }));
+
+  const placeRow = (items, baseX, y, maxPerRow, gapX, gapY) => {
+    const sorted = [...items].sort((a, b) => (a.order || 0) - (b.order || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
+    sorted.forEach((node, index) => {
+      const row = Math.floor(index / maxPerRow);
+      const col = index % maxPerRow;
+      const countInRow = Math.min(maxPerRow, sorted.length - row * maxPerRow);
+      const offset = (col - (countInRow - 1) / 2) * gapX;
+      positions.set(getGraphNodeId(node), { x: Math.max(46, Math.min(width - 46, baseX + offset)), y: y + row * gapY });
+    });
+  };
+
+  stages.forEach((stage) => {
+    const name = getGraphNodeTitle(stage);
+    const bucket = grouped.get(name) || { topics: [], points: [], resources: [] };
+    const x = stageX.get(name) || width / 2;
+    placeRow(bucket.topics, x, 220, 2, 115, 54);
+    placeRow(bucket.points, x, 340, 3, 92, 66);
+    placeRow(bucket.resources, x, Math.max(520, height - 124), 2, 110, 46);
+  });
+
+  const cultureX = Math.max(width - 130, marginX);
+  culture.sort((a, b) => getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
+  culture.forEach((node, index) => {
+    const y = 170 + index * Math.max(54, Math.min(90, (height - 300) / Math.max(1, culture.length - 1 || 1)));
+    positions.set(getGraphNodeId(node), { x: cultureX, y: Math.min(height - 90, y) });
+  });
+  placeRow(ungrouped, width / 2, Math.max(560, height - 80), 7, 120, 58);
+
+  const nodes = [...nodeMap.values()].filter((node) => positions.has(getGraphNodeId(node))).map((node) => ({ ...node, position: positions.get(getGraphNodeId(node)) }));
+  const edges = edgesRaw
+    .map((edge) => ({ ...edge, source: edge.source || edge.from, target: edge.target || edge.to }))
+    .filter((edge) => positions.has(edge.source) && positions.has(edge.target));
+  return { nodes, edges, positions };
+}
+
+function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
+  if (adminGraphCanvas) {
+    adminGraphCanvas.innerHTML = "";
+    adminGraphCanvas.style.position = "relative";
+    adminGraphCanvas.style.overflow = "hidden";
+  }
+  const { nodes, edges, positions } = buildSemanticGraphModel(nodesRaw, edgesRaw, width, height);
+  const keyword = (state.admin.graph.searchKeyword || "").trim().toLowerCase();
+  const semanticCount = edges.filter((e) => !["CONTAIN_TOPIC", "INCLUDE_POINT", "HAS_CATEGORY", "CONTAINS"].includes(e.type)).length;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "外贸谈判知识图谱语义关系网络");
+  svg.style.background = "linear-gradient(180deg, rgba(15,23,42,.92), rgba(2,6,23,.98))";
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const usedMarkers = new Set();
+  edges.forEach((edge) => {
+    const style = getRelationStyle(edge.type);
+    const markerId = `arrow-${String(edge.type || "other").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    if (usedMarkers.has(markerId)) return;
+    usedMarkers.add(markerId);
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", markerId);
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "9");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "6");
+    marker.setAttribute("markerHeight", "6");
+    marker.setAttribute("orient", "auto-start-reverse");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+    path.setAttribute("fill", style.color);
+    marker.appendChild(path);
+    defs.appendChild(marker);
+  });
+  svg.appendChild(defs);
+
+  const edgeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  svg.appendChild(edgeLayer);
+  svg.appendChild(nodeLayer);
+
+  const sortedEdges = [...edges].sort((a, b) => {
+    const order = { hierarchy: 0, resource: 1, flow: 2, semantic: 3, culture: 4, other: 5 };
+    return (order[getRelationStyle(a.type).group] ?? 9) - (order[getRelationStyle(b.type).group] ?? 9);
+  });
+
+  sortedEdges.forEach((edge) => {
+    const source = positions.get(edge.source);
+    const target = positions.get(edge.target);
+    if (!source || !target) return;
+    const style = getRelationStyle(edge.type);
+    const markerId = `arrow-${String(edge.type || "other").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const curve = style.group === "flow" ? 0 : Math.max(-70, Math.min(70, dx * 0.12));
+    const c1x = source.x + dx * 0.42;
+    const c1y = source.y + dy * 0.42 - curve;
+    const c2x = source.x + dx * 0.58;
+    const c2y = source.y + dy * 0.58 + curve;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", style.color);
+    path.setAttribute("stroke-width", String(style.width));
+    path.setAttribute("stroke-opacity", style.group === "hierarchy" ? "0.35" : "0.78");
+    if (style.dash) path.setAttribute("stroke-dasharray", style.dash);
+    path.setAttribute("marker-end", `url(#${markerId})`);
+    edgeLayer.appendChild(path);
+
+    if (style.group !== "hierarchy") {
+      const midX = (source.x + target.x) / 2;
+      const midY = (source.y + target.y) / 2 - curve * 0.3;
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", String(midX));
+      text.setAttribute("y", String(midY));
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-size", "10");
+      text.setAttribute("fill", style.color);
+      text.setAttribute("paint-order", "stroke");
+      text.setAttribute("stroke", "rgba(2,6,23,.9)");
+      text.setAttribute("stroke-width", "4");
+      text.textContent = edge.label || style.label;
+      edgeLayer.appendChild(text);
+    }
+  });
+
+  nodes.forEach((node) => {
+    const id = getGraphNodeId(node);
+    const pos = positions.get(id);
+    const type = node.label || node.nodeType || "KnowledgePoint";
+    const style = GRAPH_NODE_STYLES[type] || { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" };
+    const title = getGraphNodeTitle(node);
+    const highlighted = keyword && title.toLowerCase().includes(keyword);
+    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.setAttribute("class", "semantic-graph-node");
+    group.setAttribute("transform", `translate(${pos.x}, ${pos.y})`);
+    group.style.cursor = "pointer";
+    group.addEventListener("click", () => handleGraphNodeSelection(id));
+
+    if (style.shape === "diamond") {
+      const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      polygon.setAttribute("points", "0,-22 22,0 0,22 -22,0");
+      polygon.setAttribute("fill", style.fill);
+      polygon.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
+      polygon.setAttribute("stroke-width", highlighted ? "3" : "1.5");
+      group.appendChild(polygon);
+    } else if (style.shape === "rect" || style.shape === "pill") {
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const w = type === "Stage" ? 86 : 76;
+      const h = type === "Stage" ? 36 : 30;
+      rect.setAttribute("x", String(-w / 2));
+      rect.setAttribute("y", String(-h / 2));
+      rect.setAttribute("width", String(w));
+      rect.setAttribute("height", String(h));
+      rect.setAttribute("rx", style.shape === "pill" ? "18" : "8");
+      rect.setAttribute("fill", style.fill);
+      rect.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
+      rect.setAttribute("stroke-width", highlighted ? "3" : "1.5");
+      group.appendChild(rect);
+    } else {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("r", type === "KnowledgePoint" ? "17" : "18");
+      circle.setAttribute("fill", style.fill);
+      circle.setAttribute("stroke", highlighted ? "#fde68a" : style.stroke);
+      circle.setAttribute("stroke-width", highlighted ? "3" : "1.5");
+      group.appendChild(circle);
+    }
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("y", type === "Stage" ? "5" : "32");
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("font-size", type === "Stage" ? "12" : "10");
+    text.setAttribute("font-weight", type === "Stage" ? "700" : "500");
+    text.setAttribute("fill", "#e2e8f0");
+    text.setAttribute("paint-order", "stroke");
+    text.setAttribute("stroke", "rgba(2,6,23,.85)");
+    text.setAttribute("stroke-width", "3");
+    text.textContent = truncateGraphLabel(title, type === "Stage" ? 6 : 10);
+    group.appendChild(text);
+
+    const browserTitle = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    browserTitle.textContent = `${title}（${type}）`;
+    group.appendChild(browserTitle);
+    nodeLayer.appendChild(group);
+  });
+
+  const legend = document.createElement("div");
+  legend.className = "absolute bottom-3 left-3 max-w-[720px] rounded-xl border border-slate-700/70 bg-slate-950/85 p-3 text-[11px] text-slate-300 shadow-lg";
+  legend.innerHTML = `
+    <div class="mb-2 font-semibold text-slate-100">关系优先视图：不再按思维导图发散，而是把客户要求的“联系性”显性编码</div>
+    <div class="flex flex-wrap gap-x-4 gap-y-1">
+      ${["PRECEDES", "CONTAIN_TOPIC", "REQUIRES", "RELATED_TO", "APPLIES_TO_SCENARIO", "HAS_CULTURAL_SENSITIVITY", "TESTS", "EXPLAINS"].map((type) => {
+        const s = getRelationStyle(type);
+        return `<span><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? 'dashed' : 'solid'} ${s.color};vertical-align:middle;margin-right:4px"></i>${sanitizeSvgText(s.label)}</span>`;
+      }).join("")}
+    </div>`;
+
+  adminGraphCanvas.appendChild(svg);
+  adminGraphCanvas.appendChild(legend);
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length} · 语义/跨文化联系 ${semanticCount}`;
+  }
 }
 
 // 使用自定义“开花”布局渲染图谱，强调阶段/知识点放射结构。
