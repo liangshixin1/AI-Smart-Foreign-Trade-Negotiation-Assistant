@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory
 
@@ -21,17 +22,23 @@ from routes import asr as asr_routes
 from routes import tts as tts_routes
 
 
+def _warm_rag_index() -> None:
+    """后台预热 RAG 向量索引（加载 embedding 模型），不阻塞 Flask 启动。"""
+    try:
+        rag_matcher.refresh_knowledge_index()
+    except Exception:
+        pass
+
+
 def create_app() -> Flask:
     """创建并配置 Flask 应用。"""
     load_dotenv()
     database.init_database()
     database.seed_default_levels(CHAPTERS)
     graph_service.bootstrap_graph()
-    try:
-        rag_matcher.refresh_knowledge_index()
-    except Exception:
-        # 索引预热失败不影响应用启动
-        pass
+
+    # RAG 向量索引（含 embedding 模型加载）放入后台线程，避免拖慢启动速度。
+    threading.Thread(target=_warm_rag_index, daemon=True, name="rag-warmup").start()
 
     app = Flask(__name__, static_folder="static")
 

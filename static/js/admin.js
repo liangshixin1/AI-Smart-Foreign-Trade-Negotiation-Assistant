@@ -2566,235 +2566,406 @@ function truncateGraphLabel(text, max = 12) {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-// 层级（结构）关系：决定 dagre 分层布局的上下层级；其余关系作为语义/流程/跨文化连线叠加。
-const HIERARCHY_RELATION_TYPES = new Set([
-  "CONTAIN_TOPIC",
-  "INCLUDE_POINT",
-  "HAS_CATEGORY",
-  "CONTAINS",
-]);
+// ─── 阶段脊椎布局（Stage-Spine Layout）─────────────────────────────────────────
+// 核心设计：以十大谈判阶段为横向主轴，Topic/KP等节点在各阶段列下方垂直排列。
+// 不使用 dagre——dagre 会把所有 Stage 打进同一行、所有 KP 打进同一行，形成三条平带。
+// ────────────────────────────────────────────────────────────────────────────────
 
-// 将较长中文标题按每行字数折行，避免节点标签溢出与相互遮挡。
-function wrapGraphLabel(text, perLine = 6, maxLines = 3) {
-  const value = String(text || "");
-  if (!value) return "";
-  const lines = [];
-  for (let i = 0; i < value.length; i += perLine) {
-    lines.push(value.slice(i, i + perLine));
-    if (lines.length === maxLines) {
-      if (i + perLine < value.length) {
-        lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, Math.max(1, perLine - 1))}…`;
-      }
-      break;
+const MAX_TOPICS_PER_STAGE = 4;   // 每阶段最多显示的主题数
+const MAX_KPS_PER_TOPIC    = 3;   // 每主题最多显示的知识点数（横向排列）
+const MAX_SEMANTIC_EDGES   = 60;  // 跨阶段语义连线上限，避免视觉污染
+
+// 语义连线优先级（数字小=优先保留）
+const SEM_EDGE_PRIORITY = {
+  PRECEDES: 0, NEXT: 0,
+  REQUIRES: 1,
+  HAS_CULTURAL_SENSITIVITY: 2, INVOLVES_CULTURE: 2, CULTURE_SENSITIVE_TO: 2,
+  APPLIES_TO_SCENARIO: 3, SUGGESTS_STRATEGY: 3,
+  CONTRASTS_WITH: 4, CONFLICTS_WITH: 4, COMBINES_WITH: 4,
+  HAS_EXCEPTION: 5,
+  RELATED_TO: 9, RELATES_TO: 9,
+};
+
+/**
+ * 将 PRECEDES 边拓扑排序 Stage 节点，确保阶段按真实外贸流程顺序从左到右排列。
+ */
+function topoSortStages(allStages, edgesRaw) {
+  const stageIds = new Set(allStages.map(s => s.id));
+  const inDeg = new Map(allStages.map(s => [s.id, 0]));
+  const adj   = new Map(allStages.map(s => [s.id, []]));
+  edgesRaw.forEach(e => {
+    const src = e.source || e.from, tgt = e.target || e.to;
+    if (e.type === 'PRECEDES' && stageIds.has(src) && stageIds.has(tgt)) {
+      adj.get(src).push(tgt);
+      inDeg.set(tgt, (inDeg.get(tgt) || 0) + 1);
     }
+  });
+  const queue = allStages.filter(s => inDeg.get(s.id) === 0)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+  const result = [], seen = new Set();
+  while (queue.length) {
+    const s = queue.shift();
+    if (seen.has(s.id)) continue;
+    seen.add(s.id); result.push(s);
+    (adj.get(s.id) || []).forEach(nid => {
+      inDeg.set(nid, inDeg.get(nid) - 1);
+      if (inDeg.get(nid) === 0) {
+        const node = allStages.find(x => x.id === nid);
+        if (node) queue.push(node);
+      }
+    });
   }
-  return lines.join("\n");
+  allStages.forEach(s => { if (!seen.has(s.id)) result.push(s); });
+  return result;
 }
 
-// 根据节点类型返回 G6 形状、尺寸与文字样式，保证不同层级视觉可区分。
-function getG6NodeVisual(type) {
-  const palette = GRAPH_NODE_STYLES[type] || { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" };
-  if (type === "Stage") {
-    return { shape: "rect", size: [132, 44], fontSize: 13, fontWeight: 700, radius: 22, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
-  }
-  if (type === "Topic" || type === "KnowledgeCategory") {
-    return { shape: "rect", size: [120, 38], fontSize: 12, fontWeight: 600, radius: 9, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
-  }
-  if (type === "Practice" || type === "TheoryLesson" || type === "Chapter") {
-    return { shape: "rect", size: [110, 34], fontSize: 11, fontWeight: 500, radius: 8, labelInside: true, perLine: 7, fill: palette.fill, stroke: palette.stroke };
-  }
-  if (palette.shape === "diamond") {
-    return { shape: "diamond", size: [48, 48], fontSize: 11, fontWeight: 500, labelInside: false, perLine: 6, fill: palette.fill, stroke: palette.stroke };
-  }
-  return { shape: "circle", size: 32, fontSize: 11, fontWeight: 500, labelInside: false, perLine: 6, fill: palette.fill, stroke: palette.stroke };
+/**
+ * 计算阶段脊椎布局的节点位置（返回 Map<id, {x,y}>）。
+ *
+ * 布局层次：
+ *   Layer 0 (top)   — Stage 横向均匀分布
+ *   Layer 1         — Topic  在各自所属阶段列下方叠放（最多 MAX_TOPICS_PER_STAGE 个）
+ *   Layer 2         — KP     在各 Topic 下方横向排开（最多 MAX_KPS_PER_TOPIC 个）
+ *   Right column    — CultureDimension（文化维度独立于阶段柱，放右侧）
+ *   Bottom row      — Practice / TheoryLesson / Chapter（课时/实战放底部）
+ */
+function buildStageSpinePositions(nodeMap, edgesRaw, width, height) {
+  // ── 1. 建立层级父子映射 ──
+  const stageTopics = new Map(); // stageId -> [topicId]
+  const topicKPs    = new Map(); // topicId -> [kpId]
+  edgesRaw.forEach(e => {
+    const src = e.source || e.from, tgt = e.target || e.to;
+    if (!src || !tgt || src === tgt) return;
+    if (e.type === 'CONTAIN_TOPIC') {
+      if (!stageTopics.has(src)) stageTopics.set(src, []);
+      stageTopics.get(src).push(tgt);
+    }
+    if (['INCLUDE_POINT', 'HAS_CATEGORY', 'CONTAINS'].includes(e.type)) {
+      if (!topicKPs.has(src)) topicKPs.set(src, []);
+      topicKPs.get(src).push(tgt);
+    }
+  });
+
+  // ── 2. 对 Stage 进行拓扑排序 ──
+  const allStages = [...nodeMap.values()]
+    .filter(n => (n.label || n.nodeType) === 'Stage')
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+  const stages = topoSortStages(allStages, edgesRaw);
+  const numStages = Math.max(stages.length, 1);
+
+  // ── 3. 计算列宽与各层 Y 值 ──
+  const marginX    = 60;
+  const marginTop  = 30;
+  const usableW    = width - marginX * 2;
+  const colW       = usableW / numStages;     // 每阶段占用的水平带宽
+
+  const STAGE_Y    = marginTop + 24;          // 阶段节点中心 Y
+  const TOPIC_Y0   = STAGE_Y  + 90;          // 第一个 Topic 中心 Y
+  const TOPIC_DY   = 76;                      // 相邻 Topic 的垂直间距
+  const KP_DY      = 46;                      // Topic 到其 KP 的垂直偏移
+
+  // ── 4. 放置 Stage、Topic、KP ──
+  const positions  = new Map(); // id -> {x, y}
+  const placedIds  = new Set();
+  const hiddenInfo = new Map(); // id -> {hiddenTopics?, hiddenKPs?}
+
+  stages.forEach((stage, si) => {
+    const stageX = marginX + (si + 0.5) * colW;
+    positions.set(stage.id, { x: stageX, y: STAGE_Y });
+    placedIds.add(stage.id);
+
+    // 取 stageTopics，按 order 排序，最多显示 MAX_TOPICS_PER_STAGE 个
+    const rawTopics = (stageTopics.get(stage.id) || []).filter(id => nodeMap.has(id));
+    const visTopics = rawTopics.slice(0, MAX_TOPICS_PER_STAGE);
+    const hidT = rawTopics.length - visTopics.length;
+    if (hidT > 0) hiddenInfo.set(stage.id, { hiddenTopics: hidT });
+
+    visTopics.forEach((topicId, ti) => {
+      const topicX = stageX;
+      const topicY = TOPIC_Y0 + ti * TOPIC_DY;
+      positions.set(topicId, { x: topicX, y: topicY });
+      placedIds.add(topicId);
+
+      // KP 横向排在 Topic 正下方
+      const rawKPs = (topicKPs.get(topicId) || []).filter(id => nodeMap.has(id));
+      const visKPs = rawKPs.slice(0, MAX_KPS_PER_TOPIC);
+      const hidKP  = rawKPs.length - visKPs.length;
+      if (hidKP > 0) hiddenInfo.set(topicId, { hiddenKPs: hidKP });
+
+      const kpY     = topicY + KP_DY;
+      // 最多 3 个 KP，间距不超过列宽 / 4，避免越过相邻列
+      const kpSpacing = Math.min(colW * 0.28, 34);
+      visKPs.forEach((kpId, ki) => {
+        const kpX = topicX + (ki - (visKPs.length - 1) / 2) * kpSpacing;
+        positions.set(kpId, { x: kpX, y: kpY });
+        placedIds.add(kpId);
+      });
+    });
+  });
+
+  // ── 5. CultureDimension —— 右侧独立列 ──
+  const cultures = [...nodeMap.values()].filter(n => (n.label || n.nodeType) === 'CultureDimension');
+  const cultureX = width - 44;
+  const cultureYStep = Math.min(58, (height - 80) / Math.max(cultures.length, 1));
+  cultures.slice(0, Math.floor((height - 80) / 44)).forEach((c, i) => {
+    positions.set(c.id, { x: cultureX, y: 70 + i * cultureYStep });
+    placedIds.add(c.id);
+  });
+
+  // ── 6. Practice / TheoryLesson / Chapter —— 底部横向 ──
+  const bottomTypes = new Set(['Practice', 'TheoryLesson', 'Chapter']);
+  const bottomNodes = [...nodeMap.values()].filter(n => bottomTypes.has(n.label || n.nodeType) && !placedIds.has(n.id));
+  const bottomY = Math.min(height - 44, TOPIC_Y0 + MAX_TOPICS_PER_STAGE * TOPIC_DY + KP_DY + 48);
+  bottomNodes.slice(0, Math.floor(usableW / 90)).forEach((n, i) => {
+    positions.set(n.id, { x: marginX + 40 + i * Math.min(90, usableW / Math.max(bottomNodes.length, 1)), y: bottomY });
+    placedIds.add(n.id);
+  });
+
+  return { positions, placedIds, hiddenInfo, stages };
 }
 
-// 统一的 G6 分层知识图谱渲染器。
-// 设计目标（满足高校教学/展示需求）：
-//   1) 清晰的层级结构 —— 仅用“包含/收录”等结构关系驱动 dagre 分层（阶段→主题→知识点）；
-//   2) 显性的联系连线 —— 流程顺序/前置依赖/跨文化等关系叠加为带箭头、带标签的彩色连线；
-//   3) 教学友好交互 —— 悬停节点高亮其关联关系、可拖拽/缩放/平移、点击查看详情。
-// 同时服务教师端总览（admin-graph-canvas）与学生端本课图谱（student-lesson-graph）。
+/**
+ * 主渲染器：以阶段脊椎布局 + G6 preset 渲染教师端总览 & 学生端本课图谱。
+ *
+ * 与 dagre 的核心区别：
+ *   - dagre 按全局最小化边交叉排 rank，结果是所有 Stage 一行、所有 KP 一行；
+ *   - 本实现自行计算 x/y，让每个阶段占据独立列带，Topics/KPs 在该列内向下分布。
+ */
 function renderKnowledgeGraphG6(options) {
   const {
     container,
     nodes: rawNodes = [],
     edges: rawEdges = [],
-    direction = "TB",
-    highlightKeyword = "",
+    direction = 'TB',   // 目前固定 TB（纵向），为未来横向扩展留口
+    highlightKeyword = '',
     highlightNames = null,
     onNodeClick = null,
     compact = false,
-    theme = "dark",
+    theme = 'dark',
   } = options || {};
-  if (!container || typeof window === "undefined" || !window.G6) return null;
 
+  if (!container || typeof window === 'undefined' || !window.G6) return null;
+
+  // ── 构建 nodeMap ──
   const nodeMap = new Map();
-  rawNodes.forEach((n) => {
+  rawNodes.forEach(n => {
     const id = getGraphNodeId(n);
     if (id && !nodeMap.has(id)) nodeMap.set(id, { ...n, id });
   });
   if (nodeMap.size === 0) return null;
 
-  const labelColor = theme === "light" ? "#0f172a" : "#e2e8f0";
-  const labelStroke = theme === "light" ? "rgba(255,255,255,.9)" : "rgba(2,6,23,.85)";
-  const kw = String(highlightKeyword || "").trim().toLowerCase();
-  const highlightSet = highlightNames instanceof Set ? highlightNames : null;
+  // ── 计算阶段脊椎布局位置 ──
+  const W = container.clientWidth  || (compact ? 620 : 980);
+  const H = container.clientHeight || (compact ? 290 : 660);
+  const { positions, placedIds, hiddenInfo } = buildStageSpinePositions(nodeMap, rawEdges, W, H);
 
-  const g6Nodes = [...nodeMap.values()].map((n) => {
-    const type = n.label || n.nodeType || "KnowledgePoint";
-    const vis = getG6NodeVisual(type);
-    const title = getGraphNodeTitle(n);
-    const matched =
-      (kw && title.toLowerCase().includes(kw)) ||
-      (highlightSet && (highlightSet.has(n.name) || highlightSet.has(n.id) || highlightSet.has(title)));
-    return {
-      id: n.id,
-      nodeType: type,
-      fullTitle: title,
-      name: n.name || title,
-      label: wrapGraphLabel(title, vis.perLine, vis.labelInside ? 2 : 3),
-      type: vis.shape,
-      size: vis.size,
-      matched: !!matched,
-      style: {
-        fill: vis.fill,
-        stroke: matched ? "#fde047" : vis.stroke,
-        lineWidth: matched ? 3 : 1.5,
-        radius: vis.radius,
-        cursor: "pointer",
-      },
-      labelCfg: {
-        position: vis.labelInside ? "center" : "bottom",
-        offset: vis.labelInside ? 0 : 6,
-        style: {
-          fill: vis.labelInside ? "#f8fafc" : labelColor,
-          fontSize: vis.fontSize,
-          fontWeight: vis.fontWeight,
-          lineHeight: vis.fontSize + 3,
-          ...(vis.labelInside ? {} : { stroke: labelStroke, lineWidth: 3 }),
+  if (placedIds.size === 0) return null;
+
+  // ── 关键词 / 高亮名称集合 ──
+  const kw = String(highlightKeyword || '').trim().toLowerCase();
+  const hlSet = highlightNames instanceof Set ? highlightNames : null;
+  const labelColor = theme === 'light' ? '#1e293b' : '#e2e8f0';
+
+  // ── 构建 G6 节点模型 ──
+  const g6Nodes = [...nodeMap.values()]
+    .filter(n => placedIds.has(n.id))
+    .map(n => {
+      const type    = n.label || n.nodeType || 'KnowledgePoint';
+      const vis     = GRAPH_NODE_STYLES[type] || { fill: '#64748b', stroke: '#cbd5e1', shape: 'circle' };
+      const title   = getGraphNodeTitle(n);
+      const pos     = positions.get(n.id) || { x: W / 2, y: H / 2 };
+      const matched = (kw && title.toLowerCase().includes(kw)) || (hlSet && (hlSet.has(n.name) || hlSet.has(n.id) || hlSet.has(title)));
+      const extra   = hiddenInfo.get(n.id);
+
+      // 紧凑模式（学生端）略微缩小节点
+      const scl = compact ? 0.82 : 1;
+
+      let nodeType = 'circle', nodeSize = 28 * scl;
+      let labelPos = 'bottom', labelInside = false;
+      let nodeW = 0, nodeH = 0;
+
+      if (type === 'Stage') {
+        nodeType = 'rect'; nodeW = 88 * scl; nodeH = 30 * scl;
+        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
+      } else if (type === 'Topic' || type === 'KnowledgeCategory') {
+        nodeType = 'rect'; nodeW = 82 * scl; nodeH = 24 * scl;
+        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
+      } else if (type === 'CultureDimension') {
+        nodeType = 'diamond'; nodeSize = 22 * scl;
+      } else if (['Practice','TheoryLesson','Chapter'].includes(type)) {
+        nodeType = 'rect'; nodeW = 78 * scl; nodeH = 22 * scl;
+        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
+      } else {
+        // KnowledgePoint / Skill / Terminology
+        nodeType = 'circle'; nodeSize = 20 * scl;
+      }
+
+      // 标签：矩形节点写内部，圆形写底部；截断避免溢出
+      const maxLabelLen = nodeType === 'rect' ? Math.floor((nodeW || 80) / 12) : 6;
+      const rawLabel = title;
+      const label = rawLabel.length > maxLabelLen ? rawLabel.slice(0, maxLabelLen - 1) + '…' : rawLabel;
+
+      // 隐藏数量徽标追加到标签（简单实现）
+      let badgeLabel = label;
+      if (extra?.hiddenTopics) badgeLabel += ` +${extra.hiddenTopics}`;
+      if (extra?.hiddenKPs)    badgeLabel += ` +${extra.hiddenKPs}`;
+
+      const fontSize = type === 'Stage' ? (compact ? 10 : 12) : (compact ? 9 : 11);
+
+      return {
+        id: n.id,
+        x: pos.x,
+        y: pos.y,
+        nodeType: type,
+        fullTitle: title,
+        name: n.name || title,
+        type: nodeType,
+        size: nodeSize,
+        matched: !!matched,
+        label: badgeLabel,
+        labelCfg: {
+          position: labelPos,
+          offset: labelInside ? 0 : 5,
+          style: {
+            fill: labelInside ? '#f8fafc' : labelColor,
+            fontSize,
+            fontWeight: type === 'Stage' ? 700 : (type === 'Topic' ? 600 : 500),
+          },
         },
-      },
-    };
-  });
+        style: {
+          fill: vis.fill,
+          stroke: matched ? '#fde047' : vis.stroke,
+          lineWidth: matched ? 3 : 1.5,
+          radius: (type === 'Stage' || type === 'Topic') ? 6 : undefined,
+          cursor: 'pointer',
+        },
+      };
+    });
 
-  const idSet = new Set(g6Nodes.map((n) => n.id));
-  const normEdges = rawEdges
-    .map((e) => ({ ...e, source: e.source || e.from, target: e.target || e.to }))
-    .filter((e) => e.source && e.target && e.source !== e.target && idSet.has(e.source) && idSet.has(e.target));
+  // ── 边过滤与分类 ──
+  const visSet = new Set(g6Nodes.map(n => n.id));
+  const allValid = rawEdges
+    .map(e => ({ ...e, source: e.source || e.from, target: e.target || e.to }))
+    .filter(e => e.source && e.target && e.source !== e.target && visSet.has(e.source) && visSet.has(e.target));
 
-  const hierarchyEdges = normEdges.filter((e) => HIERARCHY_RELATION_TYPES.has(e.type));
-  const relationEdges = normEdges.filter((e) => !HIERARCHY_RELATION_TYPES.has(e.type));
-  const hierarchyCurve = direction === "LR" ? "cubic-horizontal" : "cubic-vertical";
+  const hierEdges  = allValid.filter(e => ['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS'].includes(e.type));
+  const flowEdges  = allValid.filter(e => e.type === 'PRECEDES' || e.type === 'NEXT');
+  const otherEdges = allValid.filter(e => !['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS','PRECEDES','NEXT'].includes(e.type));
 
-  const buildEdgeModel = (edge, isHierarchy) => {
-    const s = getRelationStyle(edge.type);
-    const dash = s.dash ? s.dash.split(/\s+/).map(Number).filter((v) => !Number.isNaN(v)) : null;
+  // 语义连线按优先级限制数量，避免大量 RELATED_TO 形成色带
+  const curatedSem = otherEdges
+    .sort((a, b) => (SEM_EDGE_PRIORITY[a.type] ?? 9) - (SEM_EDGE_PRIORITY[b.type] ?? 9))
+    .slice(0, MAX_SEMANTIC_EDGES);
+
+  function buildEdgeModel(edge, edgeClass) {
+    const s    = getRelationStyle(edge.type);
+    const dash = s.dash ? s.dash.split(/\s+/).map(Number).filter(v => !Number.isNaN(v)) : null;
+    const isHier = edgeClass === 'hier';
+    const isFlow = edgeClass === 'flow';
+
+    // 流程顺序（PRECEDES）在阶段行绘成直线带箭头；层级线绘成轻量垂直曲线；语义线绘成弧线
+    const edgeType  = isFlow ? 'line' : 'quadratic';
+    // 语义弧线用较大曲率，确保不和节点列重叠
+    const srcPos    = positions.get(edge.source) || { x: 0, y: 0 };
+    const tgtPos    = positions.get(edge.target) || { x: 0, y: 0 };
+    const dx        = Math.abs((tgtPos.x || 0) - (srcPos.x || 0));
+    const curveOffset = isHier ? 0 : isFlow ? 0 : Math.min(80, 20 + dx * 0.08);
+
     return {
       source: edge.source,
       target: edge.target,
       relType: edge.type,
-      relGroup: s.group,
-      type: isHierarchy ? hierarchyCurve : "quadratic",
-      label: isHierarchy ? "" : edge.label || s.label || "",
-      curveOffset: isHierarchy ? 0 : 20,
+      type: edgeType,
+      curveOffset,
+      label: isHier ? '' : (edge.label || s.label || ''),
       labelCfg: {
         autoRotate: true,
         refY: 4,
         style: {
           fill: s.color,
-          fontSize: 10,
+          fontSize: 9,
           background: {
-            fill: theme === "light" ? "rgba(255,255,255,.92)" : "rgba(2,6,23,.82)",
-            padding: [2, 4, 2, 4],
+            fill: theme === 'light' ? 'rgba(255,255,255,.88)' : 'rgba(2,6,23,.82)',
+            padding: [1, 3, 1, 3],
             radius: 3,
           },
         },
       },
       style: {
         stroke: s.color,
-        lineWidth: s.width,
+        lineWidth: isHier ? 1 : s.width,
         lineDash: dash || undefined,
-        opacity: isHierarchy ? 0.45 : 0.9,
-        endArrow: isHierarchy ? false : { path: window.G6.Arrow.triangle(7, 9, 2), fill: s.color, stroke: s.color },
+        opacity: isHier ? 0.35 : isFlow ? 0.9 : 0.65,
+        endArrow: (isFlow || !isHier)
+          ? { path: window.G6.Arrow.triangle(6, 8, 2), fill: s.color, stroke: s.color }
+          : false,
       },
     };
-  };
+  }
 
-  const padding = compact ? [16, 18, 16, 18] : [28, 40, 28, 40];
+  const g6Edges = [
+    ...hierEdges.map(e  => buildEdgeModel(e, 'hier')),
+    ...flowEdges.map(e  => buildEdgeModel(e, 'flow')),
+    ...curatedSem.map(e => buildEdgeModel(e, 'sem')),
+  ];
+
+  // ── 初始化 G6 图（preset 布局，不让 G6 再计算位置）──
+  container.innerHTML = '';
+  const padding = compact ? [12, 16, 12, 16] : [24, 36, 24, 36];
   const graph = new window.G6.Graph({
     container,
-    width: container.clientWidth || (compact ? 600 : 960),
-    height: container.clientHeight || (compact ? 280 : 660),
+    width:  W,
+    height: H,
     fitView: true,
     fitViewPadding: padding,
-    minZoom: 0.2,
-    maxZoom: 2.6,
-    layout: {
-      type: "dagre",
-      rankdir: direction,
-      nodesep: compact ? 12 : 22,
-      ranksep: compact ? 55 : 85,
-      preventOverlap: true,
-      controlPoints: true,
-    },
+    minZoom: 0.15,
+    maxZoom: 3,
+    layout: { type: 'preset' },   // 直接使用节点上的 x/y，不再走 dagre
     modes: {
       default: [
-        "drag-canvas",
-        "zoom-canvas",
-        { type: "drag-node", enableDelegate: true },
-        { type: "activate-relations", trigger: "mouseenter", resetSelected: true },
+        'drag-canvas',
+        'zoom-canvas',
+        { type: 'drag-node', enableDelegate: true },
+        { type: 'activate-relations', trigger: 'mouseenter', resetSelected: true },
       ],
     },
-    defaultNode: { type: "circle" },
-    defaultEdge: { type: hierarchyCurve },
+    defaultNode: { type: 'circle' },
+    defaultEdge: { type: 'quadratic' },
     nodeStateStyles: {
-      active: { lineWidth: 3, shadowColor: "rgba(250,204,21,.85)", shadowBlur: 16 },
-      inactive: { opacity: 0.25 },
-      highlight: { lineWidth: 4, stroke: "#fde047", shadowColor: "rgba(250,204,21,.9)", shadowBlur: 18 },
+      active:    { lineWidth: 3, shadowColor: 'rgba(250,204,21,.85)', shadowBlur: 14 },
+      inactive:  { opacity: 0.22 },
+      highlight: { lineWidth: 4, stroke: '#fde047', shadowColor: 'rgba(250,204,21,.9)', shadowBlur: 18 },
     },
     edgeStateStyles: {
-      active: { lineWidth: 2.6, opacity: 1 },
-      inactive: { opacity: 0.1 },
+      active:   { lineWidth: 2.4, opacity: 1 },
+      inactive: { opacity: 0.06 },
     },
   });
 
-  graph.data({ nodes: g6Nodes, edges: hierarchyEdges.map((e) => buildEdgeModel(e, true)) });
+  graph.data({ nodes: g6Nodes, edges: g6Edges });
   graph.render();
-  relationEdges.forEach((edge) => {
-    try {
-      graph.addItem("edge", buildEdgeModel(edge, false));
-    } catch (err) {
-      /* 叠加边渲染失败时忽略，不影响主体层级结构 */
-    }
-  });
   graph.fitView(padding);
 
-  if (kw || highlightSet) {
-    graph.getNodes().forEach((node) => {
-      if (node.getModel().matched) graph.setItemState(node, "highlight", true);
+  // 高亮匹配节点
+  if (kw || hlSet) {
+    graph.getNodes().forEach(node => {
+      if (node.getModel().matched) graph.setItemState(node, 'highlight', true);
     });
   }
 
-  if (typeof onNodeClick === "function") {
-    graph.on("node:click", (evt) => {
+  if (typeof onNodeClick === 'function') {
+    graph.on('node:click', evt => {
       const model = evt.item && evt.item.getModel();
       if (model) onNodeClick(model.id, model);
     });
   }
 
-  if (typeof ResizeObserver !== "undefined") {
+  // 容器大小变化时自适应
+  if (typeof ResizeObserver !== 'undefined') {
     const observer = new ResizeObserver(() => {
-      if (!graph || graph.get("destroyed")) {
-        observer.disconnect();
-        return;
-      }
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (w && h) {
-        graph.changeSize(w, h);
-        graph.fitView(padding);
-      }
+      if (!graph || graph.get('destroyed')) { observer.disconnect(); return; }
+      const w = container.clientWidth, h = container.clientHeight;
+      if (w && h) { graph.changeSize(w, h); graph.fitView(padding); }
     });
     observer.observe(container);
   }
@@ -2802,72 +2973,71 @@ function renderKnowledgeGraphG6(options) {
   return graph;
 }
 
-// 构建图谱图例（节点类型 + 关系类型），帮助教学场景下快速读懂图谱语义。
+// 图例：节点类型 + 关系类型
 function buildKnowledgeGraphLegend() {
   const nodeLegendItems = [
-    { type: "Stage", text: "谈判阶段" },
-    { type: "Topic", text: "主题" },
-    { type: "KnowledgePoint", text: "知识点" },
-    { type: "Skill", text: "技能" },
-    { type: "Terminology", text: "术语" },
-    { type: "CultureDimension", text: "文化维度" },
-    { type: "Practice", text: "实战/课时" },
+    { type: 'Stage', text: '谈判阶段' },
+    { type: 'Topic', text: '主题' },
+    { type: 'KnowledgePoint', text: '知识点' },
+    { type: 'Skill', text: '技能' },
+    { type: 'Terminology', text: '术语' },
+    { type: 'CultureDimension', text: '文化维度' },
+    { type: 'Practice', text: '实战/课时' },
   ];
-  const relationLegendItems = ["CONTAIN_TOPIC", "PRECEDES", "REQUIRES", "RELATED_TO", "APPLIES_TO_SCENARIO", "HAS_CULTURAL_SENSITIVITY"];
+  const relLegendItems = ['CONTAIN_TOPIC', 'PRECEDES', 'REQUIRES', 'RELATED_TO', 'APPLIES_TO_SCENARIO', 'HAS_CULTURAL_SENSITIVITY'];
 
-  const legend = document.createElement("div");
-  legend.className =
-    "absolute bottom-3 left-3 max-w-[760px] rounded-xl border border-slate-700/70 bg-slate-950/85 p-3 text-[11px] text-slate-300 shadow-lg backdrop-blur";
-  const nodeRow = nodeLegendItems
-    .map((item) => {
-      const v = getG6NodeVisual(item.type);
-      const shapeCss =
-        v.shape === "circle"
-          ? "border-radius:50%;width:12px;height:12px;"
-          : v.shape === "diamond"
-          ? "width:11px;height:11px;transform:rotate(45deg);"
-          : "width:16px;height:11px;border-radius:3px;";
-      return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;${shapeCss}background:${v.fill};border:1px solid ${v.stroke};"></i>${sanitizeSvgText(item.text)}</span>`;
-    })
-    .join("");
-  const relationRow = relationLegendItems
-    .map((type) => {
-      const s = getRelationStyle(type);
-      return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? "dashed" : "solid"} ${s.color};vertical-align:middle;"></i>${sanitizeSvgText(s.label)}</span>`;
-    })
-    .join("");
+  const legend = document.createElement('div');
+  legend.className = 'absolute bottom-3 left-3 max-w-[760px] rounded-xl border border-slate-700/70 bg-slate-950/88 p-3 text-[11px] text-slate-300 shadow-lg backdrop-blur pointer-events-none';
+
+  const nodeRow = nodeLegendItems.map(item => {
+    const vis = GRAPH_NODE_STYLES[item.type] || { fill: '#64748b', stroke: '#cbd5e1' };
+    const isRect = item.type === 'Stage' || item.type === 'Topic' || item.type === 'Practice';
+    const isDia  = item.type === 'CultureDimension';
+    const shapeCss = isDia
+      ? 'width:10px;height:10px;transform:rotate(45deg);'
+      : isRect
+        ? 'width:16px;height:11px;border-radius:3px;'
+        : 'width:12px;height:12px;border-radius:50%;';
+    return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;${shapeCss}background:${vis.fill};border:1.5px solid ${vis.stroke};flex-shrink:0"></i>${sanitizeSvgText(item.text)}</span>`;
+  }).join('');
+
+  const relRow = relLegendItems.map(type => {
+    const s = getRelationStyle(type);
+    return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? 'dashed' : 'solid'} ${s.color};vertical-align:middle;flex-shrink:0"></i>${sanitizeSvgText(s.label)}</span>`;
+  }).join('');
+
   legend.innerHTML = `
-    <div class="mb-1.5 font-semibold text-slate-100">层级 + 联系视图</div>
-    <div class="mb-2 flex flex-wrap gap-x-3 gap-y-1">${nodeRow}</div>
-    <div class="flex flex-wrap gap-x-3 gap-y-1">${relationRow}</div>`;
+    <div class="mb-1.5 font-semibold text-slate-100">阶段脊椎视图（十大阶段 → 主题 → 知识点）</div>
+    <div class="mb-1.5 flex flex-wrap gap-x-3 gap-y-1">${nodeRow}</div>
+    <div class="flex flex-wrap gap-x-3 gap-y-1">${relRow}</div>`;
   return legend;
 }
 
-// 渲染教师端知识图谱：以分层结构为主、语义/跨文化联系为辅的关系视图。
+// 教师端知识图谱总览入口（阶段脊椎 + 语义/跨文化连线叠加）
 function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
   if (!adminGraphCanvas) return;
-  adminGraphCanvas.innerHTML = "";
-  adminGraphCanvas.style.position = "relative";
-  adminGraphCanvas.style.overflow = "hidden";
+  adminGraphCanvas.innerHTML = '';
+  adminGraphCanvas.style.position = 'relative';
+  adminGraphCanvas.style.overflow = 'hidden';
 
-  if (typeof window === "undefined" || !window.G6) {
+  if (typeof window === 'undefined' || !window.G6) {
     adminGraphCanvas.innerHTML = "<p class='p-4 text-sm text-slate-400'>图谱引擎 (G6) 未加载，请检查 /static/vendor/g6 资源。</p>";
     return;
   }
 
-  const keyword = (state.admin.graph.searchKeyword || "").trim();
+  const keyword = (state.admin.graph.searchKeyword || '').trim();
   adminG6Graph = renderKnowledgeGraphG6({
     container: adminGraphCanvas,
     nodes: nodesRaw,
     edges: edgesRaw,
     direction: adminGraphDirection,
     highlightKeyword: keyword,
-    onNodeClick: (id) => handleGraphNodeSelection(id),
-    theme: "dark",
+    onNodeClick: id => handleGraphNodeSelection(id),
+    theme: 'dark',
   });
 
   if (!adminG6Graph) {
-    if (adminGraphStatus) adminGraphStatus.textContent = "暂无可展示的节点，请检查数据或关系";
+    if (adminGraphStatus) adminGraphStatus.textContent = '暂无可展示的节点，请检查数据或关系';
     return;
   }
 
@@ -2876,11 +3046,8 @@ function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
   if (adminGraphStatus) {
     const nodeCount = adminG6Graph.getNodes().length;
     const edgeCount = adminG6Graph.getEdges().length;
-    const semanticCount = (edgesRaw || []).filter(
-      (e) => !HIERARCHY_RELATION_TYPES.has(e.type)
-    ).length;
-    const dirText = adminGraphDirection === "TB" ? "纵向分层" : "横向分层";
-    adminGraphStatus.textContent = `${dirText} · 节点 ${nodeCount} · 关系 ${edgeCount} · 语义/跨文化联系 ${semanticCount}`;
+    const semCount  = (edgesRaw || []).filter(e => !['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS'].includes(e.type)).length;
+    adminGraphStatus.textContent = `阶段脊椎 · 节点 ${nodeCount} · 关系 ${edgeCount} · 语义/跨文化联系 ${semCount}`;
   }
 }
 
