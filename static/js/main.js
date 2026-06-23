@@ -878,9 +878,13 @@ if (typeof adminGraphSearch !== "undefined" && adminGraphSearch) {
 
 if (adminGraphToggleRenderer) {
   adminGraphToggleRenderer.addEventListener("click", () => {
-    adminGraphRenderer = "burst";
-    adminGraphToggleRenderer.textContent = "当前 开花";
-    adminGraphToggleRenderer.title = "Stage 环形开花布局";
+    adminGraphDirection = adminGraphDirection === "TB" ? "LR" : "TB";
+    adminGraphToggleRenderer.textContent =
+      adminGraphDirection === "TB" ? "当前 纵向分层" : "当前 横向分层";
+    adminGraphToggleRenderer.title =
+      adminGraphDirection === "TB"
+        ? "纵向分层：谈判阶段在上，主题、知识点依次向下展开"
+        : "横向分层：谈判阶段在左，主题、知识点依次向右展开";
     renderAdminGraphNetwork();
   });
 }
