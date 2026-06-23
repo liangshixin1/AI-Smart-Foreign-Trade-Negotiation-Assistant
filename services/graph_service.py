@@ -275,6 +275,8 @@ def ensure_indexes() -> None:
         "CREATE CONSTRAINT lesson_id IF NOT EXISTS FOR (l:TheoryLesson) REQUIRE l.id IS UNIQUE",
         "CREATE CONSTRAINT knowledge_point_name IF NOT EXISTS FOR (k:KnowledgePoint) REQUIRE k.name IS UNIQUE",
         "CREATE CONSTRAINT process_step_id IF NOT EXISTS FOR (s:ProcessStep) REQUIRE s.id IS UNIQUE",
+        "CREATE CONSTRAINT stage_id IF NOT EXISTS FOR (s:Stage) REQUIRE s.id IS UNIQUE",
+        "CREATE CONSTRAINT culture_dimension_id IF NOT EXISTS FOR (c:CultureDimension) REQUIRE c.id IS UNIQUE",
     ]
 
     with driver.session() as session:
@@ -304,6 +306,74 @@ PROCESS_STEPS: Sequence[ProcessStep] = (
     ProcessStep("process-complaint", "投诉处理", 9),
     ProcessStep("process-claim", "索赔与理赔", 10),
 )
+
+
+@dataclass(frozen=True)
+class StandardStage:
+    """Canonical customer-aligned foreign trade negotiation stage."""
+
+    identifier: str
+    name: str
+    english_name: str
+    order_index: int
+    summary: str
+    objectives: Sequence[str]
+    concepts: Sequence[str]
+    processes: Sequence[str]
+    strategies: Sequence[str]
+    culture_dimensions: Sequence[str]
+
+
+@dataclass(frozen=True)
+class CultureDimensionPreset:
+    """Default cross-cultural teaching dimension."""
+
+    identifier: str
+    name: str
+    theory: str
+    summary: str
+    teaching_tip: str
+
+
+CULTURE_DIMENSIONS: Sequence[CultureDimensionPreset] = (
+    CultureDimensionPreset("culture-power-distance", "权力距离", "Hofstede", "谈判对象对层级、授权和正式背书的敏感程度。", "面对高权力距离客户时，突出正式授权、公司资质和高层承诺。"),
+    CultureDimensionPreset("culture-uncertainty-avoidance", "不确定性回避", "Hofstede", "谈判对象对模糊条款、风险和不确定结果的容忍程度。", "对高不确定性回避客户提供更清晰的条款、证据和备选方案。"),
+    CultureDimensionPreset("culture-individualism", "个人主义/集体主义", "Hofstede", "谈判决策更偏个人绩效还是组织关系与群体共识。", "根据对方文化调整个人收益、团队共赢和长期关系的表达比例。"),
+    CultureDimensionPreset("culture-long-term-orientation", "长期导向", "Hofstede", "谈判对象对短期收益与长期合作价值的取舍。", "长期导向客户适合强调合作路线图、复购机制和持续服务。"),
+    CultureDimensionPreset("culture-context", "高语境/低语境沟通", "Hall", "谈判沟通更依赖含蓄语境还是明确文本。", "低语境沟通中使用清晰条款，高语境沟通中兼顾关系铺垫与礼貌缓冲。"),
+    CultureDimensionPreset("culture-time-orientation", "时间观念", "Cross-cultural Business", "谈判对象对准时、节奏、截止日期和灵活安排的期待。", "对时间敏感客户明确里程碑，对时间弹性客户保留关系维护空间。"),
+    CultureDimensionPreset("culture-face", "面子与关系维护", "Cross-cultural Business", "谈判中维护尊重、体面和关系连续性的需求。", "提出异议或索赔时避免直接羞辱对方，使用事实、共同目标和解决方案语言。"),
+    CultureDimensionPreset("culture-risk-communication", "风险沟通偏好", "Cross-cultural Business", "谈判对象偏好直接揭示风险还是间接提示风险。", "根据对方偏好选择风险提示强度，并配套缓释方案。"),
+)
+
+
+STANDARD_STAGES: Sequence[StandardStage] = (
+    StandardStage("stage-inquiry", "询盘", "Inquiry", 1, "交易磋商启动阶段，围绕需求、规格、数量和初步条件进行信息获取。", ("识别询盘类型", "澄清客户真实需求", "形成专业询盘回复"), ("询盘定义", "一般询盘", "具体询盘"), ("询盘信息收集", "需求澄清流程", "询盘有效期判断"), ("范围询价策略", "需求澄清提问", "专业邮件礼仪"), ("culture-context", "culture-time-orientation")),
+    StandardStage("stage-offer", "报盘", "Offer", 2, "卖方提出价格、数量、交期、付款等核心交易条件。", ("解释报盘法律性质", "设计报价结构", "控制报价锚点"), ("报盘定义", "实盘", "虚盘"), ("报价单结构", "有效期设置", "价格条款说明"), ("锚定策略", "价值陈述策略", "阶梯价格策略"), ("culture-uncertainty-avoidance", "culture-power-distance")),
+    StandardStage("stage-counter-offer", "还盘", "Counter-offer", 3, "对原报盘进行修改或拒绝，并重新提出交易条件。", ("理解还盘法律后果", "设计让步节奏", "维护谈判底线"), ("还盘定义", "反要约", "底线"), ("还盘条件分析", "权利义务转移", "让步记录"), ("条件式让步", "反锚定", "打包交换"), ("culture-face", "culture-risk-communication")),
+    StandardStage("stage-acceptance-order", "接受与订货", "Acceptance & Order", 4, "确认交易条件并形成订单或合同文件。", ("判断有效接受", "核对订单条款", "控制确认风险"), ("接受", "订单确认", "形式发票"), ("接受函撰写", "订单审核", "合同确认"), ("风险提示", "条款复核", "关系维护"), ("culture-context", "culture-power-distance")),
+    StandardStage("stage-packing-shipment", "包装与装运", "Packing & Shipment", 5, "围绕包装标准、唛头、装运安排和物流责任进行协调。", ("识别包装要求", "安排装运节点", "处理物流异常"), ("出口包装", "唛头", "装运通知"), ("包装确认", "订舱安排", "装运跟踪"), ("时效成本平衡", "异常预案", "多方协调"), ("culture-time-orientation", "culture-risk-communication")),
+    StandardStage("stage-payment-delivery", "付款与交货", "Payment & Delivery", 6, "围绕付款工具、交货节点、风险转移和资金安全展开谈判。", ("比较付款方式风险", "解释交货责任", "设计风险缓释方案"), ("信用证", "托收", "电汇"), ("审证", "改证", "交货确认"), ("付款条件博弈", "风险缓释", "分批交货"), ("culture-uncertainty-avoidance", "culture-long-term-orientation")),
+    StandardStage("stage-inspection", "商检", "Inspection", 7, "围绕检验证书、质量标准、异议期限和责任划分进行协商。", ("识别检验标准", "设计检验条款", "处理质量异议"), ("商检", "检验证书", "异议期"), ("检验机构确认", "检验条款撰写", "异议处理"), ("证据链构建", "质量保证设计", "解决方案谈判"), ("culture-risk-communication", "culture-face")),
+    StandardStage("stage-insurance-arbitration", "保险与仲裁", "Insurance & Arbitration", 8, "围绕货运保险、争议解决、仲裁条款和法律适用进行安排。", ("理解保险责任", "撰写仲裁条款", "选择争议解决路径"), ("货运保险", "仲裁条款", "适用法律"), ("投保确认", "仲裁地选择", "法律适用判断"), ("争议预防", "条款谈判", "证据准备"), ("culture-uncertainty-avoidance", "culture-power-distance")),
+    StandardStage("stage-complaint", "投诉处理", "Complaint", 9, "面对客户不满时进行事实核查、情绪管理和补救方案设计。", ("区分投诉类型", "管理客户情绪", "设计补救方案"), ("投诉", "客户情绪", "补救方案"), ("投诉受理", "内部核查", "方案反馈"), ("积极倾听", "补救谈判", "品牌声誉保护"), ("culture-face", "culture-context")),
+    StandardStage("stage-claim-settlement", "索赔与理赔", "Claim & Settlement", 10, "围绕损失证明、索赔时效、责任认定和赔偿方案进行谈判。", ("准备索赔证据", "计算损失金额", "完成理赔谈判"), ("索赔函", "理赔", "损失计算"), ("证据收集", "索赔函发送", "理赔审核"), ("事实锚定", "调解谈判", "赔偿方案设计"), ("culture-face", "culture-risk-communication")),
+)
+
+
+BLOOM_LEVELS: Sequence[str] = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+
+
+ALLOWED_KNOWLEDGE_RELATION_TYPES = {
+    "RELATED_TO",
+    "CONTRASTS_WITH",
+    "APPLIES_TO_SCENARIO",
+    "SUGGESTS_STRATEGY",
+    "HAS_EXCEPTION",
+    "CULTURE_SENSITIVE_TO",
+    "COMBINES_WITH",
+    "CONFLICTS_WITH",
+}
 
 
 CHAPTER_PROCESS_MAPPING: Dict[str, str] = {
@@ -633,6 +703,173 @@ def _merge_default_knowledge_points_tx(tx, names: Sequence[str]) -> int:
     return created
 
 
+def _merge_culture_dimensions_tx(tx) -> int:
+    created = 0
+    for dim in CULTURE_DIMENSIONS:
+        result = tx.run(
+            """
+            MERGE (c:CultureDimension {id: $id})
+            ON CREATE SET c.createdAt = datetime()
+            SET c.name = $name,
+                c.theory = $theory,
+                c.summary = $summary,
+                c.teachingTip = $teaching_tip,
+                c.isSystemRecommended = true,
+                c.updatedAt = datetime()
+            """,
+            {
+                "id": dim.identifier,
+                "name": dim.name,
+                "theory": dim.theory,
+                "summary": dim.summary,
+                "teaching_tip": dim.teaching_tip,
+            },
+        )
+        if result.consume().counters.nodes_created:
+            created += 1
+    return created
+
+
+def _merge_standard_stages_tx(tx) -> Dict[str, int]:
+    counters = {"stages": 0, "topics": 0, "knowledgePoints": 0, "relations": 0}
+    previous_id = None
+    for stage in STANDARD_STAGES:
+        result = tx.run(
+            """
+            MERGE (s:Stage {id: $id})
+            ON CREATE SET s.createdAt = datetime()
+            SET s.name = $name,
+                s.englishName = $english_name,
+                s.summary = $summary,
+                s.description = $summary,
+                s.orderIndex = $order_index,
+                s.objectives = $objectives,
+                s.isCustomerRoute = true,
+                s.updatedAt = datetime()
+            """,
+            {
+                "id": stage.identifier,
+                "name": stage.name,
+                "english_name": stage.english_name,
+                "summary": stage.summary,
+                "order_index": stage.order_index,
+                "objectives": list(stage.objectives),
+            },
+        )
+        if result.consume().counters.nodes_created:
+            counters["stages"] += 1
+        if previous_id:
+            tx.run(
+                """
+                MATCH (a:Stage {id: $previous_id}), (b:Stage {id: $current_id})
+                MERGE (a)-[:PRECEDES]->(b)
+                """,
+                {"previous_id": previous_id, "current_id": stage.identifier},
+            )
+            counters["relations"] += 1
+        previous_id = stage.identifier
+
+        tx.run(
+            """
+            MATCH (s:Stage {id: $stage_id}), (p:ProcessStep {id: $process_id})
+            MERGE (p)-[:MAPS_TO_STAGE]->(s)
+            """,
+            {"stage_id": stage.identifier, "process_id": stage.identifier.replace("stage-", "process-")},
+        )
+
+        for topic_key, topic_name, names in (
+            ("concept", "核心概念", stage.concepts),
+            ("process", "流程逻辑", stage.processes),
+            ("strategy", "策略技能", stage.strategies),
+        ):
+            topic_id = f"{stage.identifier}-{topic_key}"
+            result = tx.run(
+                """
+                MERGE (t:Topic {id: $id})
+                ON CREATE SET t.createdAt = datetime()
+                SET t.name = $name,
+                    t.stage = $stage_name,
+                    t.stageId = $stage_id,
+                    t.type = $topic_key,
+                    t.orderIndex = $order_index,
+                    t.updatedAt = datetime()
+                WITH t
+                MATCH (s:Stage {id: $stage_id})
+                MERGE (s)-[:CONTAIN_TOPIC]->(t)
+                """,
+                {
+                    "id": topic_id,
+                    "name": topic_name,
+                    "stage_name": stage.name,
+                    "stage_id": stage.identifier,
+                    "topic_key": topic_key,
+                    "order_index": {"concept": 1, "process": 2, "strategy": 3}[topic_key],
+                },
+            )
+            if result.consume().counters.nodes_created:
+                counters["topics"] += 1
+            for idx, kp_name in enumerate(names, start=1):
+                result = tx.run(
+                    """
+                    MERGE (k:KnowledgePoint {name: $name})
+                    ON CREATE SET k.createdAt = datetime(),
+                                  k.description = $description,
+                                  k.difficulty = 'beginner',
+                                  k.importance = CASE WHEN $topic_key = 'concept' THEN 'high' ELSE 'medium' END,
+                                  k.tags = []
+                    SET k.category = $topic_name,
+                        k.categoryPath = [$stage_name, $topic_name],
+                        k.stage = $stage_name,
+                        k.stageId = $stage_id,
+                        k.type = coalesce(k.type, $topic_key),
+                        k.bloomLevel = coalesce(k.bloomLevel, CASE WHEN $topic_key = 'concept' THEN 'understand' WHEN $topic_key = 'process' THEN 'apply' ELSE 'analyze' END),
+                        k.teachingObjective = coalesce(k.teachingObjective, $objective),
+                        k.orderIndex = coalesce(k.orderIndex, $order_index),
+                        k.isSystemRecommended = true,
+                        k.updatedAt = datetime()
+                    WITH k
+                    MATCH (t:Topic {id: $topic_id})
+                    MERGE (t)-[:INCLUDE_POINT]->(k)
+                    """,
+                    {
+                        "name": kp_name,
+                        "description": f"{stage.name}环节的{topic_name}知识单元：{kp_name}",
+                        "topic_name": topic_name,
+                        "topic_key": topic_key,
+                        "stage_name": stage.name,
+                        "stage_id": stage.identifier,
+                        "topic_id": topic_id,
+                        "objective": f"能够在{stage.name}场景中理解并运用“{kp_name}”。",
+                        "order_index": stage.order_index * 100 + idx,
+                    },
+                )
+                if result.consume().counters.nodes_created:
+                    counters["knowledgePoints"] += 1
+        for dim_id in stage.culture_dimensions:
+            tx.run(
+                """
+                MATCH (s:Stage {id: $stage_id}), (c:CultureDimension {id: $dim_id})
+                MERGE (s)-[:HAS_CULTURAL_SENSITIVITY]->(c)
+                WITH s, c
+                MATCH (s)-[:CONTAIN_TOPIC]->(:Topic)-[:INCLUDE_POINT]->(k:KnowledgePoint)
+                WHERE coalesce(k.type, '') IN ['strategy', 'skill'] OR k.category = '策略技能'
+                MERGE (k)-[:INVOLVES_CULTURE]->(c)
+                """,
+                {"stage_id": stage.identifier, "dim_id": dim_id},
+            )
+    return counters
+
+
+def apply_p0_standard_route() -> Dict[str, int]:
+    """Apply customer-aligned P0 defaults: ten stages and culture dimensions."""
+
+    driver = _get_driver()
+    with driver.session() as session:
+        culture_created = session.execute_write(_merge_culture_dimensions_tx)
+        stage_summary = session.execute_write(_merge_standard_stages_tx)
+    return {"cultureDimensions": culture_created, **stage_summary}
+
+
 def apply_default_recommendations() -> Dict[str, int]:
     """Create the recommended categories and knowledge point shells."""
 
@@ -650,7 +887,8 @@ def apply_default_recommendations() -> Dict[str, int]:
                 _merge_default_knowledge_points_tx, knowledge_names
             )
 
-    return {"categories": created_categories, "knowledgePoints": created_knowledge}
+    route_summary = apply_p0_standard_route()
+    return {"categories": created_categories, "knowledgePoints": created_knowledge, **route_summary}
 
 
 def reset_knowledge_categories_to_default() -> Dict[str, int]:
@@ -687,8 +925,9 @@ def initialize_graph(
 
     ensure_indexes()
     sync_static_content(include_recommendations=False)
+    route_summary = apply_p0_standard_route()
 
-    summary = {"categories": 0, "knowledgePoints": 0}
+    summary = {"categories": 0, "knowledgePoints": 0, **route_summary}
     if normalized == "default":
         summary = apply_default_recommendations()
 
@@ -1417,6 +1656,11 @@ def list_knowledge_points() -> List[Dict[str, object]]:
                k.orderIndex AS orderIndex,
                k.sourceId AS knowledgeId,
                k.tags AS tags,
+               k.bloomLevel AS bloom_level,
+               k.cultureTags AS culture_tags,
+               k.civicTags AS civic_tags,
+               k.teachingObjective AS teaching_objective,
+               k.assessmentHint AS assessment_hint,
                k.lex_role AS lex_role,
                t.name AS topic,
                CASE
@@ -1487,6 +1731,7 @@ def fetch_graph_snapshot(limit: int = 800) -> Dict[str, object]:
         "TheoryTopic",
         "TheoryLesson",
         "KnowledgePoint",
+        "CultureDimension",
         "Skill",
         "Terminology",
         "ProcessStep",
@@ -1677,6 +1922,7 @@ def _select_primary_label(labels: Iterable[str]) -> Optional[str]:
         "Stage",
         "Topic",
         "KnowledgeCategory",
+        "CultureDimension",
         "Chapter",
         "Practice",
         "TheoryTopic",
@@ -1704,7 +1950,7 @@ def _extract_node_identifier(label: Optional[str], node: Dict[str, object]) -> O
         if stage and base:
             return f"{stage}:{base}"
         return base
-    if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology", "Topic"}:
+    if label in {"Stage", "ProcessStep", "KnowledgePoint", "Skill", "Terminology", "Topic", "CultureDimension"}:
         if label == "Topic":
             stage = node.get("stage") or node.get("stageName") or ""
             name = node.get("name")
@@ -1747,6 +1993,7 @@ def _calculate_node_level(label: str) -> int:
         "KnowledgePoint": 3,
         "Skill": 3,
         "Terminology": 3,
+        "CultureDimension": 2,
         "ProcessStep": 4,
     }
     return level_map.get(label, 99)
@@ -1774,6 +2021,7 @@ def _get_edge_label(edge_type: Optional[str], relationship: Optional[Dict[str, o
     if edge_type:
         edge_labels = {
             "REQUIRES": "依赖",
+            "RELATED_TO": "关联",
             "RELATES_TO": "关联",
             "HAS_TOPIC": "包含",
             "CONTAIN_TOPIC": "包含",
@@ -1783,6 +2031,16 @@ def _get_edge_label(edge_type: Optional[str], relationship: Optional[Dict[str, o
             "HAS_PRACTICE": "练习",
             "NEXT": "下一步",
             "PRECEDES": "顺序",
+            "HAS_CULTURAL_SENSITIVITY": "文化敏感",
+            "INVOLVES_CULTURE": "涉及文化",
+            "MAPS_TO_STAGE": "映射阶段",
+            "CONTRASTS_WITH": "对比",
+            "APPLIES_TO_SCENARIO": "情境适用",
+            "SUGGESTS_STRATEGY": "策略建议",
+            "HAS_EXCEPTION": "例外",
+            "CULTURE_SENSITIVE_TO": "文化相关",
+            "COMBINES_WITH": "组合",
+            "CONFLICTS_WITH": "冲突",
         }
         return edge_labels.get(edge_type)
 
@@ -1825,7 +2083,7 @@ def list_knowledge_points_enhanced(
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
         OPTIONAL MATCH (k)<-[:REQUIRES]-(dependent:KnowledgePoint)
         OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
-        OPTIONAL MATCH (k)-[r:RELATED_TO]-(related:KnowledgePoint)
+        OPTIONAL MATCH (k)-[r:RELATED_TO|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
@@ -1836,6 +2094,11 @@ def list_knowledge_points_enhanced(
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               k.bloomLevel AS bloom_level,
+               k.cultureTags AS culture_tags,
+               k.civicTags AS civic_tags,
+               k.teachingObjective AS teaching_objective,
+               k.assessmentHint AS assessment_hint,
                k.lex_role AS lex_role,
                CASE
                    WHEN 'Terminology' IN labels(k) THEN 'Terminology'
@@ -1865,7 +2128,7 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
         OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
-        OPTIONAL MATCH (k)-[:RELATED_TO]-(related:KnowledgePoint)
+        OPTIONAL MATCH (k)-[r:RELATED_TO|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
@@ -1876,6 +2139,11 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
                k.content AS content,
                k.orderIndex AS order_index,
                k.tags AS tags,
+               k.bloomLevel AS bloom_level,
+               k.cultureTags AS culture_tags,
+               k.civicTags AS civic_tags,
+               k.teachingObjective AS teaching_objective,
+               k.assessmentHint AS assessment_hint,
                t.name AS topic,
                CASE
                    WHEN 'Terminology' IN labels(k) THEN 'Terminology'
@@ -1905,6 +2173,11 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         "content": record.get("content"),
         "order_index": record.get("order_index"),
         "tags": [tag for tag in (record.get("tags") or []) if tag],
+        "bloom_level": record.get("bloom_level"),
+        "culture_tags": [tag for tag in (record.get("culture_tags") or []) if tag],
+        "civic_tags": [tag for tag in (record.get("civic_tags") or []) if tag],
+        "teaching_objective": record.get("teaching_objective"),
+        "assessment_hint": record.get("assessment_hint"),
         "nodeType": record.get("nodeType") or "KnowledgePoint",
         "topic": record.get("topic"),
         "practices": [p for p in (record.get("practices") or []) if p],
@@ -1912,6 +2185,40 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         "prerequisites": [p for p in (record.get("prerequisites") or []) if p],
         "relations": [r for r in (record.get("relations") or []) if r],
     }
+
+
+def _normalize_string_list(value: object) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _normalize_bloom_level(value: object, fallback: Optional[str] = None) -> Optional[str]:
+    raw = str(value or fallback or "").strip()
+    if not raw:
+        return None
+    aliases = {
+        "识记": "remember",
+        "记忆": "remember",
+        "remember": "remember",
+        "理解": "understand",
+        "understand": "understand",
+        "应用": "apply",
+        "apply": "apply",
+        "分析": "analyze",
+        "analyse": "analyze",
+        "analyze": "analyze",
+        "评价": "evaluate",
+        "评估": "evaluate",
+        "evaluate": "evaluate",
+        "创造": "create",
+        "create": "create",
+    }
+    return aliases.get(raw.lower(), aliases.get(raw, raw if raw in BLOOM_LEVELS else fallback))
 
 
 def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
@@ -1951,7 +2258,12 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
             estimatedDuration: $estimated_duration,
             orderIndex: $order_index,
             content: $content,
-            tags: $tags
+            tags: $tags,
+            bloomLevel: $bloom_level,
+            cultureTags: $culture_tags,
+            civicTags: $civic_tags,
+            teachingObjective: $teaching_objective,
+            assessmentHint: $assessment_hint
         })
         """,
         {
@@ -1964,7 +2276,12 @@ def create_knowledge_point(data: Dict[str, object]) -> Dict[str, object]:
             "estimated_duration": data.get("estimated_duration"),
             "order_index": order_index,
             "content": data.get("content"),
-            "tags": data.get("tags", []),
+            "tags": _normalize_string_list(data.get("tags", [])),
+            "bloom_level": _normalize_bloom_level(data.get("bloom_level") or data.get("bloomLevel")),
+            "culture_tags": _normalize_string_list(data.get("culture_tags") or data.get("cultureTags")),
+            "civic_tags": _normalize_string_list(data.get("civic_tags") or data.get("civicTags")),
+            "teaching_objective": data.get("teaching_objective") or data.get("teachingObjective"),
+            "assessment_hint": data.get("assessment_hint") or data.get("assessmentHint"),
         },
     )
 
@@ -2039,6 +2356,23 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
     else:
         tags = [tag for tag in (node.get("tags") or []) if tag]
 
+    bloom_level = _normalize_bloom_level(
+        data.get("bloom_level") if "bloom_level" in data else data.get("bloomLevel") if "bloomLevel" in data else None,
+        node.get("bloomLevel"),
+    )
+    culture_tags = _normalize_string_list(
+        data.get("culture_tags") if "culture_tags" in data else data.get("cultureTags") if "cultureTags" in data else node.get("cultureTags")
+    )
+    civic_tags = _normalize_string_list(
+        data.get("civic_tags") if "civic_tags" in data else data.get("civicTags") if "civicTags" in data else node.get("civicTags")
+    )
+    teaching_objective = (
+        data.get("teaching_objective") if "teaching_objective" in data else data.get("teachingObjective") if "teachingObjective" in data else node.get("teachingObjective")
+    )
+    assessment_hint = (
+        data.get("assessment_hint") if "assessment_hint" in data else data.get("assessmentHint") if "assessmentHint" in data else node.get("assessmentHint")
+    )
+
     # 更新节点
     _execute_write(
         """
@@ -2052,7 +2386,12 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
             k.estimatedDuration = $estimated_duration,
             k.orderIndex = $order_index,
             k.content = $content,
-            k.tags = $tags
+            k.tags = $tags,
+            k.bloomLevel = $bloom_level,
+            k.cultureTags = $culture_tags,
+            k.civicTags = $civic_tags,
+            k.teachingObjective = $teaching_objective,
+            k.assessmentHint = $assessment_hint
         """,
         {
             "old_name": name,
@@ -2066,6 +2405,11 @@ def update_knowledge_point(name: str, data: Dict[str, object]) -> Dict[str, obje
             "order_index": order_index,
             "content": content,
             "tags": tags,
+            "bloom_level": bloom_level,
+            "culture_tags": culture_tags,
+            "civic_tags": civic_tags,
+            "teaching_objective": teaching_objective,
+            "assessment_hint": assessment_hint,
         },
     )
 
@@ -2226,6 +2570,11 @@ def get_knowledge_management_overview() -> Dict[str, object]:
             "content": point.get("content") or "",
             "order_index": order_index_value,
             "tags": tags,
+            "bloom_level": point.get("bloom_level"),
+            "culture_tags": [tag for tag in (point.get("culture_tags") or []) if tag],
+            "civic_tags": [tag for tag in (point.get("civic_tags") or []) if tag],
+            "teaching_objective": point.get("teaching_objective"),
+            "assessment_hint": point.get("assessment_hint"),
             "prerequisites": prerequisites,
             "relations": relations,
             "practiceCount": point.get("practiceCount", 0),
@@ -2244,6 +2593,8 @@ def get_knowledge_management_overview() -> Dict[str, object]:
             "difficulty": difficulty,
             "order_index": order_index_value,
             "tags": tags,
+            "bloom_level": point.get("bloom_level"),
+            "culture_tags": [tag for tag in (point.get("culture_tags") or []) if tag],
             "category_path_key": category_path_key,
         }
         _append_to_tree(category_path, tree_payload)
@@ -2357,6 +2708,69 @@ def get_knowledge_management_overview() -> Dict[str, object]:
         "knowledge_cards": knowledge_cards,
         "assist": smart_assist,
     }
+
+def get_customer_route_alignment_report() -> Dict[str, object]:
+    """Return a P0 customer-route alignment checklist for teachers."""
+
+    stage_names = [stage.name for stage in STANDARD_STAGES]
+    stage_ids = [stage.identifier for stage in STANDARD_STAGES]
+    rows = _execute_read(
+        """
+        MATCH (s:Stage)
+        WHERE s.name IN $stage_names OR s.id IN $stage_ids
+        OPTIONAL MATCH (s)-[:CONTAIN_TOPIC]->(:Topic)-[:INCLUDE_POINT]->(k:KnowledgePoint)
+        OPTIONAL MATCH (s)-[:HAS_CULTURAL_SENSITIVITY]->(c:CultureDimension)
+        RETURN collect(DISTINCT s.name) AS stages,
+               count(DISTINCT k) AS stageKnowledgeCount,
+               collect(DISTINCT c.id) AS stageCultureIds
+        """,
+        {"stage_names": stage_names, "stage_ids": stage_ids},
+    )
+    row = rows[0] if rows else {}
+    present_stages = set(row.get("stages") or [])
+    present_culture_ids = set(row.get("stageCultureIds") or [])
+
+    stats_rows = _execute_read(
+        """
+        MATCH (k:KnowledgePoint)
+        RETURN count(k) AS total,
+               sum(CASE WHEN k.bloomLevel IS NOT NULL AND k.bloomLevel <> '' THEN 1 ELSE 0 END) AS withBloom,
+               sum(CASE WHEN k.cultureTags IS NOT NULL AND size(k.cultureTags) > 0 THEN 1 ELSE 0 END) AS withCultureTags,
+               sum(CASE WHEN k.civicTags IS NOT NULL AND size(k.civicTags) > 0 THEN 1 ELSE 0 END) AS withCivicTags,
+               sum(CASE WHEN EXISTS { MATCH (k)<-[:TESTS]-(:Practice) } THEN 1 ELSE 0 END) AS withPractice,
+               sum(CASE WHEN EXISTS { MATCH (k)<-[:EXPLAINS]-(:TheoryLesson) } THEN 1 ELSE 0 END) AS withLesson,
+               sum(CASE WHEN EXISTS { MATCH (k)-[:REQUIRES]->(:KnowledgePoint) } THEN 1 ELSE 0 END) AS withPrereq
+        """
+    )
+    stats = stats_rows[0] if stats_rows else {}
+    culture_count_rows = _execute_read("MATCH (c:CultureDimension) RETURN count(c) AS total", {})
+    culture_total = (culture_count_rows[0] or {}).get("total", 0) if culture_count_rows else 0
+    total_points = int(stats.get("total") or 0)
+    checks = [
+        {"id": "ten_stages", "label": "十大谈判环节", "current": len(present_stages), "target": len(STANDARD_STAGES), "passed": len(present_stages) >= len(STANDARD_STAGES)},
+        {"id": "stage_knowledge", "label": "环节知识点覆盖", "current": row.get("stageKnowledgeCount", 0), "target": 30, "passed": row.get("stageKnowledgeCount", 0) >= 30},
+        {"id": "culture_dimensions", "label": "文化维度节点", "current": culture_total, "target": len(CULTURE_DIMENSIONS), "passed": culture_total >= len(CULTURE_DIMENSIONS)},
+        {"id": "stage_culture_links", "label": "环节-跨文化映射", "current": len(present_culture_ids), "target": min(6, len(CULTURE_DIMENSIONS)), "passed": len(present_culture_ids) >= min(6, len(CULTURE_DIMENSIONS))},
+        {"id": "bloom", "label": "布鲁姆认知层级", "current": stats.get("withBloom", 0), "target": total_points, "passed": bool(total_points) and stats.get("withBloom", 0) >= total_points},
+        {"id": "civic", "label": "思政标签", "current": stats.get("withCivicTags", 0), "target": max(1, int(total_points * 0.3)), "passed": stats.get("withCivicTags", 0) >= max(1, int(total_points * 0.3))},
+        {"id": "prereq", "label": "前置依赖", "current": stats.get("withPrereq", 0), "target": 1, "passed": stats.get("withPrereq", 0) >= 1},
+        {"id": "practice_lesson_links", "label": "课时/练习绑定", "current": (stats.get("withPractice", 0) or 0) + (stats.get("withLesson", 0) or 0), "target": 1, "passed": ((stats.get("withPractice", 0) or 0) + (stats.get("withLesson", 0) or 0)) >= 1},
+    ]
+    score = round(sum(1 for check in checks if check["passed"]) / len(checks) * 100) if checks else 0
+    return {"score": score, "checks": checks, "missingStages": [name for name in stage_names if name not in present_stages], "updatedAt": datetime.utcnow().isoformat() + "Z"}
+
+
+def list_culture_dimensions() -> List[Dict[str, object]]:
+    """List culture dimensions stored in Neo4j."""
+
+    return _execute_read(
+        """
+        MATCH (c:CultureDimension)
+        RETURN c.id AS id, c.name AS name, c.theory AS theory, c.summary AS summary, c.teachingTip AS teaching_tip
+        ORDER BY c.name
+        """
+    )
+
 def delete_knowledge_point(name: str) -> None:
     """删除知识点及其所有关系。"""
 
@@ -2501,14 +2915,19 @@ def add_knowledge_relation(
     if name == related_name:
         raise ValueError("A knowledge point cannot be related to itself")
 
-    # 创建关联关系（双向）
+    normalized_type = (relation_type or "RELATED_TO").strip().upper()
+    if normalized_type not in ALLOWED_KNOWLEDGE_RELATION_TYPES:
+        normalized_type = "RELATED_TO"
+
+    # 创建关联关系（双向）。Neo4j 不支持关系类型参数化，这里先通过白名单校验再插入。
     _execute_write(
-        """
-        MATCH (k1:KnowledgePoint {name: $name})
-        MATCH (k2:KnowledgePoint {name: $related})
-        MERGE (k1)-[:RELATED_TO]-(k2)
+        f"""
+        MATCH (k1:KnowledgePoint {{name: $name}})
+        MATCH (k2:KnowledgePoint {{name: $related}})
+        MERGE (k1)-[r:{normalized_type}]-(k2)
+        SET r.relationType = $relation_type, r.updatedAt = datetime()
         """,
-        {"name": name, "related": related_name},
+        {"name": name, "related": related_name, "relation_type": normalized_type},
     )
 
     return get_knowledge_point(name)
@@ -2519,10 +2938,11 @@ def remove_knowledge_relation(name: str, related_name: str) -> Dict[str, object]
 
     _execute_write(
         """
-        MATCH (k1:KnowledgePoint {name: $name})-[r:RELATED_TO]-(k2:KnowledgePoint {name: $related})
+        MATCH (k1:KnowledgePoint {name: $name})-[r]-(k2:KnowledgePoint {name: $related})
+        WHERE type(r) IN $allowed
         DELETE r
         """,
-        {"name": name, "related": related_name},
+        {"name": name, "related": related_name, "allowed": list(ALLOWED_KNOWLEDGE_RELATION_TYPES)},
     )
 
     return get_knowledge_point(name)
@@ -2585,6 +3005,11 @@ def export_knowledge_points_to_excel() -> io.BytesIO:
         "重要性",
         "预计学习时长(分钟)",
         "标签(逗号分隔)",
+        "布鲁姆认知层级",
+        "跨文化标签(逗号分隔)",
+        "思政标签(逗号分隔)",
+        "教学目标",
+        "测评提示",
         "内容",
         "前置依赖(逗号分隔)",
         "关联知识点(逗号分隔)",
@@ -2606,6 +3031,11 @@ def export_knowledge_points_to_excel() -> io.BytesIO:
             point.get("importance", ""),
             point.get("estimated_duration", ""),
             tags,
+            point.get("bloom_level", ""),
+            ", ".join(point.get("culture_tags") or []),
+            ", ".join(point.get("civic_tags") or []),
+            point.get("teaching_objective", ""),
+            point.get("assessment_hint", ""),
             point.get("content", ""),
             prerequisites,
             relations,
@@ -2650,6 +3080,11 @@ def export_knowledge_points_to_csv() -> str:
         "重要性",
         "预计学习时长(分钟)",
         "标签(逗号分隔)",
+        "布鲁姆认知层级",
+        "跨文化标签(逗号分隔)",
+        "思政标签(逗号分隔)",
+        "教学目标",
+        "测评提示",
         "内容",
         "前置依赖(逗号分隔)",
         "关联知识点(逗号分隔)",
@@ -2671,6 +3106,11 @@ def export_knowledge_points_to_csv() -> str:
             point.get("importance", ""),
             point.get("estimated_duration", ""),
             tags,
+            point.get("bloom_level", ""),
+            ", ".join(point.get("culture_tags") or []),
+            ", ".join(point.get("civic_tags") or []),
+            point.get("teaching_objective", ""),
+            point.get("assessment_hint", ""),
             point.get("content", ""),
             prerequisites,
             relations,
@@ -2714,6 +3154,16 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                 col_indices["estimated_duration"] = idx
             elif header == "标签(逗号分隔)":
                 col_indices["tags"] = idx
+            elif header == "布鲁姆认知层级":
+                col_indices["bloom_level"] = idx
+            elif header == "跨文化标签(逗号分隔)":
+                col_indices["culture_tags"] = idx
+            elif header == "思政标签(逗号分隔)":
+                col_indices["civic_tags"] = idx
+            elif header == "教学目标":
+                col_indices["teaching_objective"] = idx
+            elif header == "测评提示":
+                col_indices["assessment_hint"] = idx
             elif header == "内容":
                 col_indices["content"] = idx
             elif header == "前置依赖(逗号分隔)":
@@ -2763,13 +3213,18 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                 else:
                     data["estimated_duration"] = None
 
-                # 处理标签
-                tags_value = row[col_indices.get("tags")]
-                if tags_value:
-                    tags = [tag.strip() for tag in str(tags_value).split(",") if tag.strip()]
-                    data["tags"] = tags
-                else:
-                    data["tags"] = []
+                def _cell(key):
+                    idx = col_indices.get(key)
+                    return row[idx] if idx is not None and idx < len(row) else None
+
+                # 处理标签和P0教学属性
+                tags_value = _cell("tags")
+                data["tags"] = [tag.strip() for tag in str(tags_value).split(",") if tag.strip()] if tags_value else []
+                data["bloom_level"] = str(_cell("bloom_level") or "").strip() or None
+                data["culture_tags"] = _normalize_string_list(_cell("culture_tags"))
+                data["civic_tags"] = _normalize_string_list(_cell("civic_tags"))
+                data["teaching_objective"] = str(_cell("teaching_objective") or "").strip() or None
+                data["assessment_hint"] = str(_cell("assessment_hint") or "").strip() or None
 
                 # 检查是否已存在
                 existing = _execute_read(
@@ -2787,7 +3242,7 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                     stats["created"] += 1
 
                 # 处理前置依赖
-                prerequisites_value = row[col_indices.get("prerequisites")]
+                prerequisites_value = _cell("prerequisites")
                 if prerequisites_value:
                     prereqs = [p.strip() for p in str(prerequisites_value).split(",") if p.strip()]
                     for prereq in prereqs:
@@ -2799,7 +3254,7 @@ def import_knowledge_points_from_excel(file_content: bytes) -> Dict[str, int]:
                             )
 
                 # 处理关联关系
-                relations_value = row[col_indices.get("relations")]
+                relations_value = _cell("relations")
                 if relations_value:
                     relations = [r.strip() for r in str(relations_value).split(",") if r.strip()]
                     for relation in relations:
@@ -2865,13 +3320,14 @@ def import_knowledge_points_from_csv(file_content: str) -> Dict[str, int]:
                 else:
                     data["estimated_duration"] = None
 
-                # 处理标签
+                # 处理标签和P0教学属性
                 tags_value = row.get("标签(逗号分隔)", "").strip()
-                if tags_value:
-                    tags = [tag.strip() for tag in tags_value.split(",") if tag.strip()]
-                    data["tags"] = tags
-                else:
-                    data["tags"] = []
+                data["tags"] = [tag.strip() for tag in tags_value.split(",") if tag.strip()] if tags_value else []
+                data["bloom_level"] = row.get("布鲁姆认知层级", "").strip() or None
+                data["culture_tags"] = _normalize_string_list(row.get("跨文化标签(逗号分隔)", ""))
+                data["civic_tags"] = _normalize_string_list(row.get("思政标签(逗号分隔)", ""))
+                data["teaching_objective"] = row.get("教学目标", "").strip() or None
+                data["assessment_hint"] = row.get("测评提示", "").strip() or None
 
                 # 检查是否已存在
                 existing = _execute_read(

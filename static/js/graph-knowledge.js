@@ -784,6 +784,11 @@ function showForm(mode = 'create', point = null) {
     setFieldValue('admin-graph-form-importance', point.importance || 'medium');
     setFieldValue('admin-graph-form-duration', point.estimated_duration || '');
     setFieldValue('admin-graph-form-tags', point.tags ? point.tags.join(', ') : '');
+    setFieldValue('admin-graph-form-bloom-level', point.bloom_level || '');
+    setFieldValue('admin-graph-form-culture-tags', point.culture_tags ? point.culture_tags.join(', ') : '');
+    setFieldValue('admin-graph-form-civic-tags', point.civic_tags ? point.civic_tags.join(', ') : '');
+    setFieldValue('admin-graph-form-teaching-objective', point.teaching_objective || '');
+    setFieldValue('admin-graph-form-assessment-hint', point.assessment_hint || '');
     setFieldValue('admin-graph-form-content', point.content || '');
 
     // 渲染前置依赖和关联
@@ -919,6 +924,17 @@ async function handleFormSubmit(event) {
       .split(',')
       .map(t => t.trim())
       .filter(t => t),
+    bloom_level: document.getElementById('admin-graph-form-bloom-level')?.value || null,
+    culture_tags: (document.getElementById('admin-graph-form-culture-tags')?.value || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t),
+    civic_tags: (document.getElementById('admin-graph-form-civic-tags')?.value || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t),
+    teaching_objective: document.getElementById('admin-graph-form-teaching-objective')?.value.trim() || null,
+    assessment_hint: document.getElementById('admin-graph-form-assessment-hint')?.value.trim() || null,
     content: document.getElementById('admin-graph-form-content').value.trim() || null
   };
 
@@ -1476,6 +1492,64 @@ function removeRelation(name) {
   }
 }
 
+async function fetchCustomerRouteAlignment() {
+  const response = await fetchWithAuth('/api/graph/customer-route/alignment');
+  if (!response.ok) {
+    throw new Error(`获取对齐检查失败: ${response.status}`);
+  }
+  return response.json();
+}
+
+function renderCustomerRouteAlignment(report) {
+  const container = document.getElementById('admin-graph-alignment-report');
+  if (!container) return;
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  if (!checks.length) {
+    container.innerHTML = '<p class="text-xs text-slate-500">暂无检查结果</p>';
+    return;
+  }
+  container.innerHTML = checks.map(check => {
+    const passed = !!check.passed;
+    const color = passed ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/40 bg-amber-500/10 text-amber-100';
+    const icon = passed ? '✅' : '⚠️';
+    return `
+      <div class="rounded-xl border ${color} p-3">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-semibold">${icon} ${escapeHtml(check.label || '')}</span>
+          <span>${escapeHtml(String(check.current ?? 0))}/${escapeHtml(String(check.target ?? 0))}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  showStatus('admin-graph-alignment-status', `客户路线对齐度：${report.score || 0}%`, report.score >= 80 ? 'success' : 'info');
+}
+
+async function loadCustomerRouteAlignment() {
+  try {
+    const report = await fetchCustomerRouteAlignment();
+    renderCustomerRouteAlignment(report);
+  } catch (error) {
+    showStatus('admin-graph-alignment-status', error.message, 'error');
+  }
+}
+
+async function applyCustomerRouteTemplate() {
+  try {
+    showStatus('admin-graph-alignment-status', '正在补齐P0模板...', 'info');
+    const response = await fetchWithAuth('/api/graph/customer-route/apply', { method: 'POST' });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `补齐失败: ${response.status}`);
+    }
+    const payload = await response.json();
+    renderCustomerRouteAlignment(payload.alignment || {});
+    await loadKnowledgePoints();
+    showStatus('admin-graph-alignment-status', 'P0模板已补齐', 'success');
+  } catch (error) {
+    showStatus('admin-graph-alignment-status', `补齐失败: ${error.message}`, 'error');
+  }
+}
+
 // ========== 初始化和加载数据 ==========
 
 // 加载知识点列表
@@ -1612,9 +1686,15 @@ function initGraphKnowledgeManagement() {
     addRelationBtn.addEventListener('click', handleAddRelation);
   }
 
+  const applyRouteBtn = document.getElementById('admin-graph-apply-customer-route');
+  if (applyRouteBtn) {
+    applyRouteBtn.addEventListener('click', applyCustomerRouteTemplate);
+  }
+
   // 加载初始数据
   loadKnowledgePoints();
   loadCategories();
+  loadCustomerRouteAlignment();
 }
 
 // ========== 工具函数 ==========

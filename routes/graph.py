@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 from typing import Callable, Tuple
 
 from flask import Blueprint, jsonify, request, send_file
 
-from services import graph_service, knowledge_service, lexical_suggestion_service
+from services import graph_service, knowledge_service, lexical_suggestion_service, llm_service
 from services.auth_service import current_user, require_role
 
 
@@ -70,6 +72,41 @@ def initialize_graph():
         except ValueError as exc:
             return {"error": str(exc)}, 400
         return {"status": status}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.post("/api/graph/customer-route/apply")
+@require_role("teacher")
+def apply_customer_route():
+    """Apply P0 customer-route defaults: ten stages and culture dimensions."""
+
+    def _handler() -> Tuple[dict, int]:
+        summary = graph_service.apply_p0_standard_route()
+        report = graph_service.get_customer_route_alignment_report()
+        return {"summary": summary, "alignment": report}, 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/customer-route/alignment")
+@require_role("teacher")
+def customer_route_alignment():
+    """Return customer-route alignment checklist."""
+
+    def _handler() -> Tuple[dict, int]:
+        return graph_service.get_customer_route_alignment_report(), 200
+
+    return _graph_operation(_handler)
+
+
+@bp.get("/api/graph/culture-dimensions")
+@require_role()
+def list_culture_dimensions():
+    """List cross-cultural dimensions available in the graph."""
+
+    def _handler() -> Tuple[dict, int]:
+        return {"culture_dimensions": graph_service.list_culture_dimensions()}, 200
 
     return _graph_operation(_handler)
 
@@ -1141,3 +1178,52 @@ def import_three_sheets():
             }, 500
 
     return _graph_operation(_handler)
+
+
+@bp.post("/api/ai/strategy/recommend")
+@require_role()
+def recommend_negotiation_strategies():
+    """Return three structured negotiation strategies for the current situation."""
+
+    body = request.get_json(force=True, silent=True) or {}
+    api_key = os.getenv("DEEPSEEK_STRATEGY_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        return jsonify({"error": "缺少大模型 API key"}), 500
+
+    system_prompt = (
+        "你是外贸谈判教学系统中的策略教练。必须只输出JSON对象，不要Markdown。"
+        "请基于当前谈判阶段、对话历史、文化背景和知识点，生成恰好3种备选策略。"
+        "每种策略必须包含name、logic、when_to_use、risk、sample_sentence_en、sample_sentence_cn。"
+    )
+    user_prompt = json.dumps(
+        {
+            "stage": body.get("stage") or body.get("negotiation_stage"),
+            "message": body.get("message"),
+            "dialogue_history": body.get("dialogue_history") or body.get("history") or [],
+            "student_role": body.get("student_role"),
+            "counterparty_role": body.get("counterparty_role"),
+            "culture_context": body.get("culture_context") or body.get("culture_tags") or [],
+            "knowledge_points": body.get("knowledge_points") or [],
+            "constraints": "返回JSON：{stage,situation_summary,strategies:[...3],recommended_choice,knowledge_points}"
+        },
+        ensure_ascii=False,
+    )
+
+    try:
+        content = llm_service.complete_chat(
+            api_key,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.35,
+        )
+        parsed = json.loads(content)
+    except Exception as exc:
+        logging.exception("Strategy recommendation failed")
+        return jsonify({"error": f"策略推荐失败: {exc}"}), 500
+
+    strategies = parsed.get("strategies") if isinstance(parsed, dict) else None
+    if not isinstance(strategies, list) or len(strategies) != 3:
+        return jsonify({"error": "模型返回格式不符合三策略结构", "raw": parsed}), 502
+    return jsonify(parsed), 200

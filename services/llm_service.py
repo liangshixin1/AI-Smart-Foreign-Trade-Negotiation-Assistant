@@ -7,7 +7,7 @@ from typing import Dict, List
 from openai import OpenAI
 
 DEEPSEEK_BASE = "https://api.deepseek.com"
-MODEL = "deepseek-chat"
+MODEL = "deepseek-v4-pro"
 
 
 def create_client(api_key: str) -> OpenAI:

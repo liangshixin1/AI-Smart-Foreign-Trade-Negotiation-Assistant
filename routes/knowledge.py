@@ -40,9 +40,13 @@ def explain_knowledge():
   try:
     lesson_text = context or _get_lesson_text(lesson_id)
     prereq_map = graph_service.get_knowledge_prerequisite_map()
+    knowledge_detail = graph_service.get_knowledge_point(name)
   except GraphUnavailableError:
     lesson_text = context or ""
     prereq_map = {}
+    knowledge_detail = {}
+  except graph_service.GraphEntityNotFoundError:
+    knowledge_detail = {}
 
   system_prompt = (
     "你是一名拥有20年经验的外贸谈判专家兼导师，现在作为一本互动式电子教材的智能助手。"
@@ -61,6 +65,14 @@ def explain_knowledge():
   user_prompt = f"知识点：{name}\n"
   if prereq_map.get(name):
     user_prompt += f"相关前置：{', '.join(prereq_map.get(name, []))}\n"
+  if knowledge_detail.get("bloom_level"):
+    user_prompt += f"认知层级：{knowledge_detail.get('bloom_level')}\n"
+  if knowledge_detail.get("culture_tags"):
+    user_prompt += f"跨文化标签：{', '.join(knowledge_detail.get('culture_tags', []))}\n"
+  if knowledge_detail.get("civic_tags"):
+    user_prompt += f"思政映射：{', '.join(knowledge_detail.get('civic_tags', []))}\n"
+  if knowledge_detail.get("teaching_objective"):
+    user_prompt += f"教学目标：{knowledge_detail.get('teaching_objective')}\n"
   if lesson_text:
     user_prompt += f"课文上下文：{lesson_text[:2000]}\n"
 
