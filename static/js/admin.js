@@ -11,6 +11,7 @@ let adminGraphRenderer = "ring";
 let adminGraphMapExpanded = true;
 let adminGraphFocusedPointId = null;
 let adminRingGraphZoomTransform = null;
+let adminRingGraphUserZoomed = false;
 const expandedStages = new Set();
 const expandedTopics = new Set();
 const adminRingExpandedStages = new Set();
@@ -2940,13 +2941,6 @@ function ensureAdminRingGraphStyles() {
   document.head.appendChild(style);
 }
 
-function getRingLayerRadiusFactor(layer) {
-  if (layer === "process") return 1.45;
-  if (layer === "strategy") return 1.68;
-  if (layer === "culture") return 1.86;
-  return 1.22;
-}
-
 function getRingLayerStyle(layer) {
   const styles = {
     concept: { label: "概念层", fill: "#3f7fca", stroke: "#2f77b9" },
@@ -3290,6 +3284,8 @@ function resetAdminRingGraphView() {
   adminRingExpandedStages.clear();
   adminRingExpandedTopics.clear();
   adminGraphFocusedPointId = null;
+  adminRingGraphZoomTransform = null;
+  adminRingGraphUserZoomed = false;
   renderAdminGraphNetwork();
 }
 
@@ -3311,12 +3307,73 @@ function hideRingTooltip(container) {
   container.querySelector("[data-ring-tooltip]")?.remove();
 }
 
+// --------- 环形图谱布局参数（与 Neo4j 数据无关，按节点尺寸推导，保证任意数据都不重叠）---------
+const RING_CFG = {
+  stageRadius: 215, // 十环节所在半径
+  topicRadius: 365, // 二级主题起始半径（与环节留出大间距）
+  pointRadius: 525, // 知识点起始半径
+  topicW: 104,
+  topicH: 34,
+  topicPad: 22, // 同层切向最小间距 = 盒宽 + pad
+  pointW: 92,
+  pointH: 30,
+  pointPad: 20,
+  cultureW: 104,
+  cultureH: 30,
+  layerGapExtra: 8, // 不同布鲁姆层之间额外的径向留白
+  maxHalfTopic: 1.05, // 单个环节主题扇形最大半角（约 60°）
+  maxHalfPoint: 0.85,
+  wedgeMargin: 0.05,
+  maxAutoScale: 1.3,
+  fitPadding: 56,
+};
+const RING_LAYER_ORDER = ["concept", "process", "strategy", "culture"];
+// 同一父节点的子节点分多排时，排间径向距离需 ≥ 盒对角线，确保任意角度都不重叠。
+function ringRowGap(boxW, boxH) {
+  return Math.hypot(boxW, boxH) + 10;
+}
+
+// 把 count 个盒子在 [centerAngle-half, centerAngle+half] 内紧凑排布；一排放不下时
+// 自动向外加排（砖墙式）。返回 [{angle, radius}]，保证同父子节点互不重叠。
+function ringFanRows(count, centerAngle, half, baseRadius, tangentialStep, rowGap) {
+  const out = [];
+  if (count <= 0) return out;
+  const angStepMin = tangentialStep / Math.max(baseRadius, 1);
+  const capacity = Math.max(1, Math.floor((2 * half) / angStepMin) + 1);
+  const rows = Math.ceil(count / capacity);
+  let idx = 0;
+  for (let r = 0; r < rows; r += 1) {
+    const inRow = Math.ceil((count - idx) / (rows - r));
+    const rowRadius = baseRadius + r * rowGap;
+    for (let k = 0; k < inRow; k += 1, idx += 1) {
+      const offset = (k - (inRow - 1) / 2) * angStepMin;
+      out.push({ angle: centerAngle + offset, radius: rowRadius });
+    }
+  }
+  return out;
+}
+
+// 计算某节点可用的扇形半角：只受“同样展开的同级节点”限制（子节点半径大于相邻环节，
+// 因此孤立展开时可以铺得很宽）；再减去盒子自身的角宽，避免相邻扇形交叠。
+function ringWedgeHalf(myAngle, peerAngles, maxHalf, tangentialStep, baseRadius) {
+  let nearest = Infinity;
+  peerAngles.forEach((angle) => {
+    let d = Math.abs(angle - myAngle);
+    d = Math.min(d, Math.PI * 2 - d);
+    if (d > 1e-6) nearest = Math.min(nearest, d);
+  });
+  if (!Number.isFinite(nearest)) return maxHalf;
+  const pillHalfAngle = tangentialStep / (2 * Math.max(baseRadius, 1));
+  return Math.max(0.08, Math.min(maxHalf, nearest / 2 - pillHalfAngle - RING_CFG.wedgeMargin));
+}
+
 function buildRingGraphLayout(data, width, height) {
   const cx = width / 2;
-  const cy = height / 2 + 18;
-  const radius = Math.min(width, height) * 0.27;
+  const cy = height / 2;
+  const radius = RING_CFG.stageRadius;
+  const stageCount = data.stages.length || 1;
   const stages = data.stages.map((stage, index) => {
-    const angle = getRingStageBaseAngle(index, data.stages.length);
+    const angle = getRingStageBaseAngle(index, stageCount);
     return {
       ...stage,
       index,
@@ -3335,39 +3392,66 @@ function buildRingGraphLayout(data, width, height) {
 
   const topics = [];
   const points = [];
+  const expandedStageAngles = stages.filter((stage) => adminRingExpandedStages.has(stage.id)).map((stage) => stage.angle);
+  const topicStep = RING_CFG.topicW + RING_CFG.topicPad;
+  const topicGap = ringRowGap(RING_CFG.topicW, RING_CFG.topicH);
+  const pointStep = RING_CFG.pointW + RING_CFG.pointPad;
+  const pointGap = ringRowGap(RING_CFG.pointW, RING_CFG.pointH);
+
   stages.forEach((stage) => {
     const stageTopics = stage.topics || [];
-    const topicRadius = radius * 1.2;
-    const topicStep = Math.min(0.46, Math.max(0.24, 124 / Math.max(topicRadius, 1)));
-    stageTopics.forEach((topic, topicIndex) => {
-      const topicPointIds = new Set((topic.kps || []).map((point) => point.id));
-      const hasFocusedPoint = [...topicPointIds].some((id) => forcedVisibleIds.has(id));
-      const shouldShowTopic = adminRingExpandedStages.has(stage.id) || adminRingExpandedTopics.has(topic.id) || hasFocusedPoint;
-      if (!shouldShowTopic) return;
-      const topicAngle = stage.angle + (topicIndex - (stageTopics.length - 1) / 2) * topicStep;
-      const topicLayout = {
+    const visibleTopics = stageTopics.filter(
+      (topic) =>
+        adminRingExpandedStages.has(stage.id) ||
+        adminRingExpandedTopics.has(topic.id) ||
+        (topic.kps || []).some((point) => forcedVisibleIds.has(point.id))
+    );
+    if (!visibleTopics.length) return;
+
+    const stagePeers = expandedStageAngles.filter((angle) => angle !== stage.angle);
+    const topicHalf = ringWedgeHalf(stage.angle, stagePeers, RING_CFG.maxHalfTopic, topicStep, RING_CFG.topicRadius);
+    const placedTopics = ringFanRows(visibleTopics.length, stage.angle, topicHalf, RING_CFG.topicRadius, topicStep, topicGap);
+    // 知识点必须落在该环节最外一排主题之外（间距 ≥ 主题/知识点半宽之和，斜向也不重叠）
+    const topicOuter = placedTopics.reduce((max, pos) => Math.max(max, pos.radius), RING_CFG.topicRadius);
+    const pointStart = Math.max(RING_CFG.pointRadius, topicOuter + (RING_CFG.topicW + RING_CFG.pointW) / 2 + 12);
+    const expandedTopicAngles = [];
+    visibleTopics.forEach((topic, index) => {
+      if (adminRingExpandedTopics.has(topic.id)) expandedTopicAngles.push(placedTopics[index].angle);
+    });
+
+    visibleTopics.forEach((topic, topicIndex) => {
+      const pos = placedTopics[topicIndex];
+      topics.push({
         ...topic,
         stageId: stage.id,
         stageName: stage.name,
-        angle: topicAngle,
-        x: Math.cos(topicAngle) * topicRadius,
-        y: Math.sin(topicAngle) * topicRadius,
-      };
-      topics.push(topicLayout);
-
-      const grouped = { concept: [], process: [], strategy: [], culture: [] };
-      (topic.kps || []).forEach((point) => {
-        const shouldShowPoint = adminRingExpandedTopics.has(topic.id) || forcedVisibleIds.has(point.id);
-        if (!shouldShowPoint) return;
-        const layer = point.layer || "concept";
-        grouped[layer] = grouped[layer] || [];
-        grouped[layer].push(point);
+        angle: pos.angle,
+        radius: pos.radius,
+        x: Math.cos(pos.angle) * pos.radius,
+        y: Math.sin(pos.angle) * pos.radius,
       });
-      Object.entries(grouped).forEach(([layer, items]) => {
-        items.forEach((point, itemIndex) => {
-          const pointRadius = radius * getRingLayerRadiusFactor(layer);
-          const angleStep = Math.min(0.5, Math.max(0.24, 118 / Math.max(pointRadius, 1)));
-          const angle = topicAngle + (itemIndex - (items.length - 1) / 2) * angleStep;
+
+      const showPoints = adminRingExpandedTopics.has(topic.id) || (topic.kps || []).some((point) => forcedVisibleIds.has(point.id));
+      if (!showPoints) return;
+
+      const topicPeers = expandedTopicAngles.filter((angle) => angle !== pos.angle);
+      const pointHalf = ringWedgeHalf(pos.angle, topicPeers, RING_CFG.maxHalfPoint, pointStep, pointStart);
+      const grouped = {};
+      (topic.kps || []).forEach((point) => {
+        if (!adminRingExpandedTopics.has(topic.id) && !forcedVisibleIds.has(point.id)) return;
+        const layer = point.layer || "concept";
+        (grouped[layer] = grouped[layer] || []).push(point);
+      });
+
+      // 概念→流程→策略→文化 依次向外占据径向排，保留“层级同心”教学语义且不会跨层重叠。
+      let layerRadius = pointStart;
+      RING_LAYER_ORDER.forEach((layer) => {
+        const items = grouped[layer];
+        if (!items || !items.length) return;
+        const placedPoints = ringFanRows(items.length, pos.angle, pointHalf, layerRadius, pointStep, pointGap);
+        const layerOuter = placedPoints.reduce((max, pos2) => Math.max(max, pos2.radius), layerRadius);
+        items.forEach((point, pointIndex) => {
+          const pp = placedPoints[pointIndex];
           points.push({
             ...point,
             stageId: stage.id,
@@ -3375,33 +3459,77 @@ function buildRingGraphLayout(data, width, height) {
             topicId: topic.id,
             topicName: topic.name,
             layer,
-            angle,
-            x: Math.cos(angle) * pointRadius,
-            y: Math.sin(angle) * pointRadius,
+            angle: pp.angle,
+            radius: pp.radius,
+            x: Math.cos(pp.angle) * pp.radius,
+            y: Math.sin(pp.angle) * pp.radius,
           });
         });
+        layerRadius = layerOuter + pointGap + RING_CFG.layerGapExtra;
       });
     });
   });
 
   const topicById = new Map(topics.map((topic) => [topic.id, topic]));
   const existingIds = new Set(points.map((point) => point.id));
-  (data.culture || []).forEach((culture, index) => {
-    if (!forcedVisibleIds.has(culture.id) || existingIds.has(culture.id)) return;
-    const angle = Math.PI / 2 + (index - 0.5) * 0.26;
-    const pointRadius = radius * 1.9;
-    points.push({
-      ...culture,
-      isCulture: true,
-      layer: "culture",
-      angle,
-      x: Math.cos(angle) * pointRadius,
-      y: Math.sin(angle) * pointRadius,
+  // 文化维度节点（独立于主题之外），仅当被聚焦知识点关联时出现，铺在最外圈底部。
+  const forcedCulture = (data.culture || []).filter((culture) => forcedVisibleIds.has(culture.id) && !existingIds.has(culture.id));
+  if (forcedCulture.length) {
+    const outerPoint = points.reduce((max, point) => Math.max(max, point.radius), RING_CFG.pointRadius);
+    const cultureRadius = outerPoint + 130;
+    const placedCulture = ringFanRows(
+      forcedCulture.length,
+      Math.PI / 2,
+      RING_CFG.maxHalfPoint,
+      cultureRadius,
+      RING_CFG.cultureW + RING_CFG.pointPad,
+      ringRowGap(RING_CFG.cultureW, RING_CFG.cultureH)
+    );
+    forcedCulture.forEach((culture, index) => {
+      const pp = placedCulture[index];
+      points.push({
+        ...culture,
+        isCulture: true,
+        layer: "culture",
+        angle: pp.angle,
+        radius: pp.radius,
+        x: Math.cos(pp.angle) * pp.radius,
+        y: Math.sin(pp.angle) * pp.radius,
+      });
     });
-  });
+  }
 
   const pointById = new Map(points.map((point) => [point.id, point]));
   return { cx, cy, radius, stages, stageById, topics, topicById, points, pointById, focusedRelations };
+}
+
+// 根据当前可见内容计算自适应缩放/平移，使整张图始终居中铺满画布（充分利用宽屏空白）。
+// 仅在用户尚未手动缩放时生效；用户一旦滚轮/拖拽即保留其视角，直至“全部收回”。
+function computeRingFitTransform(layout, width, height) {
+  const d3lib = window.d3;
+  if (!d3lib || typeof d3lib.zoomIdentity === "undefined") return null;
+  let minX = -66;
+  let minY = -66;
+  let maxX = 66;
+  let maxY = 66; // 中心 hub 半径
+  const consider = (x, y, halfW, halfH) => {
+    if (x - halfW < minX) minX = x - halfW;
+    if (x + halfW > maxX) maxX = x + halfW;
+    if (y - halfH < minY) minY = y - halfH;
+    if (y + halfH > maxY) maxY = y + halfH;
+  };
+  layout.stages.forEach((stage) => consider(stage.x, stage.y, 44, 44));
+  layout.topics.forEach((topic) => consider(topic.x, topic.y, RING_CFG.topicW / 2 + 2, RING_CFG.topicH / 2 + 2));
+  layout.points.forEach((point) => consider(point.x, point.y, RING_CFG.pointW / 2 + 2, RING_CFG.pointH / 2 + 2));
+  const contentW = Math.max(maxX - minX, 1);
+  const contentH = Math.max(maxY - minY, 1);
+  const pad = RING_CFG.fitPadding;
+  const scale = Math.min((width - pad) / contentW, (height - pad) / contentH, RING_CFG.maxAutoScale);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const tx = width / 2 - scale * (layout.cx + centerX);
+  const ty = height / 2 - scale * (layout.cy + centerY);
+  return d3lib.zoomIdentity.translate(tx, ty).scale(scale);
 }
 
 function renderAdminRingGraphMvp() {
@@ -3420,8 +3548,10 @@ function renderAdminRingGraphMvp() {
   }
 
   const width = Math.max(1120, adminGraphCanvas.clientWidth || 1120);
-  const height = Math.max(640, adminGraphCanvas.clientHeight || 640);
+  const height = Math.max(680, adminGraphCanvas.clientHeight || 720);
   const layout = buildRingGraphLayout(data, width, height);
+  const autoFitTransform = adminRingGraphUserZoomed ? null : computeRingFitTransform(layout, width, height);
+  const activeTransform = autoFitTransform || adminRingGraphZoomTransform;
   const focusedRelations = layout.focusedRelations;
   const relatedIds = new Set();
   focusedRelations.forEach((edge) => {
@@ -3489,8 +3619,8 @@ function renderAdminRingGraphMvp() {
     .attr("fill", "#c8d2e4");
 
   const zoomLayer = svg.append("g").attr("class", "ring-zoom-layer");
-  if (adminRingGraphZoomTransform) {
-    zoomLayer.attr("transform", adminRingGraphZoomTransform.toString());
+  if (activeTransform) {
+    zoomLayer.attr("transform", activeTransform.toString());
   }
 
   const rotateLayer = zoomLayer
@@ -3608,10 +3738,10 @@ function renderAdminRingGraphMvp() {
 
   topicGroups
     .append("rect")
-    .attr("x", -58)
-    .attr("y", -17)
-    .attr("width", 116)
-    .attr("height", 34)
+    .attr("x", -RING_CFG.topicW / 2)
+    .attr("y", -RING_CFG.topicH / 2)
+    .attr("width", RING_CFG.topicW)
+    .attr("height", RING_CFG.topicH)
     .attr("rx", 8)
     .attr("fill", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#2563eb" : "#ffffff"))
     .attr("stroke", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#93c5fd" : "#60a5fa"))
@@ -3666,10 +3796,10 @@ function renderAdminRingGraphMvp() {
 
   pointGroups
     .append("rect")
-    .attr("x", -50)
-    .attr("y", -16)
-    .attr("width", 100)
-    .attr("height", 32)
+    .attr("x", -RING_CFG.pointW / 2)
+    .attr("y", -RING_CFG.pointH / 2)
+    .attr("width", RING_CFG.pointW)
+    .attr("height", RING_CFG.pointH)
     .attr("rx", 7)
     .attr("fill", (point) => getRingLayerStyle(point.layer).fill)
     .attr("stroke", (point) => (point.id === adminGraphFocusedPointId ? "#ffffff" : getRingLayerStyle(point.layer).stroke))
@@ -3688,14 +3818,17 @@ function renderAdminRingGraphMvp() {
 
   const zoom = d3lib
     .zoom()
-    .scaleExtent([0.6, 2.2])
+    .scaleExtent([0.35, 2.6])
     .on("zoom", (event) => {
       adminRingGraphZoomTransform = event.transform;
+      // 仅在真实滚轮/拖拽手势时记为“用户已自定义视角”，程序化自适应不触发
+      if (event.sourceEvent) adminRingGraphUserZoomed = true;
       zoomLayer.attr("transform", event.transform);
     });
   svg.call(zoom);
-  if (adminRingGraphZoomTransform) {
-    svg.call(zoom.transform, adminRingGraphZoomTransform);
+  if (activeTransform) {
+    adminRingGraphZoomTransform = activeTransform;
+    svg.call(zoom.transform, activeTransform);
   }
 
   if (adminGraphStatus) {
