@@ -215,6 +215,23 @@ async function importExcelFile(file) {
   }
 }
 
+function summarizeImportErrors(result) {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const fatalErrors = errors.filter((item) => item && item.severity === 'ERROR');
+  const source = fatalErrors.length ? fatalErrors : errors;
+  if (!source.length) {
+    return '导入未成功，请检查模板内容';
+  }
+  return source
+    .slice(0, 3)
+    .map((item) => {
+      const row = item.row ? `第${item.row}行` : '';
+      const field = item.field ? `「${item.field}」` : '';
+      return `${row}${field}${item.message || '导入错误'}`;
+    })
+    .join('；');
+}
+
 // Excel导出
 async function exportToExcel() {
   try {
@@ -1080,6 +1097,12 @@ async function handleFileSelected(event) {
     showStatus('admin-graph-import-status', `正在导入 ${file.name}...`, 'info');
 
     const result = await importExcelFile(file);
+    const fatalErrors = Array.isArray(result.errors)
+      ? result.errors.filter((item) => item && item.severity === 'ERROR')
+      : [];
+    if (result.success === false || fatalErrors.length > 0) {
+      throw new Error(summarizeImportErrors(result));
+    }
 
     const stats = result.statistics || {};
     const stages = stats.stages || {};
@@ -1126,11 +1149,12 @@ async function handleExportExcel() {
 // ========== 智能批量导入功能（新）==========
 
 // 下载批量导入模板
-async function downloadBatchTemplate() {
+async function downloadBatchTemplate(profile = 'teacher') {
   try {
     showStatus('batch-import-status', '正在生成模板...', 'info');
 
-    const response = await fetchWithAuth('/api/graph/import/batch/template?include_existing=true');
+    const normalizedProfile = profile === 'researcher' ? 'researcher' : 'teacher';
+    const response = await fetchWithAuth(`/api/graph/import/batch/template?include_existing=true&profile=${normalizedProfile}`);
     if (!response.ok) {
       throw new Error(`下载模板失败: ${response.status}`);
     }
@@ -1139,7 +1163,9 @@ async function downloadBatchTemplate() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = '知识图谱批量导入模板.xlsx';
+    a.download = normalizedProfile === 'researcher'
+      ? '教研员版知识图谱高级导入模板.xlsx'
+      : '教师版知识图谱导入模板.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1672,7 +1698,16 @@ function initGraphKnowledgeManagement() {
     downloadTemplate.removeAttribute('href');
     downloadTemplate.addEventListener('click', (event) => {
       event.preventDefault();
-      downloadBatchTemplate();
+      downloadBatchTemplate('teacher');
+    });
+  }
+
+  const downloadAdvancedTemplate = document.getElementById('admin-graph-download-advanced-template');
+  if (downloadAdvancedTemplate) {
+    downloadAdvancedTemplate.removeAttribute('href');
+    downloadAdvancedTemplate.addEventListener('click', (event) => {
+      event.preventDefault();
+      downloadBatchTemplate('researcher');
     });
   }
 

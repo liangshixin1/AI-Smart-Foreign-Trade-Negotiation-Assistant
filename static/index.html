@@ -15,10 +15,6 @@
       href="/static/vendor/quill-2.0.2/quill.snow.css"
     />
     <script src="/static/vendor/quill-2.0.2/quill.js"></script>
-    <script
-      src="/static/vendor/g6-4.8.17/g6.min.js"
-      onerror="console.warn('[G6] 本地资源加载失败，将继续使用自研 SVG 语义网络。');"
-    ></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -5365,7 +5361,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 class="text-lg font-semibold text-white">知识图谱总览</h3>
-                    <p class="text-xs text-slate-400">基于 Neo4j 的谈判知识节点与关系可视化。</p>
+                    <p class="text-xs text-slate-400">闭环式展示外贸谈判十环节，点击环节展开二级主题，再点击二级主题展开知识点。</p>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
                     <input
@@ -5387,9 +5383,9 @@
                       id="admin-graph-toggle-renderer"
                       type="button"
                       class="rounded-xl border border-slate-700/70 px-3 py-1 text-xs text-slate-200 transition hover:border-emerald-300 hover:text-emerald-100"
-                      title="纵向分层：谈判阶段在上，主题、知识点依次向下展开；点击可切换为横向分层"
+                      title="收回所有展开的环节和知识点"
                     >
-                      当前 纵向分层
+                      全部收回
                     </button>
                   </div>
                 </div>
@@ -5399,7 +5395,7 @@
                 ></div>
                 <p id="admin-graph-status" class="text-xs text-slate-500">加载知识图谱中...</p>
                 <p class="text-xs text-slate-500">
-                  提示：采用“分层 + 联系”视图，阶段→主题→知识点自动分层；灰色虚线表示层级包含，蓝线表示流程顺序，红线表示前置依赖，紫线表示跨文化联系。悬停节点可高亮其关联关系，可拖拽 / 滚轮缩放 / 点击查看详情。
+                  提示：默认只显示十环节闭环。点击环节展开二级主题，点击二级主题展开知识点；点击知识点才点亮它的语义关系。
                 </p>
               </section>
 
@@ -5453,12 +5449,21 @@
                 </span>
                 <a
                   id="admin-graph-download-template"
-                  href="/api/graph/import/batch/template?include_existing=true"
-                  download="知识图谱批量导入模板.xlsx"
+                  href="/api/graph/import/batch/template?include_existing=true&profile=teacher"
+                  download="教师版知识图谱导入模板.xlsx"
                   class="rounded-lg border border-sky-500/70 px-3 py-1 transition hover:border-sky-300 hover:text-sky-100"
-                  title="下载批量导入模板"
+                  title="适合普通英语老师：主要填写知识点主表"
                 >
-                  下载模板
+                  我是教师
+                </a>
+                <a
+                  id="admin-graph-download-advanced-template"
+                  href="/api/graph/import/batch/template?include_existing=true&profile=researcher"
+                  download="教研员版知识图谱高级导入模板.xlsx"
+                  class="rounded-lg border border-amber-500/70 px-3 py-1 transition hover:border-amber-300 hover:text-amber-100"
+                  title="适合教研员：包含案例库、词汇网络等高级功能"
+                >
+                  我是教研员
                 </a>
                 <button
                   id="admin-graph-import-excel"
@@ -5901,8 +5906,8 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/student.js"></script>
     <script src="/static/js/graph-knowledge.js"></script>
-    <script src="/static/js/graph-transformer.js"></script>
     <script src="/static/vendor/echarts-5.6.0/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="/static/js/admin.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/main.js"></script>

@@ -74,6 +74,7 @@ class ImportResult:
     topics_stats: ImportStatistics
     relations_stats: ImportStatistics
     examples_stats: ImportStatistics
+    stages_stats: ImportStatistics = field(default_factory=ImportStatistics)
     errors: List[ValidationError] = field(default_factory=list)
     warnings: List[ValidationError] = field(default_factory=list)
     execution_time: float = 0.0
@@ -83,6 +84,13 @@ class ImportResult:
         return {
             "success": self.success,
             "statistics": {
+                "stages": {
+                    "total": self.stages_stats.total,
+                    "created": self.stages_stats.created,
+                    "updated": self.stages_stats.updated,
+                    "failed": self.stages_stats.failed,
+                    "success_rate": self.stages_stats.success_rate,
+                },
                 "topics": {
                     "total": self.topics_stats.total,
                     "created": self.topics_stats.created,
@@ -366,6 +374,57 @@ def _normalize_multi_value(value: Optional[str]) -> List[str]:
     return normalized
 
 
+def _is_template_hint_value(value: object) -> bool:
+    """判断单元格是否是模板说明文字，而不是用户数据。"""
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    return (
+        text.startswith("例如")
+        or text.startswith("示例")
+        or text.startswith("填写")
+        or text.startswith("从下拉列表选择")
+        or text.startswith("简要说明")
+        or text in {
+            "一句话描述",
+            "详细说明",
+            "用逗号分隔",
+            "中文名称",
+            "英文名称",
+            "阶段名称",
+            "阶段名称*",
+            "阶段描述",
+            "阶段",
+            "难度级别",
+            "预计时长(天)",
+            "图标",
+            "颜色",
+            "章节",
+            "知识点名称",
+            "知识点名称*",
+            "所属阶段",
+            "二级主题",
+            "知识点类型",
+            "难度",
+            "重要性",
+            "内容简介",
+            "详细描述",
+            "关键词",
+        }
+    )
+
+
+def _is_template_hint_row(row: tuple, key_indexes: List[int]) -> bool:
+    """跳过模板中用于提示填写方法的行，避免导入成真实节点。"""
+    values = [row[idx] for idx in key_indexes if idx < len(row)]
+    visible_values = [value for value in values if value is not None and str(value).strip()]
+    if not visible_values:
+        return False
+    return all(_is_template_hint_value(value) for value in visible_values)
+
+
 def _to_bool_flag(value: Optional[str]) -> Optional[bool]:
     """将常见是/否文本转为布尔, 其他返回None。"""
     if value is None:
@@ -415,6 +474,7 @@ class KnowledgeGraphBatchImporter:
         result = ImportResult(
             success=False,
             points_stats=ImportStatistics(),
+            topics_stats=ImportStatistics(),
             relations_stats=ImportStatistics(),
             examples_stats=ImportStatistics(),
         )
@@ -508,9 +568,11 @@ class KnowledgeGraphBatchImporter:
         """
         import time
         start_time = time.time()
+        stages_stats = ImportStatistics()
 
         result = ImportResult(
             success=False,
+            stages_stats=stages_stats,
             topics_stats=ImportStatistics(),
             points_stats=ImportStatistics(),
             relations_stats=ImportStatistics(),
@@ -519,7 +581,7 @@ class KnowledgeGraphBatchImporter:
         )
 
         # 添加stages统计
-        stages_stats = ImportStatistics()
+        stages_stats = result.stages_stats
 
         try:
             # Phase 1: 解析三个Sheet的数据
@@ -596,6 +658,7 @@ class KnowledgeGraphBatchImporter:
                 result.topics_by_stage,
                 transaction_errors,
             ) = self._import_three_sheets_with_transaction(flow_data, points_data, examples_data, lexicon_data, created_by)
+            result.stages_stats = stages_stats
             result.errors.extend(transaction_errors)
 
             result.success = True
@@ -682,9 +745,13 @@ class KnowledgeGraphBatchImporter:
                 ))
                 return [], errors
 
-            # 读取数据行（跳过表头和示例行）
-            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            hint_indexes = [field_map.get("name", 0), field_map.get("description", 2)]
+
+            # 读取数据行：教师模板可能从第2行直接给真实阶段，也可能第2行是提示行。
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if not any(row):
+                    continue
+                if _is_template_hint_row(row, hint_indexes):
                     continue
 
                 try:
@@ -709,6 +776,10 @@ class KnowledgeGraphBatchImporter:
                 row=0,
                 message=f"读取Excel文件失败: {str(e)}",
             ))
+
+        for order_index, stage in enumerate(flow_data, start=1):
+            stage["_order"] = order_index
+            stage["orderIndex"] = order_index
 
         return flow_data, errors
 
@@ -806,9 +877,13 @@ class KnowledgeGraphBatchImporter:
                 ))
                 return [], errors
 
-            # 读取数据行
-            for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            hint_indexes = [field_map.get("name", 1), field_map.get("stage", 2), field_map.get("summary", 8)]
+
+            # 读取数据行：跳过模板说明/示例行，只保留真实知识点。
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if not any(row):
+                    continue
+                if _is_template_hint_row(row, hint_indexes):
                     continue
 
                 try:
@@ -2351,6 +2426,7 @@ class KnowledgeGraphBatchImporter:
             s.description = $description,
             s.difficulty = $difficulty,
             s.estimatedDuration = $estimatedDuration,
+            s.orderIndex = $orderIndex,
             s.icon = $icon,
             s.color = $color,
             s.createdAt = datetime(),
@@ -2362,6 +2438,7 @@ class KnowledgeGraphBatchImporter:
             s.description = $description,
             s.difficulty = $difficulty,
             s.estimatedDuration = $estimatedDuration,
+            s.orderIndex = $orderIndex,
             s.icon = $icon,
             s.color = $color,
             s.updatedAt = datetime(),
@@ -2375,6 +2452,7 @@ class KnowledgeGraphBatchImporter:
             "description": stage_data.get("description", ""),
             "difficulty": stage_data.get("difficulty", "intermediate"),
             "estimatedDuration": stage_data.get("estimatedDuration", 7),
+            "orderIndex": int(stage_data.get("orderIndex") or stage_data.get("order") or 0),
             "icon": stage_data.get("icon", "🔵"),
             "color": stage_data.get("color", "#3B82F6"),
             "createdBy": created_by,
@@ -2511,19 +2589,27 @@ class KnowledgeGraphBatchImporter:
 # 智能模板生成器
 # ============================================
 
-def generate_smart_templates(existing_points: Optional[List[str]] = None, existing_stages: Optional[List[str]] = None) -> bytes:
+def generate_smart_templates(
+    existing_points: Optional[List[str]] = None,
+    existing_stages: Optional[List[str]] = None,
+    profile: str = "researcher",
+) -> bytes:
     """
     生成智能Excel模板（包含数据验证和下拉菜单）- 支持多节点类型
 
     Args:
         existing_points: 现有知识点名称列表（用于关系列的下拉菜单）
         existing_stages: 现有阶段名称列表（用于"所属阶段"下拉菜单）
+        profile: teacher=教师简版；researcher=教研员高级版
 
     Returns:
-        包含四个sheet的Excel文件（谈判流程 + 知识点主表 + 案例库表 + 词汇网络表）
+        Excel模板文件。教师版包含必要的谈判流程和知识点主表；教研员版保留案例库和词汇网络表。
     """
     if not EXCEL_AVAILABLE:
         raise RuntimeError("openpyxl未安装，无法生成模板")
+
+    normalized_profile = (profile or "researcher").strip().lower()
+    is_researcher_profile = normalized_profile in {"researcher", "教研员", "advanced", "expert"}
 
     wb = Workbook()
 
@@ -2636,108 +2722,109 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     # 添加示例数据
     _add_sample_data(ws_points)
 
-    # ========================================
-    # Sheet 3: 案例库表
-    # ========================================
-    ws_examples = wb.create_sheet("案例库表")
+    if is_researcher_profile:
+        # ========================================
+        # Sheet 3: 案例库表
+        # ========================================
+        ws_examples = wb.create_sheet("案例库表")
 
-    # 设置列宽
-    example_widths = [25, 20, 30, 60, 15]
-    for idx, width in enumerate(example_widths, start=1):
-        ws_examples.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
+        # 设置列宽
+        example_widths = [25, 20, 30, 60, 15]
+        for idx, width in enumerate(example_widths, start=1):
+            ws_examples.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
 
-    # 写入表头
-    for col_idx, (header, field, required, example) in enumerate(EXAMPLES_TEMPLATE_HEADERS, start=1):
-        cell = ws_examples.cell(row=1, column=col_idx)
-        cell.value = f"{header}{'*' if required else ''}"
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = border
+        # 写入表头
+        for col_idx, (header, field, required, example) in enumerate(EXAMPLES_TEMPLATE_HEADERS, start=1):
+            cell = ws_examples.cell(row=1, column=col_idx)
+            cell.value = f"{header}{'*' if required else ''}"
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
 
-        example_cell = ws_examples.cell(row=2, column=col_idx)
-        example_cell.value = example
-        example_cell.font = example_font
+            example_cell = ws_examples.cell(row=2, column=col_idx)
+            example_cell.value = example
+            example_cell.font = example_font
 
-    ws_examples.freeze_panes = "A3"
+        ws_examples.freeze_panes = "A3"
 
-    # 添加案例类型下拉菜单
-    example_type_validation = DataValidation(
-        type="list",
-        formula1='"实际案例,邮件模板,文档模板,常见错误,对话示例"',
-        allow_blank=False
-    )
-    example_type_validation.error = "请从下拉列表中选择"
-    example_type_validation.errorTitle = "输入错误"
-    ws_examples.add_data_validation(example_type_validation)
-    example_type_validation.add(f"B3:B1000")
+        # 添加案例类型下拉菜单
+        example_type_validation = DataValidation(
+            type="list",
+            formula1='"实际案例,邮件模板,文档模板,常见错误,对话示例"',
+            allow_blank=False
+        )
+        example_type_validation.error = "请从下拉列表中选择"
+        example_type_validation.errorTitle = "输入错误"
+        ws_examples.add_data_validation(example_type_validation)
+        example_type_validation.add(f"B3:B1000")
 
-    # ========================================
-    # Sheet 4: 词汇网络表
-    # ========================================
-    ws_lex = wb.create_sheet("词汇网络表")
-    lex_widths = [22, 28, 14, 16, 20, 20, 14, 28, 14, 24, 30]
-    for idx, width in enumerate(lex_widths, start=1):
-        ws_lex.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
+        # ========================================
+        # Sheet 4: 词汇网络表
+        # ========================================
+        ws_lex = wb.create_sheet("词汇网络表")
+        lex_widths = [22, 28, 14, 16, 20, 20, 14, 28, 14, 24, 30]
+        for idx, width in enumerate(lex_widths, start=1):
+            ws_lex.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
 
-    for col_idx, (header, field, required, example) in enumerate(LEXICON_TEMPLATE_HEADERS, start=1):
-        cell = ws_lex.cell(row=1, column=col_idx)
-        cell.value = f"{header}{'*' if required else ''}"
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = border
+        for col_idx, (header, field, required, example) in enumerate(LEXICON_TEMPLATE_HEADERS, start=1):
+            cell = ws_lex.cell(row=1, column=col_idx)
+            cell.value = f"{header}{'*' if required else ''}"
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
 
-        example_cell = ws_lex.cell(row=2, column=col_idx)
-        example_cell.value = example
-        example_cell.font = example_font
-        example_cell.alignment = Alignment(wrap_text=True)
+            example_cell = ws_lex.cell(row=2, column=col_idx)
+            example_cell.value = example
+            example_cell.font = example_font
+            example_cell.alignment = Alignment(wrap_text=True)
 
-    ws_lex.freeze_panes = "A3"
+        ws_lex.freeze_panes = "A3"
 
-    # 词汇项类型下拉
-    lex_role_validation = DataValidation(
-        type="list",
-        formula1='"词条,搭配,句式"',
-        allow_blank=False
-    )
-    lex_role_validation.error = "请从下拉列表中选择"
-    lex_role_validation.errorTitle = "输入错误"
-    ws_lex.add_data_validation(lex_role_validation)
-    lex_role_validation.add("C3:C1000")
+        # 词汇项类型下拉
+        lex_role_validation = DataValidation(
+            type="list",
+            formula1='"词条,搭配,句式"',
+            allow_blank=False
+        )
+        lex_role_validation.error = "请从下拉列表中选择"
+        lex_role_validation.errorTitle = "输入错误"
+        ws_lex.add_data_validation(lex_role_validation)
+        lex_role_validation.add("C3:C1000")
 
-    # 语气下拉
-    lex_tone_validation = DataValidation(
-        type="list",
-        formula1='"softer,neutral,stronger"',
-        allow_blank=True
-    )
-    lex_tone_validation.error = "请从下拉列表中选择：softer/neutral/stronger"
-    lex_tone_validation.errorTitle = "输入错误"
-    ws_lex.add_data_validation(lex_tone_validation)
-    lex_tone_validation.add("G3:G1000")
+        # 语气下拉
+        lex_tone_validation = DataValidation(
+            type="list",
+            formula1='"softer,neutral,stronger"',
+            allow_blank=True
+        )
+        lex_tone_validation.error = "请从下拉列表中选择：softer/neutral/stronger"
+        lex_tone_validation.errorTitle = "输入错误"
+        ws_lex.add_data_validation(lex_tone_validation)
+        lex_tone_validation.add("G3:G1000")
 
-    # 思政元素下拉
-    lex_civic_validation = DataValidation(
-        type="list",
-        formula1='"Win-Win,Integrity,Dignity,Compliance,Zero-Sum,Dishonesty,Disrespect,Non-Compliance"',
-        allow_blank=True
-    )
-    lex_civic_validation.error = "请从下拉列表选择或使用分号分隔多选项"
-    lex_civic_validation.errorTitle = "输入错误"
-    ws_lex.add_data_validation(lex_civic_validation)
-    lex_civic_validation.add("H3:H1000")
+        # 思政元素下拉
+        lex_civic_validation = DataValidation(
+            type="list",
+            formula1='"Win-Win,Integrity,Dignity,Compliance,Zero-Sum,Dishonesty,Disrespect,Non-Compliance"',
+            allow_blank=True
+        )
+        lex_civic_validation.error = "请从下拉列表选择或使用分号分隔多选项"
+        lex_civic_validation.errorTitle = "输入错误"
+        ws_lex.add_data_validation(lex_civic_validation)
+        lex_civic_validation.add("H3:H1000")
 
-    # 地道性下拉
-    lex_idiomatic_validation = DataValidation(
-        type="list",
-        formula1='"是,否"',
-        allow_blank=True
-    )
-    lex_idiomatic_validation.error = "请选择 是/否，或留空"
-    lex_idiomatic_validation.errorTitle = "输入错误"
-    ws_lex.add_data_validation(lex_idiomatic_validation)
-    lex_idiomatic_validation.add("I3:I1000")
+        # 地道性下拉
+        lex_idiomatic_validation = DataValidation(
+            type="list",
+            formula1='"是,否"',
+            allow_blank=True
+        )
+        lex_idiomatic_validation.error = "请选择 是/否，或留空"
+        lex_idiomatic_validation.errorTitle = "输入错误"
+        ws_lex.add_data_validation(lex_idiomatic_validation)
+        lex_idiomatic_validation.add("I3:I1000")
 
     # ========================================
     # Sheet 5: 使用说明
@@ -2745,11 +2832,12 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
     ws_guide = wb.create_sheet("使用说明")
     ws_guide.column_dimensions['A'].width = 100
 
+    guide_title = "📖 教研员高级知识图谱批量导入指南" if is_researcher_profile else "📖 教师版知识图谱导入指南"
     guide_content = [
-        ("📖 智能知识图谱批量导入指南", True, 16),
+        (guide_title, True, 16),
         ("", False, 10),
         ("✨ 主要特点", True, 13),
-        ("1. 核心只需填写知识点主表，其余表格可按需补充", False, 11),
+        ("1. 教师版主要填写「知识点主表」，「谈判流程」已预填常用阶段", False, 11),
         ("2. 关系用自然语言表达（必须先学、建议同时学、可对比学习）", False, 11),
         ("3. 下拉菜单辅助填写，避免输入错误", False, 11),
         ("4. 智能错误提示，自动推荐相似名称", False, 11),
@@ -2775,20 +2863,27 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         ("  • 如果一个知识点依赖多个前置知识，用分号分隔：「A;B;C」", False, 11),
         ("  • 不需要的关系列可以留空", False, 11),
         ("", False, 10),
-        ("第二步：填写「案例库表」（可选）", True, 12),
+    ]
+
+    if is_researcher_profile:
+        guide_content.extend([
+        ("第二步：填写「案例库表」（可选，教研员高级功能）", True, 12),
         ("  1. 关联知识点：填写知识点名称（必须在主表中存在）", False, 11),
         ("  2. 案例类型：从下拉菜单选择", False, 11),
         ("  3. 案例标题：简短标题", False, 11),
         ("  4. 案例内容：详细内容，可以很长", False, 11),
         ("  5. 关联练习关卡：如果有对应的练习关卡，填写关卡号（例如：6-1）", False, 11),
         ("", False, 10),
-        ("第三步：填写「词汇网络表」（可选）", True, 12),
+        ("第三步：填写「词汇网络表」（可选，教研员高级功能）", True, 12),
         ("  1. 关联知识点名称：必须在知识点主表存在，用于挂载词汇", False, 11),
         ("  2. 词汇项类型：词条/搭配/句式（下拉选择）", False, 11),
         ("  3. 多值字段（槽位/搭配组成词）支持逗号、分号或顿号，系统自动统一为分号并去重", False, 11),
         ("  4. 同一关联点下重复的词汇项会自动去重", False, 11),
         ("", False, 10),
-        ("第四步：上传导入", True, 12),
+        ])
+
+    guide_content.extend([
+        ("上传导入", True, 12),
         ("  1. 删除第2行的示例数据", False, 11),
         ("  2. 保存文件", False, 11),
         ("  3. 在系统中选择「批量导入」并上传", False, 11),
@@ -2843,10 +2938,10 @@ def generate_smart_templates(existing_points: Optional[List[str]] = None, existi
         ("2. 使用复制粘贴而不是手动输入知识点名称", False, 11),
         ("3. 预计学时设置合理（一般10-60分钟）", False, 11),
         ("4. 关键词设置3-5个为宜", False, 11),
-        ("5. 案例内容尽量详细，帮助学生理解", False, 11),
+        ("5. 教师版不需要维护词汇网络；需要表达优化、语义槽位时请使用「我是教研员」高级模板", False, 11),
         ("", False, 10),
         ("祝您使用愉快！如有问题请联系技术支持。", False, 11),
-    ]
+    ])
 
     for row_idx, (text, is_bold, font_size) in enumerate(guide_content, start=1):
         cell = ws_guide.cell(row=row_idx, column=1)

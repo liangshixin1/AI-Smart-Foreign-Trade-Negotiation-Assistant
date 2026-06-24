@@ -2345,7 +2345,7 @@ async function selectStudentTheoryLesson(lessonId) {
 // 拉取并渲染当前课程的关联图谱（知识点/关卡）。
 async function renderLessonSubgraph(lessonId) {
   if (!studentLessonGraph) return;
-  if (studentLessonGraphInstance) {
+  if (studentLessonGraphInstance && typeof studentLessonGraphInstance.destroy === "function") {
     studentLessonGraphInstance.destroy();
     studentLessonGraphInstance = null;
   }
@@ -2380,36 +2380,122 @@ async function renderLessonSubgraph(lessonId) {
       studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>本课暂无关联或匹配的知识点</p>";
       return;
     }
-    if (!window.G6) {
-      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>G6 未加载</p>";
-      return;
-    }
-    if (typeof renderKnowledgeGraphG6 !== "function") {
-      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>图谱渲染器未就绪</p>";
-      return;
-    }
-    studentLessonGraph.innerHTML = "";
-    // 复用统一的分层渲染器：阶段→主题→知识点横向分层，叠加流程/语义连线，并高亮本课关联知识点。
-    studentLessonGraphInstance = renderKnowledgeGraphG6({
-      container: studentLessonGraph,
-      nodes,
-      edges,
-      direction: "LR",
-      compact: true,
-      theme: "light",
-      highlightNames: highlights,
-      onNodeClick: (id, model) => {
-        if (model && (model.nodeType === "Stage" || model.nodeType === "Topic")) return;
-        showStudentKnowledgeCard((model && (model.name || model.fullTitle)) || id);
-      },
-    });
-    if (!studentLessonGraphInstance) {
-      studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>本课暂无可展示的知识图谱</p>";
-    }
+    renderLessonKnowledgeMap(studentLessonGraph, nodes, edges, highlights);
   } catch (error) {
     console.error("[LessonSubgraph]", error);
     studentLessonGraph.innerHTML = "<p class='text-xs text-slate-400 p-3'>加载失败</p>";
   }
+}
+
+function nodeDisplayId(node) {
+  return node?.id || node?.key || node?.name || "";
+}
+
+function nodeDisplayTitle(node) {
+  return node?.name || node?.title || node?.label || nodeDisplayId(node);
+}
+
+function nodeDisplayType(node) {
+  return node?.nodeType || node?.label || node?.type || "";
+}
+
+function renderLessonKnowledgeMap(container, nodes, edges, highlights) {
+  const nodeMap = new Map();
+  (nodes || []).forEach((node) => {
+    const id = nodeDisplayId(node);
+    if (id) nodeMap.set(id, { ...node, id });
+  });
+  const stageBuckets = new Map();
+  const topicBuckets = new Map();
+  const pointNodes = [];
+  nodeMap.forEach((node) => {
+    const type = nodeDisplayType(node);
+    if (type === "Stage") stageBuckets.set(node.id, { stage: node, topics: [], points: [] });
+    else if (type === "Topic") topicBuckets.set(node.id, { topic: node, points: [] });
+    else if (["KnowledgePoint", "Skill", "Terminology"].includes(type)) pointNodes.push(node);
+  });
+
+  (edges || []).forEach((edge) => {
+    const source = edge.source || edge.from;
+    const target = edge.target || edge.to;
+    if (edge.type === "CONTAIN_TOPIC" && stageBuckets.has(source) && topicBuckets.has(target)) {
+      stageBuckets.get(source).topics.push(topicBuckets.get(target));
+    }
+    if (edge.type === "INCLUDE_POINT" && topicBuckets.has(source) && nodeMap.has(target)) {
+      topicBuckets.get(source).points.push(nodeMap.get(target));
+    }
+  });
+
+  pointNodes.forEach((point) => {
+    const alreadyPlaced = [...topicBuckets.values()].some((topic) => topic.points.some((item) => item.id === point.id));
+    if (alreadyPlaced) return;
+    const stageName = point.stage || point.stageName;
+    const stageBucket = [...stageBuckets.values()].find((bucket) => nodeDisplayTitle(bucket.stage) === stageName);
+    if (stageBucket) stageBucket.points.push(point);
+  });
+
+  const stages = [...stageBuckets.values()];
+  container.innerHTML = "";
+  const shell = document.createElement("div");
+  shell.className = "h-full overflow-auto p-3";
+  const grid = document.createElement("div");
+  grid.className = "grid gap-3 md:grid-cols-2";
+
+  const renderPoint = (point) => {
+    const title = nodeDisplayTitle(point);
+    const isHighlighted = highlights && (highlights.has(point.id) || highlights.has(point.name) || highlights.has(title));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = [
+      "w-full rounded-lg border px-2.5 py-2 text-left text-xs transition",
+      isHighlighted ? "border-emerald-400 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300",
+    ].join(" ");
+    button.innerHTML = `<span class="font-semibold">${escapeHtml(title)}</span><span class="ml-2 text-[10px] text-slate-400">${escapeHtml(nodeDisplayType(point) || "KnowledgePoint")}</span>`;
+    button.addEventListener("click", () => showStudentKnowledgeCard(title));
+    return button;
+  };
+
+  if (stages.length === 0) {
+    const loose = document.createElement("section");
+    loose.className = "rounded-xl border border-slate-200 bg-slate-50 p-3";
+    loose.innerHTML = '<h5 class="mb-2 text-sm font-semibold text-slate-900">本课知识点</h5>';
+    const list = document.createElement("div");
+    list.className = "space-y-2";
+    pointNodes.forEach((point) => list.appendChild(renderPoint(point)));
+    loose.appendChild(list);
+    grid.appendChild(loose);
+  } else {
+    stages.forEach((bucket) => {
+      const card = document.createElement("section");
+      card.className = "rounded-xl border border-slate-200 bg-slate-50 p-3";
+      card.innerHTML = `<h5 class="text-sm font-semibold text-slate-900">${escapeHtml(nodeDisplayTitle(bucket.stage))}</h5>`;
+      const body = document.createElement("div");
+      body.className = "mt-2 space-y-2";
+      bucket.topics.forEach((topicBucket) => {
+        const topicEl = document.createElement("div");
+        topicEl.className = "rounded-lg border border-slate-200 bg-white/80 p-2";
+        topicEl.innerHTML = `<div class="mb-1 text-[11px] font-semibold text-amber-700">${escapeHtml(nodeDisplayTitle(topicBucket.topic))}</div>`;
+        const list = document.createElement("div");
+        list.className = "space-y-1.5";
+        topicBucket.points.forEach((point) => list.appendChild(renderPoint(point)));
+        if (!list.children.length) {
+          list.innerHTML = '<p class="text-[11px] text-slate-400">暂无知识点</p>';
+        }
+        topicEl.appendChild(list);
+        body.appendChild(topicEl);
+      });
+      bucket.points.forEach((point) => body.appendChild(renderPoint(point)));
+      if (!body.children.length) {
+        body.innerHTML = '<p class="text-[11px] text-slate-400">暂无知识点</p>';
+      }
+      card.appendChild(body);
+      grid.appendChild(card);
+    });
+  }
+
+  shell.appendChild(grid);
+  container.appendChild(shell);
+  studentLessonGraphInstance = { destroy: () => { container.innerHTML = ""; } };
 }
 
 // 初始化理论板块：加载课程树、默认选择、刷新罗盘。
@@ -4963,10 +5049,6 @@ async function renderKnowledgePeekGraph(payload) {
   const lessonId = payload.lessonId || null;
 
   const renderSimple = () => {
-    if (typeof G6 === "undefined") {
-      if (knowledgePeekGraphStatus) knowledgePeekGraphStatus.textContent = "图谱组件未加载";
-      return;
-    }
     const prereqs = Array.isArray(payload.prerequisites) ? payload.prerequisites : [];
     const relations = Array.isArray(payload.relations) ? payload.relations : [];
     const nodes = [{ id: highlight || "KP", label: highlight || "知识点", nodeType: "KnowledgePoint" }];
@@ -5016,49 +5098,69 @@ async function renderKnowledgePeekGraph(payload) {
 }
 
 function drawKnowledgePeekGraph(nodes, edges, highlights) {
-  if (!knowledgePeekGraph || typeof G6 === "undefined") return;
-  if (knowledgePeekGraphInstance) {
+  if (!knowledgePeekGraph) return;
+  if (knowledgePeekGraphInstance && typeof knowledgePeekGraphInstance.destroy === "function") {
     knowledgePeekGraphInstance.destroy();
     knowledgePeekGraphInstance = null;
   }
-  knowledgePeekGraphInstance = new G6.Graph({
-    container: knowledgePeekGraph,
-    width: knowledgePeekGraph.clientWidth || 520,
-    height: knowledgePeekGraph.clientHeight || 320,
-    layout: { type: "force", preventOverlap: true, linkDistance: 160, nodeStrength: -220 },
-    modes: { default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }] },
-    defaultNode: {
-      size: 20,
-      labelCfg: { position: "bottom", style: { fill: "#0f172a", fontSize: 11, fontWeight: 600 } },
-      style: { fill: "#38bdf8", stroke: "#0ea5e9" },
-      stateStyles: { highlight: { shadowColor: "#22c55e", shadowBlur: 16, lineWidth: 2 } },
-    },
-    defaultEdge: {
-      type: "line",
-      style: { stroke: "rgba(148,163,184,0.6)", endArrow: true },
-      labelCfg: { style: { fill: "#475569", fontSize: 10, background: { fill: "#e2e8f0", padding: 2 } } },
-    },
-    animate: true,
-    fitCenter: true,
+  const nodeMap = new Map();
+  (nodes || []).forEach((node) => {
+    const id = nodeDisplayId(node);
+    if (id) nodeMap.set(id, { ...node, id });
   });
-  knowledgePeekGraphInstance.node((n) => {
-    const highlighted = highlights && (highlights.has(n.name) || highlights.has(n.id));
-    const type = n.nodeType || n.label;
-    if (type === "Stage") {
-      return { size: 34, style: { fill: "#3b82f6", stroke: "#2563eb" } };
-    }
-    if (type === "Topic") {
-      return { type: "rect", size: [32, 20], style: { fill: "#f97316", stroke: "#ea580c" } };
-    }
-    return {
-      size: highlighted ? 26 : 16,
-      style: { fill: highlighted ? "#22c55e" : "#94a3b8", stroke: highlighted ? "#16a34a" : "#64748b" },
-      labelCfg: { style: { fill: "#0f172a", fontWeight: highlighted ? 700 : 500 } },
-    };
+  const incoming = new Map();
+  const outgoing = new Map();
+  (edges || []).forEach((edge) => {
+    const source = edge.source || edge.from;
+    const target = edge.target || edge.to;
+    if (!source || !target) return;
+    if (!outgoing.has(source)) outgoing.set(source, []);
+    if (!incoming.has(target)) incoming.set(target, []);
+    outgoing.get(source).push({ edge, node: nodeMap.get(target) });
+    incoming.get(target).push({ edge, node: nodeMap.get(source) });
   });
-  knowledgePeekGraphInstance.data({ nodes, edges });
-  knowledgePeekGraphInstance.render();
-  knowledgePeekGraphInstance.fitView(40);
+
+  knowledgePeekGraph.innerHTML = "";
+  const shell = document.createElement("div");
+  shell.className = "h-full overflow-auto p-3 text-xs";
+  const centerNodes = [...nodeMap.values()].filter((node) => highlights && (highlights.has(node.id) || highlights.has(node.name) || highlights.has(nodeDisplayTitle(node))));
+  const center = centerNodes[0] || [...nodeMap.values()][0];
+
+  if (!center) {
+    shell.innerHTML = '<p class="text-slate-400">暂无图谱关系</p>';
+    knowledgePeekGraph.appendChild(shell);
+    return;
+  }
+
+  const relationBlock = (title, rows, emptyText) => {
+    const block = document.createElement("section");
+    block.className = "mb-3 rounded-xl border border-slate-200 bg-white p-3";
+    block.innerHTML = `<h5 class="mb-2 font-semibold text-slate-900">${escapeHtml(title)}</h5>`;
+    const list = document.createElement("div");
+    list.className = "space-y-1.5";
+    rows.filter((row) => row.node).slice(0, 8).forEach((row) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-left hover:border-emerald-300";
+      button.innerHTML = `<span class="truncate text-slate-800">${escapeHtml(nodeDisplayTitle(row.node))}</span><span class="ml-2 text-[10px] text-slate-400">${escapeHtml(row.edge.type || row.edge.label || "关系")}</span>`;
+      button.addEventListener("click", () => showStudentKnowledgeCard(nodeDisplayTitle(row.node)));
+      list.appendChild(button);
+    });
+    if (!list.children.length) {
+      list.innerHTML = `<p class="text-slate-400">${escapeHtml(emptyText)}</p>`;
+    }
+    block.appendChild(list);
+    return block;
+  };
+
+  const centerCard = document.createElement("section");
+  centerCard.className = "mb-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3";
+  centerCard.innerHTML = `<div class="text-[11px] text-emerald-700">当前知识点</div><div class="mt-1 font-semibold text-emerald-950">${escapeHtml(nodeDisplayTitle(center))}</div>`;
+  shell.appendChild(centerCard);
+  shell.appendChild(relationBlock("前置/来源", incoming.get(center.id) || [], "暂无前置关系"));
+  shell.appendChild(relationBlock("后续/关联", outgoing.get(center.id) || [], "暂无关联关系"));
+  knowledgePeekGraph.appendChild(shell);
+  knowledgePeekGraphInstance = { destroy: () => { knowledgePeekGraph.innerHTML = ""; } };
   if (knowledgePeekGraphStatus) {
     knowledgePeekGraphStatus.textContent = `${nodes.length} 节点`;
   }

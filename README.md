@@ -105,7 +105,7 @@ sentence-transformers (嵌入模型)
 
 ### 前端
 ```
-Vanilla JavaScript  Tailwind CSS  Chart.js  AntV G6
+Vanilla JavaScript  Tailwind CSS  Chart.js  DOM课程地图
 Vite + React (新增模板工程)
 ```
 
@@ -464,7 +464,6 @@ MIT License
 - [Neo4j](https://neo4j.com/) - 图数据库
 - [DeepSeek](https://www.deepseek.com/) - 大语言模型
 - [DashScope](https://dashscope.aliyun.com/) - 语音服务
-- [AntV G6](https://g6.antv.antgroup.com/) - 图可视化
 - [sentence-transformers](https://www.sbert.net/) - 向量嵌入
 - [Tailwind CSS](https://tailwindcss.com/) - UI框架
 

@@ -10,7 +10,6 @@ registry 的对应版本 tarball** 中原样提取，本地托管。目录名即
 | `dompurify-3.0.6/` | `dompurify@3.0.6` | `dist/purify.min.js` |
 | `quill-2.0.2/` | `quill@2.0.2` | `dist/quill.js`、`dist/quill.snow.css` |
 | `echarts-5.6.0/` | `echarts@5.6.0` | `dist/echarts.min.js` |
-| `g6-4.8.17/` | `@antv/g6@4.8.17` | `dist/g6.min.js` |
 
 注：`marked`、`echarts` 此前在 CDN 上未锁定版本，本次锁定为当时 CDN 实际解析到的
 版本（marked 18.0.5、echarts 5.6.0），行为与线上一致。`quill.js` 为包内官方产物

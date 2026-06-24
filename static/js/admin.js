@@ -4,16 +4,17 @@ let adminTheoryLessonEditor = null;
 // 是否已注册 Quill 自定义 blots，避免重复注册。
 let challengeBubbleBlotRegistered = false;
 let knowledgePointCardBlotRegistered = false;
-// 图谱渲染相关实例：默认使用自研 SVG 语义网络，G6 仅作为历史/兜底能力保留。
+// 图谱渲染相关实例。当前 MVP 使用 D3 固定环形闭环图谱。
 let adminGraphNetwork = null;
-let adminG6Graph = null;
 let adminGraphSelectionKey = null;
-// 后台知识图谱渲染模式，默认采用“关系优先”的语义网络。
-let adminGraphRenderer = "semantic";
-// 知识图谱分层方向：TB=纵向（阶段在上），LR=横向（阶段在左）。可通过工具栏按钮切换。
-let adminGraphDirection = "TB";
+let adminGraphRenderer = "ring";
+let adminGraphMapExpanded = true;
+let adminGraphFocusedPointId = null;
+let adminRingGraphZoomTransform = null;
 const expandedStages = new Set();
 const expandedTopics = new Set();
+const adminRingExpandedStages = new Set();
+const adminRingExpandedTopics = new Set();
 // 知识卡弹窗的本地状态缓存，记录当前编辑节点、选中知识点等。
 const knowledgeCardModalState = {
   editingNode: null,
@@ -2417,19 +2418,1602 @@ function applyGraphDrawerTheme(mode) {
   }
 }
 
-// 渲染后台知识图谱（默认走关系优先的语义网络，而不是开花/思维导图）。
+function getGraphEdgeSource(edge) {
+  return edge?.source || edge?.from || "";
+}
+
+function getGraphEdgeTarget(edge) {
+  return edge?.target || edge?.to || "";
+}
+
+function getGraphNodeId(node) {
+  return node?.key || node?.id || node?.name || "";
+}
+
+function getGraphNodeTitle(node) {
+  return node?.title || node?.name || node?.key || node?.id || "未命名";
+}
+
+function getGraphNodeType(node) {
+  return node?.label || node?.nodeType || node?.type || "";
+}
+
+function isTemplateHeaderNodeTitle(title) {
+  const text = (title || "").toString().trim();
+  return [
+    "中文名称",
+    "英文名称",
+    "阶段名称",
+    "阶段名称*",
+    "阶段",
+    "知识点名称",
+    "知识点名称*",
+    "所属阶段",
+    "二级主题",
+  ].includes(text);
+}
+
+function getCanonicalStageOrder(title) {
+  const normalized = (title || "").toString().trim();
+  const aliases = [
+    ["询盘"],
+    ["报盘"],
+    ["还盘"],
+    ["接受与订货"],
+    ["包装与装运", "订舱与物流", "包装与装运"],
+    ["付款与交货"],
+    ["商检"],
+    ["保险与仲裁"],
+    ["投诉", "投诉处理"],
+    ["索赔与理赔"],
+  ];
+  const index = aliases.findIndex((names) => names.includes(normalized));
+  return index >= 0 ? index + 1 : 0;
+}
+
+function getCourseMapStageOrder(stage) {
+  return Number(stage?.order || stage?.orderIndex || stage?.courseOrder || getCanonicalStageOrder(getGraphNodeTitle(stage)) || 0);
+}
+
+function inferStageOrdersFromPrecedes(stages, edgesRaw) {
+  const stageIds = new Set(stages.map((stage) => stage.id));
+  const nextBySource = new Map();
+  const targets = new Set();
+  (edgesRaw || []).forEach((edge) => {
+    if (edge.type !== "PRECEDES") return;
+    const source = getGraphEdgeSource(edge);
+    const target = getGraphEdgeTarget(edge);
+    if (!stageIds.has(source) || !stageIds.has(target)) return;
+    nextBySource.set(source, target);
+    targets.add(target);
+  });
+  const root = stages.find((stage) => nextBySource.has(stage.id) && !targets.has(stage.id));
+  if (!root) return new Map();
+  const orders = new Map();
+  let current = root.id;
+  let order = 1;
+  while (current && !orders.has(current)) {
+    orders.set(current, order);
+    current = nextBySource.get(current);
+    order += 1;
+  }
+  return orders;
+}
+
+function buildCourseMapModel(nodesRaw, edgesRaw) {
+  const nodeMap = new Map();
+  (nodesRaw || []).forEach((node) => {
+    const id = getGraphNodeId(node);
+    if (id) nodeMap.set(id, { ...node, id });
+  });
+
+  let stages = [];
+  const topics = [];
+  const points = [];
+  const categories = new Map();
+  const stageTypes = new Set(["Stage", "ProcessStep"]);
+  const topicTypes = new Set(["Topic", "Chapter", "TheoryTopic"]);
+  const pointTypes = new Set(["KnowledgePoint", "Skill", "Terminology", "TheoryLesson", "Practice"]);
+  nodeMap.forEach((node) => {
+    const type = getGraphNodeType(node);
+    if (stageTypes.has(type)) stages.push(node);
+    else if (topicTypes.has(type)) topics.push(node);
+    else if (type === "KnowledgeCategory") categories.set(node.id, node);
+    else if (pointTypes.has(type)) points.push(node);
+  });
+
+  stages = stages.filter((stage) => !isTemplateHeaderNodeTitle(getGraphNodeTitle(stage)));
+  const hasImportedStageAxis = stages.some((stage) => getGraphNodeType(stage) === "Stage");
+  if (hasImportedStageAxis) {
+    stages = stages.filter((stage) => getGraphNodeType(stage) === "Stage");
+  }
+  const inferredStageOrders = inferStageOrdersFromPrecedes(stages, edgesRaw);
+  stages = stages.map((stage) => ({
+    ...stage,
+    courseOrder: getCourseMapStageOrder(stage) || inferredStageOrders.get(stage.id) || getCanonicalStageOrder(getGraphNodeTitle(stage)) || 0,
+  }));
+  stages.sort((a, b) => getCourseMapStageOrder(a) - getCourseMapStageOrder(b) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b)));
+  stages = stages.filter((stage) => {
+    const type = getGraphNodeType(stage);
+    const order = stage.order ?? stage.orderIndex;
+    const title = getGraphNodeTitle(stage);
+    return !(type === "ProcessStep" && (Number(order) === 0 || title.includes("课程导入")));
+  });
+  topics.sort((a, b) => (a.order || a.orderIndex || 0) - (b.order || b.orderIndex || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b)));
+
+  const topicById = new Map(topics.map((topic) => [topic.id, { topic, points: [], categories: new Map() }]));
+  const stageById = new Map(stages.map((stage) => [stage.id, { stage, topics: [], loosePoints: [] }]));
+  const topicToStage = new Map();
+  const categoryToTopic = new Map();
+
+  (edgesRaw || []).forEach((edge) => {
+    const source = getGraphEdgeSource(edge);
+    const target = getGraphEdgeTarget(edge);
+    if (edge.type === "CONTAIN_TOPIC" && stageById.has(source) && topicById.has(target)) {
+      const stageBucket = stageById.get(source);
+      const topicBucket = topicById.get(target);
+      stageBucket.topics.push(topicBucket);
+      topicToStage.set(target, source);
+    }
+    if (edge.type === "COVERS_PROCESS" && topicById.has(source) && stageById.has(target)) {
+      const stageBucket = stageById.get(target);
+      const topicBucket = topicById.get(source);
+      stageBucket.topics.push(topicBucket);
+      topicToStage.set(source, target);
+    }
+    if (edge.type === "HAS_CATEGORY" && topicById.has(source) && categories.has(target)) {
+      categoryToTopic.set(target, source);
+      const bucket = topicById.get(source);
+      bucket.categories.set(target, { category: categories.get(target), points: [] });
+    }
+  });
+
+  const pointToTopic = new Map();
+  (edgesRaw || []).forEach((edge) => {
+    const source = getGraphEdgeSource(edge);
+    const target = getGraphEdgeTarget(edge);
+    if (["INCLUDE_POINT", "HAS_LESSON", "HAS_PRACTICE"].includes(edge.type) && topicById.has(source) && nodeMap.has(target)) {
+      const point = nodeMap.get(target);
+      if (pointTypes.has(getGraphNodeType(point))) {
+        topicById.get(source).points.push(point);
+        pointToTopic.set(target, source);
+      }
+    }
+    if (edge.type === "CONTAINS" && categories.has(source) && nodeMap.has(target)) {
+      const topicId = categoryToTopic.get(source);
+      const point = nodeMap.get(target);
+      if (topicId && pointTypes.has(getGraphNodeType(point))) {
+        const topicBucket = topicById.get(topicId);
+        const categoryBucket = topicBucket.categories.get(source) || { category: categories.get(source), points: [] };
+        categoryBucket.points.push(point);
+        topicBucket.categories.set(source, categoryBucket);
+        pointToTopic.set(target, topicId);
+      }
+    }
+  });
+
+  (edgesRaw || []).forEach((edge) => {
+    const source = getGraphEdgeSource(edge);
+    const target = getGraphEdgeTarget(edge);
+    if (!["EXPLAINS", "TESTS"].includes(edge.type)) return;
+    if (!pointToTopic.has(source) || !nodeMap.has(target)) return;
+    const point = nodeMap.get(target);
+    if (!pointTypes.has(getGraphNodeType(point))) return;
+    const topicId = pointToTopic.get(source);
+    const topicBucket = topicById.get(topicId);
+    if (!topicBucket || pointToTopic.has(target)) return;
+    topicBucket.points.push(point);
+    pointToTopic.set(target, topicId);
+  });
+
+  const findStageBucketByTitle = (node) => {
+    const stageName = node.stage || node.stageName || "";
+    const title = getGraphNodeTitle(node);
+    return stages
+      .map((stage) => stageById.get(stage.id))
+      .find((bucket) => {
+        const bucketTitle = getGraphNodeTitle(bucket.stage);
+        return (
+          bucketTitle === stageName ||
+          bucket.stage.name === stageName ||
+          (bucketTitle && title && title.includes(bucketTitle))
+        );
+      });
+  };
+
+  topics.forEach((topic) => {
+    if (topicToStage.has(topic.id)) return;
+    if (hasImportedStageAxis && getGraphNodeType(topic) !== "Topic") return;
+    const stageBucket = findStageBucketByTitle(topic);
+    if (stageBucket) {
+      stageBucket.topics.push(topicById.get(topic.id));
+      topicToStage.set(topic.id, stageBucket.stage.id);
+    }
+  });
+
+  points.forEach((point) => {
+    if (pointToTopic.has(point.id)) return;
+    if (hasImportedStageAxis && ["TheoryLesson", "Practice"].includes(getGraphNodeType(point))) return;
+    const stageBucket = findStageBucketByTitle(point);
+    if (stageBucket) stageBucket.loosePoints.push(point);
+  });
+
+  const relationsByPoint = new Map();
+  const relationEdges = [];
+  const semanticTypes = new Set(["REQUIRES", "RELATED_TO", "RELATES_TO", "CONTRASTS_WITH", "APPLIES_TO_SCENARIO", "SUGGESTS_STRATEGY", "HAS_EXCEPTION", "COMBINES_WITH", "CONFLICTS_WITH", "CULTURE_SENSITIVE_TO"]);
+  (edgesRaw || []).forEach((edge) => {
+    if (!semanticTypes.has(edge.type)) return;
+    const source = getGraphEdgeSource(edge);
+    const target = getGraphEdgeTarget(edge);
+    if (source && target && nodeMap.has(source) && nodeMap.has(target)) {
+      relationEdges.push({ ...edge, source, target, type: edge.type });
+    }
+    [source, target].forEach((id) => {
+      if (!relationsByPoint.has(id)) relationsByPoint.set(id, []);
+      relationsByPoint.get(id).push(edge.type);
+    });
+  });
+
+  return {
+    stages: [...stageById.values()],
+    points,
+    relationsByPoint,
+    relationEdges,
+    nodeMap,
+  };
+}
+
+function getCourseMapPointTone(type) {
+  if (type === "Practice") {
+    return {
+      label: "练习层",
+      className: "border-amber-500 bg-white text-slate-900 shadow-[inset_4px_0_0_#d49222] hover:border-amber-600",
+      activeClassName: "border-amber-600 bg-amber-50 text-amber-950 shadow-[inset_4px_0_0_#c57c13]",
+    };
+  }
+  if (type === "TheoryLesson") {
+    return {
+      label: "课时层",
+      className: "border-indigo-500 bg-white text-slate-900 shadow-[inset_4px_0_0_#5f6fb7] hover:border-indigo-600",
+      activeClassName: "border-indigo-600 bg-indigo-50 text-indigo-950 shadow-[inset_4px_0_0_#4f5da8]",
+    };
+  }
+  if (type === "Skill") {
+    return {
+      label: "策略层",
+      className: "border-rose-500 bg-white text-slate-900 shadow-[inset_4px_0_0_#e05a47] hover:border-rose-600",
+      activeClassName: "border-rose-600 bg-rose-50 text-rose-950 shadow-[inset_4px_0_0_#d94835]",
+    };
+  }
+  if (type === "Terminology") {
+    return {
+      label: "术语层",
+      className: "border-sky-500 bg-white text-slate-900 shadow-[inset_4px_0_0_#2f77b9] hover:border-sky-600",
+      activeClassName: "border-sky-600 bg-sky-50 text-sky-950 shadow-[inset_4px_0_0_#2f77b9]",
+    };
+  }
+  return {
+    label: "概念层",
+    className: "border-teal-500 bg-white text-slate-900 shadow-[inset_4px_0_0_#2fa89a] hover:border-teal-600",
+    activeClassName: "border-teal-600 bg-teal-50 text-teal-950 shadow-[inset_4px_0_0_#209487]",
+  };
+}
+
+function getCourseMapRelationStyle(type) {
+  const styles = {
+    REQUIRES: { label: "前置依赖", color: "#d85b45", dash: "" },
+    RELATED_TO: { label: "语义关联", color: "#2f8f83", dash: "6 5" },
+    RELATES_TO: { label: "语义关联", color: "#2f8f83", dash: "6 5" },
+    CONTRASTS_WITH: { label: "对比辨析", color: "#8561b7", dash: "4 4" },
+    APPLIES_TO_SCENARIO: { label: "情境-策略", color: "#c38b18", dash: "" },
+    SUGGESTS_STRATEGY: { label: "情境-策略", color: "#c38b18", dash: "" },
+    HAS_EXCEPTION: { label: "规则-例外", color: "#d97706", dash: "2 5" },
+    COMBINES_WITH: { label: "组合使用", color: "#348b6f", dash: "" },
+    CONFLICTS_WITH: { label: "冲突关系", color: "#b83f35", dash: "" },
+    CULTURE_SENSITIVE_TO: { label: "文化敏感", color: "#b98a13", dash: "7 4" },
+  };
+  return styles[type] || { label: type || "关联", color: "#64748b", dash: "5 5" };
+}
+
+function getCourseMapRelationLegend(relationEdges) {
+  const seen = new Set();
+  return (relationEdges || [])
+    .map((edge) => edge.type)
+    .filter((type) => {
+      if (!type || seen.has(type)) return false;
+      seen.add(type);
+      return true;
+    })
+    .map((type) => ({ type, ...getCourseMapRelationStyle(type) }));
+}
+
+const ADMIN_RING_GRAPH_DATA = {
+  stages: [
+    {
+      id: "inquiry",
+      name: "询盘",
+      en: "Inquiry",
+      kps: [
+        { id: "kp-inquiry-definition", name: "询盘的定义", layer: "concept", bloom: "理解", difficulty: 2, term: false },
+        { id: "kp-inquiry-types", name: "询盘类型", layer: "concept", bloom: "理解", difficulty: 2, term: true },
+        { id: "kp-inquiry-flow", name: "询盘流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-inquiry-to-offer", name: "询盘→报盘转换", layer: "strategy", bloom: "分析", difficulty: 3, term: false },
+      ],
+    },
+    {
+      id: "offer",
+      name: "报盘",
+      en: "Offer",
+      kps: [
+        { id: "kp-offer-definition", name: "报盘的定义", layer: "concept", bloom: "理解", difficulty: 2, term: false },
+        { id: "kp-offer-validity", name: "报盘有效期", layer: "process", bloom: "应用", difficulty: 3, term: true },
+        { id: "kp-cif", name: "CIF 条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-fob", name: "FOB 条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-offer-anchor", name: "报价锚定策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "counter",
+      name: "还盘",
+      en: "Counter-offer",
+      kps: [
+        { id: "kp-counter-legal", name: "还盘的法律性质", layer: "concept", bloom: "理解", difficulty: 3, term: false },
+        { id: "kp-counter-flow", name: "还盘流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-counter-rights", name: "还盘后权利义务转移", layer: "process", bloom: "分析", difficulty: 4, term: false },
+        { id: "kp-retreat-advance", name: "以退为进策略", layer: "strategy", bloom: "创造", difficulty: 4, term: false },
+        { id: "kp-face", name: "面子与关系", layer: "culture", bloom: "评价", difficulty: 3, term: false },
+      ],
+    },
+    {
+      id: "acceptance",
+      name: "接受与订货",
+      en: "Acceptance",
+      kps: [
+        { id: "kp-acceptance-elements", name: "接受构成要件", layer: "concept", bloom: "理解", difficulty: 3, term: false },
+        { id: "kp-order-confirmation", name: "订单确认流程", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-contract-split", name: "合同条款分歧处理", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "packing",
+      name: "包装与装运",
+      en: "Packing & Ship.",
+      kps: [
+        { id: "kp-packing-mark", name: "运输唛头", layer: "concept", bloom: "理解", difficulty: 2, term: true },
+        { id: "kp-shipment-notice", name: "装运通知", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-delay-plan", name: "延迟装运应对", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "payment",
+      name: "付款与交货",
+      en: "Payment",
+      kps: [
+        { id: "kp-lc", name: "信用证 L/C", layer: "concept", bloom: "理解", difficulty: 4, term: true },
+        { id: "kp-tt", name: "电汇 T/T", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-payment-flow", name: "付款流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-payment-trap", name: "付款方式僵局", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
+        { id: "kp-retreat-payment", name: "以退为进·付款", layer: "strategy", bloom: "创造", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "inspection",
+      name: "商检",
+      en: "Inspection",
+      kps: [
+        { id: "kp-inspection-clause", name: "商检条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-inspection-evidence", name: "商检证据收集", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-reinspection", name: "复检谈判策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "insurance",
+      name: "保险与仲裁",
+      en: "Ins. & Arbitr.",
+      kps: [
+        { id: "kp-insurance-basic", name: "保险险别", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-arbitration-clause", name: "仲裁条款", layer: "concept", bloom: "理解", difficulty: 4, term: true },
+        { id: "kp-claim-evidence", name: "保险索赔证据链", layer: "process", bloom: "应用", difficulty: 4, term: false },
+        { id: "kp-arbitration-seat", name: "仲裁地选择策略", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "complaint",
+      name: "投诉",
+      en: "Complaint",
+      kps: [
+        { id: "kp-complaint-empathy", name: "投诉共情回应", layer: "concept", bloom: "理解", difficulty: 2, term: false },
+        { id: "kp-complaint-five", name: "投诉处理五步法", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-complaint-deescalate", name: "降级争议策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
+      ],
+    },
+    {
+      id: "claim",
+      name: "索赔与理赔",
+      en: "Claim & Settle.",
+      kps: [
+        { id: "kp-claim-timeliness", name: "索赔时效", layer: "concept", bloom: "理解", difficulty: 3, term: true },
+        { id: "kp-claim-file", name: "索赔文件准备", layer: "process", bloom: "应用", difficulty: 3, term: false },
+        { id: "kp-settlement", name: "理赔金额争议谈判", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
+      ],
+    },
+  ],
+  culture: [
+    { id: "culture-face", name: "面子与关系", source: "Hofstede / High-context culture" },
+    { id: "culture-risk", name: "风险规避", source: "Hofstede Uncertainty Avoidance" },
+  ],
+  relations: [
+    { source: "kp-inquiry-definition", target: "kp-inquiry-types", type: "RELATED_TO" },
+    { source: "kp-inquiry-to-offer", target: "kp-offer-definition", type: "APPLIES_TO_SCENARIO" },
+    { source: "kp-offer-definition", target: "kp-counter-legal", type: "REQUIRES" },
+    { source: "kp-cif", target: "kp-fob", type: "CONTRASTS_WITH" },
+    { source: "kp-counter-legal", target: "kp-retreat-advance", type: "SUGGESTS_STRATEGY" },
+    { source: "kp-retreat-advance", target: "culture-face", type: "CULTURE_SENSITIVE_TO" },
+    { source: "kp-face", target: "culture-face", type: "CULTURE_SENSITIVE_TO" },
+    { source: "kp-lc", target: "kp-tt", type: "CONTRASTS_WITH" },
+    { source: "kp-payment-flow", target: "kp-payment-trap", type: "HAS_EXCEPTION" },
+    { source: "kp-retreat-payment", target: "kp-retreat-advance", type: "RELATED_TO" },
+    { source: "kp-inspection-evidence", target: "kp-claim-evidence", type: "REQUIRES" },
+    { source: "kp-arbitration-clause", target: "kp-arbitration-seat", type: "SUGGESTS_STRATEGY" },
+    { source: "kp-complaint-deescalate", target: "kp-settlement", type: "APPLIES_TO_SCENARIO" },
+    { source: "kp-claim-timeliness", target: "kp-claim-file", type: "REQUIRES" },
+    { source: "kp-payment-trap", target: "culture-risk", type: "CULTURE_SENSITIVE_TO" },
+  ],
+};
+
+function ensureAdminRingGraphStyles() {
+  if (document.getElementById("admin-ring-graph-style")) return;
+  const style = document.createElement("style");
+  style.id = "admin-ring-graph-style";
+  style.textContent = `
+    #admin-graph-canvas.admin-ring-graph-canvas {
+      position: relative;
+      overflow: hidden;
+      border-color: #d8dee9;
+      background: radial-gradient(circle at 50% 48%, #ffffff 0%, #f5f7fb 52%, #eef2f8 100%);
+    }
+    .ring-graph-tip {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      top: 14px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 38px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 8px 12px;
+      color: #334155;
+      font-size: 12px;
+      box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(8px);
+    }
+    .ring-graph-tip__relations {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .ring-graph-tip__chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      background: #f8fafc;
+      padding: 3px 8px;
+      color: #475569;
+      white-space: nowrap;
+    }
+    .ring-graph-reset {
+      position: absolute;
+      right: 18px;
+      bottom: 16px;
+      z-index: 6;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 8px 12px;
+      color: #334155;
+      font-size: 12px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    .ring-graph-tooltip {
+      position: absolute;
+      z-index: 8;
+      max-width: 260px;
+      pointer-events: none;
+      border: 1px solid rgba(148, 163, 184, 0.38);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      padding: 10px 12px;
+      color: #1f2937;
+      font-size: 12px;
+      line-height: 1.55;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function getRingLayerRadiusFactor(layer) {
+  if (layer === "process") return 1.45;
+  if (layer === "strategy") return 1.68;
+  if (layer === "culture") return 1.86;
+  return 1.22;
+}
+
+function getRingLayerStyle(layer) {
+  const styles = {
+    concept: { label: "概念层", fill: "#3f7fca", stroke: "#2f77b9" },
+    process: { label: "流程层", fill: "#32a285", stroke: "#209487" },
+    strategy: { label: "策略层", fill: "#d8684b", stroke: "#c94d35" },
+    culture: { label: "文化维度", fill: "#c9921e", stroke: "#b77d12" },
+  };
+  return styles[layer] || styles.concept;
+}
+
+function getRingRelationStyle(type) {
+  return getCourseMapRelationStyle(type);
+}
+
+function describeRingArc(radius, startAngle, endAngle) {
+  const largeArc = Math.abs(endAngle - startAngle) > Math.PI ? 1 : 0;
+  const startX = Math.cos(startAngle) * radius;
+  const startY = Math.sin(startAngle) * radius;
+  const endX = Math.cos(endAngle) * radius;
+  const endY = Math.sin(endAngle) * radius;
+  return `M${startX},${startY} A${radius},${radius} 0 ${largeArc} 1 ${endX},${endY}`;
+}
+
+function getRingStageBaseAngle(index, total) {
+  return -Math.PI / 2 + (index * Math.PI * 2) / total;
+}
+
+function getRingNodeTitleById(data, id) {
+  for (const stage of data.stages) {
+    const topic = (stage.topics || []).find((item) => item.id === id);
+    if (topic) return topic.name;
+    for (const currentTopic of stage.topics || []) {
+      const point = (currentTopic.kps || []).find((item) => item.id === id);
+      if (point) return point.name;
+    }
+    const point = (stage.kps || []).find((item) => item.id === id);
+    if (point) return point.name;
+  }
+  const culture = (data.culture || []).find((item) => item.id === id);
+  return culture ? culture.name : id;
+}
+
+function getRingPointById(data, id) {
+  for (const stage of data.stages) {
+    for (const topic of stage.topics || []) {
+      const point = (topic.kps || []).find((item) => item.id === id);
+      if (point) return { ...point, stage, topic };
+    }
+    const point = (stage.kps || []).find((item) => item.id === id);
+    if (point) return { ...point, stage, topic: null };
+  }
+  const culture = (data.culture || []).find((item) => item.id === id);
+  return culture ? { ...culture, layer: "culture", isCulture: true } : null;
+}
+
+function getRingRelationsForPoint(data, pointId) {
+  return (data.relations || []).filter((edge) => edge.source === pointId || edge.target === pointId);
+}
+
+function makeRingStableId(prefix, value) {
+  const raw = String(value || prefix || "node").trim();
+  const normalized = raw
+    .replace(/^([^:]+):/, "")
+    .replace(/[^\w\u4e00-\u9fa5-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${prefix}-${normalized || Math.random().toString(36).slice(2, 8)}`;
+}
+
+function inferRingLayerFromNode(node, detail = {}) {
+  const type = getGraphNodeType(node);
+  const text = `${getGraphNodeTitle(node)} ${node?.subtitle || ""} ${(detail.category_path || detail.category_path_text || detail.category || "").toString()}`;
+  if (type === "ProcessStep" || /流程|步骤|逻辑|顺序|收集|准备|确认/.test(text)) {
+    return "process";
+  }
+  if (type === "Skill" || /策略|应对|处理|谈判|让步|锚定|选择|争议/.test(text)) {
+    return "strategy";
+  }
+  return "concept";
+}
+
+function normalizeRingDifficulty(value) {
+  if (typeof value === "number") return Math.max(0, Math.min(5, value));
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return 0;
+  if (/5|expert|高级|困难|hard/.test(text)) return 5;
+  if (/4|advanced|较难/.test(text)) return 4;
+  if (/3|intermediate|中/.test(text)) return 3;
+  if (/2|basic|基础/.test(text)) return 2;
+  if (/1|beginner|入门|简单|easy/.test(text)) return 1;
+  return 0;
+}
+
+function normalizeRingGraphTopics(data) {
+  const source = data || {};
+  const stages = (source.stages || []).map((stage) => {
+    const explicitTopics = Array.isArray(stage.topics) ? stage.topics : [];
+    if (explicitTopics.length > 0) {
+      return {
+        ...stage,
+        topics: explicitTopics.map((topic) => ({
+          ...topic,
+          id: topic.id || makeRingStableId("topic", `${stage.id}-${topic.name}`),
+          kps: Array.isArray(topic.kps) ? topic.kps : [],
+        })),
+      };
+    }
+
+    const grouped = new Map();
+    (stage.kps || []).forEach((point) => {
+      const layer = point.layer || "concept";
+      const style = getRingLayerStyle(layer);
+      const topicName = point.topic || style.label;
+      const topicId = makeRingStableId("topic", `${stage.id}-${topicName}`);
+      if (!grouped.has(topicId)) {
+        grouped.set(topicId, {
+          id: topicId,
+          name: topicName,
+          layer,
+          kps: [],
+        });
+      }
+      grouped.get(topicId).kps.push(point);
+    });
+    return {
+      ...stage,
+      topics: Array.from(grouped.values()),
+    };
+  });
+  return { ...source, stages };
+}
+
+function buildAdminRingGraphDataFromNeo4j() {
+  const networkData = state.admin?.graph?.network || { nodes: [], edges: [] };
+  const nodes = Array.isArray(networkData.nodes) ? networkData.nodes : [];
+  const edges = Array.isArray(networkData.edges) ? networkData.edges : [];
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const knowledgeDetails = new Map();
+  const knowledgeList = state.admin?.graph?.knowledgePoints || [];
+  if (Array.isArray(knowledgeList)) {
+    knowledgeList.forEach((item) => {
+      const name = item?.name || item?.title;
+      if (name) knowledgeDetails.set(String(name).trim(), item);
+    });
+  }
+
+  const stageNodes = nodes
+    .filter((node) => getGraphNodeType(node) === "Stage")
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || getGraphNodeTitle(a).localeCompare(getGraphNodeTitle(b), "zh-Hans-CN"));
+  if (stageNodes.length === 0) {
+    return null;
+  }
+
+  const stageByKey = new Map();
+  const stageByName = new Map();
+  const stages = stageNodes.map((node, index) => {
+    const name = getGraphNodeTitle(node);
+    const stage = {
+      id: makeRingStableId("stage", node.key || name),
+      name,
+      en: node.subtitle || "",
+      topics: [],
+      sourceKey: node.key,
+      order: Number(node.order || index + 1),
+    };
+    if (node.key) stageByKey.set(node.key, stage);
+    stageByName.set(name, stage);
+    return stage;
+  });
+
+  const topicTypes = new Set(["Topic"]);
+  const topicByKey = new Map();
+  const topicToStage = new Map();
+  edges.forEach((edge) => {
+    const type = edge.type || edge.label;
+    if (!["CONTAIN_TOPIC", "HAS_TOPIC"].includes(type)) return;
+    const sourceStage = stageByKey.get(edge.source);
+    if (sourceStage && edge.target) topicToStage.set(edge.target, sourceStage);
+  });
+
+  nodes.forEach((node) => {
+    const type = getGraphNodeType(node);
+    if (!topicTypes.has(type)) return;
+    const title = getGraphNodeTitle(node);
+    const stage = topicToStage.get(node.key) || stageByName.get(node.stageName || node.stage || "");
+    if (!title || !stage) return;
+    const topic = {
+      id: makeRingStableId("topic", node.key || `${stage.name}-${title}`),
+      name: title,
+      layer: "topic",
+      sourceKey: node.key,
+      stageId: stage.id,
+      stageName: stage.name,
+      order: Number(node.order || stage.topics.length + 1),
+      kps: [],
+    };
+    stage.topics.push(topic);
+    if (node.key) topicByKey.set(node.key, topic);
+  });
+
+  const pointTypes = new Set(["KnowledgePoint", "Terminology", "Skill", "ProcessStep"]);
+  const cultureTypes = new Set(["CultureDimension"]);
+  const pointByKey = new Map();
+  const pointIdByKey = new Map();
+  const culture = [];
+
+  nodes.forEach((node) => {
+    const type = getGraphNodeType(node);
+    const title = getGraphNodeTitle(node);
+    if (!title || type === "Stage" || topicTypes.has(type)) return;
+    if (cultureTypes.has(type)) {
+      const cultureNode = {
+        id: makeRingStableId("culture", node.key || title),
+        name: title,
+        source: node.subtitle || "",
+        sourceKey: node.key,
+      };
+      culture.push(cultureNode);
+      if (node.key) {
+        pointByKey.set(node.key, cultureNode);
+        pointIdByKey.set(node.key, cultureNode.id);
+      }
+      return;
+    }
+    if (!pointTypes.has(type)) return;
+
+    const detail = knowledgeDetails.get(title) || {};
+    const inboundTopic = edges.find((edge) => edge.target === node.key && ["INCLUDE_POINT", "CONTAINS"].includes(edge.type || edge.label));
+    let topic = inboundTopic ? topicByKey.get(inboundTopic.source) : null;
+    let stage = topic ? stageByName.get(topic.stageName) : null;
+    if (!topic) {
+      const stageName = node.stageName || node.stage || detail.stage || (Array.isArray(detail.category_path) ? detail.category_path[0] : "");
+      stage = stageByName.get(stageName);
+      const topicName =
+        detail.topic ||
+        detail.topicName ||
+        (Array.isArray(detail.category_path) ? detail.category_path[1] : "") ||
+        node.topic ||
+        "未归入二级主题";
+      if (stage) {
+        const topicId = makeRingStableId("topic", `${stage.id}-${topicName}`);
+        topic = stage.topics.find((item) => item.id === topicId || item.name === topicName);
+        if (!topic) {
+          topic = {
+            id: topicId,
+            name: topicName,
+            layer: "topic",
+            stageId: stage.id,
+            stageName: stage.name,
+            order: stage.topics.length + 1,
+            kps: [],
+          };
+          stage.topics.push(topic);
+        }
+      }
+    }
+    if (!stage || !topic) return;
+
+    const point = {
+      id: makeRingStableId("kp", node.key || title),
+      name: title,
+      layer: inferRingLayerFromNode(node, detail),
+      bloom: detail.bloom_level || detail.bloomLevel || "未标注",
+      difficulty: normalizeRingDifficulty(detail.difficulty),
+      term: type === "Terminology" || Boolean(detail.lex_role),
+      sourceKey: node.key,
+      topicId: topic.id,
+      topicName: topic.name,
+    };
+    topic.kps.push(point);
+    if (node.key) {
+      pointByKey.set(node.key, point);
+      pointIdByKey.set(node.key, point.id);
+    }
+  });
+
+  const excludedRelations = new Set([
+    "CONTAIN_TOPIC",
+    "HAS_TOPIC",
+    "HAS_CATEGORY",
+    "CONTAINS",
+    "INCLUDE_POINT",
+    "EXPLAINS",
+    "TESTS",
+  ]);
+  const relations = [];
+  const relationSeen = new Set();
+  edges.forEach((edge) => {
+    const type = edge.type || edge.label || "RELATED_TO";
+    if (excludedRelations.has(type)) return;
+    const sourceId = pointIdByKey.get(edge.source);
+    const targetId = pointIdByKey.get(edge.target);
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const key = `${sourceId}->${targetId}:${type}`;
+    if (relationSeen.has(key)) return;
+    relationSeen.add(key);
+    relations.push({ source: sourceId, target: targetId, type });
+  });
+
+  stages.forEach((stage) => {
+    stage.topics.sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || a.name.localeCompare(b.name, "zh-Hans-CN"));
+    stage.topics.forEach((topic) => {
+      topic.kps.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+    });
+  });
+
+  const totalPoints = stages.reduce(
+    (sum, stage) => sum + (stage.topics || []).reduce((topicSum, topic) => topicSum + (topic.kps || []).length, 0),
+    0
+  );
+  if (totalPoints === 0) {
+    return normalizeRingGraphTopics({
+      ...ADMIN_RING_GRAPH_DATA,
+      source: "demo",
+      sourceLabel: "示范数据：Neo4j 已连接，但当前快照没有可归位到环节的知识点",
+    });
+  }
+
+  return normalizeRingGraphTopics({
+    stages,
+    culture,
+    relations,
+    source: "neo4j",
+    sourceLabel: `Neo4j 实时数据：${stages.length} 环节 · ${totalPoints} 知识点 · ${relations.length} 语义关系`,
+  });
+}
+
+function getAdminRingGraphData() {
+  return (
+    buildAdminRingGraphDataFromNeo4j() || normalizeRingGraphTopics({
+      ...ADMIN_RING_GRAPH_DATA,
+      source: "demo",
+      sourceLabel: "示范数据：Neo4j 暂无可展示节点",
+    })
+  );
+}
+
+function resetAdminRingGraphView() {
+  adminRingExpandedStages.clear();
+  adminRingExpandedTopics.clear();
+  adminGraphFocusedPointId = null;
+  renderAdminGraphNetwork();
+}
+
+function showRingTooltip(container, html, event) {
+  let tooltip = container.querySelector("[data-ring-tooltip]");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.dataset.ringTooltip = "true";
+    tooltip.className = "ring-graph-tooltip";
+    container.appendChild(tooltip);
+  }
+  tooltip.innerHTML = html;
+  const rect = container.getBoundingClientRect();
+  tooltip.style.left = `${Math.min(rect.width - 280, Math.max(12, event.clientX - rect.left + 14))}px`;
+  tooltip.style.top = `${Math.min(rect.height - 140, Math.max(60, event.clientY - rect.top + 14))}px`;
+}
+
+function hideRingTooltip(container) {
+  container.querySelector("[data-ring-tooltip]")?.remove();
+}
+
+function buildRingGraphLayout(data, width, height) {
+  const cx = width / 2;
+  const cy = height / 2 + 18;
+  const radius = Math.min(width, height) * 0.27;
+  const stages = data.stages.map((stage, index) => {
+    const angle = getRingStageBaseAngle(index, data.stages.length);
+    return {
+      ...stage,
+      index,
+      angle,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+    };
+  });
+  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
+  const focusedRelations = adminGraphFocusedPointId ? getRingRelationsForPoint(data, adminGraphFocusedPointId) : [];
+  const forcedVisibleIds = new Set();
+  focusedRelations.forEach((edge) => {
+    forcedVisibleIds.add(edge.source);
+    forcedVisibleIds.add(edge.target);
+  });
+
+  const topics = [];
+  const points = [];
+  stages.forEach((stage) => {
+    const stageTopics = stage.topics || [];
+    const topicRadius = radius * 1.2;
+    const topicStep = Math.min(0.46, Math.max(0.24, 124 / Math.max(topicRadius, 1)));
+    stageTopics.forEach((topic, topicIndex) => {
+      const topicPointIds = new Set((topic.kps || []).map((point) => point.id));
+      const hasFocusedPoint = [...topicPointIds].some((id) => forcedVisibleIds.has(id));
+      const shouldShowTopic = adminRingExpandedStages.has(stage.id) || adminRingExpandedTopics.has(topic.id) || hasFocusedPoint;
+      if (!shouldShowTopic) return;
+      const topicAngle = stage.angle + (topicIndex - (stageTopics.length - 1) / 2) * topicStep;
+      const topicLayout = {
+        ...topic,
+        stageId: stage.id,
+        stageName: stage.name,
+        angle: topicAngle,
+        x: Math.cos(topicAngle) * topicRadius,
+        y: Math.sin(topicAngle) * topicRadius,
+      };
+      topics.push(topicLayout);
+
+      const grouped = { concept: [], process: [], strategy: [], culture: [] };
+      (topic.kps || []).forEach((point) => {
+        const shouldShowPoint = adminRingExpandedTopics.has(topic.id) || forcedVisibleIds.has(point.id);
+        if (!shouldShowPoint) return;
+        const layer = point.layer || "concept";
+        grouped[layer] = grouped[layer] || [];
+        grouped[layer].push(point);
+      });
+      Object.entries(grouped).forEach(([layer, items]) => {
+        items.forEach((point, itemIndex) => {
+          const pointRadius = radius * getRingLayerRadiusFactor(layer);
+          const angleStep = Math.min(0.5, Math.max(0.24, 118 / Math.max(pointRadius, 1)));
+          const angle = topicAngle + (itemIndex - (items.length - 1) / 2) * angleStep;
+          points.push({
+            ...point,
+            stageId: stage.id,
+            stageName: stage.name,
+            topicId: topic.id,
+            topicName: topic.name,
+            layer,
+            angle,
+            x: Math.cos(angle) * pointRadius,
+            y: Math.sin(angle) * pointRadius,
+          });
+        });
+      });
+    });
+  });
+
+  const topicById = new Map(topics.map((topic) => [topic.id, topic]));
+  const existingIds = new Set(points.map((point) => point.id));
+  (data.culture || []).forEach((culture, index) => {
+    if (!forcedVisibleIds.has(culture.id) || existingIds.has(culture.id)) return;
+    const angle = Math.PI / 2 + (index - 0.5) * 0.26;
+    const pointRadius = radius * 1.9;
+    points.push({
+      ...culture,
+      isCulture: true,
+      layer: "culture",
+      angle,
+      x: Math.cos(angle) * pointRadius,
+      y: Math.sin(angle) * pointRadius,
+    });
+  });
+
+  const pointById = new Map(points.map((point) => [point.id, point]));
+  return { cx, cy, radius, stages, stageById, topics, topicById, points, pointById, focusedRelations };
+}
+
+function renderAdminRingGraphMvp() {
+  if (!adminGraphCanvas) return;
+  ensureAdminRingGraphStyles();
+  const data = getAdminRingGraphData();
+  const d3lib = window.d3;
+  adminGraphCanvas.innerHTML = "";
+  adminGraphCanvas.classList.add("admin-ring-graph-canvas");
+  adminGraphCanvas.classList.remove("overflow-auto");
+
+  if (!d3lib) {
+    adminGraphCanvas.innerHTML = '<div class="p-6 text-sm text-slate-600">D3.js 未加载。请确认 CDN 可访问：https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js</div>';
+    if (adminGraphStatus) adminGraphStatus.textContent = "D3.js 未加载，无法渲染环形图谱";
+    return;
+  }
+
+  const width = Math.max(1120, adminGraphCanvas.clientWidth || 1120);
+  const height = Math.max(640, adminGraphCanvas.clientHeight || 640);
+  const layout = buildRingGraphLayout(data, width, height);
+  const focusedRelations = layout.focusedRelations;
+  const relatedIds = new Set();
+  focusedRelations.forEach((edge) => {
+    relatedIds.add(edge.source);
+    relatedIds.add(edge.target);
+  });
+  const focusedPoint = adminGraphFocusedPointId ? getRingPointById(data, adminGraphFocusedPointId) : null;
+
+  const tip = document.createElement("div");
+  tip.className = "ring-graph-tip";
+  if (focusedPoint && focusedRelations.length) {
+    tip.innerHTML = `
+      <div><strong>【${escapeHtmlText(focusedPoint.name)}】</strong> 与 ${focusedRelations.length} 个节点有联系：</div>
+      <div class="ring-graph-tip__relations">
+        ${focusedRelations
+          .map((edge) => {
+            const otherId = edge.source === adminGraphFocusedPointId ? edge.target : edge.source;
+            const style = getRingRelationStyle(edge.type);
+            return `<span class="ring-graph-tip__chip"><span style="width:8px;height:8px;border-radius:999px;background:${style.color};display:inline-block"></span>${escapeHtmlText(style.label)} → ${escapeHtmlText(getRingNodeTitleById(data, otherId))}</span>`;
+          })
+          .join("")}
+      </div>
+    `;
+  } else {
+    tip.innerHTML = `<div><strong>点击环节</strong> 展开二级主题；点击二级主题展开知识点；点击知识点才显示它的语义关系。</div><div class="ring-graph-tip__relations"><span class="ring-graph-tip__chip">${escapeHtmlText(data.sourceLabel || "Neo4j 数据")}</span><span class="ring-graph-tip__chip">滚轮缩放</span><span class="ring-graph-tip__chip">拖拽平移</span></div>`;
+  }
+  adminGraphCanvas.appendChild(tip);
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "ring-graph-reset";
+  resetBtn.textContent = "全部收回";
+  resetBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resetAdminRingGraphView();
+  });
+  adminGraphCanvas.appendChild(resetBtn);
+
+  const svg = d3lib
+    .select(adminGraphCanvas)
+    .append("svg")
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .style("display", "block")
+    .on("click", (event) => {
+      if (event.target.tagName.toLowerCase() === "svg") {
+        adminGraphFocusedPointId = null;
+        renderAdminGraphNetwork();
+      }
+    });
+
+  const defs = svg.append("defs");
+  defs
+    .append("marker")
+    .attr("id", "ring-stage-arrow")
+    .attr("markerWidth", 10)
+    .attr("markerHeight", 10)
+    .attr("refX", 8)
+    .attr("refY", 3)
+    .attr("orient", "auto")
+    .attr("markerUnits", "strokeWidth")
+    .append("path")
+    .attr("d", "M0,0 L0,6 L8,3 z")
+    .attr("fill", "#c8d2e4");
+
+  const zoomLayer = svg.append("g").attr("class", "ring-zoom-layer");
+  if (adminRingGraphZoomTransform) {
+    zoomLayer.attr("transform", adminRingGraphZoomTransform.toString());
+  }
+
+  const rotateLayer = zoomLayer
+    .append("g")
+    .attr("class", "ring-rotate-layer")
+    .attr("transform", `translate(${layout.cx},${layout.cy})`);
+
+  const hub = zoomLayer
+    .append("g")
+    .attr("class", "ring-hub")
+    .attr("transform", `translate(${layout.cx},${layout.cy})`);
+  hub.append("circle").attr("r", 62).attr("fill", "#ffffff").attr("stroke", "#e2e8f0").attr("stroke-width", 1.2);
+  hub.append("text").attr("text-anchor", "middle").attr("y", -4).attr("font-size", 18).attr("font-weight", 800).attr("fill", "#26354d").text("外贸谈判");
+  hub.append("text").attr("text-anchor", "middle").attr("y", 18).attr("font-size", 11).attr("font-weight", 700).attr("letter-spacing", 1.2).attr("fill", "#9aa7bb").text(`CLOSED LOOP · ${data.stages.length} STAGES`);
+
+  const arcGroup = rotateLayer.append("g").attr("class", "ring-arcs");
+  layout.stages.forEach((stage, index) => {
+    const start = stage.angle + 0.11;
+    const end = getRingStageBaseAngle((index + 1) % layout.stages.length, layout.stages.length) - 0.11;
+    const normalizedEnd = end <= start ? end + Math.PI * 2 : end;
+    arcGroup
+      .append("path")
+      .attr("d", describeRingArc(layout.radius, start, normalizedEnd))
+      .attr("fill", "none")
+      .attr("stroke", "#c8d2e4")
+      .attr("stroke-width", 2)
+      .attr("marker-end", "url(#ring-stage-arrow)");
+  });
+
+  const relationGroup = rotateLayer.append("g").attr("class", "ring-relations");
+  if (adminGraphFocusedPointId) {
+    focusedRelations.forEach((edge, index) => {
+      const source = layout.pointById.get(edge.source);
+      const target = layout.pointById.get(edge.target);
+      if (!source || !target) return;
+      const style = getRingRelationStyle(edge.type);
+      relationGroup
+        .append("path")
+        .attr("d", `M${source.x},${source.y} Q0,0 ${target.x},${target.y}`)
+        .attr("fill", "none")
+        .attr("stroke", style.color)
+        .attr("stroke-width", 2.4)
+        .attr("stroke-linecap", "round")
+        .attr("stroke-dasharray", style.dash || null)
+        .attr("opacity", 0)
+        .transition()
+        .duration(260 + index * 20)
+        .attr("opacity", 0.92);
+    });
+  }
+
+  const stageGroups = rotateLayer
+    .append("g")
+    .attr("class", "ring-stages")
+    .selectAll("g")
+    .data(layout.stages)
+    .join("g")
+    .attr("class", "ring-stage")
+    .attr("data-ring-stage-id", (stage) => stage.id)
+    .attr("transform", (stage) => `translate(${stage.x},${stage.y})`)
+    .style("cursor", "pointer")
+    .style("opacity", adminGraphFocusedPointId ? 0.34 : 1)
+    .on("click", (event, stage) => {
+      event.stopPropagation();
+      if (adminRingExpandedStages.has(stage.id)) {
+        adminRingExpandedStages.delete(stage.id);
+        (stage.topics || []).forEach((topic) => adminRingExpandedTopics.delete(topic.id));
+      } else {
+        adminRingExpandedStages.add(stage.id);
+      }
+      adminGraphFocusedPointId = null;
+      renderAdminGraphNetwork();
+    })
+    .on("mousemove", (event, stage) => {
+      const topicCount = (stage.topics || []).length;
+      const pointCount = (stage.topics || []).reduce((sum, topic) => sum + (topic.kps || []).length, 0);
+      showRingTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(stage.name)} / ${escapeHtmlText(stage.en)}</strong><br>第 ${String(stage.index + 1).padStart(2, "0")} 环<br>${topicCount} 个二级主题 · ${pointCount} 个知识点<br>点击展开/收回二级主题`, event);
+    })
+    .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
+
+  stageGroups
+    .append("circle")
+    .attr("r", (stage) => (adminRingExpandedStages.has(stage.id) ? 42 : 36))
+    .attr("fill", (stage) => (adminRingExpandedStages.has(stage.id) ? "#d49a24" : "#21324d"))
+    .attr("stroke", "#e7edf7")
+    .attr("stroke-width", 2.5)
+    .attr("filter", "drop-shadow(0 8px 12px rgba(15,23,42,0.16))");
+
+  const stageLabels = stageGroups.append("g").attr("class", "ring-label");
+  stageLabels.append("text").attr("text-anchor", "middle").attr("y", -12).attr("font-size", 10).attr("font-weight", 800).attr("fill", "#d7dfec").text((stage) => String(stage.index + 1).padStart(2, "0"));
+  stageLabels.append("text").attr("text-anchor", "middle").attr("y", 7).attr("font-size", 15).attr("font-weight", 900).attr("fill", "#ffffff").text((stage) => stage.name);
+
+  const topicGroups = rotateLayer
+    .append("g")
+    .attr("class", "ring-topics")
+    .selectAll("g")
+    .data(layout.topics, (topic) => topic.id)
+    .join("g")
+    .attr("class", "ring-topic")
+    .attr("data-ring-topic-id", (topic) => topic.id)
+    .attr("transform", (topic) => `translate(${topic.x},${topic.y})`)
+    .style("cursor", "pointer")
+    .style("opacity", adminGraphFocusedPointId ? 0.52 : 1)
+    .on("click", (event, topic) => {
+      event.stopPropagation();
+      if (adminRingExpandedTopics.has(topic.id)) adminRingExpandedTopics.delete(topic.id);
+      else adminRingExpandedTopics.add(topic.id);
+      adminGraphFocusedPointId = null;
+      renderAdminGraphNetwork();
+    })
+    .on("mousemove", (event, topic) => {
+      showRingTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(topic.name)}</strong><br>二级主题 · ${escapeHtmlText(topic.stageName || "")}<br>${(topic.kps || []).length} 个知识点<br>点击展开/收回知识点`, event);
+    })
+    .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
+
+  topicGroups
+    .append("rect")
+    .attr("x", -58)
+    .attr("y", -17)
+    .attr("width", 116)
+    .attr("height", 34)
+    .attr("rx", 8)
+    .attr("fill", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#2563eb" : "#ffffff"))
+    .attr("stroke", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#93c5fd" : "#60a5fa"))
+    .attr("stroke-width", 1.8)
+    .attr("filter", "drop-shadow(0 7px 12px rgba(15,23,42,0.12))");
+
+  const topicLabels = topicGroups.append("g").attr("class", "ring-label");
+  topicLabels
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", 4)
+    .attr("font-size", 11)
+    .attr("font-weight", 850)
+    .attr("fill", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#ffffff" : "#1e3a8a"))
+    .text((topic) => (topic.name.length > 8 ? `${topic.name.slice(0, 7)}…` : topic.name));
+
+  const pointGroups = rotateLayer
+    .append("g")
+    .attr("class", "ring-points")
+    .selectAll("g")
+    .data(layout.points, (point) => point.id)
+    .join("g")
+    .attr("class", "ring-point")
+    .attr("data-ring-point-id", (point) => point.id)
+    .attr("transform", (point) => `translate(${point.x},${point.y})`)
+    .style("cursor", "pointer")
+    .style("opacity", (point) => {
+      if (!adminGraphFocusedPointId) return 1;
+      return relatedIds.has(point.id) ? 1 : 0.18;
+    })
+    .on("click", (event, point) => {
+      event.stopPropagation();
+      adminGraphFocusedPointId = adminGraphFocusedPointId === point.id ? null : point.id;
+      renderAdminGraphNetwork();
+    })
+    .on("mousemove", (event, point) => {
+      const style = getRingLayerStyle(point.layer);
+      const relations = getRingRelationsForPoint(data, point.id);
+      const relationPreview = relations.length
+        ? relations.map((edge) => {
+            const otherId = edge.source === point.id ? edge.target : edge.source;
+            return `${getRingRelationStyle(edge.type).label} → ${getRingNodeTitleById(data, otherId)}`;
+          }).join("<br>")
+        : "暂无关系";
+      const stars = "★★★★★".slice(0, Number(point.difficulty || 0)) || "—";
+      const body = point.isCulture
+        ? `<strong>${escapeHtmlText(point.name)}</strong><br>文化维度<br>理论出处：${escapeHtmlText(point.source || "")}`
+        : `<strong>${escapeHtmlText(point.name)}</strong><br>知识点 · ${escapeHtmlText(point.topicName || "未归入二级主题")}<br>${escapeHtmlText(style.label)} · ${point.term ? "术语" : "知识点"}<br>布鲁姆：${escapeHtmlText(point.bloom || "未标注")} · 难度：${escapeHtmlText(stars)}<br><span style="color:#64748b">${relationPreview}</span>`;
+      showRingTooltip(adminGraphCanvas, body, event);
+    })
+    .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
+
+  pointGroups
+    .append("rect")
+    .attr("x", -50)
+    .attr("y", -16)
+    .attr("width", 100)
+    .attr("height", 32)
+    .attr("rx", 7)
+    .attr("fill", (point) => getRingLayerStyle(point.layer).fill)
+    .attr("stroke", (point) => (point.id === adminGraphFocusedPointId ? "#ffffff" : getRingLayerStyle(point.layer).stroke))
+    .attr("stroke-width", (point) => (point.id === adminGraphFocusedPointId ? 3 : 1.4))
+    .attr("filter", "drop-shadow(0 7px 10px rgba(15,23,42,0.12))");
+
+  const pointLabels = pointGroups.append("g").attr("class", "ring-label");
+  pointLabels
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", 4)
+    .attr("font-size", 11)
+    .attr("font-weight", 800)
+    .attr("fill", "#ffffff")
+    .text((point) => (point.name.length > 8 ? `${point.name.slice(0, 7)}…` : point.name));
+
+  const zoom = d3lib
+    .zoom()
+    .scaleExtent([0.6, 2.2])
+    .on("zoom", (event) => {
+      adminRingGraphZoomTransform = event.transform;
+      zoomLayer.attr("transform", event.transform);
+    });
+  svg.call(zoom);
+  if (adminRingGraphZoomTransform) {
+    svg.call(zoom.transform, adminRingGraphZoomTransform);
+  }
+
+  if (adminGraphStatus) {
+    const expandedCount = adminRingExpandedStages.size;
+    const expandedTopicCount = adminRingExpandedTopics.size;
+    const relationText = adminGraphFocusedPointId ? ` · 已聚焦 ${focusedRelations.length} 条关系` : "";
+    const sourceText = data.source === "neo4j" ? "Neo4j 数据" : "示范数据";
+    adminGraphStatus.textContent = `闭环图谱 MVP · ${sourceText} · ${data.stages.length} 环节 · 已展开 ${expandedCount} 个环节 / ${expandedTopicCount} 个二级主题${relationText}`;
+  }
+}
+
+function escapeCourseMapSelectorValue(value) {
+  const raw = String(value || "");
+  if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(raw);
+  }
+  return raw.replace(/['"\\]/g, "\\$&");
+}
+
+function createCourseMapPointButton(point, relationsByPoint, keyword) {
+  const id = point.id;
+  const title = getGraphNodeTitle(point);
+  const type = getGraphNodeType(point);
+  const relations = relationsByPoint.get(id) || [];
+  const matched = keyword && title.toLowerCase().includes(keyword);
+  const tone = getCourseMapPointTone(type);
+  const isFocused = adminGraphFocusedPointId === id;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.nodeId = id;
+  button.className = [
+    "group w-full rounded-md border px-3 py-2 text-left text-[11px] leading-tight transition",
+    "focus:outline-none focus:ring-2 focus:ring-slate-500/30",
+    isFocused ? tone.activeClassName : tone.className,
+    matched ? "ring-2 ring-amber-300" : "",
+  ].join(" ");
+  button.innerHTML = `
+    <span class="flex items-start justify-between gap-2">
+      <span class="min-w-0">
+        <span class="block truncate font-semibold">${escapeHtmlText(title)}</span>
+        <span class="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-500">
+          <span class="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">${escapeHtmlText(tone.label)}</span>
+          ${relations.length ? `<span class="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">${relations.length} 关系</span>` : ""}
+        </span>
+      </span>
+      <span class="text-[10px] text-slate-400 group-hover:text-slate-700">查看</span>
+    </span>
+  `;
+  button.addEventListener("click", () => {
+    adminGraphFocusedPointId = id;
+    renderAdminGraphNetwork();
+    handleGraphNodeSelection(id);
+  });
+  return button;
+}
+
+function countCourseMapLinkedPoints(stageBucket) {
+  const topicPoints = (stageBucket.topics || []).reduce((topicSum, topicBucket) => {
+    const categoryCount = [...topicBucket.categories.values()].reduce((count, category) => count + category.points.length, 0);
+    return topicSum + topicBucket.points.length + categoryCount;
+  }, 0);
+  return topicPoints + (stageBucket.loosePoints || []).length;
+}
+
+function isCourseMapStageCollapsed(stageId) {
+  return !adminGraphMapExpanded || expandedStages.has(stageId);
+}
+
+function isCourseMapTopicCollapsed(topicId) {
+  return !adminGraphMapExpanded || expandedTopics.has(topicId);
+}
+
+function renderCourseMapRelationOverlay(surface, model) {
+  surface.querySelector("[data-relation-overlay]")?.remove();
+  const focusedId = adminGraphFocusedPointId;
+  if (!focusedId) return;
+
+  const focusedEl = surface.querySelector(`[data-node-id="${escapeCourseMapSelectorValue(focusedId)}"]`);
+  if (!focusedEl) return;
+
+  const relatedEdges = (model.relationEdges || []).filter((edge) => edge.source === focusedId || edge.target === focusedId);
+  if (!relatedEdges.length) return;
+
+  const surfaceRect = surface.getBoundingClientRect();
+  const width = Math.max(surface.scrollWidth, surfaceRect.width);
+  const height = Math.max(surface.scrollHeight, surfaceRect.height);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("data-relation-overlay", "true");
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.classList.add("pointer-events-none", "absolute", "left-0", "top-0", "z-10");
+  svg.style.width = `${width}px`;
+  svg.style.height = `${height}px`;
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  svg.appendChild(defs);
+
+  relatedEdges.forEach((edge, index) => {
+    const targetId = edge.source === focusedId ? edge.target : edge.source;
+    const targetEl = surface.querySelector(`[data-node-id="${escapeCourseMapSelectorValue(targetId)}"]`);
+    if (!targetEl) return;
+    const sourceRect = focusedEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    const x1 = sourceRect.left + sourceRect.width / 2 - surfaceRect.left;
+    const y1 = sourceRect.top + sourceRect.height / 2 - surfaceRect.top;
+    const x2 = targetRect.left + targetRect.width / 2 - surfaceRect.left;
+    const y2 = targetRect.top + targetRect.height / 2 - surfaceRect.top;
+    const style = getCourseMapRelationStyle(edge.type);
+    const markerId = `course-map-arrow-${index}`;
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", markerId);
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "3");
+    marker.setAttribute("orient", "auto");
+    marker.setAttribute("markerUnits", "strokeWidth");
+    marker.innerHTML = `<path d="M0,0 L0,6 L8,3 z" fill="${style.color}"></path>`;
+    defs.appendChild(marker);
+
+    const dx = Math.max(80, Math.abs(x2 - x1) * 0.45);
+    const curve = y2 >= y1 ? 54 : -54;
+    const c1x = x1 + (x2 >= x1 ? dx : -dx);
+    const c2x = x2 - (x2 >= x1 ? dx : -dx);
+    const c1y = y1 + curve;
+    const c2y = y2 - curve;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", style.color);
+    path.setAttribute("stroke-width", "2.5");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("marker-end", `url(#${markerId})`);
+    if (style.dash) path.setAttribute("stroke-dasharray", style.dash);
+    svg.appendChild(path);
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", String((x1 + x2) / 2));
+    label.setAttribute("y", String((y1 + y2) / 2 - 8));
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("font-size", "11");
+    label.setAttribute("font-weight", "600");
+    label.setAttribute("fill", style.color);
+    label.setAttribute("paint-order", "stroke");
+    label.setAttribute("stroke", "#f8f5ef");
+    label.setAttribute("stroke-width", "4");
+    label.textContent = style.label;
+    svg.appendChild(label);
+  });
+
+  surface.prepend(svg);
+}
+
+function renderCourseMapMvp(nodesRaw, edgesRaw) {
+  if (!adminGraphCanvas) return;
+  const keyword = (state.admin.graph.searchKeyword || "").trim().toLowerCase();
+  const model = buildCourseMapModel(nodesRaw, edgesRaw);
+  adminGraphCanvas.innerHTML = "";
+  adminGraphCanvas.classList.add("overflow-auto");
+
+  const shell = document.createElement("div");
+  shell.className = "min-h-full bg-[#f8f5ef] p-4 text-slate-800";
+
+  const totalTopics = model.stages.reduce((sum, item) => sum + item.topics.length, 0);
+  const linkedPoints = model.stages.reduce((sum, item) => sum + countCourseMapLinkedPoints(item), 0);
+  const focusedNode = adminGraphFocusedPointId ? model.nodeMap.get(adminGraphFocusedPointId) : null;
+  const legend = getCourseMapRelationLegend(model.relationEdges);
+  const toolbar = document.createElement("div");
+  toolbar.className = "mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-stone-300 pb-3 text-xs";
+  toolbar.innerHTML = `
+    <div>
+      <div class="text-base font-semibold text-slate-900">外贸谈判知识图谱</div>
+      <div class="mt-1 text-slate-500">${model.stages.length} 环节 · ${totalTopics} 主题 · ${model.points.length} 下层节点 · ${model.relationEdges.length} 语义关系</div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-slate-500">点亮关系</span>
+      ${
+        legend.length
+          ? legend
+              .slice(0, 7)
+              .map((item) => `<span class="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-stone-100 px-2.5 py-1 text-slate-700"><span class="h-2 w-2 rounded-full" style="background:${item.color}"></span>${escapeHtmlText(item.label)}</span>`)
+              .join("")
+          : '<span class="text-slate-400">暂无语义关系</span>'
+      }
+      ${
+        focusedNode
+          ? `<button type="button" class="rounded-full border border-stone-300 bg-white px-3 py-1 text-slate-700 hover:border-slate-500" data-clear-focus>取消聚焦</button>`
+          : ""
+      }
+    </div>
+  `;
+  toolbar.querySelector("[data-clear-focus]")?.addEventListener("click", () => {
+    adminGraphFocusedPointId = null;
+    renderAdminGraphNetwork();
+  });
+  shell.appendChild(toolbar);
+
+  const stageBuckets = model.stages.length ? model.stages : [{ stage: { id: "unassigned", name: "未归入阶段" }, topics: [], loosePoints: model.points }];
+  const viewport = document.createElement("div");
+  viewport.className = "overflow-auto";
+  const surface = document.createElement("div");
+  surface.className = "relative min-h-[620px] py-8";
+  surface.style.minWidth = `${Math.max(1180, stageBuckets.length * 172)}px`;
+
+  const timeline = document.createElement("div");
+  timeline.className = "relative z-20 flex items-start gap-10 px-6";
+
+  stageBuckets.forEach(({ stage, topics, loosePoints }) => {
+    const stageTitle = getGraphNodeTitle(stage);
+    const stageId = stage.id || stageTitle;
+    const isStageCollapsed = isCourseMapStageCollapsed(stageId);
+    const column = document.createElement("section");
+    column.className = "w-32 shrink-0";
+    const topicCount = topics.length;
+    const pointCount = countCourseMapLinkedPoints({ topics, loosePoints });
+    column.innerHTML = `
+      <div class="relative mb-16 flex h-14 items-center justify-center">
+        <button type="button" class="w-full rounded-lg bg-stone-300 px-3 py-2 text-center text-white shadow-sm transition hover:bg-stone-400 ${isStageCollapsed ? "opacity-70" : ""}" data-stage-toggle="${escapeHtmlAttribute(stageId)}">
+          <span class="block text-[10px] font-semibold leading-none">${escapeHtmlText(String(getCourseMapStageOrder(stage) || "").padStart(2, "0"))}</span>
+          <span class="mt-1 block truncate text-sm font-semibold">${escapeHtmlText(stageTitle)}</span>
+          <span class="block truncate text-[10px] opacity-80">${topicCount} 主题 · ${pointCount} 点</span>
+        </button>
+      </div>
+    `;
+    column.querySelector("[data-stage-toggle]")?.addEventListener("click", () => {
+      if (expandedStages.has(stageId)) expandedStages.delete(stageId);
+      else expandedStages.add(stageId);
+      renderAdminGraphNetwork();
+    });
+
+    const body = document.createElement("div");
+    body.className = isStageCollapsed ? "hidden" : "relative space-y-5 border-l border-stone-300 pl-3";
+    topics.forEach((topicBucket) => {
+      const topic = topicBucket.topic;
+      const topicId = topic.id || getGraphNodeTitle(topic);
+      const isTopicCollapsed = isCourseMapTopicCollapsed(topicId);
+      const topicEl = document.createElement("div");
+      topicEl.className = "relative";
+      topicEl.innerHTML = `
+        <button type="button" class="mb-2 w-full rounded-md border border-sky-400 bg-white px-2.5 py-2 text-left text-[11px] font-semibold text-slate-800 shadow-[inset_4px_0_0_#2f77b9] hover:border-sky-600" data-topic-toggle="${escapeHtmlAttribute(topicId)}">
+          <span class="block truncate">${escapeHtmlText(getGraphNodeTitle(topic))}</span>
+          <span class="mt-1 block text-[10px] font-normal text-slate-400">${isTopicCollapsed ? "已收起" : "点击收起"} · 流程/概念</span>
+        </button>
+      `;
+      topicEl.querySelector("[data-topic-toggle]")?.addEventListener("click", () => {
+        if (expandedTopics.has(topicId)) expandedTopics.delete(topicId);
+        else expandedTopics.add(topicId);
+        renderAdminGraphNetwork();
+      });
+
+      const pointList = document.createElement("div");
+      pointList.className = isTopicCollapsed ? "hidden" : "space-y-2";
+      const directPoints = topicBucket.points || [];
+      directPoints.forEach((point) => pointList.appendChild(createCourseMapPointButton(point, model.relationsByPoint, keyword)));
+      [...topicBucket.categories.values()].forEach((categoryBucket) => {
+        if (!categoryBucket.points.length) return;
+        const categoryTitle = getGraphNodeTitle(categoryBucket.category);
+        const label = document.createElement("div");
+        label.className = "pt-1 text-[10px] font-semibold text-slate-400";
+        label.textContent = categoryTitle;
+        pointList.appendChild(label);
+        categoryBucket.points.forEach((point) => pointList.appendChild(createCourseMapPointButton(point, model.relationsByPoint, keyword)));
+      });
+      if (!pointList.children.length) {
+        pointList.innerHTML = '<p class="rounded-lg border border-dashed border-slate-800 px-3 py-2 text-[11px] text-slate-500">暂无知识点</p>';
+      }
+      topicEl.appendChild(pointList);
+      body.appendChild(topicEl);
+    });
+    if (loosePoints.length) {
+      const loose = document.createElement("div");
+      loose.className = "space-y-2";
+      loose.innerHTML = '<div class="text-[10px] font-semibold text-slate-400">未归入主题</div>';
+      const list = document.createElement("div");
+      list.className = "space-y-2";
+      loosePoints.forEach((point) => list.appendChild(createCourseMapPointButton(point, model.relationsByPoint, keyword)));
+      loose.appendChild(list);
+      body.appendChild(loose);
+    }
+    column.appendChild(body);
+    timeline.appendChild(column);
+  });
+
+  stageBuckets.slice(0, -1).forEach((_item, index) => {
+    const arrow = document.createElement("div");
+    arrow.className = "absolute top-[54px] h-px bg-stone-400";
+    arrow.style.left = `${118 + index * 168}px`;
+    arrow.style.width = "42px";
+    arrow.innerHTML = '<span class="absolute -right-1 -top-1 h-2 w-2 rotate-45 border-r border-t border-stone-500"></span>';
+    timeline.appendChild(arrow);
+  });
+
+  surface.appendChild(timeline);
+  viewport.appendChild(surface);
+  shell.appendChild(viewport);
+  adminGraphCanvas.appendChild(shell);
+  requestAnimationFrame(() => renderCourseMapRelationOverlay(surface, model));
+
+  if (adminGraphStatus) {
+    const focusText = focusedNode ? ` · 已聚焦「${getGraphNodeTitle(focusedNode)}」` : " · 点击知识点查看关系";
+    adminGraphStatus.textContent = `十环节课程图谱 MVP · 阶段 ${model.stages.length} · 主题 ${totalTopics} · 下层节点 ${model.points.length}${focusText}`;
+  }
+}
+
+// 渲染后台知识图谱：MVP 使用 D3 固定环形闭环，先不依赖后端图谱数据。
 function renderAdminGraphNetwork() {
   if (!adminGraphCanvas) {
     return;
   }
 
-  if (adminGraphNetwork) {
+  if (adminGraphNetwork && typeof adminGraphNetwork.dispose === "function") {
     adminGraphNetwork.dispose();
     adminGraphNetwork = null;
   }
-  if (adminG6Graph) {
-    adminG6Graph.destroy();
-    adminG6Graph = null;
+  if (adminGraphRenderer === "ring") {
+    renderAdminRingGraphMvp();
+    return;
   }
 
   const networkData = state.admin.graph.network || { nodes: [], edges: [] };
@@ -2443,1118 +4027,7 @@ function renderAdminGraphNetwork() {
     return;
   }
 
-  const width = adminGraphCanvas.clientWidth || 960;
-  const height = adminGraphCanvas.clientHeight || 820;
-
-  // 关系优先语义网络：显式呈现流程、包含、前置、策略、跨文化等多类型联系。
-  renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height);
-}
-
-// 根据不同渲染模式生成 G6 布局配置。
-function createGraphLayout(mode, nodes, edges) {
-  if (mode === "force") {
-    // 根据节点类型/边类型调整距离，避免堆叠
-    const linkDistance = (d) => {
-      const edgeType = d?.data?.type;
-      const source = nodes.find((n) => n.id === d.source);
-      const target = nodes.find((n) => n.id === d.target);
-      const isStageLine = source?.nodeType === "Stage" || target?.nodeType === "Stage";
-      const isTopicLine = source?.nodeType === "Topic" || target?.nodeType === "Topic";
-      if (isStageLine) return 240;
-      if (isTopicLine) return 180;
-      if (edgeType === "PRECEDES") return 200;
-      return 110;
-    };
-    const nodeStrength = (node) => {
-      if (node.nodeType === "Stage") return -600;
-      if (node.nodeType === "Topic") return -360;
-      return -120;
-    };
-    const edgeStrength = (edge) => {
-      if (edge.label === "PRECEDES") return 0.05;
-      if (edge.label === "CONTAIN_TOPIC" || edge.label === "HAS_CATEGORY") return 0.08;
-      return 0.02;
-    };
-    return {
-      type: "force",
-      preventOverlap: true,
-      nodeSpacing: 24,
-      linkDistance,
-      nodeStrength,
-      edgeStrength,
-      alpha: 0.8,
-      alphaDecay: 0.05,
-      collideStrength: 0.75,
-      onTick: () => {
-        // 控制缩放范围，避免突然奔溃到屏外
-        if (adminG6Graph) {
-          const zoom = adminG6Graph.getZoom();
-          if (zoom < 0.2) adminG6Graph.zoomTo(0.2);
-          if (zoom > 3) adminG6Graph.zoomTo(3);
-        }
-      },
-    };
-  }
-
-  return {
-    type: "dagre",
-    rankdir: "LR",
-    nodesep: 40,
-    ranksep: 160,
-    controlPoints: true,
-    preventOverlap: true,
-    nodeSize: 34,
-  };
-}
-
-
-const GRAPH_NODE_STYLES = {
-  Stage: { fill: "#2563eb", stroke: "#93c5fd", shape: "pill" },
-  Topic: { fill: "#f97316", stroke: "#fed7aa", shape: "rect" },
-  KnowledgePoint: { fill: "#22c55e", stroke: "#bbf7d0", shape: "circle" },
-  Skill: { fill: "#0ea5e9", stroke: "#bae6fd", shape: "circle" },
-  Terminology: { fill: "#475569", stroke: "#cbd5e1", shape: "circle" },
-  CultureDimension: { fill: "#a855f7", stroke: "#e9d5ff", shape: "diamond" },
-  Practice: { fill: "#0f766e", stroke: "#99f6e4", shape: "rect" },
-  TheoryLesson: { fill: "#9a3412", stroke: "#fed7aa", shape: "rect" },
-  Chapter: { fill: "#64748b", stroke: "#cbd5e1", shape: "rect" },
-  ProcessStep: { fill: "#64748b", stroke: "#cbd5e1", shape: "circle" },
-};
-
-const GRAPH_RELATION_STYLES = {
-  PRECEDES: { color: "#2563eb", label: "流程顺序", dash: "", width: 2.4, group: "flow" },
-  NEXT: { color: "#2563eb", label: "流程顺序", dash: "", width: 2.4, group: "flow" },
-  CONTAIN_TOPIC: { color: "#94a3b8", label: "包含", dash: "4 5", width: 1.2, group: "hierarchy" },
-  INCLUDE_POINT: { color: "#94a3b8", label: "收录", dash: "4 5", width: 1.1, group: "hierarchy" },
-  HAS_CATEGORY: { color: "#94a3b8", label: "分类", dash: "4 5", width: 1.1, group: "hierarchy" },
-  CONTAINS: { color: "#94a3b8", label: "包含", dash: "4 5", width: 1.1, group: "hierarchy" },
-  REQUIRES: { color: "#ef4444", label: "前置依赖", dash: "", width: 2.1, group: "semantic" },
-  RELATED_TO: { color: "#14b8a6", label: "横向关联", dash: "6 4", width: 1.8, group: "semantic" },
-  RELATES_TO: { color: "#14b8a6", label: "横向关联", dash: "6 4", width: 1.8, group: "semantic" },
-  CONTRASTS_WITH: { color: "#f59e0b", label: "相似/对比", dash: "3 3", width: 1.9, group: "semantic" },
-  APPLIES_TO_SCENARIO: { color: "#06b6d4", label: "情境-策略", dash: "", width: 2, group: "semantic" },
-  SUGGESTS_STRATEGY: { color: "#06b6d4", label: "策略建议", dash: "", width: 2, group: "semantic" },
-  HAS_EXCEPTION: { color: "#f97316", label: "规则-例外", dash: "2 5", width: 2, group: "semantic" },
-  COMBINES_WITH: { color: "#84cc16", label: "策略组合", dash: "", width: 1.9, group: "semantic" },
-  CONFLICTS_WITH: { color: "#dc2626", label: "策略冲突", dash: "2 4", width: 2, group: "semantic" },
-  HAS_CULTURAL_SENSITIVITY: { color: "#a855f7", label: "跨文化敏感", dash: "", width: 2.2, group: "culture" },
-  INVOLVES_CULTURE: { color: "#a855f7", label: "涉及文化", dash: "", width: 2.2, group: "culture" },
-  CULTURE_SENSITIVE_TO: { color: "#a855f7", label: "文化映射", dash: "", width: 2.2, group: "culture" },
-  MAPS_TO_STAGE: { color: "#6366f1", label: "映射阶段", dash: "5 3", width: 1.7, group: "semantic" },
-  TESTS: { color: "#0f766e", label: "练习考察", dash: "", width: 1.8, group: "resource" },
-  EXPLAINS: { color: "#9a3412", label: "课时讲解", dash: "", width: 1.8, group: "resource" },
-};
-
-function getGraphNodeId(node) {
-  return node?.key || node?.id || node?.name || "";
-}
-
-function getGraphNodeTitle(node) {
-  return node?.title || node?.name || node?.key || node?.id || "未命名";
-}
-
-function getRelationStyle(type) {
-  return GRAPH_RELATION_STYLES[type] || { color: "#64748b", label: type || "关系", dash: "4 4", width: 1.4, group: "other" };
-}
-
-function sanitizeSvgText(text) {
-  return String(text || "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
-}
-
-function truncateGraphLabel(text, max = 12) {
-  const value = String(text || "");
-  return value.length > max ? `${value.slice(0, max)}…` : value;
-}
-
-// ─── 阶段脊椎布局（Stage-Spine Layout）─────────────────────────────────────────
-// 核心设计：以十大谈判阶段为横向主轴，Topic/KP等节点在各阶段列下方垂直排列。
-// 不使用 dagre——dagre 会把所有 Stage 打进同一行、所有 KP 打进同一行，形成三条平带。
-// ────────────────────────────────────────────────────────────────────────────────
-
-const MAX_TOPICS_PER_STAGE = 4;   // 每阶段最多显示的主题数
-const MAX_KPS_PER_TOPIC    = 3;   // 每主题最多显示的知识点数（横向排列）
-const MAX_SEMANTIC_EDGES   = 60;  // 跨阶段语义连线上限，避免视觉污染
-
-// 语义连线优先级（数字小=优先保留）
-const SEM_EDGE_PRIORITY = {
-  PRECEDES: 0, NEXT: 0,
-  REQUIRES: 1,
-  HAS_CULTURAL_SENSITIVITY: 2, INVOLVES_CULTURE: 2, CULTURE_SENSITIVE_TO: 2,
-  APPLIES_TO_SCENARIO: 3, SUGGESTS_STRATEGY: 3,
-  CONTRASTS_WITH: 4, CONFLICTS_WITH: 4, COMBINES_WITH: 4,
-  HAS_EXCEPTION: 5,
-  RELATED_TO: 9, RELATES_TO: 9,
-};
-
-/**
- * 将 PRECEDES 边拓扑排序 Stage 节点，确保阶段按真实外贸流程顺序从左到右排列。
- */
-function topoSortStages(allStages, edgesRaw) {
-  const stageIds = new Set(allStages.map(s => s.id));
-  const inDeg = new Map(allStages.map(s => [s.id, 0]));
-  const adj   = new Map(allStages.map(s => [s.id, []]));
-  edgesRaw.forEach(e => {
-    const src = e.source || e.from, tgt = e.target || e.to;
-    if (e.type === 'PRECEDES' && stageIds.has(src) && stageIds.has(tgt)) {
-      adj.get(src).push(tgt);
-      inDeg.set(tgt, (inDeg.get(tgt) || 0) + 1);
-    }
-  });
-  const queue = allStages.filter(s => inDeg.get(s.id) === 0)
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-  const result = [], seen = new Set();
-  while (queue.length) {
-    const s = queue.shift();
-    if (seen.has(s.id)) continue;
-    seen.add(s.id); result.push(s);
-    (adj.get(s.id) || []).forEach(nid => {
-      inDeg.set(nid, inDeg.get(nid) - 1);
-      if (inDeg.get(nid) === 0) {
-        const node = allStages.find(x => x.id === nid);
-        if (node) queue.push(node);
-      }
-    });
-  }
-  allStages.forEach(s => { if (!seen.has(s.id)) result.push(s); });
-  return result;
-}
-
-/**
- * 计算阶段脊椎布局的节点位置（返回 Map<id, {x,y}>）。
- *
- * 布局层次：
- *   Layer 0 (top)   — Stage 横向均匀分布
- *   Layer 1         — Topic  在各自所属阶段列下方叠放（最多 MAX_TOPICS_PER_STAGE 个）
- *   Layer 2         — KP     在各 Topic 下方横向排开（最多 MAX_KPS_PER_TOPIC 个）
- *   Right column    — CultureDimension（文化维度独立于阶段柱，放右侧）
- *   Bottom row      — Practice / TheoryLesson / Chapter（课时/实战放底部）
- */
-function buildStageSpinePositions(nodeMap, edgesRaw, width, height) {
-  // ── 1. 建立层级父子映射 ──
-  const stageTopics = new Map(); // stageId -> [topicId]
-  const topicKPs    = new Map(); // topicId -> [kpId]
-  edgesRaw.forEach(e => {
-    const src = e.source || e.from, tgt = e.target || e.to;
-    if (!src || !tgt || src === tgt) return;
-    if (e.type === 'CONTAIN_TOPIC') {
-      if (!stageTopics.has(src)) stageTopics.set(src, []);
-      stageTopics.get(src).push(tgt);
-    }
-    if (['INCLUDE_POINT', 'HAS_CATEGORY', 'CONTAINS'].includes(e.type)) {
-      if (!topicKPs.has(src)) topicKPs.set(src, []);
-      topicKPs.get(src).push(tgt);
-    }
-  });
-
-  // ── 2. 对 Stage 进行拓扑排序 ──
-  const allStages = [...nodeMap.values()]
-    .filter(n => (n.label || n.nodeType) === 'Stage')
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-  const stages = topoSortStages(allStages, edgesRaw);
-  const numStages = Math.max(stages.length, 1);
-
-  // ── 3. 计算列宽与各层 Y 值 ──
-  const marginX    = 60;
-  const marginTop  = 30;
-  const usableW    = width - marginX * 2;
-  const colW       = usableW / numStages;     // 每阶段占用的水平带宽
-
-  const STAGE_Y    = marginTop + 24;          // 阶段节点中心 Y
-  const TOPIC_Y0   = STAGE_Y  + 90;          // 第一个 Topic 中心 Y
-  const TOPIC_DY   = 76;                      // 相邻 Topic 的垂直间距
-  const KP_DY      = 46;                      // Topic 到其 KP 的垂直偏移
-
-  // ── 4. 放置 Stage、Topic、KP ──
-  const positions  = new Map(); // id -> {x, y}
-  const placedIds  = new Set();
-  const hiddenInfo = new Map(); // id -> {hiddenTopics?, hiddenKPs?}
-
-  stages.forEach((stage, si) => {
-    const stageX = marginX + (si + 0.5) * colW;
-    positions.set(stage.id, { x: stageX, y: STAGE_Y });
-    placedIds.add(stage.id);
-
-    // 取 stageTopics，按 order 排序，最多显示 MAX_TOPICS_PER_STAGE 个
-    const rawTopics = (stageTopics.get(stage.id) || []).filter(id => nodeMap.has(id));
-    const visTopics = rawTopics.slice(0, MAX_TOPICS_PER_STAGE);
-    const hidT = rawTopics.length - visTopics.length;
-    if (hidT > 0) hiddenInfo.set(stage.id, { hiddenTopics: hidT });
-
-    visTopics.forEach((topicId, ti) => {
-      const topicX = stageX;
-      const topicY = TOPIC_Y0 + ti * TOPIC_DY;
-      positions.set(topicId, { x: topicX, y: topicY });
-      placedIds.add(topicId);
-
-      // KP 横向排在 Topic 正下方
-      const rawKPs = (topicKPs.get(topicId) || []).filter(id => nodeMap.has(id));
-      const visKPs = rawKPs.slice(0, MAX_KPS_PER_TOPIC);
-      const hidKP  = rawKPs.length - visKPs.length;
-      if (hidKP > 0) hiddenInfo.set(topicId, { hiddenKPs: hidKP });
-
-      const kpY     = topicY + KP_DY;
-      // 最多 3 个 KP，间距不超过列宽 / 4，避免越过相邻列
-      const kpSpacing = Math.min(colW * 0.28, 34);
-      visKPs.forEach((kpId, ki) => {
-        const kpX = topicX + (ki - (visKPs.length - 1) / 2) * kpSpacing;
-        positions.set(kpId, { x: kpX, y: kpY });
-        placedIds.add(kpId);
-      });
-    });
-  });
-
-  // ── 5. CultureDimension —— 右侧独立列 ──
-  const cultures = [...nodeMap.values()].filter(n => (n.label || n.nodeType) === 'CultureDimension');
-  const cultureX = width - 44;
-  const cultureYStep = Math.min(58, (height - 80) / Math.max(cultures.length, 1));
-  cultures.slice(0, Math.floor((height - 80) / 44)).forEach((c, i) => {
-    positions.set(c.id, { x: cultureX, y: 70 + i * cultureYStep });
-    placedIds.add(c.id);
-  });
-
-  // ── 6. Practice / TheoryLesson / Chapter —— 底部横向 ──
-  const bottomTypes = new Set(['Practice', 'TheoryLesson', 'Chapter']);
-  const bottomNodes = [...nodeMap.values()].filter(n => bottomTypes.has(n.label || n.nodeType) && !placedIds.has(n.id));
-  const bottomY = Math.min(height - 44, TOPIC_Y0 + MAX_TOPICS_PER_STAGE * TOPIC_DY + KP_DY + 48);
-  bottomNodes.slice(0, Math.floor(usableW / 90)).forEach((n, i) => {
-    positions.set(n.id, { x: marginX + 40 + i * Math.min(90, usableW / Math.max(bottomNodes.length, 1)), y: bottomY });
-    placedIds.add(n.id);
-  });
-
-  return { positions, placedIds, hiddenInfo, stages };
-}
-
-/**
- * 主渲染器：以阶段脊椎布局 + G6 preset 渲染教师端总览 & 学生端本课图谱。
- *
- * 与 dagre 的核心区别：
- *   - dagre 按全局最小化边交叉排 rank，结果是所有 Stage 一行、所有 KP 一行；
- *   - 本实现自行计算 x/y，让每个阶段占据独立列带，Topics/KPs 在该列内向下分布。
- */
-function renderKnowledgeGraphG6(options) {
-  const {
-    container,
-    nodes: rawNodes = [],
-    edges: rawEdges = [],
-    direction = 'TB',   // 目前固定 TB（纵向），为未来横向扩展留口
-    highlightKeyword = '',
-    highlightNames = null,
-    onNodeClick = null,
-    compact = false,
-    theme = 'dark',
-  } = options || {};
-
-  if (!container || typeof window === 'undefined' || !window.G6) return null;
-
-  // ── 构建 nodeMap ──
-  const nodeMap = new Map();
-  rawNodes.forEach(n => {
-    const id = getGraphNodeId(n);
-    if (id && !nodeMap.has(id)) nodeMap.set(id, { ...n, id });
-  });
-  if (nodeMap.size === 0) return null;
-
-  // ── 计算阶段脊椎布局位置 ──
-  const W = container.clientWidth  || (compact ? 620 : 980);
-  const H = container.clientHeight || (compact ? 290 : 660);
-  const { positions, placedIds, hiddenInfo } = buildStageSpinePositions(nodeMap, rawEdges, W, H);
-
-  if (placedIds.size === 0) return null;
-
-  // ── 关键词 / 高亮名称集合 ──
-  const kw = String(highlightKeyword || '').trim().toLowerCase();
-  const hlSet = highlightNames instanceof Set ? highlightNames : null;
-  const labelColor = theme === 'light' ? '#1e293b' : '#e2e8f0';
-
-  // ── 构建 G6 节点模型 ──
-  const g6Nodes = [...nodeMap.values()]
-    .filter(n => placedIds.has(n.id))
-    .map(n => {
-      const type    = n.label || n.nodeType || 'KnowledgePoint';
-      const vis     = GRAPH_NODE_STYLES[type] || { fill: '#64748b', stroke: '#cbd5e1', shape: 'circle' };
-      const title   = getGraphNodeTitle(n);
-      const pos     = positions.get(n.id) || { x: W / 2, y: H / 2 };
-      const matched = (kw && title.toLowerCase().includes(kw)) || (hlSet && (hlSet.has(n.name) || hlSet.has(n.id) || hlSet.has(title)));
-      const extra   = hiddenInfo.get(n.id);
-
-      // 紧凑模式（学生端）略微缩小节点
-      const scl = compact ? 0.82 : 1;
-
-      let nodeType = 'circle', nodeSize = 28 * scl;
-      let labelPos = 'bottom', labelInside = false;
-      let nodeW = 0, nodeH = 0;
-
-      if (type === 'Stage') {
-        nodeType = 'rect'; nodeW = 88 * scl; nodeH = 30 * scl;
-        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
-      } else if (type === 'Topic' || type === 'KnowledgeCategory') {
-        nodeType = 'rect'; nodeW = 82 * scl; nodeH = 24 * scl;
-        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
-      } else if (type === 'CultureDimension') {
-        nodeType = 'diamond'; nodeSize = 22 * scl;
-      } else if (['Practice','TheoryLesson','Chapter'].includes(type)) {
-        nodeType = 'rect'; nodeW = 78 * scl; nodeH = 22 * scl;
-        nodeSize = [nodeW, nodeH]; labelPos = 'center'; labelInside = true;
-      } else {
-        // KnowledgePoint / Skill / Terminology
-        nodeType = 'circle'; nodeSize = 20 * scl;
-      }
-
-      // 标签：矩形节点写内部，圆形写底部；截断避免溢出
-      const maxLabelLen = nodeType === 'rect' ? Math.floor((nodeW || 80) / 12) : 6;
-      const rawLabel = title;
-      const label = rawLabel.length > maxLabelLen ? rawLabel.slice(0, maxLabelLen - 1) + '…' : rawLabel;
-
-      // 隐藏数量徽标追加到标签（简单实现）
-      let badgeLabel = label;
-      if (extra?.hiddenTopics) badgeLabel += ` +${extra.hiddenTopics}`;
-      if (extra?.hiddenKPs)    badgeLabel += ` +${extra.hiddenKPs}`;
-
-      const fontSize = type === 'Stage' ? (compact ? 10 : 12) : (compact ? 9 : 11);
-
-      return {
-        id: n.id,
-        x: pos.x,
-        y: pos.y,
-        nodeType: type,
-        fullTitle: title,
-        name: n.name || title,
-        type: nodeType,
-        size: nodeSize,
-        matched: !!matched,
-        label: badgeLabel,
-        labelCfg: {
-          position: labelPos,
-          offset: labelInside ? 0 : 5,
-          style: {
-            fill: labelInside ? '#f8fafc' : labelColor,
-            fontSize,
-            fontWeight: type === 'Stage' ? 700 : (type === 'Topic' ? 600 : 500),
-          },
-        },
-        style: {
-          fill: vis.fill,
-          stroke: matched ? '#fde047' : vis.stroke,
-          lineWidth: matched ? 3 : 1.5,
-          radius: (type === 'Stage' || type === 'Topic') ? 6 : undefined,
-          cursor: 'pointer',
-        },
-      };
-    });
-
-  // ── 边过滤与分类 ──
-  const visSet = new Set(g6Nodes.map(n => n.id));
-  const allValid = rawEdges
-    .map(e => ({ ...e, source: e.source || e.from, target: e.target || e.to }))
-    .filter(e => e.source && e.target && e.source !== e.target && visSet.has(e.source) && visSet.has(e.target));
-
-  const hierEdges  = allValid.filter(e => ['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS'].includes(e.type));
-  const flowEdges  = allValid.filter(e => e.type === 'PRECEDES' || e.type === 'NEXT');
-  const otherEdges = allValid.filter(e => !['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS','PRECEDES','NEXT'].includes(e.type));
-
-  // 语义连线按优先级限制数量，避免大量 RELATED_TO 形成色带
-  const curatedSem = otherEdges
-    .sort((a, b) => (SEM_EDGE_PRIORITY[a.type] ?? 9) - (SEM_EDGE_PRIORITY[b.type] ?? 9))
-    .slice(0, MAX_SEMANTIC_EDGES);
-
-  function buildEdgeModel(edge, edgeClass) {
-    const s    = getRelationStyle(edge.type);
-    const dash = s.dash ? s.dash.split(/\s+/).map(Number).filter(v => !Number.isNaN(v)) : null;
-    const isHier = edgeClass === 'hier';
-    const isFlow = edgeClass === 'flow';
-
-    // 流程顺序（PRECEDES）在阶段行绘成直线带箭头；层级线绘成轻量垂直曲线；语义线绘成弧线
-    const edgeType  = isFlow ? 'line' : 'quadratic';
-    // 语义弧线用较大曲率，确保不和节点列重叠
-    const srcPos    = positions.get(edge.source) || { x: 0, y: 0 };
-    const tgtPos    = positions.get(edge.target) || { x: 0, y: 0 };
-    const dx        = Math.abs((tgtPos.x || 0) - (srcPos.x || 0));
-    const curveOffset = isHier ? 0 : isFlow ? 0 : Math.min(80, 20 + dx * 0.08);
-
-    return {
-      source: edge.source,
-      target: edge.target,
-      relType: edge.type,
-      type: edgeType,
-      curveOffset,
-      label: isHier ? '' : (edge.label || s.label || ''),
-      labelCfg: {
-        autoRotate: true,
-        refY: 4,
-        style: {
-          fill: s.color,
-          fontSize: 9,
-          background: {
-            fill: theme === 'light' ? 'rgba(255,255,255,.88)' : 'rgba(2,6,23,.82)',
-            padding: [1, 3, 1, 3],
-            radius: 3,
-          },
-        },
-      },
-      style: {
-        stroke: s.color,
-        lineWidth: isHier ? 1 : s.width,
-        lineDash: dash || undefined,
-        opacity: isHier ? 0.35 : isFlow ? 0.9 : 0.65,
-        endArrow: (isFlow || !isHier)
-          ? { path: window.G6.Arrow.triangle(6, 8, 2), fill: s.color, stroke: s.color }
-          : false,
-      },
-    };
-  }
-
-  const g6Edges = [
-    ...hierEdges.map(e  => buildEdgeModel(e, 'hier')),
-    ...flowEdges.map(e  => buildEdgeModel(e, 'flow')),
-    ...curatedSem.map(e => buildEdgeModel(e, 'sem')),
-  ];
-
-  // ── 初始化 G6 图（preset 布局，不让 G6 再计算位置）──
-  container.innerHTML = '';
-  const padding = compact ? [12, 16, 12, 16] : [24, 36, 24, 36];
-  const graph = new window.G6.Graph({
-    container,
-    width:  W,
-    height: H,
-    fitView: true,
-    fitViewPadding: padding,
-    minZoom: 0.15,
-    maxZoom: 3,
-    layout: { type: 'preset' },   // 直接使用节点上的 x/y，不再走 dagre
-    modes: {
-      default: [
-        'drag-canvas',
-        'zoom-canvas',
-        { type: 'drag-node', enableDelegate: true },
-        { type: 'activate-relations', trigger: 'mouseenter', resetSelected: true },
-      ],
-    },
-    defaultNode: { type: 'circle' },
-    defaultEdge: { type: 'quadratic' },
-    nodeStateStyles: {
-      active:    { lineWidth: 3, shadowColor: 'rgba(250,204,21,.85)', shadowBlur: 14 },
-      inactive:  { opacity: 0.22 },
-      highlight: { lineWidth: 4, stroke: '#fde047', shadowColor: 'rgba(250,204,21,.9)', shadowBlur: 18 },
-    },
-    edgeStateStyles: {
-      active:   { lineWidth: 2.4, opacity: 1 },
-      inactive: { opacity: 0.06 },
-    },
-  });
-
-  graph.data({ nodes: g6Nodes, edges: g6Edges });
-  graph.render();
-  graph.fitView(padding);
-
-  // 高亮匹配节点
-  if (kw || hlSet) {
-    graph.getNodes().forEach(node => {
-      if (node.getModel().matched) graph.setItemState(node, 'highlight', true);
-    });
-  }
-
-  if (typeof onNodeClick === 'function') {
-    graph.on('node:click', evt => {
-      const model = evt.item && evt.item.getModel();
-      if (model) onNodeClick(model.id, model);
-    });
-  }
-
-  // 容器大小变化时自适应
-  if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(() => {
-      if (!graph || graph.get('destroyed')) { observer.disconnect(); return; }
-      const w = container.clientWidth, h = container.clientHeight;
-      if (w && h) { graph.changeSize(w, h); graph.fitView(padding); }
-    });
-    observer.observe(container);
-  }
-
-  return graph;
-}
-
-// 图例：节点类型 + 关系类型
-function buildKnowledgeGraphLegend() {
-  const nodeLegendItems = [
-    { type: 'Stage', text: '谈判阶段' },
-    { type: 'Topic', text: '主题' },
-    { type: 'KnowledgePoint', text: '知识点' },
-    { type: 'Skill', text: '技能' },
-    { type: 'Terminology', text: '术语' },
-    { type: 'CultureDimension', text: '文化维度' },
-    { type: 'Practice', text: '实战/课时' },
-  ];
-  const relLegendItems = ['CONTAIN_TOPIC', 'PRECEDES', 'REQUIRES', 'RELATED_TO', 'APPLIES_TO_SCENARIO', 'HAS_CULTURAL_SENSITIVITY'];
-
-  const legend = document.createElement('div');
-  legend.className = 'absolute bottom-3 left-3 max-w-[760px] rounded-xl border border-slate-700/70 bg-slate-950/88 p-3 text-[11px] text-slate-300 shadow-lg backdrop-blur pointer-events-none';
-
-  const nodeRow = nodeLegendItems.map(item => {
-    const vis = GRAPH_NODE_STYLES[item.type] || { fill: '#64748b', stroke: '#cbd5e1' };
-    const isRect = item.type === 'Stage' || item.type === 'Topic' || item.type === 'Practice';
-    const isDia  = item.type === 'CultureDimension';
-    const shapeCss = isDia
-      ? 'width:10px;height:10px;transform:rotate(45deg);'
-      : isRect
-        ? 'width:16px;height:11px;border-radius:3px;'
-        : 'width:12px;height:12px;border-radius:50%;';
-    return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;${shapeCss}background:${vis.fill};border:1.5px solid ${vis.stroke};flex-shrink:0"></i>${sanitizeSvgText(item.text)}</span>`;
-  }).join('');
-
-  const relRow = relLegendItems.map(type => {
-    const s = getRelationStyle(type);
-    return `<span class="inline-flex items-center gap-1"><i style="display:inline-block;width:18px;border-top:${s.width}px ${s.dash ? 'dashed' : 'solid'} ${s.color};vertical-align:middle;flex-shrink:0"></i>${sanitizeSvgText(s.label)}</span>`;
-  }).join('');
-
-  legend.innerHTML = `
-    <div class="mb-1.5 font-semibold text-slate-100">阶段脊椎视图（十大阶段 → 主题 → 知识点）</div>
-    <div class="mb-1.5 flex flex-wrap gap-x-3 gap-y-1">${nodeRow}</div>
-    <div class="flex flex-wrap gap-x-3 gap-y-1">${relRow}</div>`;
-  return legend;
-}
-
-// 教师端知识图谱总览入口（阶段脊椎 + 语义/跨文化连线叠加）
-function renderSemanticRelationGraph(nodesRaw, edgesRaw, width, height) {
-  if (!adminGraphCanvas) return;
-  adminGraphCanvas.innerHTML = '';
-  adminGraphCanvas.style.position = 'relative';
-  adminGraphCanvas.style.overflow = 'hidden';
-
-  if (typeof window === 'undefined' || !window.G6) {
-    adminGraphCanvas.innerHTML = "<p class='p-4 text-sm text-slate-400'>图谱引擎 (G6) 未加载，请检查 /static/vendor/g6 资源。</p>";
-    return;
-  }
-
-  const keyword = (state.admin.graph.searchKeyword || '').trim();
-  adminG6Graph = renderKnowledgeGraphG6({
-    container: adminGraphCanvas,
-    nodes: nodesRaw,
-    edges: edgesRaw,
-    direction: adminGraphDirection,
-    highlightKeyword: keyword,
-    onNodeClick: id => handleGraphNodeSelection(id),
-    theme: 'dark',
-  });
-
-  if (!adminG6Graph) {
-    if (adminGraphStatus) adminGraphStatus.textContent = '暂无可展示的节点，请检查数据或关系';
-    return;
-  }
-
-  adminGraphCanvas.appendChild(buildKnowledgeGraphLegend());
-
-  if (adminGraphStatus) {
-    const nodeCount = adminG6Graph.getNodes().length;
-    const edgeCount = adminG6Graph.getEdges().length;
-    const semCount  = (edgesRaw || []).filter(e => !['CONTAIN_TOPIC','INCLUDE_POINT','HAS_CATEGORY','CONTAINS'].includes(e.type)).length;
-    adminGraphStatus.textContent = `阶段脊椎 · 节点 ${nodeCount} · 关系 ${edgeCount} · 语义/跨文化联系 ${semCount}`;
-  }
-}
-
-// 使用自定义“开花”布局渲染图谱，强调阶段/知识点放射结构。
-function renderBurstGraph(nodesRaw, edgesRaw, width, height) {
-  const colorMap = {
-    Stage: "#3b82f6",
-    Topic: "#f97316",
-    KnowledgePoint: "#22c55e",
-    Skill: "#0ea5e9",
-    Terminology: "#475569",
-  };
-
-  const stages = nodesRaw.filter((n) => n.label === "Stage");
-  const topics = nodesRaw.filter((n) => n.label === "Topic" || n.label === "KnowledgeCategory");
-  const points = nodesRaw.filter((n) =>
-    ["KnowledgePoint", "Skill", "Terminology"].includes(n.label)
-  );
-
-  const topicMap = new Map(topics.map((t) => [t.key || t.id, t]));
-  const pointMap = new Map(points.map((p) => [p.key || p.id, p]));
-  const stageTopicCount = new Map();
-  const topicPointCount = new Map();
-  const topicParentStage = new Map();
-  const pointParentTopic = new Map();
-  const crossEdges = [];
-
-  const stageTopicEdges = edgesRaw.filter((e) => e.type === "CONTAIN_TOPIC");
-  const topicPointEdges = edgesRaw.filter(
-    (e) => e.type === "INCLUDE_POINT" || e.type === "HAS_TOPIC"
-  );
-
-  const stageToTopics = new Map();
-  stageTopicEdges.forEach((e) => {
-    const sid = e.source || e.from;
-    const tid = e.target || e.to;
-    if (!sid || !tid) return;
-    if (!stageToTopics.has(sid)) stageToTopics.set(sid, []);
-    stageToTopics.get(sid).push(tid);
-    stageTopicCount.set(sid, (stageTopicCount.get(sid) || 0) + 1);
-    topicParentStage.set(tid, sid);
-  });
-
-  const topicToPoints = new Map();
-  topicPointEdges.forEach((e) => {
-    const tid = e.source || e.from;
-    const pid = e.target || e.to;
-    if (!tid || !pid) return;
-    if (!topicToPoints.has(tid)) topicToPoints.set(tid, []);
-    topicToPoints.get(tid).push(pid);
-    topicPointCount.set(tid, (topicPointCount.get(tid) || 0) + 1);
-    pointParentTopic.set(pid, tid);
-  });
-
-  // 收集跨Stage或知识点间的边
-  edgesRaw.forEach((e) => {
-    const src = e.source || e.from;
-    const tgt = e.target || e.to;
-    if (!src || !tgt) return;
-    // 已经用于层级的边跳过
-    if (e.type === "CONTAIN_TOPIC" || e.type === "INCLUDE_POINT" || e.type === "HAS_TOPIC") {
-      return;
-    }
-    const srcStage = topicParentStage.get(src) || topicParentStage.get(pointParentTopic.get(src));
-    const tgtStage = topicParentStage.get(tgt) || topicParentStage.get(pointParentTopic.get(tgt));
-    const isCrossStage = srcStage && tgtStage && srcStage !== tgtStage;
-    const isPointToPoint =
-      ["KnowledgePoint", "Skill", "Terminology"].includes(pointMap.get(src)?.label) ||
-      ["KnowledgePoint", "Skill", "Terminology"].includes(pointMap.get(tgt)?.label);
-    if (isCrossStage || isPointToPoint) {
-      crossEdges.push({
-        source: src,
-        target: tgt,
-        label: e.type,
-        style: {
-          stroke: "rgba(148,163,184,0.35)",
-          lineWidth: 1,
-          lineDash: [5, 5],
-          endArrow: false,
-          opacity: 0.65,
-        },
-      });
-    }
-  });
-
-  // === 搜索匹配：自动展开并高亮 ===
-  const kw = (state.admin.graph.searchKeyword || "").trim().toLowerCase();
-  const highlighted = new Set();
-  const autoExpandedStages = new Set(expandedStages);
-  const autoExpandedTopics = new Set(expandedTopics);
-  if (kw) {
-    nodesRaw.forEach((n) => {
-      const text = (n.title || n.name || n.key || "").toLowerCase();
-      if (!text.includes(kw)) return;
-      const id = n.key || n.id;
-      if (!id) return;
-      highlighted.add(id);
-      if (n.label === "Topic") {
-        autoExpandedTopics.add(id);
-        const parentStage = topicParentStage.get(id);
-        if (parentStage) autoExpandedStages.add(parentStage);
-      } else if (["KnowledgePoint", "Skill", "Terminology"].includes(n.label)) {
-        const parentTopic = pointParentTopic.get(id);
-        if (parentTopic) {
-          autoExpandedTopics.add(parentTopic);
-          const parentStage = topicParentStage.get(parentTopic);
-          if (parentStage) autoExpandedStages.add(parentStage);
-        }
-      } else if (n.label === "Stage") {
-        autoExpandedStages.add(id);
-      }
-    });
-  }
-
-  const center = { x: width / 2, y: height / 2 };
-  const stageCount = stages.length || 1;
-  const maxTopicCount = Math.max(1, ...stageTopicCount.values(), 1);
-  const maxPointCount = Math.max(1, ...topicPointCount.values(), 1);
-  const stageRadius =
-    Math.max(200, Math.min(width, height) * 0.32) +
-    Math.min(120, maxTopicCount * 8 + maxPointCount * 4);
-  const topicRadialGap = 120;
-  const pointRadialGap = 90;
-
-  // 同步自动展开集合，便于后续点击保持状态
-  const searchMode = Boolean(kw);
-  if (searchMode) {
-    expandedStages.clear();
-    expandedTopics.clear();
-    autoExpandedStages.forEach((id) => expandedStages.add(id));
-    autoExpandedTopics.forEach((id) => expandedTopics.add(id));
-  }
-  const nodes = [];
-  const edges = [];
-
-  const placed = new Set();
-
-  const polar = (cx, cy, r, angle) => ({
-    x: cx + r * Math.cos(angle),
-    y: cy + r * Math.sin(angle),
-  });
-
-  stages.forEach((stage, idx) => {
-    const id = stage.key || stage.id;
-    if (!id) return;
-    const angle = (2 * Math.PI * idx) / stageCount;
-    const pos = polar(center.x, center.y, stageRadius, angle);
-    const stageHighlighted = highlighted.has(id);
-    nodes.push({
-      id,
-      label: stage.title || stage.name || id,
-      x: pos.x,
-      y: pos.y,
-      size: 46,
-      style: {
-        fill: colorMap.Stage,
-        stroke: stageHighlighted ? "#22c55e" : "#2563eb",
-        lineWidth: stageHighlighted ? 2 : 1.4,
-      },
-      nodeType: "Stage",
-    });
-    placed.add(id);
-
-    if (!autoExpandedStages.has(id)) {
-      return;
-    }
-    const topicIds =
-      stageToTopics.get(id) ||
-      topics
-        .filter((t) => t.stage === stage.name || t.stageName === stage.name)
-        .map((t) => t.key || t.id);
-    const topicCount = topicIds.length || 1;
-    const topicAngleSpan = Math.min(Math.PI / 2.2, 0.18 * topicCount); // tighter fan outward
-    const topicAngleStep = topicCount > 1 ? topicAngleSpan / (topicCount - 1) : 0;
-    topicIds.forEach((tid, tIdx) => {
-      const topic = topicMap.get(tid);
-      if (!topic) return;
-      const offset = topicAngleStep * (tIdx - (topicCount - 1) / 2);
-      const tAngle = angle + offset;
-      const topicRadius =
-        stageRadius +
-        topicRadialGap +
-        Math.min(80, (topicPointCount.get(tid) || 0) * 2); // push out heavy topics
-      const tPos = polar(center.x, center.y, topicRadius, tAngle);
-      const topicHighlighted = highlighted.has(tid);
-      nodes.push({
-        id: tid,
-        label: topic.title || topic.name || tid,
-        x: tPos.x,
-        y: tPos.y,
-        size: 32,
-        type: "rect",
-        style: {
-          fill: colorMap.Topic,
-          stroke: topicHighlighted ? "#22c55e" : "#f59e0b",
-          lineWidth: topicHighlighted ? 2 : 1.2,
-        },
-        nodeType: "Topic",
-      });
-      edges.push({
-        source: id,
-        target: tid,
-        style: { stroke: "rgba(148,163,184,0.45)", endArrow: true },
-      });
-      placed.add(tid);
-
-      if (!autoExpandedTopics.has(tid)) return;
-      const pointIds =
-        topicToPoints.get(tid) ||
-        points
-          .filter((p) => p.topic === topic.name || p.topicName === topic.name)
-          .map((p) => p.key || p.id);
-      const pointCount = pointIds.length || 1;
-      const pointAngleSpan = Math.min(Math.PI / 3.2, 0.16 * pointCount);
-      const pointAngleStep = pointCount > 1 ? pointAngleSpan / (pointCount - 1) : 0;
-      const basePointRadius =
-        topicRadius + pointRadialGap + Math.min(60, pointCount * 1.8); // more children, push further
-      pointIds.forEach((pid, pIdx) => {
-        const point = pointMap.get(pid);
-        if (!point) return;
-        const pOffset = pointAngleStep * (pIdx - (pointCount - 1) / 2);
-        const pAngle = tAngle + pOffset;
-        const pPos = polar(center.x, center.y, basePointRadius, pAngle);
-        const isHighlighted = highlighted.has(pid);
-        nodes.push({
-          id: pid,
-          label: point.title || point.name || pid,
-          x: pPos.x,
-          y: pPos.y,
-          size: 16,
-          style: {
-            fill: colorMap[point.label] || "#94a3b8",
-            stroke: isHighlighted ? "#22c55e" : "rgba(15,23,42,0.35)",
-            lineWidth: isHighlighted ? 1.8 : 1,
-          },
-          nodeType: point.label,
-        });
-        edges.push({
-          source: tid,
-          target: pid,
-          style: { stroke: "rgba(148,163,184,0.35)", endArrow: false },
-        });
-        placed.add(pid);
-      });
-    });
-  });
-
-  adminG6Graph = new G6.Graph({
-    container: adminGraphCanvas,
-    width,
-    height,
-    layout: { type: "none" },
-    modes: { default: ["drag-canvas", "zoom-canvas"] },
-    defaultNode: {
-      labelCfg: {
-        position: "bottom",
-        style: { fill: "#0f172a", fontSize: 12, opacity: 0.9 },
-      },
-    },
-    defaultEdge: {
-      type: "line",
-      labelCfg: { style: { fill: "#94a3b8", fontSize: 10 } },
-      style: { endArrow: true },
-    },
-    fitView: false,
-    minZoom: 0.3,
-    maxZoom: 3,
-    fitCenter: true,
-  });
-
-  // 叠加跨Stage/点的虚线边
-  const allEdges = edges.concat(crossEdges);
-
-  adminG6Graph.data({ nodes, edges: allEdges });
-  adminG6Graph.render();
-  adminG6Graph.fitView(40);
-
-  if (adminGraphStatus) {
-    adminGraphStatus.textContent = `节点 ${nodes.length} · 关系 ${edges.length}`;
-  }
-
-  adminG6Graph.on("node:click", (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const model = item.getModel();
-    const nodeId = model.id;
-    if (model.nodeType === "Stage") {
-      if (expandedStages.has(nodeId)) expandedStages.delete(nodeId);
-      else expandedStages.add(nodeId);
-      renderAdminGraphNetwork();
-      return;
-    }
-    if (model.nodeType === "Topic") {
-      if (expandedTopics.has(nodeId)) expandedTopics.delete(nodeId);
-      else expandedTopics.add(nodeId);
-      renderAdminGraphNetwork();
-      return;
-    }
-    handleGraphNodeSelection(nodeId);
-  });
-}
-
-// 将原始 network 数据转换为层级树，供 G6 mini-map/树形使用。
-function buildTreeData(network) {
-  const nodes = network && Array.isArray(network.nodes) ? network.nodes : [];
-  const edges = network && Array.isArray(network.edges) ? network.edges : [];
-  const nodeMap = new Map();
-  nodes.forEach((n) => {
-    const key = n.key || n.id || n.name;
-    if (!key) return;
-    nodeMap.set(key, {
-      id: key,
-      key,
-      name: n.title || n.name || key,
-      type: n.label || n.nodeType,
-      order: n.order || 0,
-      stage: n.stage || n.stageName,
-      topic: n.topic || n.topicName,
-      children: [],
-    });
-  });
-
-  const stages = [];
-  const topics = new Map();
-  const points = new Map();
-  nodeMap.forEach((node, key) => {
-    if (node.type === "Stage") stages.push(node);
-    else if (node.type === "Topic") topics.set(key, node);
-    else points.set(key, node);
-  });
-
-  const src = (e) => e.source || e.from;
-  const tgt = (e) => e.target || e.to;
-
-  edges.forEach((e) => {
-    if (e.type !== "CONTAIN_TOPIC") return;
-    const s = nodeMap.get(src(e));
-    const t = topics.get(tgt(e));
-    if (s && t) s.children.push(t);
-  });
-
-  edges.forEach((e) => {
-    if (e.type !== "INCLUDE_POINT" && e.type !== "HAS_TOPIC") return;
-    const t = topics.get(src(e));
-    const p = points.get(tgt(e));
-    if (t && p) t.children.push(p);
-  });
-
-  // Fallback by props
-  topics.forEach((t) => {
-    if (t.children.length === 0) {
-      points.forEach((p) => {
-        if ((p.topic && (p.topic === t.name || p.topic === t.key)) ||
-            (p.stage && (p.stage === t.stage || p.stage === t.stageName))) {
-          t.children.push(p);
-        }
-      });
-    }
-  });
-  if (stages.every((s) => s.children.length === 0)) {
-    topics.forEach((t) => {
-      const stageName = t.stage || t.stageName || (t.key || "").split(":")[1];
-      const s = stages.find((st) => st.name === stageName || st.key === `Stage:${stageName}`);
-      if (s) s.children.push(t);
-    });
-  }
-
-  stages.sort((a, b) => a.order - b.order || (a.name || "").localeCompare(b.name || ""));
-  topics.forEach((t) => {
-    t.children.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    t.collapsed = true;
-  });
-  stages.forEach((s) => {
-    s.children.sort((a, b) => (a.order || 0) - (b.order || 0));
-    s.collapsed = false;
-  });
-
-  const children = stages.length > 0 ? stages : Array.from(topics.values());
-  const rootChildren = children.length > 0 ? children : Array.from(points.values());
-
-  return {
-    id: "root",
-    name: "root",
-    collapsed: false,
-    children: rootChildren,
-  };
-}
-
-// 采用 G6 渲染（树形 + mini map），用于另一种视图模式。
-function renderAdminGraphWithG6() {
-  if (!adminGraphCanvas) return;
-  if (adminGraphNetwork) {
-    adminGraphNetwork.dispose();
-    adminGraphNetwork = null;
-  }
-  if (adminG6Graph) {
-    adminG6Graph.destroy();
-    adminG6Graph = null;
-  }
-
-  const networkData = state.admin.graph.network || { nodes: [], edges: [] };
-  const width = adminGraphCanvas.clientWidth || 800;
-  const height = adminGraphCanvas.clientHeight || 420;
-
-  adminGraphCanvas.innerHTML = "";
-
-  const colorMap = {
-    Stage: "#6c63ff",
-    Topic: "#f97316",
-    KnowledgeCategory: "#cbd5e1",
-    Skill: "#0ea5e9",
-    Terminology: "#475569",
-    KnowledgePoint: "#22c55e",
-    Chapter: "#67e8f9",
-    Practice: "#0f766e",
-    TheoryTopic: "#5b21b6",
-    TheoryLesson: "#9a3412",
-    ProcessStep: "#94a3b8",
-  };
-
-  const nodes = (networkData.nodes || []).map((n, idx, arr) => {
-    const labelVisible =
-      n.label === "Stage" || n.label === "Topic" || n.label === "KnowledgeCategory";
-    let size = 24;
-    if (n.label === "Stage") size = 46;
-    else if (n.label === "Topic") size = 32;
-    else if (n.label === "KnowledgeCategory") size = 26;
-    else if (n.label === "KnowledgePoint") size = 20;
-    else if (n.label === "Skill" || n.label === "Terminology") size = 20;
-    return {
-      id: n.key,
-      label: labelVisible ? (n.title || n.name) : "",
-      originLabel: n.title || n.name,
-      type: n.label === "Topic" || n.label === "KnowledgeCategory" ? "rect" : "circle",
-      style: {
-        fill: colorMap[n.label] || "#94a3b8",
-        stroke: "rgba(15,23,42,0.4)",
-        lineWidth: 1.2,
-      },
-      size,
-      nodeType: n.label,
-    };
-  });
-
-  const edges = (networkData.edges || []).map((e) => {
-    const showLabel = ["PRECEDES", "CONTAIN_TOPIC", "HAS_CATEGORY", "CONTAINS"].includes(e.type);
-    return {
-      source: e.source,
-      target: e.target,
-      label: showLabel ? (e.label || e.type) : "",
-      style: {
-        stroke: "rgba(148,163,184,0.45)",
-        lineWidth: 1.1,
-        endArrow: false,
-      },
-    };
-  });
-
-  adminG6Graph = new G6.Graph({
-    container: adminGraphCanvas,
-    width,
-    height,
-    layout: {
-      type: "dagre",
-      rankdir: "LR",
-      nodesep: 40,
-      ranksep: 120,
-      controlPoints: true,
-      preventOverlap: true,
-      nodeSize: 30,
-    },
-    modes: {
-      default: ["drag-canvas", "zoom-canvas", { type: "drag-node", enableDelegate: true }],
-    },
-    defaultNode: {
-      labelCfg: {
-        position: "bottom",
-        style: { fill: "#eaf4ff", fontSize: 12, opacity: 0.9 },
-      },
-    },
-    defaultEdge: {
-      type: "polyline",
-      labelCfg: {
-        autoRotate: true,
-        style: { fill: "#94a3b8", fontSize: 10 },
-      },
-      style: { endArrow: true },
-    },
-    animate: true,
-  });
-
-  adminG6Graph.data({ nodes, edges });
-  adminG6Graph.on("node:click", (evt) => {
-    const item = evt.item;
-    if (!item) return;
-    const id = item.getID();
-    const rawNode = nodesRaw.find((n) => n.key === id);
-    if (rawNode && rawNode.label === "Topic") {
-      if (expandedTopics.has(id)) expandedTopics.delete(id);
-      else expandedTopics.add(id);
-      renderAdminGraph();
-      return;
-    }
-    handleGraphNodeSelection(id);
-  });
-  adminG6Graph.render();
-  adminG6Graph.fitView(20);
+  renderCourseMapMvp(nodesRaw, edgesRaw);
 }
 
 async function refreshAdminGraph() {
@@ -3566,6 +4039,9 @@ async function refreshAdminGraph() {
   }
   if (adminGraphStatus) {
     adminGraphStatus.textContent = "加载知识图谱中...";
+  }
+  if (adminGraphRenderer === "ring") {
+    renderAdminGraphNetwork();
   }
   try {
     const keyword =
@@ -3612,14 +4088,9 @@ async function refreshAdminGraph() {
 
     renderAdminGraphKnowledgeList();
     renderAdminGraphNetwork();
-    if (adminGraphStatus) {
-      const nodeCount = (networkData.nodes || []).length;
-      const edgeCount = (networkData.edges || []).length;
-      adminGraphStatus.textContent = `节点 ${nodeCount} · 关系 ${edgeCount}`;
-    }
   } catch (error) {
     console.error("[Graph] refreshAdminGraph error", error);
-    if (adminGraphStatus) {
+    if (adminGraphStatus && adminGraphRenderer !== "ring") {
       adminGraphStatus.textContent = error.message || "加载知识图谱失败";
     }
   }

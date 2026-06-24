@@ -674,6 +674,7 @@ if (adminTabButtons) {
           initGraphKnowledgeManagement();
           window._graphKnowledgeInitialized = true;
         }
+        await refreshAdminGraph();
       }
     });
   });
@@ -878,13 +879,11 @@ if (typeof adminGraphSearch !== "undefined" && adminGraphSearch) {
 
 if (adminGraphToggleRenderer) {
   adminGraphToggleRenderer.addEventListener("click", () => {
-    adminGraphDirection = adminGraphDirection === "TB" ? "LR" : "TB";
-    adminGraphToggleRenderer.textContent =
-      adminGraphDirection === "TB" ? "当前 纵向分层" : "当前 横向分层";
-    adminGraphToggleRenderer.title =
-      adminGraphDirection === "TB"
-        ? "纵向分层：谈判阶段在上，主题、知识点依次向下展开"
-        : "横向分层：谈判阶段在左，主题、知识点依次向右展开";
+    if (typeof resetAdminRingGraphView === "function") {
+      resetAdminRingGraphView();
+      return;
+    }
+    adminGraphMapExpanded = false;
     renderAdminGraphNetwork();
   });
 }

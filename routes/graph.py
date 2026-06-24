@@ -500,6 +500,9 @@ def download_import_template():
     采用与智能批量导入一致的模板，避免旧版模板与导入逻辑不匹配。
     """
     include_existing = request.args.get("include_existing", "true").lower() == "true"
+    profile = (request.args.get("profile") or request.args.get("role") or "teacher").strip().lower()
+    if profile not in {"teacher", "researcher", "advanced", "expert"}:
+        profile = "teacher"
 
     try:
         from services.knowledge_graph_batch_importer import generate_smart_templates
@@ -519,12 +522,13 @@ def download_import_template():
         except Exception as exc:  # pragma: no cover - defensive logging
             logging.warning("获取现有阶段失败，使用默认阶段列表: %s", exc)
 
-        excel_content = generate_smart_templates(existing_points, existing_stages)
+        excel_content = generate_smart_templates(existing_points, existing_stages, profile=profile)
+        download_name = "教师版知识图谱导入模板.xlsx" if profile == "teacher" else "教研员版知识图谱高级导入模板.xlsx"
         return send_file(
             io.BytesIO(excel_content),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="知识图谱批量导入模板.xlsx",
+            download_name=download_name,
         )
     except graph_service.GraphUnavailableError as exc:
         status_payload = graph_service.graph_status()
@@ -611,6 +615,9 @@ def download_batch_import_template():
     - include_existing: 是否在关系列下拉菜单中包含现有知识点（true/false）
     """
     include_existing = request.args.get('include_existing', 'true').lower() == 'true'
+    profile = (request.args.get("profile") or request.args.get("role") or "teacher").strip().lower()
+    if profile not in {"teacher", "researcher", "advanced", "expert"}:
+        profile = "teacher"
 
     try:
         from services.knowledge_graph_batch_importer import generate_smart_templates
@@ -638,7 +645,8 @@ def download_batch_import_template():
             logging.warning(f"无法获取现有阶段列表: {e}")
 
         # 生成模板
-        excel_content = generate_smart_templates(existing_points, existing_stages)
+        excel_content = generate_smart_templates(existing_points, existing_stages, profile=profile)
+        download_name = "教师版知识图谱导入模板.xlsx" if profile == "teacher" else "教研员版知识图谱高级导入模板.xlsx"
 
         # 返回Excel文件
         import io
@@ -646,7 +654,7 @@ def download_batch_import_template():
             io.BytesIO(excel_content),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="知识图谱批量导入模板.xlsx"
+            download_name=download_name
         )
     except Exception as e:
         import logging
