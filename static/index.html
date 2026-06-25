@@ -5391,7 +5391,7 @@
                 </div>
                 <div
                   id="admin-graph-canvas"
-                  class="h-[660px] w-full rounded-2xl border border-slate-800 bg-slate-950/60"
+                  class="h-[86vh] min-h-[920px] w-full rounded-2xl border border-slate-800 bg-slate-950/60"
                 ></div>
                 <p id="admin-graph-status" class="text-xs text-slate-500">加载知识图谱中...</p>
                 <p class="text-xs text-slate-500">
@@ -5482,6 +5482,23 @@
                 >
                   导出
                 </button>
+                <button
+                  id="admin-graph-export-json"
+                  type="button"
+                  class="rounded-lg border border-cyan-500/70 px-3 py-1 transition hover:border-cyan-300 hover:text-cyan-100"
+                  title="导出完整知识图谱 JSON"
+                >
+                  导出JSON
+                </button>
+                <button
+                  id="admin-graph-import-json"
+                  type="button"
+                  class="rounded-lg border border-lime-500/70 px-3 py-1 transition hover:border-lime-300 hover:text-lime-100"
+                  title="导入完整知识图谱 JSON"
+                >
+                  导入JSON
+                </button>
+                <input id="admin-graph-import-json-file" type="file" accept=".json,application/json" class="hidden" />
                 <span id="admin-graph-import-status" class="text-[11px] text-slate-400"></span>
               </section>
             </div>

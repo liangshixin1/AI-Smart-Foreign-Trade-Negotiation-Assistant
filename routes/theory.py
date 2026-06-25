@@ -7,7 +7,7 @@ from typing import Dict, List
 
 import database
 from services import graph_service
-from services.graph_service import GraphUnavailableError
+from services.graph_service import GraphEntityNotFoundError, GraphUnavailableError
 from services.auth_service import require_role
 from utils.validators import as_bool
 
@@ -39,7 +39,7 @@ def get_theory_lesson(lesson_id: str):
         detail = graph_service.get_lesson_detail(lesson_id)
         linked_kp = detail.get("knowledgePoints") or []
         prereq_map = graph_service.get_knowledge_prerequisite_map()
-    except GraphUnavailableError:
+    except (GraphUnavailableError, GraphEntityNotFoundError):
         linked_kp = []
         prereq_map = {}
 

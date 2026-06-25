@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import hashlib
 import importlib.util
 import io
 import logging
@@ -336,28 +337,30 @@ class CultureDimensionPreset:
 
 
 CULTURE_DIMENSIONS: Sequence[CultureDimensionPreset] = (
-    CultureDimensionPreset("culture-power-distance", "权力距离", "Hofstede", "谈判对象对层级、授权和正式背书的敏感程度。", "面对高权力距离客户时，突出正式授权、公司资质和高层承诺。"),
-    CultureDimensionPreset("culture-uncertainty-avoidance", "不确定性回避", "Hofstede", "谈判对象对模糊条款、风险和不确定结果的容忍程度。", "对高不确定性回避客户提供更清晰的条款、证据和备选方案。"),
-    CultureDimensionPreset("culture-individualism", "个人主义/集体主义", "Hofstede", "谈判决策更偏个人绩效还是组织关系与群体共识。", "根据对方文化调整个人收益、团队共赢和长期关系的表达比例。"),
-    CultureDimensionPreset("culture-long-term-orientation", "长期导向", "Hofstede", "谈判对象对短期收益与长期合作价值的取舍。", "长期导向客户适合强调合作路线图、复购机制和持续服务。"),
-    CultureDimensionPreset("culture-context", "高语境/低语境沟通", "Hall", "谈判沟通更依赖含蓄语境还是明确文本。", "低语境沟通中使用清晰条款，高语境沟通中兼顾关系铺垫与礼貌缓冲。"),
-    CultureDimensionPreset("culture-time-orientation", "时间观念", "Cross-cultural Business", "谈判对象对准时、节奏、截止日期和灵活安排的期待。", "对时间敏感客户明确里程碑，对时间弹性客户保留关系维护空间。"),
-    CultureDimensionPreset("culture-face", "面子与关系维护", "Cross-cultural Business", "谈判中维护尊重、体面和关系连续性的需求。", "提出异议或索赔时避免直接羞辱对方，使用事实、共同目标和解决方案语言。"),
-    CultureDimensionPreset("culture-risk-communication", "风险沟通偏好", "Cross-cultural Business", "谈判对象偏好直接揭示风险还是间接提示风险。", "根据对方偏好选择风险提示强度，并配套缓释方案。"),
+    CultureDimensionPreset("culture-power-distance", "权力距离（PDI）", "Hofstede", "谈判对象对层级、授权和正式背书的敏感程度。", "面对高权力距离客户时，突出正式授权、公司资质和高层承诺。"),
+    CultureDimensionPreset("culture-individualism-collectivism", "个人主义/集体主义（IDV）", "Hofstede", "谈判决策更偏个人绩效还是组织关系与群体共识。", "根据对方文化调整个人收益、团队共赢和长期关系的表达比例。"),
+    CultureDimensionPreset("culture-masculinity-femininity", "男性气质/女性气质（MAS）", "Hofstede", "谈判对象更偏竞争、成就和强势表达，还是更重视照顾、协商和关系平衡。", "根据对方偏好调整竞争性报价、合作式表达和让步语言。"),
+    CultureDimensionPreset("culture-uncertainty-avoidance", "不确定性规避（UAI）", "Hofstede", "谈判对象对模糊条款、风险和不确定结果的容忍程度。", "对高不确定性规避客户提供更清晰的条款、证据和备选方案。"),
+    CultureDimensionPreset("culture-long-short-term-orientation", "长期导向/短期导向（LTO）", "Hofstede", "谈判对象对短期收益与长期合作价值的取舍。", "长期导向客户适合强调合作路线图、复购机制和持续服务。"),
+    CultureDimensionPreset("culture-indulgence-restraint", "放纵/约束（IVR）", "Hofstede", "谈判对象对灵活选择、即时满足、自我约束和规则限制的接受程度。", "根据对方文化调整促销承诺、灵活条款和规则边界的表达。"),
+    CultureDimensionPreset("culture-high-context", "高情境文化", "Hall", "沟通更依赖关系、语境、暗示和礼貌缓冲。", "在高情境沟通中先铺垫关系，避免过度直接否定。"),
+    CultureDimensionPreset("culture-low-context", "低情境文化", "Hall", "沟通更依赖明确文本、直接表达和可验证条款。", "在低情境沟通中明确条件、责任、时间和证据。"),
+    CultureDimensionPreset("culture-door-in-the-face", "以退为进策略（Door-in-the-face）", "Negotiation Strategy", "先提出较高要求，再退回到真实目标以提升对方接受概率。", "用于让步设计时要控制初始要求的合理性，避免损害信任。"),
+    CultureDimensionPreset("culture-foot-in-the-door", "得寸进尺法（Foot-in-the-door）", "Negotiation Strategy", "先取得小承诺，再逐步推进到更大的目标请求。", "用于分阶段推进付款、交期或服务承诺时，注意保持透明边界。"),
 )
 
 
 STANDARD_STAGES: Sequence[StandardStage] = (
-    StandardStage("stage-inquiry", "询盘", "Inquiry", 1, "交易磋商启动阶段，围绕需求、规格、数量和初步条件进行信息获取。", ("识别询盘类型", "澄清客户真实需求", "形成专业询盘回复"), ("询盘定义", "一般询盘", "具体询盘"), ("询盘信息收集", "需求澄清流程", "询盘有效期判断"), ("范围询价策略", "需求澄清提问", "专业邮件礼仪"), ("culture-context", "culture-time-orientation")),
+    StandardStage("stage-inquiry", "询盘", "Inquiry", 1, "交易磋商启动阶段，围绕需求、规格、数量和初步条件进行信息获取。", ("识别询盘类型", "澄清客户真实需求", "形成专业询盘回复"), ("询盘定义", "一般询盘", "具体询盘"), ("询盘信息收集", "需求澄清流程", "询盘有效期判断"), ("范围询价策略", "需求澄清提问", "专业邮件礼仪"), ("culture-high-context", "culture-low-context")),
     StandardStage("stage-offer", "报盘", "Offer", 2, "卖方提出价格、数量、交期、付款等核心交易条件。", ("解释报盘法律性质", "设计报价结构", "控制报价锚点"), ("报盘定义", "实盘", "虚盘"), ("报价单结构", "有效期设置", "价格条款说明"), ("锚定策略", "价值陈述策略", "阶梯价格策略"), ("culture-uncertainty-avoidance", "culture-power-distance")),
-    StandardStage("stage-counter-offer", "还盘", "Counter-offer", 3, "对原报盘进行修改或拒绝，并重新提出交易条件。", ("理解还盘法律后果", "设计让步节奏", "维护谈判底线"), ("还盘定义", "反要约", "底线"), ("还盘条件分析", "权利义务转移", "让步记录"), ("条件式让步", "反锚定", "打包交换"), ("culture-face", "culture-risk-communication")),
-    StandardStage("stage-acceptance-order", "接受与订货", "Acceptance & Order", 4, "确认交易条件并形成订单或合同文件。", ("判断有效接受", "核对订单条款", "控制确认风险"), ("接受", "订单确认", "形式发票"), ("接受函撰写", "订单审核", "合同确认"), ("风险提示", "条款复核", "关系维护"), ("culture-context", "culture-power-distance")),
-    StandardStage("stage-packing-shipment", "包装与装运", "Packing & Shipment", 5, "围绕包装标准、唛头、装运安排和物流责任进行协调。", ("识别包装要求", "安排装运节点", "处理物流异常"), ("出口包装", "唛头", "装运通知"), ("包装确认", "订舱安排", "装运跟踪"), ("时效成本平衡", "异常预案", "多方协调"), ("culture-time-orientation", "culture-risk-communication")),
-    StandardStage("stage-payment-delivery", "付款与交货", "Payment & Delivery", 6, "围绕付款工具、交货节点、风险转移和资金安全展开谈判。", ("比较付款方式风险", "解释交货责任", "设计风险缓释方案"), ("信用证", "托收", "电汇"), ("审证", "改证", "交货确认"), ("付款条件博弈", "风险缓释", "分批交货"), ("culture-uncertainty-avoidance", "culture-long-term-orientation")),
-    StandardStage("stage-inspection", "商检", "Inspection", 7, "围绕检验证书、质量标准、异议期限和责任划分进行协商。", ("识别检验标准", "设计检验条款", "处理质量异议"), ("商检", "检验证书", "异议期"), ("检验机构确认", "检验条款撰写", "异议处理"), ("证据链构建", "质量保证设计", "解决方案谈判"), ("culture-risk-communication", "culture-face")),
+    StandardStage("stage-counter-offer", "还盘", "Counter-offer", 3, "对原报盘进行修改或拒绝，并重新提出交易条件。", ("理解还盘法律后果", "设计让步节奏", "维护谈判底线"), ("还盘定义", "反要约", "底线"), ("还盘条件分析", "权利义务转移", "让步记录"), ("条件式让步", "反锚定", "打包交换"), ("culture-door-in-the-face", "culture-individualism-collectivism")),
+    StandardStage("stage-acceptance-order", "接受与订货", "Acceptance & Order", 4, "确认交易条件并形成订单或合同文件。", ("判断有效接受", "核对订单条款", "控制确认风险"), ("接受", "订单确认", "形式发票"), ("接受函撰写", "订单审核", "合同确认"), ("风险提示", "条款复核", "关系维护"), ("culture-low-context", "culture-power-distance")),
+    StandardStage("stage-packing-shipment", "包装与装运", "Packing & Shipment", 5, "围绕包装标准、唛头、装运安排和物流责任进行协调。", ("识别包装要求", "安排装运节点", "处理物流异常"), ("出口包装", "唛头", "装运通知"), ("包装确认", "订舱安排", "装运跟踪"), ("时效成本平衡", "异常预案", "多方协调"), ("culture-uncertainty-avoidance", "culture-long-short-term-orientation")),
+    StandardStage("stage-payment-delivery", "付款与交货", "Payment & Delivery", 6, "围绕付款工具、交货节点、风险转移和资金安全展开谈判。", ("比较付款方式风险", "解释交货责任", "设计风险缓释方案"), ("信用证", "托收", "电汇"), ("审证", "改证", "交货确认"), ("付款条件博弈", "风险缓释", "分批交货"), ("culture-uncertainty-avoidance", "culture-long-short-term-orientation")),
+    StandardStage("stage-inspection", "商检", "Inspection", 7, "围绕检验证书、质量标准、异议期限和责任划分进行协商。", ("识别检验标准", "设计检验条款", "处理质量异议"), ("商检", "检验证书", "异议期"), ("检验机构确认", "检验条款撰写", "异议处理"), ("证据链构建", "质量保证设计", "解决方案谈判"), ("culture-uncertainty-avoidance", "culture-low-context")),
     StandardStage("stage-insurance-arbitration", "保险与仲裁", "Insurance & Arbitration", 8, "围绕货运保险、争议解决、仲裁条款和法律适用进行安排。", ("理解保险责任", "撰写仲裁条款", "选择争议解决路径"), ("货运保险", "仲裁条款", "适用法律"), ("投保确认", "仲裁地选择", "法律适用判断"), ("争议预防", "条款谈判", "证据准备"), ("culture-uncertainty-avoidance", "culture-power-distance")),
-    StandardStage("stage-complaint", "投诉处理", "Complaint", 9, "面对客户不满时进行事实核查、情绪管理和补救方案设计。", ("区分投诉类型", "管理客户情绪", "设计补救方案"), ("投诉", "客户情绪", "补救方案"), ("投诉受理", "内部核查", "方案反馈"), ("积极倾听", "补救谈判", "品牌声誉保护"), ("culture-face", "culture-context")),
-    StandardStage("stage-claim-settlement", "索赔与理赔", "Claim & Settlement", 10, "围绕损失证明、索赔时效、责任认定和赔偿方案进行谈判。", ("准备索赔证据", "计算损失金额", "完成理赔谈判"), ("索赔函", "理赔", "损失计算"), ("证据收集", "索赔函发送", "理赔审核"), ("事实锚定", "调解谈判", "赔偿方案设计"), ("culture-face", "culture-risk-communication")),
+    StandardStage("stage-complaint", "投诉处理", "Complaint", 9, "面对客户不满时进行事实核查、情绪管理和补救方案设计。", ("区分投诉类型", "管理客户情绪", "设计补救方案"), ("投诉", "客户情绪", "补救方案"), ("投诉受理", "内部核查", "方案反馈"), ("积极倾听", "补救谈判", "品牌声誉保护"), ("culture-high-context", "culture-individualism-collectivism")),
+    StandardStage("stage-claim-settlement", "索赔与理赔", "Claim & Settlement", 10, "围绕损失证明、索赔时效、责任认定和赔偿方案进行谈判。", ("准备索赔证据", "计算损失金额", "完成理赔谈判"), ("索赔函", "理赔", "损失计算"), ("证据收集", "索赔函发送", "理赔审核"), ("事实锚定", "调解谈判", "赔偿方案设计"), ("culture-uncertainty-avoidance", "culture-low-context")),
 )
 
 
@@ -366,6 +369,7 @@ BLOOM_LEVELS: Sequence[str] = ("remember", "understand", "apply", "analyze", "ev
 
 ALLOWED_KNOWLEDGE_RELATION_TYPES = {
     "RELATED_TO",
+    "SUGGESTS_CO_LEARNING",
     "CONTRASTS_WITH",
     "APPLIES_TO_SCENARIO",
     "SUGGESTS_STRATEGY",
@@ -2022,6 +2026,7 @@ def _get_edge_label(edge_type: Optional[str], relationship: Optional[Dict[str, o
         edge_labels = {
             "REQUIRES": "依赖",
             "RELATED_TO": "关联",
+            "SUGGESTS_CO_LEARNING": "建议同时学",
             "RELATES_TO": "关联",
             "HAS_TOPIC": "包含",
             "CONTAIN_TOPIC": "包含",
@@ -2083,7 +2088,7 @@ def list_knowledge_points_enhanced(
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
         OPTIONAL MATCH (k)<-[:REQUIRES]-(dependent:KnowledgePoint)
         OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
-        OPTIONAL MATCH (k)-[r:RELATED_TO|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
+        OPTIONAL MATCH (k)-[r:RELATED_TO|SUGGESTS_CO_LEARNING|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
@@ -2128,7 +2133,8 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         OPTIONAL MATCH (k)<-[rel]-(l:TheoryLesson)
         WHERE rel IS NULL OR type(rel) = 'EXPLAINS'
         OPTIONAL MATCH (k)-[:REQUIRES]->(prereq:KnowledgePoint)
-        OPTIONAL MATCH (k)-[r:RELATED_TO|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
+        OPTIONAL MATCH (k)-[r:RELATED_TO|SUGGESTS_CO_LEARNING|CONTRASTS_WITH|APPLIES_TO_SCENARIO|SUGGESTS_STRATEGY|HAS_EXCEPTION|CULTURE_SENSITIVE_TO|COMBINES_WITH|CONFLICTS_WITH]-(related:KnowledgePoint)
+        OPTIONAL MATCH (k)-[:HAS_CULTURAL_SENSITIVITY|INVOLVES_CULTURE]->(culture:CultureDimension)
         RETURN k.name AS name,
                k.description AS description,
                k.category AS category,
@@ -2153,7 +2159,8 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
                collect(DISTINCT p.id) AS practices,
                collect(DISTINCT l.id) AS lessons,
                collect(DISTINCT prereq.name) AS prerequisites,
-               collect(DISTINCT related.name) AS relations
+               collect(DISTINCT related.name) AS relations,
+               collect(DISTINCT culture.name) AS culture_dimensions
         """,
         {"name": name},
     )
@@ -2184,6 +2191,7 @@ def get_knowledge_point(name: str) -> Dict[str, object]:
         "lessons": [l for l in (record.get("lessons") or []) if l],
         "prerequisites": [p for p in (record.get("prerequisites") or []) if p],
         "relations": [r for r in (record.get("relations") or []) if r],
+        "culture_dimensions": [c for c in (record.get("culture_dimensions") or []) if c],
     }
 
 
@@ -2770,6 +2778,481 @@ def list_culture_dimensions() -> List[Dict[str, object]]:
         ORDER BY c.name
         """
     )
+
+
+def _stable_graph_id(prefix: str, value: object) -> str:
+    text = str(value or "").strip() or prefix
+    digest = hashlib.md5(text.encode("utf-8")).hexdigest()[:10]
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.lower()).strip("-")[:32]
+    return f"{prefix}-{slug or digest}"
+
+
+def _normalize_graph_json_rel_type(value: object) -> str:
+    raw = str(value or "").strip()
+    upper = raw.upper()
+    mapping = {
+        "req": "REQUIRES",
+        "prerequisite": "REQUIRES",
+        "requires": "REQUIRES",
+        "scn": "SUGGESTS_CO_LEARNING",
+        "similar": "SUGGESTS_CO_LEARNING",
+        "suggests_co_learning": "SUGGESTS_CO_LEARNING",
+        "con": "CONTRASTS_WITH",
+        "contrast": "CONTRASTS_WITH",
+        "contrasts_with": "CONTRASTS_WITH",
+        "cul": "HAS_CULTURAL_SENSITIVITY",
+        "culture": "HAS_CULTURAL_SENSITIVITY",
+        "has_cultural_sensitivity": "HAS_CULTURAL_SENSITIVITY",
+        "involves_culture": "HAS_CULTURAL_SENSITIVITY",
+        "culture_sensitive_to": "HAS_CULTURAL_SENSITIVITY",
+        "exc": "HAS_EXCEPTION",
+        "has_exception": "HAS_EXCEPTION",
+        "mig": "COMBINES_WITH",
+        "combines_with": "COMBINES_WITH",
+    }
+    normalized = mapping.get(raw.lower(), upper or "RELATED_TO")
+    allowed = {
+        "REQUIRES",
+        "SUGGESTS_CO_LEARNING",
+        "CONTRASTS_WITH",
+        "HAS_CULTURAL_SENSITIVITY",
+        "INVOLVES_CULTURE",
+        "HAS_EXCEPTION",
+        "COMBINES_WITH",
+        "RELATED_TO",
+        "RELATES_TO",
+        "APPLIES_TO_SCENARIO",
+        "SUGGESTS_STRATEGY",
+        "CONFLICTS_WITH",
+        "CULTURE_SENSITIVE_TO",
+    }
+    return normalized if normalized in allowed else "RELATED_TO"
+
+
+def _json_kp_type(node: Dict[str, object]) -> str:
+    labels = node.get("labels") or []
+    raw = str(node.get("nodeType") or node.get("type") or "").lower()
+    if "Terminology" in labels or "terminology" in raw or "term" in raw or "术语" in raw:
+        return "terminology"
+    if "Skill" in labels or "skill" in raw or "技能" in raw:
+        return "skill"
+    return "knowledge"
+
+
+def export_knowledge_graph_json() -> Dict[str, object]:
+    """Export the maintainable teacher-facing graph model as JSON."""
+
+    stage_rows = _execute_read(
+        """
+        MATCH (s:Stage)
+        WITH properties(s) AS p
+        RETURN p.id AS id, p.name AS name, p.englishName AS englishName,
+               p.description AS description, p.orderIndex AS orderIndex,
+               p.orderIndex AS order
+        ORDER BY coalesce(p.orderIndex, 999), p.name
+        """
+    )
+    topic_rows = _execute_read(
+        """
+        MATCH (s:Stage)-[:CONTAIN_TOPIC]->(t:Topic)
+        WITH properties(s) AS ps, properties(t) AS pt
+        RETURN pt.id AS id, pt.name AS name, pt.layer AS layer, pt.orderIndex AS orderIndex,
+               ps.id AS stageId, ps.name AS stageName,
+               coalesce(ps.orderIndex, 999) AS stageOrder
+        ORDER BY stageOrder, coalesce(orderIndex, 999), name
+        """
+    )
+    kp_rows = _execute_read(
+        """
+        MATCH (s:Stage)-[:CONTAIN_TOPIC]->(t:Topic)-[:HAS_CATEGORY]->(:KnowledgeCategory)-[:CONTAINS]->(k:KnowledgePoint)
+        WITH DISTINCT properties(s) AS ps, properties(t) AS pt, properties(k) AS pk, labels(k) AS labels
+        RETURN pk.id AS id, pk.name AS name, pk.description AS description,
+               pk.summary AS summary, pk.content AS content, pk.category AS category,
+               pk.type AS type, pk.nodeType AS nodeType, labels AS labels,
+               pk.difficulty AS difficulty, pk.importance AS importance,
+               pk.bloomLevel AS bloomLevel, pk.bloom_level AS bloom_level,
+               pk.keywords AS keywords, pk.cultureTags AS cultureTags,
+               pt.id AS topicId, pt.name AS topicName, pt.layer AS topicLayer,
+               ps.id AS stageId, ps.name AS stageName,
+               coalesce(ps.orderIndex, 999) AS stageOrder,
+               coalesce(pt.orderIndex, 999) AS topicOrder
+        ORDER BY stageOrder, topicOrder, topicName, name
+        """
+    )
+    culture_rows = _execute_read(
+        """
+        MATCH (c:CultureDimension)
+        WITH properties(c) AS p
+        RETURN p.id AS id, p.name AS name, p.theory AS theory,
+               p.summary AS summary, p.teachingTip AS teachingTip
+        ORDER BY p.name
+        """
+    )
+    semantic_relation_types = [
+        "REQUIRES",
+        "SUGGESTS_CO_LEARNING",
+        "RELATED_TO",
+        "RELATES_TO",
+        "CONTRASTS_WITH",
+        "APPLIES_TO_SCENARIO",
+        "SUGGESTS_STRATEGY",
+        "HAS_EXCEPTION",
+        "COMBINES_WITH",
+        "CONFLICTS_WITH",
+        "CULTURE_SENSITIVE_TO",
+        "HAS_CULTURAL_SENSITIVITY",
+        "INVOLVES_CULTURE",
+    ]
+    rel_rows = _execute_read(
+        """
+        MATCH (a)-[r]->(b)
+        WHERE type(r) IN $relationTypes
+          AND ((a:KnowledgePoint AND b:KnowledgePoint) OR (a:KnowledgePoint AND b:CultureDimension))
+        WITH labels(a) AS sourceLabels, properties(a) AS source,
+             labels(b) AS targetLabels, properties(b) AS target,
+             type(r) AS type, properties(r) AS rel
+        RETURN sourceLabels, source.id AS sourceId, source.name AS sourceName,
+               targetLabels, target.id AS targetId, target.name AS targetName,
+               type, rel.relationType AS relationType
+        ORDER BY sourceName, type, targetName
+        """,
+        {"relationTypes": semantic_relation_types},
+    )
+
+    stages = [
+        {
+            "id": row.get("id") or _stable_graph_id("stage", row.get("name")),
+            "name": row.get("name"),
+            "zh": row.get("name"),
+            "en": row.get("englishName") or "",
+            "order": row.get("orderIndex") or row.get("order") or index + 1,
+            "description": row.get("description") or "",
+        }
+        for index, row in enumerate(stage_rows)
+    ]
+    stage_id_by_name = {stage["name"]: stage["id"] for stage in stages if stage.get("name")}
+
+    topics = [
+        {
+            "id": row.get("id") or _stable_graph_id("topic", f"{row.get('stageName')}:{row.get('name')}"),
+            "name": row.get("name"),
+            "stage": row.get("stageId") or stage_id_by_name.get(row.get("stageName")),
+            "layer": row.get("layer") or "concept",
+            "order": row.get("orderIndex"),
+        }
+        for row in topic_rows
+    ]
+    topic_id_by_name_stage = {
+        (topic.get("stage"), topic.get("name")): topic.get("id")
+        for topic in topics
+    }
+
+    knowledge_points = []
+    for row in kp_rows:
+        topic_id = row.get("topicId") or topic_id_by_name_stage.get((row.get("stageId"), row.get("topicName")))
+        knowledge_points.append({
+            "id": row.get("id") or _stable_graph_id("kp", row.get("name")),
+            "name": row.get("name"),
+            "stage": row.get("stageId") or stage_id_by_name.get(row.get("stageName")),
+            "topic": topic_id,
+            "topicName": row.get("topicName"),
+            "layer": row.get("topicLayer") or row.get("category") or "concept",
+            "kpType": _json_kp_type(row),
+            "nodeType": row.get("nodeType") or ("Terminology" if _json_kp_type(row) == "terminology" else "Skill" if _json_kp_type(row) == "skill" else "KnowledgePoint"),
+            "difficulty": row.get("difficulty"),
+            "importance": row.get("importance"),
+            "bloom": row.get("bloomLevel") or row.get("bloom_level"),
+            "summary": row.get("summary") or "",
+            "description": row.get("description") or row.get("content") or "",
+            "keywords": row.get("keywords") or [],
+            "cultureTags": row.get("cultureTags") or [],
+        })
+
+    culture_dimensions = [
+        {
+            "id": row.get("id") or _stable_graph_id("culture", row.get("name")),
+            "name": row.get("name"),
+            "theory": row.get("theory") or "",
+            "summary": row.get("summary") or "",
+            "teachingTip": row.get("teachingTip") or "",
+        }
+        for row in culture_rows
+    ]
+
+    relations = [
+        {
+            "source": row.get("sourceId") or row.get("sourceName"),
+            "sourceName": row.get("sourceName"),
+            "target": row.get("targetId") or row.get("targetName"),
+            "targetName": row.get("targetName"),
+            "type": row.get("type"),
+            "relationType": row.get("relationType") or row.get("type"),
+        }
+        for row in rel_rows
+    ]
+
+    return {
+        "schema": "foreign-trade-knowledge-graph/v1",
+        "exportedAt": datetime.utcnow().isoformat() + "Z",
+        "stages": stages,
+        "topics": topics,
+        "knowledgePoints": knowledge_points,
+        "cultureDimensions": culture_dimensions,
+        "relations": relations,
+    }
+
+
+def import_knowledge_graph_json(payload: Dict[str, object], *, mode: str = "merge", created_by: str = "json-import") -> Dict[str, object]:
+    """Import a graph JSON exported by export_knowledge_graph_json."""
+
+    if not isinstance(payload, dict):
+        raise ValueError("JSON 顶层必须是对象")
+
+    stages = payload.get("stages") or []
+    topics = payload.get("topics") or []
+    knowledge_points = payload.get("knowledgePoints") or payload.get("kps") or []
+    culture_dimensions = payload.get("cultureDimensions") or payload.get("culture") or []
+    relations = payload.get("relations") or payload.get("rels") or []
+    if not isinstance(stages, list) or not isinstance(topics, list) or not isinstance(knowledge_points, list):
+        raise ValueError("JSON 必须包含数组字段 stages/topics/knowledgePoints")
+
+    mode = (mode or "merge").lower()
+    if mode not in {"merge", "replace"}:
+        raise ValueError("mode 必须是 merge 或 replace")
+
+    driver = _get_driver()
+    counters = {"stages": 0, "topics": 0, "knowledgePoints": 0, "cultureDimensions": 0, "relations": 0}
+
+    with driver.session() as session:
+        if mode == "replace":
+            session.run(
+                """
+                MATCH (n)
+                WHERE any(label IN labels(n) WHERE label IN ['Stage', 'Topic', 'KnowledgeCategory', 'KnowledgePoint', 'CultureDimension'])
+                DETACH DELETE n
+                """
+            )
+
+        stage_ref: Dict[str, Dict[str, object]] = {}
+        for index, stage in enumerate(stages):
+            if not isinstance(stage, dict):
+                continue
+            name = (stage.get("name") or stage.get("zh") or "").strip()
+            if not name:
+                continue
+            stage_id = stage.get("id") or _stable_graph_id("stage", name)
+            order = stage.get("order") or stage.get("orderIndex") or index + 1
+            session.run(
+                """
+                MERGE (s:Stage {id: $id})
+                ON CREATE SET s.createdAt = datetime(), s.createdBy = $createdBy
+                SET s.name = $name,
+                    s.englishName = $englishName,
+                    s.description = $description,
+                    s.orderIndex = $order,
+                    s.updatedAt = datetime(),
+                    s.updatedBy = $createdBy
+                """,
+                {
+                    "id": stage_id,
+                    "name": name,
+                    "englishName": stage.get("en") or stage.get("englishName") or "",
+                    "description": stage.get("description") or stage.get("summary") or "",
+                    "order": int(order) if str(order).isdigit() else index + 1,
+                    "createdBy": created_by,
+                },
+            )
+            stage_ref[str(stage.get("id") or stage_id)] = {"id": stage_id, "name": name}
+            stage_ref[name] = {"id": stage_id, "name": name}
+            counters["stages"] += 1
+
+        topic_ref: Dict[str, Dict[str, object]] = {}
+        for index, topic in enumerate(topics):
+            if not isinstance(topic, dict):
+                continue
+            name = (topic.get("name") or "").strip()
+            if not name:
+                continue
+            stage_key = topic.get("stage") or topic.get("stageId") or topic.get("stageName")
+            stage = stage_ref.get(str(stage_key)) or stage_ref.get(str(topic.get("stageName") or ""))
+            if not stage:
+                continue
+            topic_id = topic.get("id") or _stable_graph_id("topic", f"{stage['name']}:{name}")
+            layer = topic.get("layer") or "concept"
+            session.run(
+                """
+                MATCH (s:Stage {id: $stageId})
+                MERGE (t:Topic {id: $id})
+                ON CREATE SET t.createdAt = datetime(), t.createdBy = $createdBy
+                SET t.name = $name,
+                    t.layer = $layer,
+                    t.orderIndex = $order,
+                    t.updatedAt = datetime(),
+                    t.updatedBy = $createdBy
+                MERGE (s)-[:CONTAIN_TOPIC]->(t)
+                """,
+                {
+                    "stageId": stage["id"],
+                    "id": topic_id,
+                    "name": name,
+                    "layer": layer,
+                    "order": topic.get("order") or topic.get("orderIndex") or index + 1,
+                    "createdBy": created_by,
+                },
+            )
+            topic_ref[str(topic.get("id") or topic_id)] = {"id": topic_id, "name": name, "stage": stage, "layer": layer}
+            topic_ref[f"{stage['id']}:{name}"] = {"id": topic_id, "name": name, "stage": stage, "layer": layer}
+            counters["topics"] += 1
+
+        kp_ref: Dict[str, Dict[str, object]] = {}
+        for kp in knowledge_points:
+            if not isinstance(kp, dict):
+                continue
+            name = (kp.get("name") or "").strip()
+            if not name:
+                continue
+            topic_key = kp.get("topic") or kp.get("topicId")
+            stage_key = kp.get("stage") or kp.get("stageId") or kp.get("stageName")
+            topic = topic_ref.get(str(topic_key))
+            if not topic and kp.get("topicName"):
+                stage = stage_ref.get(str(stage_key)) or stage_ref.get(str(kp.get("stageName") or ""))
+                if stage:
+                    topic = topic_ref.get(f"{stage['id']}:{kp.get('topicName')}")
+            if not topic:
+                continue
+            kp_id = kp.get("id") or _stable_graph_id("kp", name)
+            kp_type = (kp.get("kpType") or kp.get("type") or "").strip().lower()
+            if kp_type in {"terminology", "term", "术语"}:
+                node_type = "Terminology"
+                category = "术语"
+            elif kp_type in {"skill", "技能"}:
+                node_type = "Skill"
+                category = "技能"
+            else:
+                node_type = "KnowledgePoint"
+                category = "知识"
+            session.run(
+                """
+                MATCH (t:Topic {id: $topicId})
+                MERGE (c:KnowledgeCategory {name: $category, topic: $topicName, stage: $stageName})
+                MERGE (t)-[:HAS_CATEGORY]->(c)
+                MERGE (k:KnowledgePoint {name: $name})
+                ON CREATE SET k.createdAt = datetime(), k.createdBy = $createdBy
+                SET k.id = $id,
+                    k.description = $description,
+                    k.summary = $summary,
+                    k.type = $kpType,
+                    k.nodeType = $nodeType,
+                    k.category = $category,
+                    k.difficulty = $difficulty,
+                    k.importance = $importance,
+                    k.bloomLevel = $bloom,
+                    k.keywords = $keywords,
+                    k.cultureTags = $cultureTags,
+                    k.updatedAt = datetime(),
+                    k.updatedBy = $createdBy
+                MERGE (c)-[:CONTAINS]->(k)
+                MERGE (t)-[:INCLUDE_POINT]->(k)
+                """,
+                {
+                    "topicId": topic["id"],
+                    "topicName": topic["name"],
+                    "stageName": topic["stage"]["name"],
+                    "category": category,
+                    "name": name,
+                    "id": kp_id,
+                    "description": kp.get("description") or "",
+                    "summary": kp.get("summary") or "",
+                    "kpType": kp_type or "knowledge",
+                    "nodeType": node_type,
+                    "difficulty": kp.get("difficulty"),
+                    "importance": kp.get("importance"),
+                    "bloom": kp.get("bloom") or kp.get("bloomLevel"),
+                    "keywords": kp.get("keywords") if isinstance(kp.get("keywords"), list) else [],
+                    "cultureTags": kp.get("cultureTags") if isinstance(kp.get("cultureTags"), list) else [],
+                    "createdBy": created_by,
+                },
+            )
+            if node_type == "Terminology":
+                session.run("MATCH (k:KnowledgePoint {name: $name}) SET k:Terminology", {"name": name})
+            elif node_type == "Skill":
+                session.run("MATCH (k:KnowledgePoint {name: $name}) SET k:Skill", {"name": name})
+            kp_ref[str(kp.get("id") or kp_id)] = {"id": kp_id, "name": name}
+            kp_ref[name] = {"id": kp_id, "name": name}
+            counters["knowledgePoints"] += 1
+
+        culture_ref: Dict[str, Dict[str, object]] = {}
+        for culture in culture_dimensions:
+            if not isinstance(culture, dict):
+                continue
+            name = (culture.get("name") or "").strip()
+            if not name:
+                continue
+            culture_id = culture.get("id") or _stable_graph_id("culture", name)
+            session.run(
+                """
+                MERGE (c:CultureDimension {id: $id})
+                ON CREATE SET c.createdAt = datetime(), c.createdBy = $createdBy
+                SET c.name = $name,
+                    c.theory = $theory,
+                    c.summary = $summary,
+                    c.teachingTip = $teachingTip,
+                    c.updatedAt = datetime(),
+                    c.updatedBy = $createdBy
+                """,
+                {
+                    "id": culture_id,
+                    "name": name,
+                    "theory": culture.get("theory") or "",
+                    "summary": culture.get("summary") or "",
+                    "teachingTip": culture.get("teachingTip") or culture.get("teaching_tip") or "",
+                    "createdBy": created_by,
+                },
+            )
+            culture_ref[str(culture.get("id") or culture_id)] = {"id": culture_id, "name": name}
+            culture_ref[name] = {"id": culture_id, "name": name}
+            counters["cultureDimensions"] += 1
+
+        for relation in relations:
+            if not isinstance(relation, dict):
+                continue
+            rel_type = _normalize_graph_json_rel_type(relation.get("type") or relation.get("r") or relation.get("relationType"))
+            source = kp_ref.get(str(relation.get("source") or relation.get("s"))) or kp_ref.get(str(relation.get("sourceName") or ""))
+            target_key = relation.get("target") or relation.get("t")
+            target = kp_ref.get(str(target_key)) or kp_ref.get(str(relation.get("targetName") or ""))
+            target_is_culture = False
+            if not target:
+                target = culture_ref.get(str(target_key)) or culture_ref.get(str(relation.get("targetName") or ""))
+                target_is_culture = bool(target)
+            if not source or not target:
+                continue
+            if rel_type in {"HAS_CULTURAL_SENSITIVITY", "INVOLVES_CULTURE"} or target_is_culture:
+                session.run(
+                    """
+                    MATCH (a:KnowledgePoint {name: $sourceName})
+                    MATCH (b:CultureDimension {id: $targetId})
+                    MERGE (a)-[r:HAS_CULTURAL_SENSITIVITY]->(b)
+                    SET r.relationType = 'HAS_CULTURAL_SENSITIVITY',
+                        r.updatedAt = datetime(),
+                        r.updatedBy = $createdBy
+                    """,
+                    {"sourceName": source["name"], "targetId": target["id"], "createdBy": created_by},
+                )
+            else:
+                session.run(
+                    f"""
+                    MATCH (a:KnowledgePoint {{name: $sourceName}})
+                    MATCH (b:KnowledgePoint {{name: $targetName}})
+                    MERGE (a)-[r:{rel_type}]->(b)
+                    SET r.relationType = $relType,
+                        r.updatedAt = datetime(),
+                        r.updatedBy = $createdBy
+                    """,
+                    {"sourceName": source["name"], "targetName": target["name"], "relType": rel_type, "createdBy": created_by},
+                )
+            counters["relations"] += 1
+
+    return {"success": True, "mode": mode, "statistics": counters}
 
 def delete_knowledge_point(name: str) -> None:
     """删除知识点及其所有关系。"""

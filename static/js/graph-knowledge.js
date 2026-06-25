@@ -1146,6 +1146,72 @@ async function handleExportExcel() {
   }
 }
 
+async function handleExportGraphJson() {
+  try {
+    showStatus('admin-graph-import-status', '正在导出 JSON...', 'info');
+    const response = await fetchWithAuth('/api/graph/export/json');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `导出失败: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `foreign_trade_knowledge_graph_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    showStatus('admin-graph-import-status', 'JSON 导出成功！', 'success');
+    setTimeout(() => showStatus('admin-graph-import-status', '', ''), 2000);
+  } catch (error) {
+    showStatus('admin-graph-import-status', `JSON 导出失败: ${error.message}`, 'error');
+  }
+}
+
+function handleImportGraphJson() {
+  const fileInput = document.getElementById('admin-graph-import-json-file');
+  if (!fileInput) return;
+  fileInput.click();
+}
+
+async function handleGraphJsonSelected(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    showStatus('admin-graph-import-status', `正在导入 JSON：${file.name}...`, 'info');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', 'merge');
+
+    const response = await fetchWithAuth('/api/graph/import/json', {
+      method: 'POST',
+      body: formData,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success === false) {
+      throw new Error(result.error || `导入失败: ${response.status}`);
+    }
+
+    const stats = result.statistics || {};
+    showStatus(
+      'admin-graph-import-status',
+      `JSON导入成功：阶段 ${stats.stages || 0}，主题 ${stats.topics || 0}，知识点 ${stats.knowledgePoints || 0}，文化维度 ${stats.cultureDimensions || 0}，关系 ${stats.relations || 0}`,
+      'success'
+    );
+
+    await loadKnowledgePoints();
+    if (typeof refreshAdminGraph === 'function') {
+      refreshAdminGraph();
+    }
+    event.target.value = '';
+  } catch (error) {
+    showStatus('admin-graph-import-status', `JSON导入失败: ${error.message}`, 'error');
+  }
+}
+
 // ========== 智能批量导入功能（新）==========
 
 // 下载批量导入模板
@@ -1691,6 +1757,21 @@ function initGraphKnowledgeManagement() {
   const exportBtn = document.getElementById('admin-graph-export-excel');
   if (exportBtn) {
     exportBtn.addEventListener('click', handleExportExcel);
+  }
+
+  const exportJsonBtn = document.getElementById('admin-graph-export-json');
+  if (exportJsonBtn) {
+    exportJsonBtn.addEventListener('click', handleExportGraphJson);
+  }
+
+  const importJsonBtn = document.getElementById('admin-graph-import-json');
+  if (importJsonBtn) {
+    importJsonBtn.addEventListener('click', handleImportGraphJson);
+  }
+
+  const importJsonFile = document.getElementById('admin-graph-import-json-file');
+  if (importJsonFile) {
+    importJsonFile.addEventListener('change', handleGraphJsonSelected);
   }
 
   const downloadTemplate = document.getElementById('admin-graph-download-template');

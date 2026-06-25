@@ -139,6 +139,8 @@ def lesson_subgraph():
     return jsonify(payload)
   except GraphUnavailableError:
     return jsonify({"error": "Graph unavailable"}), 503
+  except graph_service.GraphEntityNotFoundError:
+    return jsonify({"nodes": [], "edges": [], "highlights": []})
 
 
 @bp.get("/api/graph/lesson-network")
@@ -178,3 +180,5 @@ def lesson_network():
     return jsonify(payload)
   except GraphUnavailableError:
     return jsonify({"error": "Graph unavailable"}), 503
+  except graph_service.GraphEntityNotFoundError:
+    return jsonify({"nodes": [], "edges": [], "highlights": []})

@@ -911,6 +911,68 @@ def export_excel():
         return jsonify(response), 503
 
 
+@bp.get("/api/graph/export/json")
+@require_role("teacher")
+def export_graph_json():
+    """导出完整知识图谱为 JSON 文件。"""
+    try:
+        payload = graph_service.export_knowledge_graph_json()
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+        output = io.BytesIO(content.encode("utf-8"))
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype="application/json; charset=utf-8",
+            as_attachment=True,
+            download_name="foreign_trade_knowledge_graph.json",
+        )
+    except graph_service.GraphUnavailableError as exc:
+        status_payload = graph_service.graph_status()
+        response = {"error": str(exc) or "Knowledge graph service is unavailable"}
+        if status_payload.get("message"):
+            response["detail"] = status_payload["message"]
+        response["graphStatus"] = status_payload
+        return jsonify(response), 503
+    except Exception as exc:  # pragma: no cover
+        logging.exception("导出知识图谱 JSON 失败")
+        return jsonify({"error": f"导出失败: {exc}"}), 500
+
+
+@bp.post("/api/graph/import/json")
+@require_role("teacher")
+def import_graph_json():
+    """导入完整知识图谱 JSON 文件。"""
+    mode = (request.args.get("mode") or request.form.get("mode") or "merge").strip().lower()
+    if mode not in {"merge", "replace"}:
+        return jsonify({"error": "mode参数必须是merge或replace"}), 400
+
+    try:
+        if "file" in request.files:
+            file = request.files["file"]
+            if not file or not file.filename:
+                return jsonify({"error": "未选择 JSON 文件"}), 400
+            if not file.filename.lower().endswith(".json"):
+                return jsonify({"error": "文件必须是 .json"}), 400
+            payload = json.loads(file.read().decode("utf-8-sig"))
+        else:
+            payload = request.get_json(force=True, silent=False)
+    except json.JSONDecodeError as exc:
+        return jsonify({"error": f"JSON 格式错误: {exc}"}), 400
+
+    actor = current_user()
+    created_by = actor.username or actor.display_name or "teacher"
+
+    def _handler() -> Tuple[dict, int]:
+        result = graph_service.import_knowledge_graph_json(
+            payload,
+            mode=mode,
+            created_by=created_by,
+        )
+        return result, 200
+
+    return _graph_operation(_handler)
+
+
 @bp.get("/api/graph/export/csv")
 @require_role("teacher")
 def export_csv():

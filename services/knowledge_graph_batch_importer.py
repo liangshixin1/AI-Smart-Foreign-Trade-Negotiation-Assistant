@@ -155,6 +155,8 @@ class ImportResult:
 
 # 知识点类型（中英文映射）
 KNOWLEDGE_TYPES = {
+    "terminology": "术语",
+    "knowledge": "知识",
     "concept": "概念型",
     "skill": "技能型",
     "document": "文档型",
@@ -165,6 +167,13 @@ KNOWLEDGE_TYPES = {
 }
 
 TYPE_CN_TO_EN = {
+    "术语": "terminology",
+    "术语型": "terminology",
+    "term": "terminology",
+    "terminology": "terminology",
+    "知识": "knowledge",
+    "知识型": "knowledge",
+    "knowledge": "knowledge",
     "概念型": "concept",
     "概念": "concept",
     "技能型": "skill",
@@ -254,9 +263,25 @@ RELATION_COLUMNS = {
     "关联知识": "similar",
     "可对比学习": "contrast",
     "对比知识": "contrast",
+    "文化敏感": "culture",
+    "文化维度": "culture",
+    "跨文化敏感": "culture",
     "应用场景": "application",
     "应用于": "application",
 }
+
+CULTURE_SENSITIVITY_OPTIONS = [
+    "权力距离（PDI）",
+    "个人主义/集体主义（IDV）",
+    "男性气质/女性气质（MAS）",
+    "不确定性规避（UAI）",
+    "长期导向/短期导向（LTO）",
+    "放纵/约束（IVR）",
+    "高情境文化",
+    "低情境文化",
+    "以退为进策略（Door-in-the-face）",
+    "得寸进尺法（Foot-in-the-door）",
+]
 
 # 实例类型
 EXAMPLE_TYPES = {
@@ -330,6 +355,7 @@ POINTS_TEMPLATE_HEADERS = [
     ("必须先学", "prerequisite", False, "填写知识点名称，多个用分号分隔"),
     ("建议同时学", "similar", False, "填写知识点名称，多个用分号分隔"),
     ("可对比学习", "contrast", False, "填写知识点名称，多个用分号分隔"),
+    ("文化敏感", "culture", False, "从下拉选择文化维度，多个用分号分隔"),
 ]
 
 # Sheet 3: 案例库表模板
@@ -1270,8 +1296,7 @@ class KnowledgeGraphBatchImporter:
             value = row[col_idx]
             if value and isinstance(value, str) and value.strip():
                 relation_type = RELATION_COLUMNS[header]
-                # 多个知识点用分号分隔
-                related_names = [n.strip() for n in value.split(";") if n.strip()]
+                related_names = _normalize_multi_value(value)
                 if related_names:
                     relations[relation_type] = related_names
 
@@ -1478,6 +1503,8 @@ class KnowledgeGraphBatchImporter:
             # 验证关系引用
             if "_relations" in point:
                 for relation_type, related_names in point["_relations"].items():
+                    if relation_type == "culture":
+                        continue
                     for related_name in related_names:
                         if related_name not in self.known_point_names:
                             # 查找相似名称
@@ -2364,28 +2391,28 @@ class KnowledgeGraphBatchImporter:
                 continue
 
             for relation_type, target_names in point["_relations"].items():
-                    for target_name in target_names:
-                        if target_name not in point_name_map:
-                            relations_stats.failed += 1
-                            relations_stats.total += 1
-                            continue
+                for target_name in target_names:
+                    if relation_type != "culture" and target_name not in point_name_map:
+                        relations_stats.failed += 1
+                        relations_stats.total += 1
+                        continue
 
-                        try:
-                            self._create_relation(source_name, target_name, relation_type, created_by)
-                            relations_stats.created += 1
-                            relations_stats.total += 1
-                        except Exception as e:
-                            LOGGER.error(f"创建关系失败: {source_name} -> {target_name}: {e}")
-                            relations_stats.failed += 1
-                            relations_stats.total += 1
-                            errors.append(ValidationError(
-                                severity="ERROR",
-                                table="relations",
-                                row=point.get("_row", 0),
-                                field=relation_type,
-                                value=target_name,
-                                message=str(e),
-                            ))
+                    try:
+                        self._create_relation(source_name, target_name, relation_type, created_by)
+                        relations_stats.created += 1
+                        relations_stats.total += 1
+                    except Exception as e:
+                        LOGGER.error(f"创建关系失败: {source_name} -> {target_name}: {e}")
+                        relations_stats.failed += 1
+                        relations_stats.total += 1
+                        errors.append(ValidationError(
+                            severity="ERROR",
+                            table="relations",
+                            row=point.get("_row", 0),
+                            field=relation_type,
+                            value=target_name,
+                            message=str(e),
+                        ))
 
         # 第七步：创建案例节点
         if examples_data:
@@ -2505,8 +2532,10 @@ class KnowledgeGraphBatchImporter:
         text = str(raw_type).strip().lower()
         if text in {"skill", "技能", "技能型", "业务流程", "流程"}:
             return "Skill"
-        if text in {"terminology", "term", "术语", "概念", "concept"}:
+        if text in {"terminology", "term", "术语", "术语型", "概念", "concept"}:
             return "Terminology"
+        if text in {"knowledge", "知识", "知识型"}:
+            return "KnowledgePoint"
         return "KnowledgePoint"
 
     def _apply_node_type_label(self, name: str, node_type: str) -> None:
@@ -2540,12 +2569,89 @@ class KnowledgeGraphBatchImporter:
         self, source_name: str, target_name: str, relation_type: str, created_by: str
     ):
         """创建知识点关系"""
-        # 调用knowledge_service创建关系
         if relation_type == "prerequisite":
             knowledge_service.add_knowledge_prerequisite(source_name, target_name)
+        elif relation_type == "similar":
+            self._create_direct_relation(source_name, target_name, "SUGGESTS_CO_LEARNING", created_by)
+        elif relation_type == "contrast":
+            knowledge_service.add_knowledge_relation(
+                source_name, target_name, relation_type="CONTRASTS_WITH"
+            )
+        elif relation_type == "application":
+            knowledge_service.add_knowledge_relation(
+                source_name, target_name, relation_type="APPLIES_TO_SCENARIO"
+            )
+        elif relation_type == "culture":
+            self._create_culture_sensitivity_relation(source_name, target_name, created_by)
         else:
             knowledge_service.add_knowledge_relation(
                 source_name, target_name, relation_type=relation_type
+            )
+
+    def _create_direct_relation(
+        self, source_name: str, target_name: str, rel_type: str, created_by: str
+    ) -> None:
+        """创建白名单外或批量导入专用的知识点关系。"""
+        from services import graph_service
+
+        driver = graph_service._get_driver()
+        with driver.session() as session:
+            session.run(
+                f"""
+                MATCH (a:KnowledgePoint {{name: $source}})
+                MATCH (b:KnowledgePoint {{name: $target}})
+                MERGE (a)-[r:{rel_type}]->(b)
+                ON CREATE SET r.createdAt = datetime(),
+                              r.createdBy = $createdBy
+                SET r.relationType = $relType,
+                    r.updatedAt = datetime(),
+                    r.updatedBy = $createdBy
+                """,
+                {
+                    "source": source_name,
+                    "target": target_name,
+                    "relType": rel_type,
+                    "createdBy": created_by,
+                },
+            )
+
+    def _create_culture_sensitivity_relation(
+        self, source_name: str, culture_name: str, created_by: str
+    ) -> None:
+        """创建知识点到文化维度的敏感性关系。"""
+        from services import graph_service
+
+        clean_culture_name = str(culture_name or "").strip()
+        if not clean_culture_name:
+            return
+        culture_id = f"culture-{hashlib.md5(clean_culture_name.encode('utf-8')).hexdigest()[:10]}"
+        driver = graph_service._get_driver()
+        with driver.session() as session:
+            session.run(
+                """
+                MATCH (k:KnowledgePoint {name: $source})
+                MERGE (c:CultureDimension {name: $cultureName})
+                ON CREATE SET c.id = $cultureId,
+                              c.theory = 'Teacher Import',
+                              c.summary = $cultureName,
+                              c.createdAt = datetime(),
+                              c.createdBy = $createdBy
+                SET c.id = coalesce(c.id, $cultureId),
+                    c.updatedAt = datetime(),
+                    c.updatedBy = $createdBy
+                MERGE (k)-[r:HAS_CULTURAL_SENSITIVITY]->(c)
+                ON CREATE SET r.createdAt = datetime(),
+                              r.createdBy = $createdBy
+                SET r.relationType = 'HAS_CULTURAL_SENSITIVITY',
+                    r.updatedAt = datetime(),
+                    r.updatedBy = $createdBy
+                """,
+                {
+                    "source": source_name,
+                    "cultureName": clean_culture_name,
+                    "cultureId": culture_id,
+                    "createdBy": created_by,
+                },
             )
 
     def _create_example(self, example: Dict, created_by: str):
@@ -2693,7 +2799,7 @@ def generate_smart_templates(
     )
 
     # 设置列宽
-    column_widths = [15, 20, 15, 20, 12, 12, 12, 12, 40, 50, 25, 25, 25, 25]
+    column_widths = [15, 20, 15, 20, 12, 12, 12, 12, 40, 50, 25, 25, 25, 25, 25]
     for idx, width in enumerate(column_widths, start=1):
         ws_points.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
 
@@ -2838,7 +2944,7 @@ def generate_smart_templates(
         ("", False, 10),
         ("✨ 主要特点", True, 13),
         ("1. 教师版主要填写「知识点主表」，「谈判流程」已预填常用阶段", False, 11),
-        ("2. 关系用自然语言表达（必须先学、建议同时学、可对比学习）", False, 11),
+        ("2. 关系用自然语言表达（必须先学、建议同时学、可对比学习、文化敏感）", False, 11),
         ("3. 下拉菜单辅助填写，避免输入错误", False, 11),
         ("4. 智能错误提示，自动推荐相似名称", False, 11),
         ("", False, 10),
@@ -2857,6 +2963,7 @@ def generate_smart_templates(
         (" 10. 必须先学：填写知识点名称，多个用分号分隔（例如：询盘基本流程;价格术语）", False, 11),
         (" 11. 建议同时学：填写相关知识点名称", False, 11),
         (" 12. 可对比学习：填写可以对比的知识点名称", False, 11),
+        (" 13. 文化敏感：从下拉选择十个固定项；多个值用分号分隔，例如「权力距离（PDI）;高情境文化」", False, 11),
         ("", False, 10),
         ("⚠️ 重要提示：", True, 12),
         ("  • 「必须先学」等关系列，请直接复制粘贴知识点名称，不要手打（避免错别字）", False, 11),
@@ -3049,8 +3156,25 @@ def _add_data_validations(ws, existing_points: Optional[List[str]] = None, exist
         relation_validation.prompt = "从列表中选择知识点名称，多个用分号分隔"
         relation_validation.promptTitle = "提示"
         ws.add_data_validation(relation_validation)
-        # 应用到关系列
+        # 应用到知识点关系列：必须先学、建议同时学、可对比学习
         relation_validation.add("L3:N1000")
+
+    ws_culture = ws.parent.create_sheet("_文化维度列表")
+    for idx, culture_name in enumerate(CULTURE_SENSITIVITY_OPTIONS, start=1):
+        ws_culture.cell(row=idx, column=1, value=culture_name)
+    ws_culture.sheet_state = "hidden"
+
+    culture_validation = DataValidation(
+        type="list",
+        formula1=f"'_文化维度列表'!$A$1:$A${len(CULTURE_SENSITIVITY_OPTIONS)}",
+        allow_blank=True
+    )
+    culture_validation.prompt = "从十个文化/策略维度中选择；多个值可用分号分隔"
+    culture_validation.promptTitle = "文化敏感"
+    culture_validation.error = "请从文化敏感下拉列表中选择"
+    culture_validation.errorTitle = "输入错误"
+    ws.add_data_validation(culture_validation)
+    culture_validation.add("O3:O1000")
 
 
 def _add_sample_data(ws):
@@ -3070,6 +3194,7 @@ def _add_sample_data(ws):
         "",  # 必须先学
         "",  # 建议同时学
         "",  # 可对比学习
+        "",  # 文化敏感
     ]
 
     for col_idx, value in enumerate(sample_data, start=1):

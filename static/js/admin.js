@@ -11,6 +11,14 @@ let adminGraphRenderer = "ring";
 let adminGraphMapExpanded = true;
 let adminGraphFocusedPointId = null;
 let adminRingGraphZoomTransform = null;
+let adminKgAcceptanceView = "overview";
+let adminKgSunburstFocusId = null;
+let adminKgStarFocusId = null;
+let adminKgWorkFocusId = null;
+let adminKgFullscreenListenerReady = false;
+const adminKgStarVisibleRelTypes = new Set(["anchor", "req", "scn", "con", "cul"]);
+const adminKgWorkExpandedStages = new Set();
+const adminKgWorkExpandedTopics = new Set();
 const expandedStages = new Set();
 const expandedTopics = new Set();
 const adminRingExpandedStages = new Set();
@@ -2640,7 +2648,7 @@ function buildCourseMapModel(nodesRaw, edgesRaw) {
 
   const relationsByPoint = new Map();
   const relationEdges = [];
-  const semanticTypes = new Set(["REQUIRES", "RELATED_TO", "RELATES_TO", "CONTRASTS_WITH", "APPLIES_TO_SCENARIO", "SUGGESTS_STRATEGY", "HAS_EXCEPTION", "COMBINES_WITH", "CONFLICTS_WITH", "CULTURE_SENSITIVE_TO"]);
+  const semanticTypes = new Set(["REQUIRES", "SUGGESTS_CO_LEARNING", "RELATED_TO", "RELATES_TO", "CONTRASTS_WITH", "APPLIES_TO_SCENARIO", "SUGGESTS_STRATEGY", "HAS_EXCEPTION", "COMBINES_WITH", "CONFLICTS_WITH", "CULTURE_SENSITIVE_TO", "HAS_CULTURAL_SENSITIVITY", "INVOLVES_CULTURE"]);
   (edgesRaw || []).forEach((edge) => {
     if (!semanticTypes.has(edge.type)) return;
     const source = getGraphEdgeSource(edge);
@@ -2702,6 +2710,7 @@ function getCourseMapPointTone(type) {
 function getCourseMapRelationStyle(type) {
   const styles = {
     REQUIRES: { label: "前置依赖", color: "#d85b45", dash: "" },
+    SUGGESTS_CO_LEARNING: { label: "建议同时学", color: "#2da77a", dash: "7 5" },
     RELATED_TO: { label: "语义关联", color: "#2f8f83", dash: "6 5" },
     RELATES_TO: { label: "语义关联", color: "#2f8f83", dash: "6 5" },
     CONTRASTS_WITH: { label: "对比辨析", color: "#8561b7", dash: "4 4" },
@@ -2711,6 +2720,8 @@ function getCourseMapRelationStyle(type) {
     COMBINES_WITH: { label: "组合使用", color: "#348b6f", dash: "" },
     CONFLICTS_WITH: { label: "冲突关系", color: "#b83f35", dash: "" },
     CULTURE_SENSITIVE_TO: { label: "文化敏感", color: "#b98a13", dash: "7 4" },
+    HAS_CULTURAL_SENSITIVITY: { label: "文化敏感", color: "#b98a13", dash: "7 4" },
+    INVOLVES_CULTURE: { label: "文化敏感", color: "#b98a13", dash: "7 4" },
   };
   return styles[type] || { label: type || "关联", color: "#64748b", dash: "5 5" };
 }
@@ -2727,140 +2738,6 @@ function getCourseMapRelationLegend(relationEdges) {
     .map((type) => ({ type, ...getCourseMapRelationStyle(type) }));
 }
 
-const ADMIN_RING_GRAPH_DATA = {
-  stages: [
-    {
-      id: "inquiry",
-      name: "询盘",
-      en: "Inquiry",
-      kps: [
-        { id: "kp-inquiry-definition", name: "询盘的定义", layer: "concept", bloom: "理解", difficulty: 2, term: false },
-        { id: "kp-inquiry-types", name: "询盘类型", layer: "concept", bloom: "理解", difficulty: 2, term: true },
-        { id: "kp-inquiry-flow", name: "询盘流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-inquiry-to-offer", name: "询盘→报盘转换", layer: "strategy", bloom: "分析", difficulty: 3, term: false },
-      ],
-    },
-    {
-      id: "offer",
-      name: "报盘",
-      en: "Offer",
-      kps: [
-        { id: "kp-offer-definition", name: "报盘的定义", layer: "concept", bloom: "理解", difficulty: 2, term: false },
-        { id: "kp-offer-validity", name: "报盘有效期", layer: "process", bloom: "应用", difficulty: 3, term: true },
-        { id: "kp-cif", name: "CIF 条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-fob", name: "FOB 条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-offer-anchor", name: "报价锚定策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "counter",
-      name: "还盘",
-      en: "Counter-offer",
-      kps: [
-        { id: "kp-counter-legal", name: "还盘的法律性质", layer: "concept", bloom: "理解", difficulty: 3, term: false },
-        { id: "kp-counter-flow", name: "还盘流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-counter-rights", name: "还盘后权利义务转移", layer: "process", bloom: "分析", difficulty: 4, term: false },
-        { id: "kp-retreat-advance", name: "以退为进策略", layer: "strategy", bloom: "创造", difficulty: 4, term: false },
-        { id: "kp-face", name: "面子与关系", layer: "culture", bloom: "评价", difficulty: 3, term: false },
-      ],
-    },
-    {
-      id: "acceptance",
-      name: "接受与订货",
-      en: "Acceptance",
-      kps: [
-        { id: "kp-acceptance-elements", name: "接受构成要件", layer: "concept", bloom: "理解", difficulty: 3, term: false },
-        { id: "kp-order-confirmation", name: "订单确认流程", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-contract-split", name: "合同条款分歧处理", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "packing",
-      name: "包装与装运",
-      en: "Packing & Ship.",
-      kps: [
-        { id: "kp-packing-mark", name: "运输唛头", layer: "concept", bloom: "理解", difficulty: 2, term: true },
-        { id: "kp-shipment-notice", name: "装运通知", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-delay-plan", name: "延迟装运应对", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "payment",
-      name: "付款与交货",
-      en: "Payment",
-      kps: [
-        { id: "kp-lc", name: "信用证 L/C", layer: "concept", bloom: "理解", difficulty: 4, term: true },
-        { id: "kp-tt", name: "电汇 T/T", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-payment-flow", name: "付款流程逻辑", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-payment-trap", name: "付款方式僵局", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
-        { id: "kp-retreat-payment", name: "以退为进·付款", layer: "strategy", bloom: "创造", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "inspection",
-      name: "商检",
-      en: "Inspection",
-      kps: [
-        { id: "kp-inspection-clause", name: "商检条款", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-inspection-evidence", name: "商检证据收集", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-reinspection", name: "复检谈判策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "insurance",
-      name: "保险与仲裁",
-      en: "Ins. & Arbitr.",
-      kps: [
-        { id: "kp-insurance-basic", name: "保险险别", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-arbitration-clause", name: "仲裁条款", layer: "concept", bloom: "理解", difficulty: 4, term: true },
-        { id: "kp-claim-evidence", name: "保险索赔证据链", layer: "process", bloom: "应用", difficulty: 4, term: false },
-        { id: "kp-arbitration-seat", name: "仲裁地选择策略", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "complaint",
-      name: "投诉",
-      en: "Complaint",
-      kps: [
-        { id: "kp-complaint-empathy", name: "投诉共情回应", layer: "concept", bloom: "理解", difficulty: 2, term: false },
-        { id: "kp-complaint-five", name: "投诉处理五步法", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-complaint-deescalate", name: "降级争议策略", layer: "strategy", bloom: "分析", difficulty: 4, term: false },
-      ],
-    },
-    {
-      id: "claim",
-      name: "索赔与理赔",
-      en: "Claim & Settle.",
-      kps: [
-        { id: "kp-claim-timeliness", name: "索赔时效", layer: "concept", bloom: "理解", difficulty: 3, term: true },
-        { id: "kp-claim-file", name: "索赔文件准备", layer: "process", bloom: "应用", difficulty: 3, term: false },
-        { id: "kp-settlement", name: "理赔金额争议谈判", layer: "strategy", bloom: "评价", difficulty: 4, term: false },
-      ],
-    },
-  ],
-  culture: [
-    { id: "culture-face", name: "面子与关系", source: "Hofstede / High-context culture" },
-    { id: "culture-risk", name: "风险规避", source: "Hofstede Uncertainty Avoidance" },
-  ],
-  relations: [
-    { source: "kp-inquiry-definition", target: "kp-inquiry-types", type: "RELATED_TO" },
-    { source: "kp-inquiry-to-offer", target: "kp-offer-definition", type: "APPLIES_TO_SCENARIO" },
-    { source: "kp-offer-definition", target: "kp-counter-legal", type: "REQUIRES" },
-    { source: "kp-cif", target: "kp-fob", type: "CONTRASTS_WITH" },
-    { source: "kp-counter-legal", target: "kp-retreat-advance", type: "SUGGESTS_STRATEGY" },
-    { source: "kp-retreat-advance", target: "culture-face", type: "CULTURE_SENSITIVE_TO" },
-    { source: "kp-face", target: "culture-face", type: "CULTURE_SENSITIVE_TO" },
-    { source: "kp-lc", target: "kp-tt", type: "CONTRASTS_WITH" },
-    { source: "kp-payment-flow", target: "kp-payment-trap", type: "HAS_EXCEPTION" },
-    { source: "kp-retreat-payment", target: "kp-retreat-advance", type: "RELATED_TO" },
-    { source: "kp-inspection-evidence", target: "kp-claim-evidence", type: "REQUIRES" },
-    { source: "kp-arbitration-clause", target: "kp-arbitration-seat", type: "SUGGESTS_STRATEGY" },
-    { source: "kp-complaint-deescalate", target: "kp-settlement", type: "APPLIES_TO_SCENARIO" },
-    { source: "kp-claim-timeliness", target: "kp-claim-file", type: "REQUIRES" },
-    { source: "kp-payment-trap", target: "culture-risk", type: "CULTURE_SENSITIVE_TO" },
-  ],
-};
-
 function ensureAdminRingGraphStyles() {
   if (document.getElementById("admin-ring-graph-style")) return;
   const style = document.createElement("style");
@@ -2871,6 +2748,104 @@ function ensureAdminRingGraphStyles() {
       overflow: hidden;
       border-color: #d8dee9;
       background: radial-gradient(circle at 50% 48%, #ffffff 0%, #f5f7fb 52%, #eef2f8 100%);
+    }
+    .ring-graph-shell {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: minmax(520px, 1fr) 380px;
+      gap: 18px;
+      padding: 72px 18px 18px;
+    }
+    .ring-graph-stage-area {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid rgba(203, 213, 225, 0.62);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.46);
+      overflow: hidden;
+    }
+    .ring-focus-panel {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid rgba(203, 213, 225, 0.86);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.09);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .ring-focus-panel__head {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 14px 14px 12px;
+    }
+    .ring-focus-panel__body {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+    .ring-focus-empty {
+      display: flex;
+      height: 100%;
+      min-height: 280px;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    .ring-topic-card {
+      width: 100%;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 10px 11px;
+      text-align: left;
+      color: #1e3a8a;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    }
+    .ring-topic-card:hover,
+    .ring-topic-card.is-active {
+      border-color: #60a5fa;
+      background: #eff6ff;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.1);
+    }
+    .ring-kp-row {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-left-width: 4px;
+      border-radius: 7px;
+      background: #ffffff;
+      padding: 8px 9px;
+      text-align: left;
+      color: #1f2937;
+      transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+    .ring-kp-row:hover,
+    .ring-kp-row.is-active {
+      background: #f8fafc;
+      border-color: #94a3b8;
+      box-shadow: 0 7px 16px rgba(15, 23, 42, 0.08);
+    }
+    .ring-no-data {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+      color: #64748b;
+    }
+    @media (max-width: 1180px) {
+      .ring-graph-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(460px, 1fr) 360px;
+      }
     }
     .ring-graph-tip {
       position: absolute;
@@ -3211,6 +3186,8 @@ function buildAdminRingGraphDataFromNeo4j() {
       id: makeRingStableId("kp", node.key || title),
       name: title,
       layer: inferRingLayerFromNode(node, detail),
+      nodeType: type || detail.nodeType || "KnowledgePoint",
+      kpType: inferKgKpType(type || detail.nodeType, { ...detail, term: type === "Terminology" || Boolean(detail.lex_role) }),
       bloom: detail.bloom_level || detail.bloomLevel || "未标注",
       difficulty: normalizeRingDifficulty(detail.difficulty),
       term: type === "Terminology" || Boolean(detail.lex_role),
@@ -3259,13 +3236,6 @@ function buildAdminRingGraphDataFromNeo4j() {
     (sum, stage) => sum + (stage.topics || []).reduce((topicSum, topic) => topicSum + (topic.kps || []).length, 0),
     0
   );
-  if (totalPoints === 0) {
-    return normalizeRingGraphTopics({
-      ...ADMIN_RING_GRAPH_DATA,
-      source: "demo",
-      sourceLabel: "示范数据：Neo4j 已连接，但当前快照没有可归位到环节的知识点",
-    });
-  }
 
   return normalizeRingGraphTopics({
     stages,
@@ -3277,13 +3247,7 @@ function buildAdminRingGraphDataFromNeo4j() {
 }
 
 function getAdminRingGraphData() {
-  return (
-    buildAdminRingGraphDataFromNeo4j() || normalizeRingGraphTopics({
-      ...ADMIN_RING_GRAPH_DATA,
-      source: "demo",
-      sourceLabel: "示范数据：Neo4j 暂无可展示节点",
-    })
-  );
+  return buildAdminRingGraphDataFromNeo4j();
 }
 
 function resetAdminRingGraphView() {
@@ -3326,129 +3290,1775 @@ function buildRingGraphLayout(data, width, height) {
     };
   });
   const stageById = new Map(stages.map((stage) => [stage.id, stage]));
-  const focusedRelations = adminGraphFocusedPointId ? getRingRelationsForPoint(data, adminGraphFocusedPointId) : [];
-  const forcedVisibleIds = new Set();
-  focusedRelations.forEach((edge) => {
-    forcedVisibleIds.add(edge.source);
-    forcedVisibleIds.add(edge.target);
-  });
+  return { cx, cy, radius, stages, stageById };
+}
 
+function getRingGraphStats(data) {
+  const stages = data?.stages || [];
+  const topics = stages.reduce((sum, stage) => sum + (stage.topics || []).length, 0);
+  const points = stages.reduce(
+    (sum, stage) => sum + (stage.topics || []).reduce((topicSum, topic) => topicSum + (topic.kps || []).length, 0),
+    0
+  );
+  const relations = Array.isArray(data?.relations) ? data.relations.length : 0;
+  return { stages: stages.length, topics, points, relations };
+}
+
+function getRingActiveStage(data) {
+  const stages = data?.stages || [];
+  return stages.find((stage) => adminRingExpandedStages.has(stage.id)) || null;
+}
+
+function getRingTopicLocation(data, topicId) {
+  for (const stage of data?.stages || []) {
+    const topic = (stage.topics || []).find((item) => item.id === topicId);
+    if (topic) return { stage, topic };
+  }
+  return null;
+}
+
+function getRingPointLocation(data, pointId) {
+  for (const stage of data?.stages || []) {
+    for (const topic of stage.topics || []) {
+      const point = (topic.kps || []).find((item) => item.id === pointId);
+      if (point) return { stage, topic, point };
+    }
+  }
+  return null;
+}
+
+function renderAdminRingNoData() {
+  adminGraphCanvas.innerHTML = `
+    <div class="ring-no-data">
+      <div>
+        <div class="text-base font-semibold text-slate-800">暂无知识图谱数据</div>
+        <div class="mt-2 text-sm">请先通过教师版模板导入数据，或检查 Neo4j 连接与数据结构。</div>
+      </div>
+    </div>
+  `;
+  if (adminGraphStatus) adminGraphStatus.textContent = "暂无 Neo4j 图谱数据";
+}
+
+const KG_ACCEPTANCE_REL_TYPES = {
+  req: { label: "前置依赖", color: "#df6b4f", dash: "", width: 2.4 },
+  scn: { label: "建议同时学", color: "#2da77a", dash: "7 5", width: 2.2 },
+  cul: { label: "文化敏感", color: "#c99422", dash: "2 6", width: 2.4 },
+  con: { label: "对比辨析", color: "#7a64c7", dash: "", width: 2.2 },
+  exc: { label: "规则-例外", color: "#e18a2b", dash: "6 4", width: 2.2 },
+  mig: { label: "★策略迁移", color: "#13a6a6", dash: "12 6", width: 3.2 },
+  anchor: { label: "层级归属", color: "#cbd5e1", dash: "", width: 1.8 },
+};
+
+const KG_ACCEPTANCE_LAYER_TYPES = {
+  concept: { label: "概念", color: "#3f7fca", soft: "#dceafe" },
+  process: { label: "流程", color: "#2fa77f", soft: "#dcf7ed" },
+  strategy: { label: "策略", color: "#df6640", soft: "#fee7dd" },
+  culture: { label: "文化", color: "#c99524", soft: "#f8edcf" },
+};
+
+const KG_KP_TYPE_STYLES = {
+  terminology: { label: "术语", color: "#2fa77f", soft: "#dcf7ed" },
+  knowledge: { label: "知识", color: "#3f7fca", soft: "#dceafe" },
+  skill: { label: "技能", color: "#df6640", soft: "#fee7dd" },
+};
+
+function ensureKgAcceptanceStyles() {
+  if (document.getElementById("kg-acceptance-style")) return;
+  const style = document.createElement("style");
+  style.id = "kg-acceptance-style";
+  style.textContent = `
+    #admin-graph-canvas.kg-acceptance-canvas {
+      position: relative;
+      height: clamp(920px, 86vh, 1180px);
+      min-height: 920px;
+      overflow: hidden;
+      border-color: #d8dee9;
+      background: #f3f6fb;
+    }
+    #admin-graph-canvas.kg-acceptance-canvas:fullscreen,
+    #admin-graph-canvas.kg-acceptance-canvas:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      min-height: 100vh;
+      border-radius: 0;
+      border: 0;
+      background: #f3f6fb;
+    }
+    .kg-acceptance-shell {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: 74px 44px minmax(0, 1fr);
+      color: #26354d;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef3f9 100%);
+    }
+    .kg-acceptance-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid #d6deea;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 14px 18px;
+    }
+    .kg-view-tabs {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .kg-view-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .kg-view-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      padding: 10px 14px;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 750;
+      transition: all 0.16s ease;
+    }
+    .kg-view-tab:hover {
+      background: #eef3f9;
+      color: #26354d;
+    }
+    .kg-view-tab.is-active {
+      background: #273956;
+      color: #ffffff;
+      box-shadow: 0 10px 24px rgba(39, 57, 86, 0.22);
+    }
+    .kg-view-tab__num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: rgba(148, 163, 184, 0.15);
+      font-size: 12px;
+    }
+    .kg-view-tab.is-active .kg-view-tab__num {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .kg-fullscreen-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 10px 13px;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 800;
+      transition: all 0.16s ease;
+    }
+    .kg-fullscreen-btn:hover {
+      border-color: #94a3b8;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    #admin-graph-canvas:fullscreen .kg-fullscreen-btn,
+    #admin-graph-canvas:-webkit-full-screen .kg-fullscreen-btn {
+      background: #273956;
+      border-color: #273956;
+      color: #ffffff;
+    }
+    .kg-acceptance-hint {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #d6deea;
+      background: rgba(255, 255, 255, 0.62);
+      padding: 0 18px;
+      color: #53627a;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .kg-acceptance-hint strong {
+      color: #c58a18;
+    }
+    .kg-panels {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .kg-panel {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+    .kg-panel.is-active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .kg-metric-wall {
+      position: absolute;
+      right: 24px;
+      bottom: 26px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(70px, 1fr));
+      gap: 14px;
+      border: 1px solid #d6deea;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 18px 22px;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+    }
+    .kg-metric-wall b {
+      display: block;
+      color: #26354d;
+      font-size: 30px;
+      line-height: 1;
+    }
+    .kg-metric-wall span {
+      display: block;
+      margin-top: 6px;
+      color: #8a98ad;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .kg-legend-card,
+    .kg-star-back {
+      position: absolute;
+      z-index: 4;
+      border: 1px solid #d6deea;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 12px 14px;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+      color: #64748b;
+      font-size: 12px;
+    }
+    .kg-legend-card {
+      left: 18px;
+      bottom: 18px;
+      min-width: 230px;
+    }
+    .kg-rel-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      padding: 4px 6px;
+      color: #64748b;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .kg-rel-toggle:hover {
+      background: #eef3f9;
+      color: #273956;
+    }
+    .kg-rel-toggle:not(.is-active) {
+      color: #a8b3c3;
+    }
+    .kg-rel-toggle:not(.is-active) .kg-rel-toggle__line {
+      opacity: 0.25;
+    }
+    .kg-rel-toggle__check {
+      width: 16px;
+      height: 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #ffffff;
+      color: #ffffff;
+      text-align: center;
+      line-height: 14px;
+      font-size: 11px;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .kg-rel-toggle.is-active .kg-rel-toggle__check {
+      border-color: #273956;
+      background: #273956;
+    }
+    .kg-star-back {
+      right: 18px;
+      top: 64px;
+    }
+    .kg-point-search {
+      position: absolute;
+      z-index: 5;
+      right: 18px;
+      top: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #d6deea;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 6px 8px 6px 12px;
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+    }
+    .kg-point-search input {
+      width: 220px;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #273956;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .kg-point-search input::placeholder {
+      color: #94a3b8;
+    }
+    .kg-point-search button {
+      border: 0;
+      border-radius: 999px;
+      background: #273956;
+      padding: 5px 10px;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .kg-point-search__msg {
+      position: absolute;
+      top: 38px;
+      right: 10px;
+      color: #c2410c;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .kg-star-back button {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 6px 10px;
+      color: #334155;
+      font-weight: 700;
+    }
+    .kg-work-layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      height: 100%;
+      min-height: 0;
+    }
+    .kg-work-tree {
+      min-height: 0;
+      overflow: auto;
+      border-right: 1px solid #d6deea;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 14px 10px 22px;
+    }
+    .kg-work-node {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      padding: 7px 8px;
+      text-align: left;
+      color: #273956;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .kg-work-node:hover,
+    .kg-work-node.is-active {
+      background: #e7edf7;
+    }
+    .kg-work-node__count {
+      color: #9aa7bb;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .kg-work-graph {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .kg-work-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .kg-tooltip {
+      position: absolute;
+      z-index: 10;
+      max-width: 280px;
+      pointer-events: none;
+      border: 1px solid rgba(148, 163, 184, 0.36);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.96);
+      padding: 10px 12px;
+      color: #26354d;
+      font-size: 12px;
+      line-height: 1.55;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.15);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function isAdminGraphFullscreen() {
+  return document.fullscreenElement === adminGraphCanvas || document.webkitFullscreenElement === adminGraphCanvas;
+}
+
+function ensureKgFullscreenListener() {
+  if (adminKgFullscreenListenerReady) return;
+  adminKgFullscreenListenerReady = true;
+  const rerender = () => {
+    if (!adminGraphCanvas || !adminGraphCanvas.classList.contains("kg-acceptance-canvas")) return;
+    requestAnimationFrame(() => renderAdminGraphNetwork());
+  };
+  document.addEventListener("fullscreenchange", rerender);
+  document.addEventListener("webkitfullscreenchange", rerender);
+}
+
+async function toggleKgGraphFullscreen() {
+  if (!adminGraphCanvas) return;
+  try {
+    if (isAdminGraphFullscreen()) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      return;
+    }
+    if (adminGraphCanvas.requestFullscreen) await adminGraphCanvas.requestFullscreen();
+    else if (adminGraphCanvas.webkitRequestFullscreen) adminGraphCanvas.webkitRequestFullscreen();
+  } catch (error) {
+    console.warn("[Graph] fullscreen toggle failed", error);
+  }
+}
+
+function kgRelStyle(type) {
+  return KG_ACCEPTANCE_REL_TYPES[type] || KG_ACCEPTANCE_REL_TYPES.req;
+}
+
+function kgLayerStyle(layer) {
+  return KG_ACCEPTANCE_LAYER_TYPES[layer] || KG_ACCEPTANCE_LAYER_TYPES.concept;
+}
+
+function kgKpTypeStyle(type) {
+  return KG_KP_TYPE_STYLES[type] || KG_KP_TYPE_STYLES.knowledge;
+}
+
+function inferKgKpType(rawType, point = {}) {
+  const text = `${rawType || ""} ${point.nodeType || ""} ${point.type || ""} ${point.term ? "term" : ""}`.toLowerCase();
+  if (text.includes("terminology") || text.includes("term") || text.includes("术语")) return "terminology";
+  if (text.includes("skill") || text.includes("技能")) return "skill";
+  return "knowledge";
+}
+
+function mapKgRelationType(type) {
+  const raw = String(type || "").toUpperCase();
+  if (["REQ", "REQUIRES", "PREREQUISITE", "DEPENDS_ON"].includes(raw)) return "req";
+  if (["SCN", "SUGGESTS_CO_LEARNING", "RELATED_TO", "RELATES_TO", "SIMILAR", "APPLIES_TO_SCENARIO", "SUGGESTS_STRATEGY", "RELATED_TO_SCENARIO"].includes(raw)) return "scn";
+  if (["CUL", "HAS_CULTURAL_SENSITIVITY", "CULTURE_SENSITIVE_TO", "INVOLVES_CULTURE", "CULTURAL_CONTEXT"].includes(raw)) return "cul";
+  if (["CON", "CONTRASTS_WITH", "CONFLICTS_WITH"].includes(raw)) return "con";
+  if (["EXC", "HAS_EXCEPTION", "EXCEPTION_TO"].includes(raw)) return "exc";
+  if (["MIG", "MIGRATES_TO", "STRATEGY_TRANSFER", "TRANSFER_TO", "COMBINES_WITH"].includes(raw)) return "mig";
+  return raw.includes("CULTURE") ? "cul" : raw.includes("CONTRAST") ? "con" : raw.includes("EXCEPTION") ? "exc" : raw.includes("MIG") || raw.includes("TRANSFER") ? "mig" : "req";
+}
+
+function buildKgAcceptanceData() {
+  const source = getAdminRingGraphData();
+  if (!source || !(source.stages || []).length) return null;
+  const stages = [];
   const topics = [];
-  const points = [];
-  stages.forEach((stage) => {
-    const stageTopics = stage.topics || [];
-    const topicRadius = radius * 1.2;
-    const topicStep = Math.min(0.46, Math.max(0.24, 124 / Math.max(topicRadius, 1)));
-    stageTopics.forEach((topic, topicIndex) => {
-      const topicPointIds = new Set((topic.kps || []).map((point) => point.id));
-      const hasFocusedPoint = [...topicPointIds].some((id) => forcedVisibleIds.has(id));
-      const shouldShowTopic = adminRingExpandedStages.has(stage.id) || adminRingExpandedTopics.has(topic.id) || hasFocusedPoint;
-      if (!shouldShowTopic) return;
-      const topicAngle = stage.angle + (topicIndex - (stageTopics.length - 1) / 2) * topicStep;
-      const topicLayout = {
-        ...topic,
-        stageId: stage.id,
-        stageName: stage.name,
-        angle: topicAngle,
-        x: Math.cos(topicAngle) * topicRadius,
-        y: Math.sin(topicAngle) * topicRadius,
+  const kps = [];
+  const culture = (source.culture || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    sourceKey: item.sourceKey,
+  }));
+  const nodeIds = new Set(culture.map((item) => item.id));
+  const kpById = new Map();
+
+  (source.stages || []).forEach((stage, stageIndex) => {
+    const stageRecord = {
+      id: stage.id,
+      zh: stage.name || stage.zh || `环节 ${stageIndex + 1}`,
+      en: stage.en || "",
+      order: Number(stage.order || stageIndex + 1),
+      sourceKey: stage.sourceKey,
+    };
+    stages.push(stageRecord);
+    (stage.topics || []).forEach((topic) => {
+      const topicKps = topic.kps || [];
+      const inferredLayer = topic.layer && KG_ACCEPTANCE_LAYER_TYPES[topic.layer]
+        ? topic.layer
+        : topicKps.find((point) => point.layer === "strategy") ? "strategy" : topicKps.find((point) => point.layer === "process") ? "process" : "concept";
+      topics.push({
+        id: topic.id,
+        name: topic.name || "未命名主题",
+        stage: stageRecord.id,
+        layer: inferredLayer,
+        sourceKey: topic.sourceKey,
+      });
+      topicKps.forEach((point) => {
+        const kp = {
+          id: point.id,
+          topic: topic.id,
+          stage: stageRecord.id,
+          layer: KG_ACCEPTANCE_LAYER_TYPES[point.layer] ? point.layer : inferredLayer,
+          name: point.name || "未命名知识点",
+          bloom: point.bloom || "未标注",
+          diff: Math.max(1, Math.min(3, Number(point.difficulty || point.diff || 1))),
+          term: Boolean(point.term),
+          star: Boolean(point.star),
+          nodeType: point.nodeType || point.type || (point.term ? "Terminology" : "KnowledgePoint"),
+          kpType: point.kpType || inferKgKpType(point.nodeType || point.type, point),
+          sourceKey: point.sourceKey,
+        };
+        kps.push(kp);
+        kpById.set(kp.id, kp);
+        nodeIds.add(kp.id);
+      });
+    });
+  });
+
+  const rels = [];
+  const seen = new Set();
+  (source.relations || []).forEach((edge) => {
+    const s = edge.source || edge.s;
+    const t = edge.target || edge.t;
+    if (!nodeIds.has(s) || !nodeIds.has(t) || s === t) return;
+    const r = mapKgRelationType(edge.type || edge.r);
+    const key = `${s}->${t}:${r}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rels.push({ s, t, r });
+    if (r === "mig") {
+      if (kpById.has(s)) kpById.get(s).star = true;
+      if (kpById.has(t)) kpById.get(t).star = true;
+    }
+  });
+
+  return {
+    stages: stages.sort((a, b) => a.order - b.order),
+    topics,
+    kps,
+    culture,
+    rels,
+    sourceLabel: source.sourceLabel || "Neo4j 实时数据",
+  };
+}
+
+function kgStats(data) {
+  return {
+    stages: data?.stages?.length || 0,
+    topics: data?.topics?.length || 0,
+    kps: data?.kps?.length || 0,
+    rels: data?.rels?.length || 0,
+    culture: data?.culture?.length || 0,
+  };
+}
+
+function kgFindNode(data, id) {
+  return (data.kps || []).find((item) => item.id === id) || (data.culture || []).find((item) => item.id === id) || null;
+}
+
+function kgNodeName(data, id) {
+  const node = kgFindNode(data, id);
+  return node?.name || id;
+}
+
+function kgRelationsForNode(data, id) {
+  return (data.rels || []).filter((edge) => edge.s === id || edge.t === id);
+}
+
+function kgRelationSummaryHtml(data, id) {
+  const relations = kgRelationsForNode(data, id);
+  if (!id || !relations.length) return "";
+  const counts = {};
+  relations.forEach((edge) => {
+    counts[edge.r] = (counts[edge.r] || 0) + 1;
+  });
+  return Object.entries(counts)
+    .map(([type, count]) => {
+      const style = kgRelStyle(type);
+      return `<span style="color:${style.color};font-weight:800">${escapeHtmlText(style.label)}×${count}</span>`;
+    })
+    .join("　");
+}
+
+function kgShowTooltip(container, html, event) {
+  let tooltip = container.querySelector("[data-kg-tooltip]");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.dataset.kgTooltip = "true";
+    tooltip.className = "kg-tooltip";
+    container.appendChild(tooltip);
+  }
+  tooltip.innerHTML = html;
+  const rect = container.getBoundingClientRect();
+  tooltip.style.left = `${Math.min(rect.width - 300, Math.max(12, event.clientX - rect.left + 14))}px`;
+  tooltip.style.top = `${Math.min(rect.height - 160, Math.max(12, event.clientY - rect.top + 14))}px`;
+}
+
+function kgHideTooltip(container) {
+  container.querySelector("[data-kg-tooltip]")?.remove();
+}
+
+function renderKgAcceptanceShell(data) {
+  ensureKgFullscreenListener();
+  const stats = kgStats(data);
+  const views = [
+    { id: "overview", num: "1", label: "总览闭环" },
+    { id: "sunburst", num: "2", label: "全景旭日" },
+    { id: "star", num: "3", label: "关系星图" },
+    { id: "work", num: "4", label: "下钻视图" },
+  ];
+  const hints = {
+    overview: `<strong>总览</strong> 十环节闭环骨架。点击任意环节，下钻进入该环节的工作视图。右下角为规模总量。`,
+    sunburst: `<strong>全景</strong> 全部 ${stats.kps} 个知识点在同心圆中一屏铺开、零重叠。内圈=环节，中圈=主题，外圈=知识点。点击下钻，点中心返回。`,
+    star: `<strong>关系网</strong> 10 个环节作为大号锚点，知识点围绕所属环节形成“星系”。只显示前置依赖、建议同时学、对比辨析、文化敏感四类关系。`,
+    work: `<strong>聚焦</strong> 左侧树承载全部节点；点击知识点，右侧只画该点的一跳关系网，并打开知识点详情。`,
+  };
+  adminGraphCanvas.innerHTML = `
+    <div class="kg-acceptance-shell">
+      <header class="kg-acceptance-topbar">
+        <div>
+          <div class="text-lg font-extrabold tracking-tight text-slate-900">外贸谈判知识图谱</div>
+          <div class="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">验收总览 · ${escapeHtmlText(data.sourceLabel || "Neo4j")}</div>
+        </div>
+        <div class="kg-view-actions">
+          <nav class="kg-view-tabs">
+            ${views.map((view) => `<button type="button" class="kg-view-tab ${adminKgAcceptanceView === view.id ? "is-active" : ""}" data-kg-view="${view.id}"><span class="kg-view-tab__num">${view.num}</span>${view.label}</button>`).join("")}
+          </nav>
+          <button type="button" class="kg-fullscreen-btn" data-kg-fullscreen>${isAdminGraphFullscreen() ? "退出全屏" : "全屏"}</button>
+        </div>
+      </header>
+      <div class="kg-acceptance-hint">${hints[adminKgAcceptanceView] || ""}</div>
+      <main class="kg-panels">
+        ${views.map((view) => `<section class="kg-panel ${adminKgAcceptanceView === view.id ? "is-active" : ""}" data-kg-panel="${view.id}"></section>`).join("")}
+      </main>
+    </div>
+  `;
+  adminGraphCanvas.querySelectorAll("[data-kg-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      adminKgAcceptanceView = button.dataset.kgView;
+      renderAdminGraphNetwork();
+    });
+  });
+  adminGraphCanvas.querySelector("[data-kg-fullscreen]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleKgGraphFullscreen();
+  });
+  return adminGraphCanvas.querySelector(`[data-kg-panel="${adminKgAcceptanceView}"]`);
+}
+
+function renderKgOverview(panel, data) {
+  const d3lib = window.d3;
+  const stats = kgStats(data);
+  const rect = panel.getBoundingClientRect();
+  const width = Math.max(900, rect.width || 1100);
+  const height = Math.max(620, rect.height || 700);
+  const radius = Math.min(width, height) * 0.32;
+  const cx = width / 2;
+  const cy = height / 2 - 4;
+  const pointCountByStage = new Map(data.stages.map((stage) => [stage.id, data.kps.filter((kp) => kp.stage === stage.id).length]));
+  panel.innerHTML = "";
+
+  const svg = d3lib.select(panel).append("svg").attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+  const defs = svg.append("defs");
+  defs.append("marker").attr("id", "kg-overview-arrow").attr("markerWidth", 12).attr("markerHeight", 12).attr("refX", 10).attr("refY", 4).attr("orient", "auto").append("path").attr("d", "M0,0 L0,8 L10,4 z").attr("fill", "#c4cedf");
+
+  const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+  data.stages.forEach((stage, index) => {
+    const start = getRingStageBaseAngle(index, data.stages.length) + 0.14;
+    const endRaw = getRingStageBaseAngle((index + 1) % data.stages.length, data.stages.length) - 0.14;
+    const end = endRaw <= start ? endRaw + Math.PI * 2 : endRaw;
+    g.append("path")
+      .attr("d", describeRingArc(radius, start, end))
+      .attr("fill", "none")
+      .attr("stroke", "#c4cedf")
+      .attr("stroke-width", 3)
+      .attr("marker-end", "url(#kg-overview-arrow)");
+  });
+
+  const stageNodes = data.stages.map((stage, index) => {
+    const angle = getRingStageBaseAngle(index, data.stages.length);
+    return {
+      ...stage,
+      index,
+      count: pointCountByStage.get(stage.id) || 0,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+    };
+  });
+  const nodes = g.selectAll(".kg-overview-stage").data(stageNodes).join("g")
+    .attr("class", "kg-overview-stage")
+    .attr("transform", (stage) => `translate(${stage.x},${stage.y})`)
+    .style("cursor", "pointer")
+    .on("click", (event, stage) => {
+      event.stopPropagation();
+      adminKgAcceptanceView = "work";
+      adminKgWorkExpandedStages.add(stage.id);
+      adminKgWorkFocusId = data.kps.find((kp) => kp.stage === stage.id)?.id || null;
+      renderAdminGraphNetwork();
+    })
+    .on("mousemove", (event, stage) => {
+      const topicCount = data.topics.filter((topic) => topic.stage === stage.id).length;
+      kgShowTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(stage.zh)}</strong><br>${escapeHtmlText(stage.en || "")}<br>${topicCount} 主题 · ${stage.count} 知识点<br>点击进入下钻视图`, event);
+    })
+    .on("mouseleave", () => kgHideTooltip(adminGraphCanvas));
+
+  nodes.append("circle").attr("r", 47).attr("fill", "#263956").attr("stroke", "#e2e8f0").attr("stroke-width", 3).attr("filter", "drop-shadow(0 12px 18px rgba(15,23,42,0.18))");
+  nodes.append("text").attr("text-anchor", "middle").attr("y", -20).attr("fill", "#cbd5e1").attr("font-size", 12).attr("font-weight", 800).text((stage) => String(stage.order).padStart(2, "0"));
+  nodes.append("text").attr("text-anchor", "middle").attr("y", 2).attr("fill", "#fff").attr("font-size", 17).attr("font-weight", 900).text((stage) => stage.zh.length > 5 ? `${stage.zh.slice(0, 4)}…` : stage.zh);
+  nodes.append("text").attr("text-anchor", "middle").attr("y", 24).attr("fill", "#d79b24").attr("font-size", 13).attr("font-weight", 900).text((stage) => `${stage.count}点`);
+
+  const hub = g.append("g");
+  hub.append("text").attr("text-anchor", "middle").attr("y", -6).attr("fill", "#26354d").attr("font-size", 23).attr("font-weight", 900).text("外贸谈判");
+  hub.append("text").attr("text-anchor", "middle").attr("y", 22).attr("fill", "#9aa7bb").attr("font-size", 13).attr("font-weight", 800).attr("letter-spacing", 2).text("CLOSED LOOP · 10 STAGES");
+
+  const wall = document.createElement("div");
+  wall.className = "kg-metric-wall";
+  wall.innerHTML = [
+    ["环节", stats.stages],
+    ["主题", stats.topics],
+    ["知识点", stats.kps],
+    ["语义关系", stats.rels],
+    ["文化维度", stats.culture],
+  ].map(([label, value]) => `<div><b>${value}</b><span>${label}</span></div>`).join("");
+  panel.appendChild(wall);
+}
+
+function buildKgSunburstHierarchy(data) {
+  const topicByStage = new Map();
+  data.topics.forEach((topic) => {
+    if (!topicByStage.has(topic.stage)) topicByStage.set(topic.stage, []);
+    topicByStage.get(topic.stage).push(topic);
+  });
+  const kpsByTopic = new Map();
+  data.kps.forEach((kp) => {
+    if (!kpsByTopic.has(kp.topic)) kpsByTopic.set(kp.topic, []);
+    kpsByTopic.get(kp.topic).push(kp);
+  });
+  return {
+    name: "全部",
+    id: "root",
+    children: data.stages.map((stage) => ({
+      name: stage.zh,
+      id: stage.id,
+      kind: "stage",
+      children: (topicByStage.get(stage.id) || []).map((topic) => ({
+        name: topic.name,
+        id: topic.id,
+        kind: "topic",
+        layer: topic.layer,
+        children: (kpsByTopic.get(topic.id) || []).map((kp) => ({
+          name: kp.name,
+          id: kp.id,
+          kind: "kp",
+          layer: kp.layer,
+          value: 1,
+        })),
+      })),
+    })),
+  };
+}
+
+function renderKgSunburst(panel, data) {
+  const d3lib = window.d3;
+  const rect = panel.getBoundingClientRect();
+  const width = Math.max(720, rect.width || 1000);
+  const height = Math.max(620, rect.height || 700);
+  const size = Math.min(width, height) * 0.92;
+  const radius = size / 6;
+  panel.innerHTML = "";
+  const root = d3lib.hierarchy(buildKgSunburstHierarchy(data)).sum((d) => d.value || 0).sort((a, b) => b.value - a.value);
+  d3lib.partition().size([2 * Math.PI, root.height + 1])(root);
+  root.each((d) => (d.current = d));
+  const color = (d) => {
+    if (d.depth === 1) return "#263956";
+    return kgLayerStyle(d.data.layer || d.parent?.data?.layer || "concept").color;
+  };
+  const arc = d3lib.arc()
+    .startAngle((d) => d.x0)
+    .endAngle((d) => d.x1)
+    .padAngle((d) => Math.min((d.x1 - d.x0) / 2, 0.004))
+    .padRadius(radius * 1.5)
+    .innerRadius((d) => d.y0 * radius)
+    .outerRadius((d) => Math.max(d.y0 * radius, d.y1 * radius - 1));
+  const svg = d3lib.select(panel).append("svg")
+    .attr("viewBox", `${-width / 2} ${-height / 2} ${width} ${height}`)
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .style("font", "12px sans-serif");
+  const path = svg.append("g")
+    .selectAll("path")
+    .data(root.descendants().slice(1))
+    .join("path")
+    .attr("fill", color)
+    .attr("fill-opacity", (d) => arcVisible(d.current) ? (d.children ? 0.92 : 0.72) : 0)
+    .attr("stroke", (d) => d.data.id === adminKgSunburstFocusId ? "#111827" : "#ffffff")
+    .attr("stroke-width", (d) => d.data.id === adminKgSunburstFocusId ? 2.6 : 0.6)
+    .attr("pointer-events", (d) => arcVisible(d.current) ? "auto" : "none")
+    .attr("d", (d) => arc(d.current))
+    .style("cursor", (d) => d.children ? "pointer" : "default")
+    .on("click", clicked)
+    .on("mousemove", (event, d) => {
+      kgShowTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(d.data.name)}</strong><br>${d.data.kind === "kp" ? "知识点" : d.data.kind === "topic" ? "二级主题" : "环节"}<br>${d.value || 0} 知识点`, event);
+    })
+    .on("mouseleave", () => kgHideTooltip(adminGraphCanvas));
+  path.append("title").text((d) => `${d.ancestors().map((item) => item.data.name).reverse().join(" / ")}\n${d.value || 0}`);
+  const label = svg.append("g")
+    .attr("pointer-events", "none")
+    .attr("text-anchor", "middle")
+    .selectAll("text")
+    .data(root.descendants().slice(1))
+    .join("text")
+    .attr("dy", "0.35em")
+    .attr("fill", "#ffffff")
+    .attr("font-weight", 800)
+    .attr("font-size", (d) => d.depth === 1 ? 14 : 10)
+    .attr("fill-opacity", (d) => +labelVisible(d.current))
+    .attr("transform", (d) => labelTransform(d.current))
+    .text((d) => d.data.name.length > 8 ? `${d.data.name.slice(0, 7)}…` : d.data.name);
+  const parent = svg.append("circle")
+    .datum(root)
+    .attr("r", radius)
+    .attr("fill", "#fff")
+    .attr("stroke", "#d6deea")
+    .attr("stroke-width", 1.4)
+    .attr("pointer-events", "all")
+    .style("cursor", "pointer")
+    .on("click", clicked);
+  const center = svg.append("g").attr("pointer-events", "none");
+  center.append("text").attr("text-anchor", "middle").attr("y", -4).attr("font-size", 18).attr("font-weight", 900).attr("fill", "#26354d").text("全部");
+  center.append("text").attr("text-anchor", "middle").attr("y", 18).attr("font-size", 12).attr("font-weight", 700).attr("fill", "#9aa7bb").text(`${data.kps.length} 知识点`);
+  renderKgPointSearch(panel, data, {
+    view: "sunburst",
+    value: kgFindNode(data, adminKgSunburstFocusId)?.name || "",
+    placeholder: "搜索知识点",
+    onSelect: (point) => {
+      adminKgSunburstFocusId = point.id;
+      const target = root.descendants().find((d) => d.data.kind === "kp" && d.data.id === point.id);
+      updateSunburstFocus();
+      if (target) clicked(null, target);
+    },
+  });
+  updateSunburstFocus();
+
+  function clicked(event, p) {
+    if (!p) return;
+    parent.datum(p.parent || root);
+    root.each((d) => {
+      d.target = {
+        x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+        x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+        y0: Math.max(0, d.y0 - p.depth),
+        y1: Math.max(0, d.y1 - p.depth),
       };
-      topics.push(topicLayout);
-
-      const grouped = { concept: [], process: [], strategy: [], culture: [] };
-      (topic.kps || []).forEach((point) => {
-        const shouldShowPoint = adminRingExpandedTopics.has(topic.id) || forcedVisibleIds.has(point.id);
-        if (!shouldShowPoint) return;
-        const layer = point.layer || "concept";
-        grouped[layer] = grouped[layer] || [];
-        grouped[layer].push(point);
-      });
-      Object.entries(grouped).forEach(([layer, items]) => {
-        items.forEach((point, itemIndex) => {
-          const pointRadius = radius * getRingLayerRadiusFactor(layer);
-          const angleStep = Math.min(0.5, Math.max(0.24, 118 / Math.max(pointRadius, 1)));
-          const angle = topicAngle + (itemIndex - (items.length - 1) / 2) * angleStep;
-          points.push({
-            ...point,
-            stageId: stage.id,
-            stageName: stage.name,
-            topicId: topic.id,
-            topicName: topic.name,
-            layer,
-            angle,
-            x: Math.cos(angle) * pointRadius,
-            y: Math.sin(angle) * pointRadius,
-          });
-        });
-      });
     });
-  });
+    const t = svg.transition().duration(720).ease(d3lib.easeCubicInOut);
+    path.transition(t)
+      .tween("data", (d) => {
+        const i = d3lib.interpolate(d.current, d.target);
+        return (value) => (d.current = i(value));
+      })
+      .filter(function (d) {
+        return +this.getAttribute("fill-opacity") || arcVisible(d.target);
+      })
+      .attr("fill-opacity", (d) => arcVisible(d.target) ? (d.children ? 0.92 : 0.72) : 0)
+      .attr("pointer-events", (d) => arcVisible(d.target) ? "auto" : "none")
+      .attrTween("d", (d) => () => arc(d.current));
+    label.filter(function (d) {
+      return +this.getAttribute("fill-opacity") || labelVisible(d.target);
+    }).transition(t)
+      .attr("fill-opacity", (d) => +labelVisible(d.target))
+      .attrTween("transform", (d) => () => labelTransform(d.current));
+  }
+  function updateSunburstFocus() {
+    path.attr("stroke", (d) => d.data.id === adminKgSunburstFocusId ? "#111827" : "#ffffff")
+      .attr("stroke-width", (d) => d.data.id === adminKgSunburstFocusId ? 2.6 : 0.6);
+  }
+  function arcVisible(d) {
+    return d.y1 <= 3 && d.y0 >= 1 && d.x1 > d.x0;
+  }
+  function labelVisible(d) {
+    return d.y1 <= 3 && d.y0 >= 1 && (d.y1 - d.y0) * (d.x1 - d.x0) > 0.035;
+  }
+  function labelTransform(d) {
+    const x = (((d.x0 + d.x1) / 2) * 180) / Math.PI;
+    const y = ((d.y0 + d.y1) / 2) * radius;
+    return `rotate(${x - 90}) translate(${y},0) rotate(${x < 180 ? 0 : 180})`;
+  }
+}
 
-  const topicById = new Map(topics.map((topic) => [topic.id, topic]));
-  const existingIds = new Set(points.map((point) => point.id));
-  (data.culture || []).forEach((culture, index) => {
-    if (!forcedVisibleIds.has(culture.id) || existingIds.has(culture.id)) return;
-    const angle = Math.PI / 2 + (index - 0.5) * 0.26;
-    const pointRadius = radius * 1.9;
-    points.push({
-      ...culture,
-      isCulture: true,
-      layer: "culture",
+function buildKgGraphNodes(data) {
+  return [
+    ...data.kps.map((kp) => ({ ...kp, kind: "kp", radius: kp.star ? 12 : 8 })),
+    ...data.culture.map((item) => ({ ...item, kind: "culture", layer: "culture", radius: 14, star: false })),
+  ];
+}
+
+function findKgPointByQuery(data, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return null;
+  const points = Array.isArray(data?.kps) ? data.kps : [];
+  return points.find((kp) => String(kp.name || "").toLowerCase() === q)
+    || points.find((kp) => String(kp.name || "").toLowerCase().includes(q))
+    || points.find((kp) => String(kp.id || "").toLowerCase() === q);
+}
+
+function renderKgPointSearch(panel, data, options = {}) {
+  if (!panel || !Array.isArray(data?.kps) || !data.kps.length || typeof options.onSelect !== "function") return;
+  const id = `kg-point-search-${options.view || "view"}-${Math.random().toString(36).slice(2, 8)}`;
+  const wrap = document.createElement("form");
+  wrap.className = "kg-point-search";
+  wrap.innerHTML = `
+    <input type="search" list="${id}" value="${escapeHtmlAttribute(options.value || "")}" placeholder="${escapeHtmlAttribute(options.placeholder || "搜索知识点")}" autocomplete="off">
+    <datalist id="${id}">
+      ${data.kps.map((kp) => `<option value="${escapeHtmlAttribute(kp.name)}"></option>`).join("")}
+    </datalist>
+    <button type="submit">搜索</button>
+    <span class="kg-point-search__msg hidden" data-kg-search-msg>未找到</span>
+  `;
+  const input = wrap.querySelector("input");
+  const msg = wrap.querySelector("[data-kg-search-msg]");
+  const submit = (event) => {
+    event?.preventDefault();
+    const point = findKgPointByQuery(data, input.value);
+    if (!point) {
+      msg?.classList.remove("hidden");
+      return;
+    }
+    msg?.classList.add("hidden");
+    options.onSelect(point);
+  };
+  wrap.addEventListener("submit", submit);
+  input.addEventListener("change", submit);
+  panel.appendChild(wrap);
+}
+
+function renderKgStarGraph(panel, data) {
+  const d3lib = window.d3;
+  const rect = panel.getBoundingClientRect();
+  const width = Math.max(1100, rect.width || 1200);
+  const height = Math.max(760, rect.height || 820);
+  panel.innerHTML = "";
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const galaxyRadiusX = Math.min(width * 0.31, Math.max(360, width * 0.25));
+  const galaxyRadiusY = Math.min(height * 0.27, Math.max(220, height * 0.24));
+  const stageNodes = data.stages.map((stage, index) => {
+    const angle = -Math.PI / 2 + (index / Math.max(1, data.stages.length)) * Math.PI * 2;
+    const count = data.kps.filter((kp) => kp.stage === stage.id).length;
+    return {
+      id: `stage-anchor:${stage.id}`,
+      kind: "stage",
+      layer: "stage",
+      stage: stage.id,
+      order: stage.order,
+      name: stage.zh,
+      en: stage.en,
+      count,
+      radius: 30,
       angle,
-      x: Math.cos(angle) * pointRadius,
-      y: Math.sin(angle) * pointRadius,
+      x: centerX + Math.cos(angle) * galaxyRadiusX,
+      y: centerY + Math.sin(angle) * galaxyRadiusY,
+    };
+  });
+  const stageAnchorByStage = new Map(stageNodes.map((node) => [node.stage, node]));
+  const topicsByStage = new Map();
+  data.topics.forEach((topic) => {
+    if (!topicsByStage.has(topic.stage)) topicsByStage.set(topic.stage, []);
+    topicsByStage.get(topic.stage).push(topic);
+  });
+  const topicNodes = data.topics.map((topic, index) => {
+    const stageAnchor = stageAnchorByStage.get(topic.stage);
+    const stageTopics = topicsByStage.get(topic.stage) || [];
+    const topicIndex = Math.max(0, stageTopics.findIndex((item) => item.id === topic.id));
+    const spread = stageTopics.length <= 1 ? 0 : (topicIndex / (stageTopics.length - 1) - 0.5);
+    const baseAngle = stageAnchor?.angle ?? (-Math.PI / 2 + index * 0.3);
+    const radialX = Math.cos(baseAngle);
+    const radialY = Math.sin(baseAngle);
+    const tangentX = -Math.sin(baseAngle);
+    const tangentY = Math.cos(baseAngle);
+    const count = data.kps.filter((kp) => kp.topic === topic.id).length;
+    return {
+      id: `topic-anchor:${topic.id}`,
+      kind: "topic",
+      layer: "topic",
+      topic: topic.id,
+      stage: topic.stage,
+      name: topic.name,
+      count,
+      radius: 15,
+      angle: baseAngle,
+      x: (stageAnchor?.x || centerX) + radialX * 74 + tangentX * spread * 130,
+      y: (stageAnchor?.y || centerY) + radialY * 74 + tangentY * spread * 92,
+    };
+  });
+  const topicAnchorByTopic = new Map(topicNodes.map((node) => [node.topic, node]));
+  const kpsByTopic = new Map();
+  data.kps.forEach((kp) => {
+    if (!kpsByTopic.has(kp.topic)) kpsByTopic.set(kp.topic, []);
+    kpsByTopic.get(kp.topic).push(kp);
+  });
+  const kpNodes = data.kps.map((kp) => {
+    const topicAnchor = topicAnchorByTopic.get(kp.topic);
+    const topicKps = kpsByTopic.get(kp.topic) || [];
+    const kpIndex = Math.max(0, topicKps.findIndex((item) => item.id === kp.id));
+    const ring = Math.floor(kpIndex / 12);
+    const ringStart = ring * 12;
+    const ringCount = Math.max(1, Math.min(12, topicKps.length - ringStart));
+    const localIndex = kpIndex - ringStart;
+    const baseAngle = topicAnchor?.angle ?? 0;
+    const localAngle = baseAngle + (localIndex / ringCount) * Math.PI * 2 + (ring % 2 ? Math.PI / ringCount : 0);
+    const distance = 42 + ring * 24;
+    return {
+      ...kp,
+      kind: "kp",
+      radius: kp.star ? 10 : 7,
+      x: (topicAnchor?.x || centerX) + Math.cos(localAngle) * distance,
+      y: (topicAnchor?.y || centerY) + Math.sin(localAngle) * distance,
+    };
+  });
+  const prelimNodeById = new Map([...stageNodes, ...topicNodes, ...kpNodes].map((node) => [node.id, node]));
+  const cultureNodes = data.culture.map((item, index) => {
+    const rels = (data.rels || []).filter((edge) => edge.r === "cul" && (edge.s === item.id || edge.t === item.id));
+    const linked = rels
+      .map((edge) => prelimNodeById.get(edge.s === item.id ? edge.t : edge.s))
+      .filter(Boolean);
+    if (linked.length) {
+      const avgX = linked.reduce((sum, node) => sum + node.x, 0) / linked.length;
+      const avgY = linked.reduce((sum, node) => sum + node.y, 0) / linked.length;
+      return {
+        ...item,
+        kind: "culture",
+        layer: "culture",
+        radius: 13,
+        star: false,
+        x: centerX + (avgX - centerX) * 0.62,
+        y: centerY + (avgY - centerY) * 0.62,
+      };
+    }
+    const angle = -Math.PI / 2 + (index / Math.max(1, data.culture.length)) * Math.PI * 2;
+    return {
+      ...item,
+      kind: "culture",
+      layer: "culture",
+      radius: 13,
+      star: false,
+      x: centerX + Math.cos(angle) * Math.min(width, height) * 0.18,
+      y: centerY + Math.sin(angle) * Math.min(width, height) * 0.18,
+    };
+  });
+  const nodes = [...stageNodes, ...topicNodes, ...kpNodes, ...cultureNodes];
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const starRelTypes = new Set(["req", "scn", "con", "cul"]);
+  const semanticLinks = data.rels
+    .filter((edge) => starRelTypes.has(edge.r) && nodeIds.has(edge.s) && nodeIds.has(edge.t))
+    .map((edge) => ({ ...edge, source: edge.s, target: edge.t, isAnchor: false }));
+  const stageTopicLinks = topicNodes
+    .filter((topic) => stageAnchorByStage.has(topic.stage))
+    .map((topic) => {
+      const stageAnchor = stageAnchorByStage.get(topic.stage);
+      return {
+        id: `anchor:${stageAnchor.id}:${topic.id}`,
+        s: stageAnchor.id,
+        t: topic.id,
+        r: "anchor",
+        source: stageAnchor.id,
+        target: topic.id,
+        anchorLevel: "stage-topic",
+        isAnchor: true,
+      };
+    });
+  const topicKpLinks = data.kps
+    .filter((kp) => topicAnchorByTopic.has(kp.topic))
+    .map((kp) => {
+      const topicAnchor = topicAnchorByTopic.get(kp.topic);
+      return {
+        id: `anchor:${topicAnchor.id}:${kp.id}`,
+        s: topicAnchor.id,
+        t: kp.id,
+        r: "anchor",
+        source: topicAnchor.id,
+        target: kp.id,
+        anchorLevel: "topic-kp",
+        isAnchor: true,
+      };
+    });
+  const anchorLinks = [...stageTopicLinks, ...topicKpLinks];
+  const links = [...anchorLinks, ...semanticLinks];
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const focusedId = adminKgStarFocusId;
+  const edgeVisible = (edge) => adminKgStarVisibleRelTypes.has(edge.isAnchor ? "anchor" : edge.r);
+  const getFocusRelatedIds = (id) => {
+    const ids = new Set([id]);
+    const focusNode = nodeById.get(id);
+    if (focusNode?.kind === "stage" && adminKgStarVisibleRelTypes.has("anchor")) {
+      stageTopicLinks.forEach((edge) => {
+        if (edge.s === id) ids.add(edge.t);
+      });
+      topicKpLinks.forEach((edge) => {
+        if (ids.has(edge.s)) ids.add(edge.t);
+      });
+    }
+    if (focusNode?.kind === "topic" && adminKgStarVisibleRelTypes.has("anchor")) {
+      stageTopicLinks.forEach((edge) => {
+        if (edge.t === id) ids.add(edge.s);
+      });
+      topicKpLinks.forEach((edge) => {
+        if (edge.s === id) ids.add(edge.t);
+      });
+    }
+    links.forEach((edge) => {
+      if (!edgeVisible(edge)) return;
+      if (ids.has(edge.s) || ids.has(edge.t)) {
+        ids.add(edge.s);
+        ids.add(edge.t);
+      }
+    });
+    return ids;
+  };
+  const edgeIsFocused = (edge, ids, id) => edge.s === id || edge.t === id || (!edge.isAnchor && ids.has(edge.s) && ids.has(edge.t));
+  const relatedIds = focusedId ? getFocusRelatedIds(focusedId) : new Set();
+
+  const simNodes = nodes.map((node) => ({ ...node }));
+  const simLinks = links.map((edge) => ({ ...edge }));
+  d3lib.forceSimulation(simNodes)
+    .force("link", d3lib.forceLink(simLinks).id((d) => d.id).distance((edge) => {
+      if (!edge.isAnchor) return 155;
+      return edge.anchorLevel === "stage-topic" ? 76 : 46;
+    }).strength((edge) => {
+      if (!edge.isAnchor) return 0.08;
+      return edge.anchorLevel === "stage-topic" ? 0.28 : 0.18;
+    }))
+    .force("charge", d3lib.forceManyBody().strength((node) => node.kind === "stage" ? -180 : node.kind === "topic" ? -70 : node.kind === "culture" ? -120 : -18))
+    .force("x", d3lib.forceX((node) => {
+      return node.x ?? centerX;
+    }).strength((node) => node.kind === "stage" ? 1 : node.kind === "topic" ? 0.72 : node.kind === "kp" ? 0.58 : 0.38))
+    .force("y", d3lib.forceY((node) => {
+      return node.y ?? centerY;
+    }).strength((node) => node.kind === "stage" ? 1 : node.kind === "topic" ? 0.72 : node.kind === "kp" ? 0.58 : 0.38))
+    .force("collide", d3lib.forceCollide().radius((d) => d.radius + (d.kind === "stage" ? 14 : d.kind === "topic" ? 10 : 7)))
+    .stop()
+    .tick(120);
+  const boundaryPadding = 54;
+  simNodes.forEach((node) => {
+    node.x = Math.max(boundaryPadding, Math.min(width - boundaryPadding, node.x));
+    node.y = Math.max(boundaryPadding, Math.min(height - boundaryPadding, node.y));
+  });
+  const positioned = new Map(simNodes.map((node) => [node.id, node]));
+
+  const svg = d3lib.select(panel).append("svg").attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+  const defs = svg.append("defs");
+  defs.append("filter").attr("id", "kg-star-glow").html('<feGaussianBlur stdDeviation="3.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>');
+  defs.append("filter").attr("id", "kg-star-blur").html('<feGaussianBlur stdDeviation="1.2"/>');
+  const stageGrad = defs.append("radialGradient").attr("id", "kg-node-grad-stage").attr("cx", "35%").attr("cy", "28%").attr("r", "74%");
+  stageGrad.append("stop").attr("offset", "0%").attr("stop-color", "#64748b").attr("stop-opacity", 0.98);
+  stageGrad.append("stop").attr("offset", "45%").attr("stop-color", "#273956").attr("stop-opacity", 0.98);
+  stageGrad.append("stop").attr("offset", "100%").attr("stop-color", "#172338").attr("stop-opacity", 1);
+  Object.entries(KG_KP_TYPE_STYLES).forEach(([type, style]) => {
+    const grad = defs.append("radialGradient").attr("id", `kg-kp-type-grad-${type}`).attr("cx", "35%").attr("cy", "28%").attr("r", "70%");
+    grad.append("stop").attr("offset", "0%").attr("stop-color", "#ffffff").attr("stop-opacity", 0.94);
+    grad.append("stop").attr("offset", "35%").attr("stop-color", style.color).attr("stop-opacity", 0.94);
+    grad.append("stop").attr("offset", "100%").attr("stop-color", style.color).attr("stop-opacity", 1);
+  });
+  Object.entries(KG_ACCEPTANCE_LAYER_TYPES).forEach(([layer, style]) => {
+    const grad = defs.append("radialGradient").attr("id", `kg-node-grad-${layer}`).attr("cx", "35%").attr("cy", "28%").attr("r", "70%");
+    grad.append("stop").attr("offset", "0%").attr("stop-color", "#ffffff").attr("stop-opacity", 0.92);
+    grad.append("stop").attr("offset", "35%").attr("stop-color", style.color).attr("stop-opacity", 0.92);
+    grad.append("stop").attr("offset", "100%").attr("stop-color", style.color).attr("stop-opacity", 1);
+  });
+
+  const zoomLayer = svg.append("g");
+  const zoom = d3lib.zoom().scaleExtent([0.45, 2.8]).on("zoom", (event) => zoomLayer.attr("transform", event.transform));
+  svg.call(zoom).on("click", (event) => {
+    if (event.target.tagName.toLowerCase() === "svg") {
+      adminKgStarFocusId = null;
+      renderAdminGraphNetwork();
+    }
+  });
+
+  const galaxyGuide = zoomLayer.append("g").attr("opacity", 0.44);
+  galaxyGuide.selectAll("circle").data(stageNodes).join("circle")
+    .attr("cx", (node) => positioned.get(node.id)?.x || node.x)
+    .attr("cy", (node) => positioned.get(node.id)?.y || node.y)
+    .attr("r", 72)
+    .attr("fill", "#ffffff")
+    .attr("stroke", "#d9e2ef")
+    .attr("stroke-width", 1)
+    .attr("stroke-dasharray", "4 8");
+
+  const linkPath = (edge) => {
+    const s = positioned.get(edge.s);
+    const t = positioned.get(edge.t);
+    if (!s || !t) return "";
+    if (edge.isAnchor) return `M${s.x},${s.y}L${t.x},${t.y}`;
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const dr = Math.sqrt(dx * dx + dy * dy) * 1.22;
+    return `M${s.x},${s.y}A${dr},${dr} 0 0,1 ${t.x},${t.y}`;
+  };
+  const anchorSel = zoomLayer.append("g").selectAll("path").data(simLinks.filter((edge) => edge.isAnchor)).join("path")
+    .attr("d", linkPath)
+    .attr("fill", "none")
+    .attr("stroke", kgRelStyle("anchor").color)
+    .attr("stroke-width", 2)
+    .attr("opacity", (edge) => {
+      if (!edgeVisible(edge)) return 0;
+      if (!focusedId) return 0.42;
+      return edgeIsFocused(edge, relatedIds, focusedId) ? 0.82 : 0.09;
+    })
+    .attr("pointer-events", (edge) => edgeVisible(edge) ? "stroke" : "none");
+  const linkSel = zoomLayer.append("g").selectAll("path").data(simLinks.filter((edge) => !edge.isAnchor)).join("path")
+    .attr("d", (edge) => {
+      return linkPath(edge);
+    })
+    .attr("fill", "none")
+    .attr("stroke", (edge) => kgRelStyle(edge.r).color)
+    .attr("stroke-width", (edge) => kgRelStyle(edge.r).width)
+    .attr("stroke-dasharray", (edge) => kgRelStyle(edge.r).dash || null)
+    .attr("opacity", (edge) => {
+      if (!edgeVisible(edge)) return 0;
+      if (!focusedId) return 0.48;
+      return edgeIsFocused(edge, relatedIds, focusedId) ? 0.92 : 0.07;
+    })
+    .attr("pointer-events", (edge) => edgeVisible(edge) ? "stroke" : "none")
+    .attr("filter", (edge) => edge.r === "cul" ? "url(#kg-star-glow)" : null);
+
+  const nodeSel = zoomLayer.append("g").selectAll("g").data(simNodes).join("g")
+    .attr("class", "kg-star-node")
+    .attr("transform", (node) => `translate(${node.x},${node.y})`)
+    .style("cursor", "pointer")
+    .attr("opacity", (node) => !focusedId || relatedIds.has(node.id) ? 1 : 0.16)
+    .attr("filter", (node) => focusedId && !relatedIds.has(node.id) ? "url(#kg-star-blur)" : null)
+    .on("click", async (event, node) => {
+      event.stopPropagation();
+      adminKgStarFocusId = node.id;
+      showStarBackButton();
+      const scale = node.kind === "stage" ? 1.35 : node.kind === "topic" ? 1.55 : 1.85;
+      const transform = d3lib.zoomIdentity.translate(width / 2 - node.x * scale, height / 2 - node.y * scale).scale(scale);
+      updateStarFocus(node.id);
+      svg.transition().duration(680).ease(d3lib.easeCubicInOut).call(zoom.transform, transform);
+      if (node.kind === "kp") {
+        adminGraphFocusedPointId = node.id;
+        await handleGraphNodeSelection(node.sourceKey || `KnowledgePoint:${node.name}`);
+      }
+    })
+    .on("mousemove", (event, node) => {
+      const stage = node.kind === "kp" ? data.stages.find((item) => item.id === node.stage) : null;
+      const relHtml = node.kind === "stage"
+        ? `${node.count} 个知识点<br>点击聚焦该环节星系`
+        : node.kind === "topic"
+          ? `${node.count} 个知识点<br>点击聚焦该二级主题`
+          : kgRelationSummaryHtml(data, node.id) || "暂无关系";
+      const meta = node.kind === "stage"
+        ? `第 ${String(node.order).padStart(2, "0")} 环 · ${escapeHtmlText(node.en || "")}`
+        : node.kind === "topic"
+          ? "二级主题"
+          : node.kind === "culture"
+            ? "文化维度"
+            : `${escapeHtmlText(stage?.zh || "未归属环节")} · ${escapeHtmlText(kgKpTypeStyle(node.kpType).label)}`;
+      kgShowTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(node.name)}</strong>${node.star ? " ★" : ""}<br>${meta}<br>${relHtml}`, event);
+    })
+    .on("mouseleave", () => kgHideTooltip(adminGraphCanvas));
+
+  nodeSel.append("circle")
+    .attr("r", (node) => node.radius)
+    .attr("fill", (node) => {
+      if (node.kind === "topic") return "#ffffff";
+      if (node.kind === "kp") return `url(#kg-kp-type-grad-${node.kpType || "knowledge"})`;
+      return `url(#kg-node-grad-${node.layer || "concept"})`;
+    })
+    .attr("stroke-width", (node) => node.id === focusedId ? 3 : node.kind === "topic" ? 2.2 : 1.8)
+    .attr("stroke", (node) => {
+      if (node.id === focusedId) return "#111827";
+      if (node.kind === "topic") return "#94a3b8";
+      return "#ffffff";
+    })
+    .attr("filter", (node) => node.kind === "stage" || node.star || node.kind === "culture" ? "url(#kg-star-glow)" : null);
+  nodeSel.filter((node) => node.kind === "stage").append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", -8)
+    .attr("fill", "#d8e2ef")
+    .attr("font-size", 10)
+    .attr("font-weight", 900)
+    .text((node) => String(node.order).padStart(2, "0"));
+  nodeSel.filter((node) => node.kind === "stage").append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", 8)
+    .attr("fill", "#ffffff")
+    .attr("font-size", 13)
+    .attr("font-weight", 900)
+    .text((node) => node.name.length > 4 ? node.name.slice(0, 4) : node.name);
+  nodeSel.filter((node) => node.kind === "stage").append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", 23)
+    .attr("fill", "#e0a936")
+    .attr("font-size", 10)
+    .attr("font-weight", 850)
+    .text((node) => `${node.count}点`);
+  nodeSel.filter((node) => node.kind === "topic").append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", 4)
+    .attr("fill", "#334155")
+    .attr("font-size", 10)
+    .attr("font-weight", 900)
+    .attr("paint-order", "stroke")
+    .attr("stroke", "#ffffff")
+    .attr("stroke-width", 4)
+    .text((node) => node.name.length > 6 ? `${node.name.slice(0, 5)}…` : node.name);
+  nodeSel.filter((node) => node.star).append("text").attr("text-anchor", "middle").attr("dy", 4).attr("fill", "#ffffff").attr("font-size", 11).attr("font-weight", 900).text("★");
+  nodeSel.filter((node) => node.kind !== "stage" && node.kind !== "topic").append("text")
+    .attr("x", 14)
+    .attr("y", 4)
+    .attr("fill", "#334155")
+    .attr("font-size", 11)
+    .attr("font-weight", 800)
+    .attr("paint-order", "stroke")
+    .attr("stroke", "#f8fafc")
+    .attr("stroke-width", 4)
+    .attr("opacity", (node) => node.star || node.kind === "culture" || node.id === focusedId ? 1 : 0)
+    .text((node) => node.name.length > 11 ? `${node.name.slice(0, 10)}…` : node.name);
+
+  if (focusedId && positioned.has(focusedId)) {
+    const focusNode = positioned.get(focusedId);
+    const scale = focusNode.kind === "stage" ? 1.35 : focusNode.kind === "topic" ? 1.55 : 1.85;
+    svg.call(zoom.transform, d3lib.zoomIdentity.translate(width / 2 - focusNode.x * scale, height / 2 - focusNode.y * scale).scale(scale));
+  }
+
+  const legend = document.createElement("div");
+  legend.className = "kg-legend-card";
+  legend.innerHTML = ["anchor", "req", "scn", "con", "cul"].map((key) => {
+    const style = KG_ACCEPTANCE_REL_TYPES[key];
+    const active = adminKgStarVisibleRelTypes.has(key);
+    return `
+      <button type="button" class="kg-rel-toggle ${active ? "is-active" : ""}" data-kg-star-rel-toggle="${key}" title="点击显示/隐藏${escapeHtmlText(style.label)}线">
+        <span class="kg-rel-toggle__check">${active ? "✓" : ""}</span>
+        <span class="kg-rel-toggle__line" style="width:28px;border-top:3px solid ${style.color};${style.dash ? `border-top-style:dashed` : ""}"></span>
+        <span>${escapeHtmlText(style.label)}</span>
+      </button>
+    `;
+  }).join("") + `
+    <div class="mt-2 border-t border-slate-200 pt-2 text-slate-400">
+      <div class="mb-1 font-bold text-slate-500">知识点类型</div>
+      <div class="flex flex-wrap gap-2">
+        ${Object.entries(KG_KP_TYPE_STYLES).map(([key, style]) => `<span class="inline-flex items-center gap-1"><span style="width:9px;height:9px;border-radius:999px;background:${style.color};display:inline-block"></span>${escapeHtmlText(style.label)}</span>`).join("")}
+      </div>
+      <div class="mt-2">点击上方开关筛选线条；深色大圆=环节；白色中圆=二级主题。</div>
+    </div>
+  `;
+  panel.appendChild(legend);
+  legend.querySelectorAll("[data-kg-star-rel-toggle]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const key = button.dataset.kgStarRelToggle;
+      if (adminKgStarVisibleRelTypes.has(key)) adminKgStarVisibleRelTypes.delete(key);
+      else adminKgStarVisibleRelTypes.add(key);
+      renderAdminGraphNetwork();
+    });
+  });
+  renderKgPointSearch(panel, data, {
+    view: "star",
+    value: kgFindNode(data, adminKgStarFocusId)?.kind === "kp" ? kgFindNode(data, adminKgStarFocusId).name : "",
+    placeholder: "搜索知识点",
+    onSelect: (point) => {
+      adminKgStarFocusId = point.id;
+      adminGraphFocusedPointId = point.id;
+      renderAdminGraphNetwork();
+    },
+  });
+  if (focusedId) {
+    showStarBackButton();
+  }
+
+  function showStarBackButton() {
+    if (panel.querySelector(".kg-star-back")) return;
+    const back = document.createElement("div");
+    back.className = "kg-star-back";
+    back.innerHTML = `<button type="button">返回全景</button>`;
+    back.querySelector("button").addEventListener("click", () => {
+      adminKgStarFocusId = null;
+      renderAdminGraphNetwork();
+    });
+    panel.appendChild(back);
+  }
+
+  function updateStarFocus(id) {
+    const nextRelated = getFocusRelatedIds(id);
+    nodeSel.transition().duration(240)
+      .attr("opacity", (node) => nextRelated.has(node.id) ? 1 : 0.16)
+      .attr("filter", (node) => nextRelated.has(node.id) ? null : "url(#kg-star-blur)");
+    anchorSel.transition().duration(240)
+      .attr("opacity", (edge) => {
+        if (!edgeVisible(edge)) return 0;
+        return edgeIsFocused(edge, nextRelated, id) ? 0.82 : 0.08;
+      });
+    linkSel.transition().duration(240)
+      .attr("opacity", (edge) => {
+        if (!edgeVisible(edge)) return 0;
+        return edgeIsFocused(edge, nextRelated, id) ? 0.92 : 0.07;
+      });
+  }
+}
+
+function renderKgWorkView(panel, data) {
+  const stats = kgStats(data);
+  if (!adminKgWorkExpandedStages.size && data.stages[0]) adminKgWorkExpandedStages.add(data.stages[0].id);
+  if (!adminKgWorkFocusId && data.kps[0]) adminKgWorkFocusId = data.kps[0].id;
+  const focusNode = kgFindNode(data, adminKgWorkFocusId);
+  if (focusNode && focusNode.topic && focusNode.stage) {
+    adminKgWorkExpandedStages.add(focusNode.stage);
+    adminKgWorkExpandedTopics.add(focusNode.topic);
+  }
+  const focusRelations = focusNode ? kgRelationsForNode(data, focusNode.id) : [];
+  panel.innerHTML = `<div class="kg-work-layout"><aside class="kg-work-tree custom-scrollbar" data-kg-work-tree></aside><section class="kg-work-graph" data-kg-work-graph></section></div>`;
+  renderKgPointSearch(panel, data, {
+    view: "work",
+    value: focusNode?.name || "",
+    placeholder: "搜索知识点",
+    onSelect: async (point) => {
+      adminKgWorkFocusId = point.id;
+      adminGraphFocusedPointId = point.id;
+      if (point.stage) adminKgWorkExpandedStages.add(point.stage);
+      if (point.topic) adminKgWorkExpandedTopics.add(point.topic);
+      renderAdminGraphNetwork();
+      await handleGraphNodeSelection(point.sourceKey || `KnowledgePoint:${point.name}`);
+    },
+  });
+  const tree = panel.querySelector("[data-kg-work-tree]");
+  const graph = panel.querySelector("[data-kg-work-graph]");
+  const topicsByStage = new Map();
+  data.topics.forEach((topic) => {
+    if (!topicsByStage.has(topic.stage)) topicsByStage.set(topic.stage, []);
+    topicsByStage.get(topic.stage).push(topic);
+  });
+  const kpsByTopic = new Map();
+  data.kps.forEach((kp) => {
+    if (!kpsByTopic.has(kp.topic)) kpsByTopic.set(kp.topic, []);
+    kpsByTopic.get(kp.topic).push(kp);
+  });
+
+  tree.innerHTML = data.stages.map((stage) => {
+    const stageTopics = topicsByStage.get(stage.id) || [];
+    const stageCount = data.kps.filter((kp) => kp.stage === stage.id).length;
+    const stageOpen = adminKgWorkExpandedStages.has(stage.id);
+    return `
+      <div class="mb-1">
+        <button type="button" class="kg-work-node" data-kg-work-stage="${escapeHtmlText(stage.id)}"><span>${stageOpen ? "▾" : "▸"}</span><span class="truncate">${String(stage.order).padStart(2, "0")} ${escapeHtmlText(stage.zh)}</span><span class="kg-work-node__count">${stageCount}</span></button>
+        ${stageOpen ? `<div class="ml-4">${stageTopics.map((topic) => {
+          const topicOpen = adminKgWorkExpandedTopics.has(topic.id);
+          const topicKps = kpsByTopic.get(topic.id) || [];
+          const layer = kgLayerStyle(topic.layer);
+          return `
+            <div>
+              <button type="button" class="kg-work-node" data-kg-work-topic="${escapeHtmlText(topic.id)}"><span style="color:${layer.color}">${topicOpen ? "▾" : "▸"}</span><span class="truncate">${escapeHtmlText(topic.name)}</span><span class="kg-work-node__count">${topicKps.length}</span></button>
+              ${topicOpen ? `<div class="ml-5">${topicKps.map((kp) => `<button type="button" class="kg-work-node ${kp.id === adminKgWorkFocusId ? "is-active" : ""}" data-kg-work-kp="${escapeHtmlText(kp.id)}"><span style="color:${kgLayerStyle(kp.layer).color}">•</span><span class="truncate">${escapeHtmlText(kp.name)}${kp.star ? " ★" : ""}</span><span></span></button>`).join("")}</div>` : ""}
+            </div>
+          `;
+        }).join("")}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+  tree.querySelectorAll("[data-kg-work-stage]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.kgWorkStage;
+      if (adminKgWorkExpandedStages.has(id)) adminKgWorkExpandedStages.delete(id);
+      else adminKgWorkExpandedStages.add(id);
+      renderAdminGraphNetwork();
+    });
+  });
+  tree.querySelectorAll("[data-kg-work-topic]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.kgWorkTopic;
+      if (adminKgWorkExpandedTopics.has(id)) adminKgWorkExpandedTopics.delete(id);
+      else adminKgWorkExpandedTopics.add(id);
+      renderAdminGraphNetwork();
+    });
+  });
+  tree.querySelectorAll("[data-kg-work-kp]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.kgWorkKp;
+      adminKgWorkFocusId = id;
+      adminGraphFocusedPointId = id;
+      renderAdminGraphNetwork();
+      const kp = kgFindNode(data, id);
+      await handleGraphNodeSelection(kp?.sourceKey || `KnowledgePoint:${kp?.name || id}`);
     });
   });
 
-  const pointById = new Map(points.map((point) => [point.id, point]));
-  return { cx, cy, radius, stages, stageById, topics, topicById, points, pointById, focusedRelations };
+  renderKgWorkFocusGraph(graph, data, focusNode, focusRelations, stats);
+}
+
+function renderKgWorkFocusGraph(container, data, focusNode, focusRelations, stats) {
+  const d3lib = window.d3;
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(620, rect.width || 760);
+  const height = Math.max(520, rect.height || 620);
+  container.innerHTML = "";
+  if (!focusNode) {
+    container.innerHTML = `<div class="kg-work-empty">请选择左侧知识点，右侧显示它的一跳关系网。</div>`;
+    return;
+  }
+  const neighborIds = [];
+  focusRelations.forEach((edge) => neighborIds.push(edge.s === focusNode.id ? edge.t : edge.s));
+  const neighbors = [...new Set(neighborIds)].map((id) => kgFindNode(data, id)).filter(Boolean);
+  const top = document.createElement("div");
+  top.className = "absolute left-0 right-0 top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 text-sm font-bold text-slate-700";
+  top.innerHTML = `<span style="color:#c58a18">聚焦</span><span>${escapeHtmlText(focusNode.name)}</span><span class="text-slate-400">与 ${neighbors.length} 个节点相连：</span><span>${kgRelationSummaryHtml(data, focusNode.id) || "暂无关系"}</span>`;
+  container.appendChild(top);
+  const svg = d3lib.select(container).append("svg").attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+  const defs = svg.append("defs");
+  defs.append("marker").attr("id", "kg-work-arrow").attr("markerWidth", 10).attr("markerHeight", 10).attr("refX", 8).attr("refY", 3).attr("orient", "auto").append("path").attr("d", "M0,0 L0,6 L8,3 z").attr("fill", "#64748b");
+  const cx = width / 2;
+  const cy = height / 2 + 20;
+  const radius = Math.min(width, height) * 0.28;
+  const neighborLayout = neighbors.map((node, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / Math.max(1, neighbors.length);
+    return { ...node, x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+  });
+  const pos = new Map([[focusNode.id, { ...focusNode, x: cx, y: cy }], ...neighborLayout.map((node) => [node.id, node])]);
+  focusRelations.forEach((edge) => {
+    const s = pos.get(edge.s);
+    const t = pos.get(edge.t);
+    if (!s || !t) return;
+    const style = kgRelStyle(edge.r);
+    svg.append("line").attr("x1", s.x).attr("y1", s.y).attr("x2", t.x).attr("y2", t.y)
+      .attr("stroke", style.color).attr("stroke-width", style.width).attr("stroke-dasharray", style.dash || null).attr("marker-end", "url(#kg-work-arrow)").attr("opacity", 0.9);
+    svg.append("text").attr("x", (s.x + t.x) / 2).attr("y", (s.y + t.y) / 2 - 8).attr("text-anchor", "middle").attr("font-size", 12).attr("font-weight", 800).attr("fill", style.color).attr("paint-order", "stroke").attr("stroke", "#f8fafc").attr("stroke-width", 5).text(style.label);
+  });
+  const allNodes = [{ ...focusNode, x: cx, y: cy, isFocus: true }, ...neighborLayout];
+  const node = svg.append("g").selectAll("g").data(allNodes).join("g").attr("transform", (d) => `translate(${d.x},${d.y})`).style("cursor", "pointer")
+    .on("click", async (event, nodeData) => {
+      if (nodeData.kind === "culture") return;
+      adminKgWorkFocusId = nodeData.id;
+      adminGraphFocusedPointId = nodeData.id;
+      renderAdminGraphNetwork();
+      await handleGraphNodeSelection(nodeData.sourceKey || `KnowledgePoint:${nodeData.name}`);
+    })
+    .on("mousemove", (event, nodeData) => kgShowTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(nodeData.name)}</strong><br>${nodeData.kind === "culture" ? "文化维度" : `${escapeHtmlText(kgLayerStyle(nodeData.layer).label)}层`}${nodeData.star ? " · ★迁移" : ""}<br>${kgRelationSummaryHtml(data, nodeData.id) || "暂无关系"}`, event))
+    .on("mouseleave", () => kgHideTooltip(adminGraphCanvas));
+  node.append("rect").attr("x", (d) => d.isFocus ? -62 : -54).attr("y", (d) => d.isFocus ? -22 : -18).attr("width", (d) => d.isFocus ? 124 : 108).attr("height", (d) => d.isFocus ? 44 : 36).attr("rx", 8)
+    .attr("fill", (d) => d.isFocus ? kgLayerStyle(d.layer).color : "#ffffff")
+    .attr("stroke", (d) => d.isFocus ? "#1f2937" : kgLayerStyle(d.layer).color)
+    .attr("stroke-width", (d) => d.isFocus ? 2.6 : 1.8)
+    .attr("filter", "drop-shadow(0 8px 15px rgba(15,23,42,0.14))");
+  node.append("text").attr("text-anchor", "middle").attr("dy", 4).attr("font-size", 12).attr("font-weight", 900).attr("fill", (d) => d.isFocus ? "#ffffff" : "#26354d").text((d) => d.name.length > 10 ? `${d.name.slice(0, 9)}…` : d.name);
+}
+
+function renderKgAcceptanceGraph() {
+  if (!adminGraphCanvas) return;
+  ensureAdminRingGraphStyles();
+  ensureKgAcceptanceStyles();
+  const data = buildKgAcceptanceData();
+  adminGraphCanvas.innerHTML = "";
+  adminGraphCanvas.classList.add("admin-ring-graph-canvas", "kg-acceptance-canvas");
+  adminGraphCanvas.classList.remove("overflow-auto");
+  if (!data || !(data.stages || []).length || !(data.kps || []).length) {
+    renderAdminRingNoData();
+    return;
+  }
+  const d3lib = window.d3;
+  if (!d3lib) {
+    adminGraphCanvas.innerHTML = '<div class="p-6 text-sm text-slate-600">D3.js 未加载。请确认 CDN 可访问：https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js</div>';
+    if (adminGraphStatus) adminGraphStatus.textContent = "D3.js 未加载，无法渲染验收图谱";
+    return;
+  }
+  const panel = renderKgAcceptanceShell(data);
+  if (!panel) return;
+  if (adminKgAcceptanceView === "sunburst") renderKgSunburst(panel, data);
+  else if (adminKgAcceptanceView === "star") renderKgStarGraph(panel, data);
+  else if (adminKgAcceptanceView === "work") renderKgWorkView(panel, data);
+  else renderKgOverview(panel, data);
+  const stats = kgStats(data);
+  if (adminGraphStatus) {
+    adminGraphStatus.textContent = `验收图谱 · Neo4j 数据 · ${stats.stages} 环节 · ${stats.topics} 主题 · ${stats.kps} 知识点 · ${stats.rels} 语义关系 · ${stats.culture} 文化维度`;
+  }
+}
+
+function buildRingRelationSummaryHtml(data, focusedPoint) {
+  if (!focusedPoint) return "";
+  const relations = getRingRelationsForPoint(data, focusedPoint.id);
+  if (!relations.length) {
+    return `<div><strong>【${escapeHtmlText(focusedPoint.name)}】</strong> 暂无已定义语义关系。</div>`;
+  }
+  return `
+    <div><strong>【${escapeHtmlText(focusedPoint.name)}】</strong> 与 ${relations.length} 个节点有联系：</div>
+    <div class="ring-graph-tip__relations">
+      ${relations
+        .map((edge) => {
+          const otherId = edge.source === focusedPoint.id ? edge.target : edge.source;
+          const style = getRingRelationStyle(edge.type);
+          return `<span class="ring-graph-tip__chip"><span style="width:8px;height:8px;border-radius:999px;background:${style.color};display:inline-block"></span>${escapeHtmlText(style.label)} → ${escapeHtmlText(getRingNodeTitleById(data, otherId))}</span>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderRingFocusPanel(panel, data) {
+  const stats = getRingGraphStats(data);
+  const activeStage = getRingActiveStage(data);
+  const focusedLocation = adminGraphFocusedPointId ? getRingPointLocation(data, adminGraphFocusedPointId) : null;
+  const activeTopicId = [...adminRingExpandedTopics][0] || focusedLocation?.topic?.id || null;
+
+  if (!activeStage) {
+    panel.innerHTML = `
+      <div class="ring-focus-panel__head">
+        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">知识图谱总览</div>
+        <div class="mt-1 text-lg font-bold text-slate-900">外贸谈判闭环</div>
+        <div class="mt-1 text-xs text-slate-500">${stats.stages} 环节 · ${stats.topics} 二级主题 · ${stats.points} 知识点 · ${stats.relations} 关系</div>
+      </div>
+      <div class="ring-focus-empty">请选择左侧闭环中的一个环节。</div>
+    `;
+    return;
+  }
+
+  const topics = activeStage.topics || [];
+  const relationCountByPoint = new Map();
+  (data.relations || []).forEach((edge) => {
+    relationCountByPoint.set(edge.source, (relationCountByPoint.get(edge.source) || 0) + 1);
+    relationCountByPoint.set(edge.target, (relationCountByPoint.get(edge.target) || 0) + 1);
+  });
+  const pointCount = topics.reduce((sum, topic) => sum + (topic.kps || []).length, 0);
+
+  panel.innerHTML = `
+    <div class="ring-focus-panel__head">
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">第 ${String(activeStage.order || activeStage.index + 1 || 1).padStart(2, "0")} 环</div>
+      <div class="mt-1 text-lg font-bold text-slate-900">${escapeHtmlText(activeStage.name)}</div>
+      <div class="mt-1 text-xs text-slate-500">${topics.length} 二级主题 · ${pointCount} 知识点</div>
+    </div>
+    <div class="ring-focus-panel__body custom-scrollbar">
+      <div class="space-y-3">
+        ${topics
+          .map((topic) => {
+            const isActiveTopic = activeTopicId === topic.id;
+            const points = topic.kps || [];
+            return `
+              <section class="space-y-2">
+                <button type="button" class="ring-topic-card ${isActiveTopic ? "is-active" : ""}" data-ring-topic-panel-id="${escapeHtmlText(topic.id)}">
+                  <span class="flex items-start justify-between gap-3">
+                    <span class="min-w-0">
+                      <span class="block truncate text-sm font-semibold">${escapeHtmlText(topic.name)}</span>
+                      <span class="mt-1 block text-xs text-slate-500">${points.length} 知识点</span>
+                    </span>
+                    <span class="shrink-0 text-xs text-blue-500">${isActiveTopic ? "收起" : "展开"}</span>
+                  </span>
+                </button>
+                ${isActiveTopic ? `
+                  <div class="space-y-2 pl-2">
+                    ${points.length ? points
+                      .map((point) => {
+                        const style = getRingLayerStyle(point.layer);
+                        const relationCount = relationCountByPoint.get(point.id) || 0;
+                        const isFocused = adminGraphFocusedPointId === point.id;
+                        return `
+                          <button type="button" class="ring-kp-row ${isFocused ? "is-active" : ""}" style="border-left-color:${style.stroke}" data-ring-kp-panel-id="${escapeHtmlText(point.id)}">
+                            <span class="flex items-start justify-between gap-2">
+                              <span class="min-w-0">
+                                <span class="block truncate text-xs font-semibold">${escapeHtmlText(point.name)}</span>
+                                <span class="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-500">
+                                  <span class="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">${escapeHtmlText(style.label)}</span>
+                                  ${point.term ? `<span class="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">术语</span>` : ""}
+                                  <span class="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">${relationCount} 关系</span>
+                                </span>
+                              </span>
+                              <span class="shrink-0 text-[10px] text-slate-400">详情</span>
+                            </span>
+                          </button>
+                        `;
+                      })
+                      .join("") : `<div class="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">该二级主题下暂无知识点</div>`}
+                  </div>
+                ` : ""}
+              </section>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+
+  panel.querySelectorAll("[data-ring-topic-panel-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const topicId = button.dataset.ringTopicPanelId;
+      adminRingExpandedTopics.clear();
+      adminGraphFocusedPointId = null;
+      if (activeTopicId !== topicId) adminRingExpandedTopics.add(topicId);
+      renderAdminGraphNetwork();
+    });
+  });
+
+  panel.querySelectorAll("[data-ring-kp-panel-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const pointId = button.dataset.ringKpPanelId;
+      const location = getRingPointLocation(data, pointId);
+      if (!location) return;
+      adminRingExpandedTopics.clear();
+      adminRingExpandedTopics.add(location.topic.id);
+      adminGraphFocusedPointId = pointId;
+      renderAdminGraphNetwork();
+      await handleGraphNodeSelection(location.point.sourceKey || `KnowledgePoint:${location.point.name}`);
+    });
+  });
 }
 
 function renderAdminRingGraphMvp() {
   if (!adminGraphCanvas) return;
+  renderKgAcceptanceGraph();
+  return;
   ensureAdminRingGraphStyles();
   const data = getAdminRingGraphData();
-  const d3lib = window.d3;
   adminGraphCanvas.innerHTML = "";
   adminGraphCanvas.classList.add("admin-ring-graph-canvas");
   adminGraphCanvas.classList.remove("overflow-auto");
 
+  if (!data || !(data.stages || []).length) {
+    renderAdminRingNoData();
+    return;
+  }
+
+  const stats = getRingGraphStats(data);
+  const d3lib = window.d3;
   if (!d3lib) {
     adminGraphCanvas.innerHTML = '<div class="p-6 text-sm text-slate-600">D3.js 未加载。请确认 CDN 可访问：https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js</div>';
     if (adminGraphStatus) adminGraphStatus.textContent = "D3.js 未加载，无法渲染环形图谱";
     return;
   }
 
-  const width = Math.max(1120, adminGraphCanvas.clientWidth || 1120);
-  const height = Math.max(640, adminGraphCanvas.clientHeight || 640);
-  const layout = buildRingGraphLayout(data, width, height);
-  const focusedRelations = layout.focusedRelations;
-  const relatedIds = new Set();
-  focusedRelations.forEach((edge) => {
-    relatedIds.add(edge.source);
-    relatedIds.add(edge.target);
-  });
   const focusedPoint = adminGraphFocusedPointId ? getRingPointById(data, adminGraphFocusedPointId) : null;
 
   const tip = document.createElement("div");
   tip.className = "ring-graph-tip";
-  if (focusedPoint && focusedRelations.length) {
-    tip.innerHTML = `
-      <div><strong>【${escapeHtmlText(focusedPoint.name)}】</strong> 与 ${focusedRelations.length} 个节点有联系：</div>
-      <div class="ring-graph-tip__relations">
-        ${focusedRelations
-          .map((edge) => {
-            const otherId = edge.source === adminGraphFocusedPointId ? edge.target : edge.source;
-            const style = getRingRelationStyle(edge.type);
-            return `<span class="ring-graph-tip__chip"><span style="width:8px;height:8px;border-radius:999px;background:${style.color};display:inline-block"></span>${escapeHtmlText(style.label)} → ${escapeHtmlText(getRingNodeTitleById(data, otherId))}</span>`;
-          })
-          .join("")}
-      </div>
-    `;
+  const relationSummary = buildRingRelationSummaryHtml(data, focusedPoint);
+  if (relationSummary) {
+    tip.innerHTML = relationSummary;
   } else {
-    tip.innerHTML = `<div><strong>点击环节</strong> 展开二级主题；点击二级主题展开知识点；点击知识点才显示它的语义关系。</div><div class="ring-graph-tip__relations"><span class="ring-graph-tip__chip">${escapeHtmlText(data.sourceLabel || "Neo4j 数据")}</span><span class="ring-graph-tip__chip">滚轮缩放</span><span class="ring-graph-tip__chip">拖拽平移</span></div>`;
+    tip.innerHTML = `<div><strong>点击环节</strong> 在右侧展开二级主题；点击二级主题展开知识点；点击知识点进入详情并显示语义关系。</div><div class="ring-graph-tip__relations"><span class="ring-graph-tip__chip">${escapeHtmlText(data.sourceLabel || "Neo4j 实时数据")}</span><span class="ring-graph-tip__chip">滚轮缩放</span><span class="ring-graph-tip__chip">拖拽平移</span></div>`;
   }
   adminGraphCanvas.appendChild(tip);
+
+  const shell = document.createElement("div");
+  shell.className = "ring-graph-shell";
+  shell.innerHTML = `
+    <div class="ring-graph-stage-area" data-ring-svg-host></div>
+    <aside class="ring-focus-panel" data-ring-focus-panel></aside>
+  `;
+  adminGraphCanvas.appendChild(shell);
 
   const resetBtn = document.createElement("button");
   resetBtn.type = "button";
@@ -3460,8 +5070,18 @@ function renderAdminRingGraphMvp() {
   });
   adminGraphCanvas.appendChild(resetBtn);
 
+  const panel = shell.querySelector("[data-ring-focus-panel]");
+  renderRingFocusPanel(panel, data);
+
+  const svgHost = shell.querySelector("[data-ring-svg-host]");
+  const hostRect = svgHost.getBoundingClientRect();
+  const width = Math.max(620, Math.round(hostRect.width || 760));
+  const height = Math.max(460, Math.round(hostRect.height || 560));
+  const layout = buildRingGraphLayout(data, width, height);
+  const activeStage = getRingActiveStage(data);
+
   const svg = d3lib
-    .select(adminGraphCanvas)
+    .select(svgHost)
     .append("svg")
     .attr("viewBox", `0 0 ${width} ${height}`)
     .attr("width", "100%")
@@ -3493,9 +5113,9 @@ function renderAdminRingGraphMvp() {
     zoomLayer.attr("transform", adminRingGraphZoomTransform.toString());
   }
 
-  const rotateLayer = zoomLayer
+  const ringLayer = zoomLayer
     .append("g")
-    .attr("class", "ring-rotate-layer")
+    .attr("class", "ring-stage-layer")
     .attr("transform", `translate(${layout.cx},${layout.cy})`);
 
   const hub = zoomLayer
@@ -3506,7 +5126,7 @@ function renderAdminRingGraphMvp() {
   hub.append("text").attr("text-anchor", "middle").attr("y", -4).attr("font-size", 18).attr("font-weight", 800).attr("fill", "#26354d").text("外贸谈判");
   hub.append("text").attr("text-anchor", "middle").attr("y", 18).attr("font-size", 11).attr("font-weight", 700).attr("letter-spacing", 1.2).attr("fill", "#9aa7bb").text(`CLOSED LOOP · ${data.stages.length} STAGES`);
 
-  const arcGroup = rotateLayer.append("g").attr("class", "ring-arcs");
+  const arcGroup = ringLayer.append("g").attr("class", "ring-arcs");
   layout.stages.forEach((stage, index) => {
     const start = stage.angle + 0.11;
     const end = getRingStageBaseAngle((index + 1) % layout.stages.length, layout.stages.length) - 0.11;
@@ -3520,29 +5140,7 @@ function renderAdminRingGraphMvp() {
       .attr("marker-end", "url(#ring-stage-arrow)");
   });
 
-  const relationGroup = rotateLayer.append("g").attr("class", "ring-relations");
-  if (adminGraphFocusedPointId) {
-    focusedRelations.forEach((edge, index) => {
-      const source = layout.pointById.get(edge.source);
-      const target = layout.pointById.get(edge.target);
-      if (!source || !target) return;
-      const style = getRingRelationStyle(edge.type);
-      relationGroup
-        .append("path")
-        .attr("d", `M${source.x},${source.y} Q0,0 ${target.x},${target.y}`)
-        .attr("fill", "none")
-        .attr("stroke", style.color)
-        .attr("stroke-width", 2.4)
-        .attr("stroke-linecap", "round")
-        .attr("stroke-dasharray", style.dash || null)
-        .attr("opacity", 0)
-        .transition()
-        .duration(260 + index * 20)
-        .attr("opacity", 0.92);
-    });
-  }
-
-  const stageGroups = rotateLayer
+  const stageGroups = ringLayer
     .append("g")
     .attr("class", "ring-stages")
     .selectAll("g")
@@ -3552,139 +5150,34 @@ function renderAdminRingGraphMvp() {
     .attr("data-ring-stage-id", (stage) => stage.id)
     .attr("transform", (stage) => `translate(${stage.x},${stage.y})`)
     .style("cursor", "pointer")
-    .style("opacity", adminGraphFocusedPointId ? 0.34 : 1)
+    .style("opacity", (stage) => (!activeStage || activeStage.id === stage.id ? 1 : 0.62))
     .on("click", (event, stage) => {
       event.stopPropagation();
-      if (adminRingExpandedStages.has(stage.id)) {
-        adminRingExpandedStages.delete(stage.id);
-        (stage.topics || []).forEach((topic) => adminRingExpandedTopics.delete(topic.id));
-      } else {
-        adminRingExpandedStages.add(stage.id);
-      }
+      const alreadyActive = activeStage?.id === stage.id;
+      adminRingExpandedStages.clear();
+      adminRingExpandedTopics.clear();
       adminGraphFocusedPointId = null;
+      if (!alreadyActive) adminRingExpandedStages.add(stage.id);
       renderAdminGraphNetwork();
     })
     .on("mousemove", (event, stage) => {
       const topicCount = (stage.topics || []).length;
       const pointCount = (stage.topics || []).reduce((sum, topic) => sum + (topic.kps || []).length, 0);
-      showRingTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(stage.name)} / ${escapeHtmlText(stage.en)}</strong><br>第 ${String(stage.index + 1).padStart(2, "0")} 环<br>${topicCount} 个二级主题 · ${pointCount} 个知识点<br>点击展开/收回二级主题`, event);
+      showRingTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(stage.name)} / ${escapeHtmlText(stage.en || "")}</strong><br>第 ${String(stage.index + 1).padStart(2, "0")} 环<br>${topicCount} 个二级主题 · ${pointCount} 个知识点<br>点击在右侧查看层级`, event);
     })
     .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
 
   stageGroups
     .append("circle")
-    .attr("r", (stage) => (adminRingExpandedStages.has(stage.id) ? 42 : 36))
-    .attr("fill", (stage) => (adminRingExpandedStages.has(stage.id) ? "#d49a24" : "#21324d"))
+    .attr("r", (stage) => (activeStage?.id === stage.id ? 42 : 36))
+    .attr("fill", (stage) => (activeStage?.id === stage.id ? "#d49a24" : "#21324d"))
     .attr("stroke", "#e7edf7")
     .attr("stroke-width", 2.5)
     .attr("filter", "drop-shadow(0 8px 12px rgba(15,23,42,0.16))");
 
   const stageLabels = stageGroups.append("g").attr("class", "ring-label");
   stageLabels.append("text").attr("text-anchor", "middle").attr("y", -12).attr("font-size", 10).attr("font-weight", 800).attr("fill", "#d7dfec").text((stage) => String(stage.index + 1).padStart(2, "0"));
-  stageLabels.append("text").attr("text-anchor", "middle").attr("y", 7).attr("font-size", 15).attr("font-weight", 900).attr("fill", "#ffffff").text((stage) => stage.name);
-
-  const topicGroups = rotateLayer
-    .append("g")
-    .attr("class", "ring-topics")
-    .selectAll("g")
-    .data(layout.topics, (topic) => topic.id)
-    .join("g")
-    .attr("class", "ring-topic")
-    .attr("data-ring-topic-id", (topic) => topic.id)
-    .attr("transform", (topic) => `translate(${topic.x},${topic.y})`)
-    .style("cursor", "pointer")
-    .style("opacity", adminGraphFocusedPointId ? 0.52 : 1)
-    .on("click", (event, topic) => {
-      event.stopPropagation();
-      if (adminRingExpandedTopics.has(topic.id)) adminRingExpandedTopics.delete(topic.id);
-      else adminRingExpandedTopics.add(topic.id);
-      adminGraphFocusedPointId = null;
-      renderAdminGraphNetwork();
-    })
-    .on("mousemove", (event, topic) => {
-      showRingTooltip(adminGraphCanvas, `<strong>${escapeHtmlText(topic.name)}</strong><br>二级主题 · ${escapeHtmlText(topic.stageName || "")}<br>${(topic.kps || []).length} 个知识点<br>点击展开/收回知识点`, event);
-    })
-    .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
-
-  topicGroups
-    .append("rect")
-    .attr("x", -58)
-    .attr("y", -17)
-    .attr("width", 116)
-    .attr("height", 34)
-    .attr("rx", 8)
-    .attr("fill", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#2563eb" : "#ffffff"))
-    .attr("stroke", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#93c5fd" : "#60a5fa"))
-    .attr("stroke-width", 1.8)
-    .attr("filter", "drop-shadow(0 7px 12px rgba(15,23,42,0.12))");
-
-  const topicLabels = topicGroups.append("g").attr("class", "ring-label");
-  topicLabels
-    .append("text")
-    .attr("text-anchor", "middle")
-    .attr("y", 4)
-    .attr("font-size", 11)
-    .attr("font-weight", 850)
-    .attr("fill", (topic) => (adminRingExpandedTopics.has(topic.id) ? "#ffffff" : "#1e3a8a"))
-    .text((topic) => (topic.name.length > 8 ? `${topic.name.slice(0, 7)}…` : topic.name));
-
-  const pointGroups = rotateLayer
-    .append("g")
-    .attr("class", "ring-points")
-    .selectAll("g")
-    .data(layout.points, (point) => point.id)
-    .join("g")
-    .attr("class", "ring-point")
-    .attr("data-ring-point-id", (point) => point.id)
-    .attr("transform", (point) => `translate(${point.x},${point.y})`)
-    .style("cursor", "pointer")
-    .style("opacity", (point) => {
-      if (!adminGraphFocusedPointId) return 1;
-      return relatedIds.has(point.id) ? 1 : 0.18;
-    })
-    .on("click", (event, point) => {
-      event.stopPropagation();
-      adminGraphFocusedPointId = adminGraphFocusedPointId === point.id ? null : point.id;
-      renderAdminGraphNetwork();
-    })
-    .on("mousemove", (event, point) => {
-      const style = getRingLayerStyle(point.layer);
-      const relations = getRingRelationsForPoint(data, point.id);
-      const relationPreview = relations.length
-        ? relations.map((edge) => {
-            const otherId = edge.source === point.id ? edge.target : edge.source;
-            return `${getRingRelationStyle(edge.type).label} → ${getRingNodeTitleById(data, otherId)}`;
-          }).join("<br>")
-        : "暂无关系";
-      const stars = "★★★★★".slice(0, Number(point.difficulty || 0)) || "—";
-      const body = point.isCulture
-        ? `<strong>${escapeHtmlText(point.name)}</strong><br>文化维度<br>理论出处：${escapeHtmlText(point.source || "")}`
-        : `<strong>${escapeHtmlText(point.name)}</strong><br>知识点 · ${escapeHtmlText(point.topicName || "未归入二级主题")}<br>${escapeHtmlText(style.label)} · ${point.term ? "术语" : "知识点"}<br>布鲁姆：${escapeHtmlText(point.bloom || "未标注")} · 难度：${escapeHtmlText(stars)}<br><span style="color:#64748b">${relationPreview}</span>`;
-      showRingTooltip(adminGraphCanvas, body, event);
-    })
-    .on("mouseleave", () => hideRingTooltip(adminGraphCanvas));
-
-  pointGroups
-    .append("rect")
-    .attr("x", -50)
-    .attr("y", -16)
-    .attr("width", 100)
-    .attr("height", 32)
-    .attr("rx", 7)
-    .attr("fill", (point) => getRingLayerStyle(point.layer).fill)
-    .attr("stroke", (point) => (point.id === adminGraphFocusedPointId ? "#ffffff" : getRingLayerStyle(point.layer).stroke))
-    .attr("stroke-width", (point) => (point.id === adminGraphFocusedPointId ? 3 : 1.4))
-    .attr("filter", "drop-shadow(0 7px 10px rgba(15,23,42,0.12))");
-
-  const pointLabels = pointGroups.append("g").attr("class", "ring-label");
-  pointLabels
-    .append("text")
-    .attr("text-anchor", "middle")
-    .attr("y", 4)
-    .attr("font-size", 11)
-    .attr("font-weight", 800)
-    .attr("fill", "#ffffff")
-    .text((point) => (point.name.length > 8 ? `${point.name.slice(0, 7)}…` : point.name));
+  stageLabels.append("text").attr("text-anchor", "middle").attr("y", 7).attr("font-size", 15).attr("font-weight", 900).attr("fill", "#ffffff").text((stage) => stage.name.length > 5 ? `${stage.name.slice(0, 4)}…` : stage.name);
 
   const zoom = d3lib
     .zoom()
@@ -3699,11 +5192,8 @@ function renderAdminRingGraphMvp() {
   }
 
   if (adminGraphStatus) {
-    const expandedCount = adminRingExpandedStages.size;
-    const expandedTopicCount = adminRingExpandedTopics.size;
-    const relationText = adminGraphFocusedPointId ? ` · 已聚焦 ${focusedRelations.length} 条关系` : "";
-    const sourceText = data.source === "neo4j" ? "Neo4j 数据" : "示范数据";
-    adminGraphStatus.textContent = `闭环图谱 MVP · ${sourceText} · ${data.stages.length} 环节 · 已展开 ${expandedCount} 个环节 / ${expandedTopicCount} 个二级主题${relationText}`;
+    const relationText = adminGraphFocusedPointId ? ` · 已聚焦 ${getRingRelationsForPoint(data, adminGraphFocusedPointId).length} 条关系` : "";
+    adminGraphStatus.textContent = `闭环图谱 · Neo4j 数据 · ${stats.stages} 环节 · ${stats.topics} 二级主题 · ${stats.points} 知识点 · ${stats.relations} 语义关系${relationText}`;
   }
 }
 
