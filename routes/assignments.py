@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from typing import Dict, List, Optional
@@ -16,7 +17,6 @@ from services.document_composer import compose_review_document, generate_opening
 from services.evaluation_service import evaluate_session
 from services.llm_service import complete_chat, stream_chat
 from services.scenario_generator import (
-    DIFFICULTY_PROFILES,
     DEFAULT_DIFFICULTY,
     generate_scenario_for_section,
     inject_difficulty_metadata,
@@ -28,6 +28,7 @@ from utils.language import contains_cjk, is_probably_english
 from utils.validators import MissingKeyError, as_bool, require_key
 
 bp = Blueprint("assignments", __name__)
+LOGGER = logging.getLogger(__name__)
 
 ENGLISH_ONLY_SYSTEM_MESSAGE = (
     "You are a collaborative trade negotiation coach. Respond exclusively in English with professional business tone, "
@@ -71,13 +72,8 @@ def _ensure_english_reply(collab_key: str, reply: str) -> str:
     )
 
 
-REVIEW_SECTION_IDS = {
-    "chapter-4-section-1",
-    "chapter-4-section-2",
-    "chapter-4-section-5",
-    "chapter-5-section-4",
-    "chapter-6-section-1",
-}
+# 单一固定案例下不再注入「带陷阱的审单文档」；单据内容由 David Lim 在对话中内联呈现。
+REVIEW_SECTION_IDS: set = set()
 
 
 def _attach_review_document(section_id: Optional[str], scenario: Dict[str, object]) -> Optional[str]:
@@ -101,9 +97,6 @@ def start_level():
     data = request.get_json(force=True)
     chapter_id = data.get("chapterId")
     section_id = data.get("sectionId")
-    difficulty_key = str(data.get("difficulty") or DEFAULT_DIFFICULTY).lower()
-    if difficulty_key not in DIFFICULTY_PROFILES:
-        difficulty_key = DEFAULT_DIFFICULTY
 
     if not chapter_id or not section_id:
         return jsonify({"error": "chapterId and sectionId are required"}), 400
@@ -113,17 +106,14 @@ def start_level():
         return jsonify({"error": "Invalid chapterId or sectionId"}), 404
 
     try:
-        scenario, difficulty_profile = generate_scenario_for_section(section, difficulty_key)
+        scenario = generate_scenario_for_section(section)
     except MissingKeyError as exc:
         return jsonify({"error": str(exc)}), 500
     except Exception as exc:
-        return jsonify({"error": f"Failed to generate scenario: {exc}"}), 500
+        return jsonify({"error": f"Failed to load scenario: {exc}"}), 500
 
-    scenario["mode"] = section.get("mode") or scenario.get("mode") or ""
     document_text = _attach_review_document(section_id, scenario)
-    conversation_prompt, evaluation_prompt = render_prompts_from_section(
-        section, scenario, difficulty_key, difficulty_profile
-    )
+    conversation_prompt, evaluation_prompt = render_prompts_from_section(section, scenario)
 
     session_id = uuid.uuid4().hex
     database.create_session(
@@ -135,7 +125,7 @@ def start_level():
         evaluation_prompt=evaluation_prompt,
         scenario=scenario,
         expects_bargaining=bool(section.get("expects_bargaining")),
-        difficulty=difficulty_key,
+        difficulty=DEFAULT_DIFFICULTY,
     )
 
     opening_message = generate_opening_message(section_id, scenario)
@@ -149,10 +139,9 @@ def start_level():
         "knowledgePoints": scenario.get("knowledge_points", []) or [],
         "documentText": document_text or scenario.get("document_text") or "",
         "reviewHints": scenario.get("review_hints") or {},
-        "mode": section.get("mode") or "",
         "chapterId": chapter_id,
         "sectionId": section_id,
-        "difficulty": difficulty_key,
+        "difficulty": DEFAULT_DIFFICULTY,
     }
     return jsonify(payload)
 
@@ -352,8 +341,7 @@ def get_session_detail(session_id: str):
             "sectionId": session["section_id"],
             "scenario": prepare_scenario_payload(scenario_raw),
             "expectsBargaining": session["expects_bargaining"],
-            "difficulty": session.get("difficulty"),
-            "mode": scenario_raw.get("mode") or "",
+            "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,
         },
         "messages": history,
         "evaluation": evaluation,
@@ -387,6 +375,5 @@ def reset_session(session_id: str):
         "chapterId": session["chapter_id"],
         "sectionId": session["section_id"],
         "difficulty": session.get("difficulty") or DEFAULT_DIFFICULTY,
-        "mode": scenario.get("mode") or "",
     }
     return jsonify(payload)

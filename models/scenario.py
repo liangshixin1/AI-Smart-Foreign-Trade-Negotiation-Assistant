@@ -15,6 +15,7 @@ class Scenario:
 
     title: str = ""
     summary: str = ""
+    student_task: str = ""
     student_role: str = ""
     student_company: Dict[str, str] = field(default_factory=dict)
     ai_role: str = ""
@@ -40,6 +41,7 @@ class Scenario:
         instance = cls(
             title=normalize_text(payload.get("scenario_title") or payload.get("title")),
             summary=normalize_text(payload.get("scenario_summary") or payload.get("summary")),
+            student_task=normalize_text(payload.get("student_task")),
             student_role=normalize_text(payload.get("student_role")),
             student_company=normalize_company(payload.get("student_company")),
             ai_role=normalize_text(payload.get("ai_role")),
@@ -80,6 +82,8 @@ class Scenario:
             "title",
             "scenario_summary",
             "summary",
+            "student_task",
+            "studentTask",
             "student_role",
             "studentRole",
             "student_company",
@@ -136,6 +140,7 @@ class Scenario:
         payload = {
             "scenario_title": self.title,
             "scenario_summary": self.summary,
+            "student_task": self.student_task,
             "student_role": self.student_role,
             "student_company": self.student_company,
             "ai_role": self.ai_role,

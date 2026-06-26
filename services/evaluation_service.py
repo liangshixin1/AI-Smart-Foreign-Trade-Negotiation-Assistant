@@ -145,9 +145,6 @@ def prepare_evaluation_context(session_id: str, session: Dict[str, object]) -> D
     last_ai = next((row["content"] for row in reversed(history_rows) if row["role"] == "assistant"), "")
     transcript = build_transcript(transcript_history, scenario)
     evaluation_prompt = session.get("evaluation_prompt", "")
-    scenario_mode = (scenario or {}).get("mode") or ""
-    if scenario_mode == "email":
-        evaluation_prompt = f"{evaluation_prompt}\n\n[Email Mode Focus]\n- 请优先评估邮件格式规范（Subject/Salutation/Closing/Signature）。\n- 检查正文逻辑、礼貌度与条款完整性。\n- 简明指出格式缺失或不当之处。"
 
     base_messages = [
         {"role": "system", "content": str(evaluation_prompt)},

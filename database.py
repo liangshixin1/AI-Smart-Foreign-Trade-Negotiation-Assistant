@@ -388,15 +388,11 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                     (chapter.id, chapter.title, "", chapter_order),
                 )
             else:
+                # 默认章节同步刷新标题与顺序，使 levels.py 的改动能落库。
                 conn.execute(
-                    "UPDATE level_chapters SET is_default = 1 WHERE id = ?",
-                    (chapter.id,),
+                    "UPDATE level_chapters SET is_default = 1, title = ?, order_index = ? WHERE id = ?",
+                    (chapter.title, chapter_order, chapter.id),
                 )
-                if not chapter_row["order_index"]:
-                    conn.execute(
-                        "UPDATE level_chapters SET order_index = ? WHERE id = ?",
-                        (chapter_order, chapter.id),
-                    )
 
             for section_order, section in enumerate(chapter.sections, start=1):
                 section_row = conn.execute(
@@ -428,19 +424,38 @@ def seed_default_levels(chapters: "List[ChapterConfig]") -> None:
                         ),
                     )
                 else:
+                    # 默认小节同步刷新全部内容字段（标题/描述/各提示词/固定场景），
+                    # 使 levels.py 的改动能落库刷新已入库关卡。
                     conn.execute(
-                        "UPDATE level_sections SET is_default = 1 WHERE id = ?",
-                        (section.id,),
+                        """
+                        UPDATE level_sections SET
+                            is_default = 1,
+                            chapter_id = ?,
+                            title = ?,
+                            description = ?,
+                            mode = ?,
+                            environment_prompt_template = ?,
+                            environment_user_message = ?,
+                            conversation_prompt_template = ?,
+                            evaluation_prompt_template = ?,
+                            expects_bargaining = ?,
+                            order_index = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            chapter.id,
+                            section.title,
+                            section.description,
+                            getattr(section, "mode", "") if section else "",
+                            section.environment_prompt_template,
+                            section.environment_user_message,
+                            section.conversation_prompt_template,
+                            section.evaluation_prompt_template,
+                            1 if section.expects_bargaining else 0,
+                            section_order,
+                            section.id,
+                        ),
                     )
-                    if not section_row["order_index"]:
-                        conn.execute(
-                            "UPDATE level_sections SET order_index = ? WHERE id = ?",
-                            (section_order, section.id),
-                        )
-                conn.execute(
-                    "UPDATE level_sections SET mode = ? WHERE id = ?",
-                    (getattr(section, "mode", "") if section else "", section.id),
-                )
         conn.commit()
 
 
@@ -574,6 +589,23 @@ def get_section_template(chapter_id: str, section_id: str) -> Optional[Dict[str,
             "order_index": row["order_index"],
             "is_default": bool(row["is_default"]),
         }
+
+
+def update_section_scenario(chapter_id: str, section_id: str, scenario_json: str) -> bool:
+    """固化更新某关卡的固定场景 JSON（教师「重新生成」后调用）。"""
+    from levels import STATIC_SCENARIO_MARKER  # 局部导入避免循环引用
+
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE level_sections
+            SET environment_prompt_template = ?, environment_user_message = ?
+            WHERE id = ? AND chapter_id = ?
+            """,
+            (STATIC_SCENARIO_MARKER, scenario_json, section_id, chapter_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 def get_section(section_id: str) -> Optional[Dict[str, object]]:

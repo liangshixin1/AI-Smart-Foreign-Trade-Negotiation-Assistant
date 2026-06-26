@@ -122,8 +122,6 @@ const DEMO_FALLBACK_SCENARIO = {
     "Hello, I've reviewed your catalog. The Model-X looks promising, but your price of $25 is way above our budget for this quantity.",
   opening_message:
     "Hello, I've reviewed your catalog. The Model-X looks promising, but your price of $25 is way above our budget for this quantity.",
-  backgroundSessions: [],
-  background_sessions: [],
 };
 // 能力雷达图实例
 let abilityRadarChart = null;
@@ -653,24 +651,6 @@ function seedSessionDeck(mainSessionId, scenario) {
   state.sessionDeck.push(main);
   state.sessionMessages.set(mainSessionId, state.messages || []);
 
-  const backgrounds = Array.isArray(scenario?.backgroundSessions) ? scenario.backgroundSessions : [];
-  backgrounds.forEach((item, index) => {
-    const simId = item.id || `sim-${Date.now()}-${index}`;
-    const session = {
-      id: simId,
-      title: item.title || `侧边会话 ${index + 1}`,
-      role: item.aiRole || item.role || "关联联系人",
-      simulated: true,
-      openingMessage: item.openingMessage || "同步中...",
-    };
-    state.sessionDeck.push(session);
-    state.simulatedSessions.add(simId);
-    state.unreadSessions.add(simId);
-    state.sessionMessages.set(simId, [
-      { role: "assistant", content: session.openingMessage },
-    ]);
-  });
-
   state.activeSessionId = mainSessionId;
   renderSessionRail();
 }
@@ -899,9 +879,7 @@ function setSelectedLevel(chapterId, sectionId) {
   if (chapterId) {
     state.expandedChapters.add(chapterId);
   }
-  const section = chapterId && sectionId ? findSection(chapterId, sectionId) : null;
-  const mode = section && section.mode ? section.mode : "";
-  state.selectedLevel = { chapterId, sectionId, mode };
+  state.selectedLevel = { chapterId, sectionId };
   updateSelectedLevelDetail();
 }
 
@@ -1444,138 +1422,10 @@ function renderReviewWorkbench() {
   renderReviewAnnotations();
 }
 
-// 判断当前体验模块是否为邮件往来模式。
-function isEmailModeActive() {
-  const mode =
-    (state.currentScenario && state.currentScenario.mode) ||
-    (state.activeLevel && state.activeLevel.mode) ||
-    (state.selectedLevel && state.selectedLevel.mode) ||
-    "";
-  return mode === "email";
-}
-
-// 初始化邮件草稿结构。
-function ensureEmailDraft() {
-  if (!state.emailDraft) {
-    state.emailDraft = { subject: "", body: "", signature: "" };
-  }
-}
-
-// 根据场景信息预填邮件撰写器（收件人/主题等）。
-function hydrateEmailComposer(scenario) {
-  ensureEmailDraft();
-  const studentCompany = (scenario && scenario.studentCompany) || {};
-  const aiCompany = (scenario && scenario.aiCompany) || {};
-  const studentRole = scenario && scenario.studentRole ? scenario.studentRole : "";
-  const aiRole = scenario && scenario.aiRole ? scenario.aiRole : "";
-  const defaultSubject = scenario?.title || "Business correspondence";
-  const defaultSignature =
-    state.emailDraft.signature || `${studentRole}\n${studentCompany.name || ""}`.trim();
-  if (emailSubjectInput) emailSubjectInput.value = state.emailDraft.subject || defaultSubject;
-  if (emailFromInput) {
-    const fromLine = `${studentRole || "Student"}${studentCompany.name ? " | " + studentCompany.name : ""}`;
-    emailFromInput.value = fromLine;
-  }
-  if (emailToInput) {
-    const toLine = `${aiRole || "Counterparty"}${aiCompany.name ? " | " + aiCompany.name : ""}`;
-    emailToInput.value = toLine;
-  }
-  if (emailBodyInput) {
-    emailBodyInput.value = state.emailDraft.body || "";
-  }
-  if (emailSignatureInput) {
-    emailSignatureInput.value = defaultSignature;
-  }
-}
-
-// 更新邮件 Copilot 状态栏。
-function setEmailCopilotStatus(message, variant = "muted") {
-  if (!emailCopilotStatus) return;
-  emailCopilotStatus.textContent = message || "";
-  emailCopilotStatus.className = "text-xs";
-  if (variant === "loading") {
-    emailCopilotStatus.classList.add("text-blue-600");
-  } else if (variant === "error") {
-    emailCopilotStatus.classList.add("text-rose-600");
-  } else {
-    emailCopilotStatus.classList.add("text-slate-500");
-  }
-}
-
-// 渲染邮件往来列表（AI 回复 + 用户草稿）。
-function renderEmailThread() {
-  if (!emailThreadEl || !chatBodyEl || !emailComposerEl || !chatInputPanel || !emailBannerEl) {
-    return;
-  }
-  emailThreadEl.innerHTML = "";
-  chatBodyEl.classList.add("hidden");
-  chatInputPanel.classList.add("hidden");
-  emailThreadEl.classList.remove("hidden");
-  emailComposerEl.classList.remove("hidden");
-  emailBannerEl.classList.remove("hidden");
-
-  const scenario = state.currentScenario || {};
-  const aiCompany = scenario.aiCompany || {};
-  const studentCompany = scenario.studentCompany || {};
-  state.messages.forEach((message) => {
-    const card = document.createElement("article");
-    const isUser = message.role === "user";
-    let subject = message.subject;
-    if (!subject && typeof message.content === "string") {
-      const match = message.content.match(/Subject:\s*([^\n]+)/i);
-      if (match) {
-        subject = match[1].trim();
-      }
-    }
-    card.className = `email-card ${isUser ? "email-card--user" : "email-card--assistant"}`;
-    const meta = document.createElement("div");
-    meta.className = "email-card__meta";
-    const fromLabel = isUser
-      ? studentCompany.name || scenario.studentRole || "Student"
-      : aiCompany.name || scenario.aiRole || "AI";
-    const from = document.createElement("span");
-    from.textContent = `From: ${fromLabel}`;
-    meta.appendChild(from);
-    if (subject) {
-      const subj = document.createElement("span");
-      subj.textContent = `Subject: ${subject}`;
-      meta.appendChild(subj);
-    }
-    card.appendChild(meta);
-    if (subject) {
-      const subjectEl = document.createElement("div");
-      subjectEl.className = "email-card__subject";
-      subjectEl.textContent = subject;
-      card.appendChild(subjectEl);
-    }
-    const body = document.createElement("div");
-    body.className = "email-card__body chat-markdown";
-    body.innerHTML = renderMarkdown(message.content);
-    card.appendChild(body);
-    emailThreadEl.appendChild(card);
-  });
-}
-
-// 渲染邮件撰写区域，包括开关、按钮、输入框。
-function renderEmailComposer() {
-  if (!isEmailModeActive()) {
-    if (emailBannerEl) emailBannerEl.classList.add("hidden");
-    if (emailComposerEl) emailComposerEl.classList.add("hidden");
-    if (emailThreadEl) emailThreadEl.classList.add("hidden");
-    if (chatBodyEl) chatBodyEl.classList.remove("hidden");
-    if (chatInputPanel) chatInputPanel.classList.remove("hidden");
-    renderCopilotVisibility();
-    return;
-  }
-  hydrateEmailComposer(state.currentScenario || {});
-  renderEmailThread();
-  renderCopilotVisibility();
-}
-
 // 根据当前模式显示/隐藏 Copilot 面板与切换按钮。
 function renderCopilotVisibility() {
   if (!copilotFab) return;
-  const liveChat = !isEmailModeActive() && !isReviewSection(state.activeLevel?.sectionId);
+  const liveChat = !isReviewSection(state.activeLevel?.sectionId);
   if (!liveChat) {
     copilotFab.style.display = "none";
     if (copilotPanel) copilotPanel.style.display = "none";
@@ -2719,19 +2569,15 @@ function showExperience() {
   const reviewModeActive =
     isReviewSection(state.activeLevel?.sectionId) &&
     !!(state.review && state.review.documentText && state.review.documentText.trim());
-  const emailModeActive = isEmailModeActive();
   setActiveExperienceModule(reviewModeActive ? "review" : "chat");
   if (chatInputEl) {
-    chatInputEl.disabled = reviewModeActive || emailModeActive;
-    if (!reviewModeActive && !emailModeActive) {
+    chatInputEl.disabled = reviewModeActive;
+    if (!reviewModeActive) {
       chatInputEl.focus();
     }
   }
   if (sendMessageBtn) {
-    sendMessageBtn.disabled = reviewModeActive || emailModeActive;
-  }
-  if (emailModeActive) {
-    renderEmailComposer();
+    sendMessageBtn.disabled = reviewModeActive;
   }
   state.studentActiveView = "practice";
 }
@@ -2796,12 +2642,7 @@ function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
     state.selectedLevel = { chapterId: null, sectionId: null };
   }
   state.sessionId = null;
-  state.activeLevel = {
-    chapterId: null,
-    sectionId: null,
-    difficulty: difficultySelect ? difficultySelect.value : "balanced",
-    mode: "",
-  };
+  state.activeLevel = { chapterId: null, sectionId: null };
   ensureSessionState();
   state.sessionDeck = [];
   state.sessionMessages = new Map();
@@ -2809,7 +2650,6 @@ function goToLevelSelection({ clearSelection = false, showPanel = true } = {}) {
   state.unreadSessions = new Set();
   state.activeSessionId = null;
   state.messages = [];
-  state.emailDraft = { subject: "", body: "", signature: "" };
   renderChat();
   renderScenario({});
   resetEvaluation();
@@ -4444,6 +4284,7 @@ function renderStudentInsights(insights) {
 function renderScenario(scenario) {
   state.currentScenario = scenario;
   scenarioTitleEl.textContent = scenario.title || "";
+  if (studentTaskEl) studentTaskEl.textContent = scenario.studentTask || "";
   scenarioSummaryEl.textContent = scenario.summary || "";
   studentRoleEl.textContent = scenario.studentRole || "";
   const studentCompany = scenario.studentCompany || {};
@@ -4464,9 +4305,7 @@ function renderScenario(scenario) {
   if (product.quantity_requirement)
     productDetails.push(`数量/产能：${product.quantity_requirement}`);
   if (price.student_target)
-    productDetails.push(`学生目标：${price.student_target}`);
-  if (price.ai_bottom_line)
-    productDetails.push(`AI 底线：${price.ai_bottom_line}`);
+    productDetails.push(`谈判目标：${price.student_target}`);
   if (scenario.timeline) productDetails.push(`交期：${scenario.timeline}`);
   if (scenario.logistics) productDetails.push(`物流条款：${scenario.logistics}`);
   productDetailsEl.innerHTML = "";
@@ -4490,41 +4329,39 @@ function renderScenario(scenario) {
   if (chatCompanyEl) {
     chatCompanyEl.textContent = aiCompany.name || "AI 虚拟公司";
   }
-  const difficultyLabel = scenario.difficultyLabel || "";
-  const difficultyDescription = scenario.difficultyDescription || "";
-  if (scenarioDifficultyEl) {
-    const descriptionParts = [];
-    if (difficultyLabel) {
-      descriptionParts.push(difficultyLabel);
-    }
-    if (difficultyDescription) {
-      descriptionParts.push(difficultyDescription);
-    }
-    scenarioDifficultyEl.textContent =
-      descriptionParts.length > 0 ? descriptionParts.join(" · ") : "默认 · 平衡博弈";
-  }
-  const toneText = scenario.communicationTone || "";
   if (chatToneEl) {
-    chatToneEl.textContent = difficultyLabel
-      ? `${difficultyLabel}${toneText ? ` · ${toneText}` : ""}`
-      : toneText;
+    chatToneEl.textContent = scenario.communicationTone || "";
   }
+
+  if (scenarioKnowledgeEl) {
+    scenarioKnowledgeEl.innerHTML = "";
+    const kps = scenario.knowledgePoints || [];
+    if (!kps.length) {
+      const empty = document.createElement("span");
+      empty.className = "text-xs text-slate-400";
+      empty.textContent = "暂无";
+      scenarioKnowledgeEl.appendChild(empty);
+    } else {
+      kps.forEach((kp) => {
+        const label = typeof kp === "string" ? kp : (kp && (kp.label || kp.name)) || "";
+        if (!label) return;
+        const chip = document.createElement("span");
+        chip.className =
+          "rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600";
+        chip.textContent = label;
+        scenarioKnowledgeEl.appendChild(chip);
+      });
+    }
+  }
+
   renderCustomFields(scenario.customFields || []);
   renderKnowledge(evaluationKnowledgeEl, scenario.knowledgePoints || []);
-  renderEmailComposer();
   renderCopilotVisibility();
   updateChatHeader(scenario.title || scenario.aiRole || "");
 }
 
-// 渲染聊天窗口（消息列表 + 输入区域），区分邮件/普通模式。
+// 渲染聊天窗口（消息列表 + 输入区域）。
 function renderChat() {
-  if (isEmailModeActive()) {
-    renderEmailComposer();
-    return;
-  }
-  if (emailBannerEl) emailBannerEl.classList.add("hidden");
-  if (emailComposerEl) emailComposerEl.classList.add("hidden");
-  if (emailThreadEl) emailThreadEl.classList.add("hidden");
   if (chatInputPanel) chatInputPanel.classList.remove("hidden");
   chatBodyEl.innerHTML = "";
   state.messages.forEach((message) => {
@@ -5316,13 +5153,10 @@ async function loadStudentSession(sessionId) {
     state.activeLevel = {
       chapterId: data.session.chapterId,
       sectionId: data.session.sectionId,
-      difficulty: data.session.difficulty || "balanced",
-      mode: data.session.mode || state.selectedLevel?.mode || "",
     };
     state.selectedLevel = {
       chapterId: state.activeLevel.chapterId,
       sectionId: state.activeLevel.sectionId,
-      mode: state.activeLevel.mode || "",
     };
     ensureReviewState();
     state.review.documentText =
@@ -5403,7 +5237,6 @@ async function startLevel() {
   }
 
   const { chapterId, sectionId } = state.selectedLevel || {};
-  const difficulty = difficultySelect ? difficultySelect.value : "balanced";
 
   if (!chapterId || !sectionId) {
     alert("请选择章节与小节");
@@ -5425,12 +5258,7 @@ async function startLevel() {
 
     state.sessionId = sessionId;
     state.messages = [];
-    state.activeLevel = {
-      chapterId,
-      sectionId,
-      difficulty,
-      mode: payload.mode || state.selectedLevel?.mode || "",
-    };
+    state.activeLevel = { chapterId, sectionId };
     updateSessionControls();
 
     ensureReviewState();
@@ -5465,7 +5293,7 @@ async function startLevel() {
     const response = await fetchWithAuth("/api/start_level", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapterId, sectionId, difficulty }),
+      body: JSON.stringify({ chapterId, sectionId }),
     });
 
     if (!response.ok) {
@@ -5476,7 +5304,6 @@ async function startLevel() {
     const data = await response.json();
     await hydrateScenario({
       sessionId: data.sessionId,
-      mode: data.mode,
       scenario: data.scenario || {},
       openingMessage: data.openingMessage,
       documentText: data.documentText,
@@ -5489,7 +5316,6 @@ async function startLevel() {
     await hydrateScenario(
       {
         sessionId: `demo-${Date.now()}`,
-        mode: state.selectedLevel?.mode || "",
         scenario: DEMO_FALLBACK_SCENARIO,
         openingMessage:
           DEMO_FALLBACK_SCENARIO.openingMessage || DEMO_FALLBACK_SCENARIO.opening_message,
@@ -5551,143 +5377,8 @@ async function resetCurrentSession() {
   }
 }
 
-// 在邮件模式下发送一封邮件形式的对话消息，并处理 AI 回复。
-async function sendEmailMessage() {
-  ensureEmailDraft();
-  if (!state.auth.user || state.auth.user.role !== "student") {
-    alert("请使用学生账号体验");
-    return;
-  }
-  if (state.activeSessionId && state.sessionId && state.activeSessionId !== state.sessionId) {
-    alert("当前为模拟侧边会话，无法发送。请切回主会话。");
-    return;
-  }
-  if (!state.sessionId) {
-    alert("请先选择关卡并加载场景");
-    return;
-  }
-  const subject = emailSubjectInput ? emailSubjectInput.value.trim() : "";
-  const to = emailToInput ? emailToInput.value.trim() : "";
-  const from = emailFromInput ? emailFromInput.value.trim() : "";
-  const body = emailBodyInput ? emailBodyInput.value.trim() : "";
-  const signature = emailSignatureInput ? emailSignatureInput.value.trim() : "";
-  if (!subject || !body) {
-    alert("请填写 Subject 与正文后再发送");
-    return;
-  }
-  state.emailDraft = { subject, body, signature };
-
-  const composed = `Subject: ${subject}\nTo: ${to}\nFrom: ${from}\n\n${body}${signature ? `\n\n${signature}` : ""}`;
-
-  if (emailSendBtn) {
-    emailSendBtn.disabled = true;
-    emailSendBtn.textContent = "发送中...";
-  }
-  const userIndex = appendMessage("user", composed, { subject });
-  renderChat();
-  setEvaluationLoading(true);
-  try {
-    const response = await fetchWithAuth("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: state.sessionId, message: composed }),
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || "发送失败");
-    }
-    const data = await response.json();
-    if (data.reply) {
-      appendMessage("assistant", data.reply);
-    }
-    if (data.evaluation) {
-      renderEvaluation(data.evaluation);
-    }
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "发送失败");
-    state.messages.splice(userIndex, 1);
-    renderChat();
-  } finally {
-    setEvaluationLoading(false);
-    if (emailSendBtn) {
-      emailSendBtn.disabled = false;
-      emailSendBtn.textContent = "发送邮件";
-    }
-  }
-}
-
-// 使用 Copilot 为当前邮件生成草稿。
-async function handleEmailDraft() {
-  if (!isEmailModeActive()) return;
-  const intent = window.prompt("告诉 Copilot 你的意图（例：写一封委婉的催款信）");
-  if (!intent) return;
-  setEmailCopilotStatus("AI 正在起草...", "loading");
-  try {
-    const response = await fetchWithAuth("/api/ai/email/assist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: state.sessionId,
-        action: "draft",
-        user_input: intent,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "起草失败");
-    }
-    if (emailBodyInput) {
-      emailBodyInput.value = data.suggestion || emailBodyInput.value;
-      state.emailDraft.body = emailBodyInput.value;
-    }
-    setEmailCopilotStatus("已生成草稿");
-  } catch (error) {
-    console.error(error);
-    setEmailCopilotStatus(error.message || "AI 起草失败", "error");
-  }
-}
-
-// 使用 Copilot 对邮件草稿进行润色。
-async function handleEmailPolish() {
-  if (!isEmailModeActive()) return;
-  const subject = emailSubjectInput ? emailSubjectInput.value.trim() : "";
-  const to = emailToInput ? emailToInput.value.trim() : "";
-  const from = emailFromInput ? emailFromInput.value.trim() : "";
-  const body = emailBodyInput ? emailBodyInput.value.trim() : "";
-  const signature = emailSignatureInput ? emailSignatureInput.value.trim() : "";
-  const draft = `Subject: ${subject}\nTo: ${to}\nFrom: ${from}\n\n${body}${signature ? `\n\n${signature}` : ""}`;
-  setEmailCopilotStatus("AI 正在润色...", "loading");
-  try {
-    const response = await fetchWithAuth("/api/ai/email/assist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: state.sessionId,
-        action: "polish",
-        user_input: draft,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "润色失败");
-    }
-    if (emailBodyInput) {
-      emailBodyInput.value = data.suggestion || emailBodyInput.value;
-      state.emailDraft.body = emailBodyInput.value;
-    }
-    setEmailCopilotStatus("润色完成");
-  } catch (error) {
-    console.error(error);
-    setEmailCopilotStatus(error.message || "AI 润色失败", "error");
-  }
-}
-
-// 文本输入框发送消息的入口，自动区分邮件/普通模式。
+// 文本输入框发送消息的入口。
 async function sendMessage() {
-  if (isEmailModeActive()) {
-    return sendEmailMessage();
-  }
   if (!state.auth.user || state.auth.user.role !== "student") {
     alert("请使用学生账号体验对话");
     return;

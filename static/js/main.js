@@ -31,18 +31,6 @@ if (chatInputEl) {
   });
 }
 
-if (emailSendBtn) {
-  emailSendBtn.addEventListener("click", sendEmailMessage);
-}
-
-if (emailDraftBtn) {
-  emailDraftBtn.addEventListener("click", handleEmailDraft);
-}
-
-if (emailPolishBtn) {
-  emailPolishBtn.addEventListener("click", handleEmailPolish);
-}
-
 if (copilotFab) {
   copilotFab.addEventListener("click", openCopilotPanel);
 }
