@@ -4,6 +4,8 @@
 
 **© AI赋能：智能时代的外贸谈判策略与实战项目组**
 
+** 梁 诗 忻    软件设计**
+
 本项目是一个面向外贸与商务英语教学的多 Agent 智能训练平台。它不是“替学生写答案”的聊天机器人，而是一套围绕真实任务构建的教学系统：学生进入情境、亲自谈判、接受动态挑战、获得结构化评价；教师看到的不只是分数，还能追溯学生说了什么、用了什么策略、需要什么帮助以及下一步应该教什么。
 
 项目以 [MIT License](./LICENSE) 开源，公开仓库为 [liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant)。重构前版本已冻结在 [`legacy/`](./legacy/LEGACY_NOTICE.md)，不作为当前运行时依赖。
