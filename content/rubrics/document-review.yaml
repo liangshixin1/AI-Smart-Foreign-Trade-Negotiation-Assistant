@@ -1,0 +1,24 @@
+id: document-review
+version: 2.0.0
+publication_status: published
+pass_score: 60
+dimensions:
+  - key: issue_identification
+    label: 问题识别完整性
+    weight: 0.3
+  - key: professional_accuracy
+    label: 单证与规则准确性
+    weight: 0.3
+  - key: risk_judgment
+    label: 风险与优先级判断
+    weight: 0.2
+  - key: correction_quality
+    label: 修改意见可执行性
+    weight: 0.15
+  - key: correspondence_quality
+    label: 专业表达
+    weight: 0.05
+hard_fail_rules:
+  - missed_material_discrepancy
+  - invented_document_fact
+  - response_completely_off_task

@@ -1,0 +1,31 @@
+id: scenario-chapter-6-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- business_email
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 6-2 · 交单结汇与装运通知\",\n  \"scenario_summary\": \"货物 4 月 13 日装运（OOCL Singapore，提单号 OOCL-SIN-SHA-20270413-2271，经香港转船，预计\
+  \ 4 月 18 日抵沪）。NovaTech 发出装运通知并交单结汇。翰霖需确认收悉、准备接货。\",\n  \"student_task\": \"以翰霖名义确认收到装运通知、核对装运详情、安排接货与清关、确认信用证项下付款流程。\",\n\
+  \  \"student_role\": \"中国买方 · 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\"\
+  ,\n  \"product\": \"NT-IM250 · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\"\
+  : [\n    \"准确核对装运详情\",\n    \"专业安排接货与清关\",\n    \"理解 L/C 项下「单证相符即付款」机制\"\n  ],\n  \"checklist\": [\n    \"确认收到装运通知并核对船名/提单号/抵港时间\"\
+  ,\n    \"安排接货、清关与提货准备\",\n    \"确认 L/C 项下付款流程\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, we are pleased to advise\
+  \ shipment of all 800 sets on 13 April 2027: vessel OOCL Singapore (voyage 027W), B/L No. OOCL-SIN-SHA-20270413-2271, transshipped\
+  \ at Hong Kong, ETA Shanghai around 18 April. The full set of documents has been presented under the L/C. Please arrange\
+  \ to take delivery and customs clearance accordingly.\",\n  \"market_landscape\": \"CIF 下卖方已投保；卖方已如约在合同期限内装运。\",\n  \"timeline\"\
+  : \"2027 年 4 月中；预计 4 月 18 日抵沪。\",\n  \"logistics\": \"船名 OOCL Singapore（027W），提单号 OOCL-SIN-SHA-20270413-2271，新加坡装运经香港转船至上海。\"\
+  ,\n  \"risks\": [],\n  \"knowledge_points\": [\n    \"装运通知\",\n    \"交单结汇\",\n    \"L/C 单证相符付款\",\n    \"接货与清关\"\n  ]\n\
+  }\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\"\
+  , \"student_task\": \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\"\
+  : [\"字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n\
+  \    \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n\
+  \  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

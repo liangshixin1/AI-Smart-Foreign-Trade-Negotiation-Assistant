@@ -1,0 +1,30 @@
+id: scenario-chapter-1-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- business_email
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 1-2 · 催询与条件探询\",\n  \"scenario_summary\": \"NovaTech 回复了询盘但未给实价、反而抛回一串问题。翰霖需回应这些问题、推动对方尽快报实盘，同时不暴露过多底牌。\"\
+  ,\n  \"student_task\": \"有策略地回应 NovaTech 的探询（确认数量/付款等关键信息以换取报盘），并催促对方发出正式报盘，避免和盘托出底牌。\",\n  \"student_role\": \"中国买方 · 上海翰霖采购（陈一帆\
+  \ / 助理 赵明）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\": \"NT-IM250 · P2.5 室内 LED\
+  \ 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n    \"有策略地提供信息以换取报盘\",\n\
+  \    \"保留议价空间，不暴露预算上限与急迫度\",\n    \"成功逼出对方即将报盘的承诺\"\n  ],\n  \"checklist\": [\n    \"回应卖方关于数量/付款/交期的关键问题\",\n    \"催促对方发出正式报盘\"\
+  ,\n    \"不暴露预算上限或过度急迫\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, thank you for your enquiry on the NT-IM250.\
+  \ Before we issue a firm offer, could you kindly confirm: (1) your final order quantity, (2) your preferred payment terms,\
+  \ and (3) your required delivery window? With these confirmed, I can prepare our most competitive proposal for you.\",\n\
+  \  \"market_landscape\": \"卖方暗示产品供不应求，以对冲买方的催促施压。\",\n  \"timeline\": \"希望对方尽快报实盘。\",\n  \"logistics\": \"\",\n  \"risks\"\
+  : [],\n  \"knowledge_points\": [\n    \"催复函\",\n    \"信息交换\",\n    \"议价筹码\",\n    \"谈判节奏\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n\
+  {\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\"\
+  : \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"\
+  ],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\"\
+  , \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message\
+  \ 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

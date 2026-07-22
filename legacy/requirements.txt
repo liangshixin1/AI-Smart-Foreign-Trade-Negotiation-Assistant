@@ -1,0 +1,10 @@
+flask
+openai
+openpyxl
+python-dotenv
+neo4j
+python-docx
+sentence-transformers>=2.6.1
+torch>=2.2.0
+dashscope>=1.25.2
+flask-sock

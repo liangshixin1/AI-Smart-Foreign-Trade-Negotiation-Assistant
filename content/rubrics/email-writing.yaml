@@ -1,0 +1,24 @@
+id: email-writing
+version: 2.0.0
+publication_status: published
+pass_score: 60
+dimensions:
+  - key: correspondence_quality
+    label: 商务函电 7C 与格式
+    weight: 0.3
+  - key: professional_accuracy
+    label: 事实、术语与条款准确性
+    weight: 0.25
+  - key: task_completeness
+    label: 本关任务完整性
+    weight: 0.25
+  - key: negotiation_strategy
+    label: 商务策略与条件设计
+    weight: 0.1
+  - key: relationship_management
+    label: 语气与关系维护
+    weight: 0.1
+hard_fail_rules:
+  - major_term_or_number_error
+  - fabricated_business_fact
+  - response_completely_off_task

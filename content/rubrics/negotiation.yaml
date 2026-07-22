@@ -1,0 +1,24 @@
+id: negotiation
+version: 1.0.0
+publication_status: published
+pass_score: 60
+dimensions:
+  - key: correspondence_quality
+    label: 商务表达与 7C
+    weight: 0.15
+  - key: professional_accuracy
+    label: 专业与条款准确性
+    weight: 0.2
+  - key: negotiation_strategy
+    label: 谈判策略
+    weight: 0.3
+  - key: objective_achievement
+    label: 本关目标达成
+    weight: 0.25
+  - key: relationship_management
+    label: 沟通与关系维护
+    weight: 0.1
+hard_fail_rules:
+  - major_term_or_number_error
+  - abusive_or_seriously_unprofessional_language
+  - response_completely_off_task

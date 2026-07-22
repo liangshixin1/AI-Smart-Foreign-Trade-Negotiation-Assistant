@@ -1,0 +1,30 @@
+id: scenario-chapter-3-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 3-2 · 多维度磋商：付款与交期还盘\",\n  \"scenario_summary\": \"价格僵在 283–285。翰霖转而就付款方式（要求 30% T/T 预付 + 70%\
+  \ 见单付款）和交货期（要求从 45 天缩短到 35 天）还盘，从整体上降低成本与风险。\",\n  \"student_task\": \"就付款方式和/或交货期提出还盘，理解「当一个维度谈不拢时，从其他维度寻找交换空间」。\",\n \
+  \ \"student_role\": \"中国买方 · 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\"\
+  ,\n  \"product\": \"NT-IM250 · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\"\
+  : [\n    \"展现「多维度磋商/换战线」的策略意识\",\n    \"理解付款方式（L/C）是卖方原则底线\",\n    \"在交期等可让维度上有所斩获\"\n  ],\n  \"checklist\": [\n    \"就付款方式提出方案（或理解为何首单坚持\
+  \ L/C）\",\n    \"就交货期提出还盘（如争取 40 天）\",\n    \"（加分）用「接受 L/C」去交换对方让步\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen,\
+  \ I note we remain a little apart on price. Rather than dwell there alone, I am open to discussing the package as a whole\
+  \ — payment terms, delivery and so on. Please share what matters most to your side.\",\n  \"market_landscape\": \"首单尚无信用记录，卖方对收汇风险高度敏感。\"\
+  ,\n  \"timeline\": \"2027 年 1 月 11 日；交期标准 45 天。\",\n  \"logistics\": \"价格胶着 283–285；现就付款方式与交期磋商。\",\n  \"risks\": [],\n\
+  \  \"knowledge_points\": [\n    \"付款方式 L/C/T/T\",\n    \"交货期谈判\",\n    \"多维度磋商\",\n    \"条件交换\"\n  ]\n}\n\n只输出合法 JSON，不要\
+  \ Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\"\
+  : \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\": [\"\
+  字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n   \
+  \ \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n \
+  \ }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

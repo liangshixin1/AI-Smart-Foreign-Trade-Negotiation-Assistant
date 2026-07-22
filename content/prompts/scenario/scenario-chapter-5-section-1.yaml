@@ -1,0 +1,30 @@
+id: scenario-chapter-5-section-1
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 5-1 · 包装与唛头磋商\",\n  \"scenario_summary\": \"生产在即，双方敲定包装要求与唛头。翰霖关注 LED 模组的防护（防静电、防潮、防震）。\"\
+  ,\n  \"student_task\": \"以翰霖名义提出合理的包装要求（防静电内包装、五层瓦楞+托盘、防震衬垫）与唛头内容，请 NovaTech 确认。\",\n  \"student_role\": \"中国买方 · 上海翰霖采购（陈一帆\
+  \ / 助理 赵明）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\": \"NT-IM250 · P2.5 室内 LED\
+  \ 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n    \"提出专业、合理、要素齐全的包装要求\"\
+  ,\n    \"约定规范的唛头内容\",\n    \"兼顾防护要点与成本\"\n  ],\n  \"checklist\": [\n    \"防静电内包装、五层瓦楞+托盘、防震衬垫\",\n    \"防潮（干燥剂/防潮袋）等关键防护\"\
+  ,\n    \"规范唛头与指示性标志（KEEP DRY / THIS SIDE UP）\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, as we prepare for production,\
+  \ I would welcome your packing and shipping-mark requirements for the NT-IM250 modules. We will of course ensure proper\
+  \ protection for these precision goods. Please let me know your specifications.\",\n  \"market_landscape\": \"货物是精密 LED\
+  \ 模组；卖方满足合理包装要求但控成本。\",\n  \"timeline\": \"2027 年 3 月。\",\n  \"logistics\": \"CIF 上海；包装需兼顾防护与成本。\",\n  \"risks\": [],\n\
+  \  \"knowledge_points\": [\n    \"包装条款\",\n    \"唛头\",\n    \"精密电子防护\",\n    \"成本控制\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n\
+  {\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\"\
+  : \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"\
+  ],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\"\
+  , \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message\
+  \ 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

@@ -1,0 +1,30 @@
+id: scenario-chapter-3-section-1
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 3-1 · 价格还盘攻防\",\n  \"scenario_summary\": \"翰霖收到实盘（285），认为偏高，决定就价格还盘。教材里翰霖把价格锚在 USD 278。\"\
+  ,\n  \"student_task\": \"撰写价格还盘函——指出价格偏高、以市场行情/采购量/长期合作为据、把价格锚定在低于目标的位置（参考 278），有理有据、不失风度。\",\n  \"student_role\": \"中国买方\
+  \ · 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\": \"NT-IM250\
+  \ · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n    \"还盘有理有据（市场/数量/合作）\"\
+  ,\n    \"锚定合理（不离谱）、措辞专业不失礼\",\n    \"（加分）主动提供让步交换\"\n  ],\n  \"checklist\": [\n    \"指出 285 偏高并给出依据（市场行情/采购量/长期合作）\",\n\
+  \    \"把价格锚定在合理位置（参考 278）\",\n    \"保持专业风度，可尝试提供交换条件\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, I trust you have\
+  \ had a chance to review our firm offer of USD 285.00 CIF Shanghai. We remain confident it represents genuine value for\
+  \ the NT-IM250. I would welcome your considered response.\",\n  \"market_landscape\": \"市场上同类 P2.5 模组报价约 USD 275–280，但品质/售后/交期未必可比。\"\
+  ,\n  \"timeline\": \"2027 年 1 月 10 日左右；实盘有效期至 1 月 15 日。\",\n  \"logistics\": \"实盘：USD 285/件 CIF 上海，800 件。\",\n  \"risks\"\
+  : [\n    \"无依据猛砍价会被坚决拒绝\",\n    \"措辞失礼或威胁会触发对等强硬反应\"\n  ],\n  \"knowledge_points\": [\n    \"还盘的法律性质（CISG 19）\",\n    \"\
+  价格还盘\",\n    \"锚定策略\",\n    \"让步与交换\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\"\
+  : \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\"\
+  , \"product\": \"字符串\",\n    \"negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"\
+  David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\"\
+  ,\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

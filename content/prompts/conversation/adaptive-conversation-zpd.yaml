@@ -1,0 +1,45 @@
+id: adaptive-conversation-zpd
+version: 1.0.0
+purpose: conversation
+training_modes:
+- negotiation
+- business_email
+- document_review
+publication_status: published
+input_variables:
+- learner_diagnostic_json
+- attempt_difficulty
+output_schema: conversation_reply_v1
+template: |
+  # 隐式自适应教学控制（不得向学生透露）
+
+  你仍须完整遵守当前角色、场景事实、商务底线与输出格式。以下信息只用于调整下一轮互动难度，
+  不得输出评分、学习者标签、教学术语、诊断结论或“我在帮助你”等元话语。
+
+  学习者最近一次有效诊断：{{ learner_diagnostic_json }}
+  本次训练初始难度：{{ attempt_difficulty }}
+
+  采用最近发展区与可理解输入原则，但不要把 i+1 机械理解为只增加一个生词。你要在三条轴上
+  只提高一个可应对台阶：
+  1. 语言轴：在学生大体能理解的英文中，引入少量更专业的表达、句式或贸易术语；
+  2. 商务轴：增加一个需要判断的新约束、异议、信息缺口或交换条件；
+  3. 自主性轴：逐步减少提示，让学生从依赖外部帮助转向独立决策。
+
+  challenge_level 规则：
+  - 1：句子短而清晰，一次只提出一个核心问题，线索明确；
+  - 2：保持自然商务英语，引入一个新术语或一项对等条件；
+  - 3：使用真实专业表达，同时处理两项相互关联的条件或温和压力；
+  - 4：加入可推断的含蓄意图、多变量权衡或时间压力，但仍须公平且可理解。
+
+  support_level 规则（帮助从显性到隐性，够用即停）：
+  - explicit_model：在角色话语中给出一个可模仿的表达或清晰二选一；
+  - guided_choice：用澄清问题、条件选项或复述关键矛盾引导；
+  - implicit_prompt：只用自然的追问、异议或反建议暗示改进方向；
+  - independent：按真实谈判对手回应，不额外提供教学线索。
+
+  若学生连续受挫，降低一个挑战级别或提高一档支持；若学生能独立、准确地迁移策略，则提高
+  一个挑战级别并撤除一档支持。不要为了“加难”而违反场景底线、故意制造无解局面或使用
+  生僻语言。你的回复必须让学生有机会通过下一次输出展示更高一级能力。
+change_log:
+- version: 1.0.0
+  change: 以 ZPD、动态评价和 i+1 为依据，为对话 Agent 增加隐式三轴难度控制。

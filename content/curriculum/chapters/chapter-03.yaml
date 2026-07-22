@@ -1,0 +1,85 @@
+id: chapter-3
+title: 流程 3 · 还盘（Counter-offer）★核心博弈★
+sort_order: 3
+units:
+- id: chapter-3-section-1
+  title: 价格还盘攻防
+  description: 有理有据地就价格还盘（锚定 278），面对守价 285 的强硬卖方。
+  learning_objectives:
+  - 还盘有理有据（市场/数量/合作）
+  - 锚定合理（不离谱）、措辞专业不失礼
+  - （加分）主动提供让步交换
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-2-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-3-section-1
+  conversation_prompt_id: conversation-chapter-3-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-3-section-1
+  evaluation_prompt_id: evaluation-chapter-3-section-1
+  knowledge_tags:
+  - 还盘的法律性质（CISG 19）
+  - 价格还盘
+  - 锚定策略
+  - 让步与交换
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-3-section-2
+  title: 多维度磋商：付款与交期还盘
+  description: 换战线就付款方式与交货期还盘，理解 L/C 为卖方原则底线。
+  learning_objectives:
+  - 展现「多维度磋商/换战线」的策略意识
+  - 理解付款方式（L/C）是卖方原则底线
+  - 在交期等可让维度上有所斩获
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-3-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-3-section-2
+  conversation_prompt_id: conversation-chapter-3-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-3-section-2
+  evaluation_prompt_id: evaluation-chapter-3-section-2
+  knowledge_tags:
+  - 付款方式 L/C/T/T
+  - 交货期谈判
+  - 多维度磋商
+  - 条件交换
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published
+- id: chapter-3-section-3
+  title: 终局博弈：有条件接受、反建议与成交
+  description: 用有条件接受/反建议在接受 285 的同时换得增值服务，双赢成交。
+  learning_objectives:
+  - 用有条件接受/反建议收束谈判
+  - 在接受 285 的同时争取增值服务
+  - 实现体面双赢成交
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-3-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-3-section-3
+  conversation_prompt_id: conversation-chapter-3-section-3
+  round_evaluation_prompt_id: round-evaluation-chapter-3-section-3
+  evaluation_prompt_id: evaluation-chapter-3-section-3
+  knowledge_tags:
+  - 有条件接受
+  - 反建议
+  - 做大蛋糕（增值替代降价）
+  - 双赢成交
+  sort_order: 2
+  version: 2.1.0
+  publication_status: published

@@ -1,0 +1,15 @@
+id: foreign-trade-negotiation
+title: AI 智能外贸谈判训练
+version: 2.2.1-beta.22
+source_sha256: 2dbcdca5528b8885ee799b3fdecec8d6aa4d01def9fc6b0f62b09e0501823ea5
+publication_status: published
+chapter_files:
+- chapters/chapter-00.yaml
+- chapters/chapter-01.yaml
+- chapters/chapter-02.yaml
+- chapters/chapter-03.yaml
+- chapters/chapter-04.yaml
+- chapters/chapter-05.yaml
+- chapters/chapter-06.yaml
+- chapters/chapter-07.yaml
+- chapters/chapter-08.yaml

@@ -1,0 +1,30 @@
+id: chapter-0
+title: 流程 0 · 绪论（建立业务关系）
+sort_order: 0
+units:
+- id: chapter-0-section-1
+  title: 初次接触：索取目录
+  description: 首次去函建立联系、索取目录与价目表，考察函电格式与商务礼仪。
+  learning_objectives:
+  - 用规范、礼貌的商务函电建立良好第一印象
+  - 清楚说明信息来源与合作意愿
+  - 明确索取目录与价目表，并适度透露自身实力
+  training_mode: business_email
+  prerequisite_unit_ids: []
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-0-section-1
+  conversation_prompt_id: conversation-chapter-0-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-0-section-1
+  evaluation_prompt_id: evaluation-chapter-0-section-1
+  knowledge_tags:
+  - 商务信函八大部件
+  - 7C 原则
+  - 建立业务关系函
+  - 商务礼仪
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published

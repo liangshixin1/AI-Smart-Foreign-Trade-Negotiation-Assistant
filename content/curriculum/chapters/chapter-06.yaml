@@ -1,0 +1,58 @@
+id: chapter-6
+title: 流程 6 · 付款与交货（Payment & Delivery）
+sort_order: 6
+units:
+- id: chapter-6-section-1
+  title: 信用证审核与改证
+  description: 应对卖方的审证与改证要求，区分合理与不合理，据理力争。
+  learning_objectives:
+  - 正确区分合理与不合理的改证要求
+  - 配合必要改证（如 transshipment allowed、合理装期/交单期）
+  - 对不合理要求据理力争
+  training_mode: document_review
+  prerequisite_unit_ids:
+  - chapter-5-section-2
+  estimated_minutes: 30
+  difficulty_options:
+  - standard
+  template_id: document-review
+  rubric_id: document-review
+  scenario_prompt_id: scenario-chapter-6-section-1
+  conversation_prompt_id: conversation-chapter-6-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-6-section-1
+  evaluation_prompt_id: evaluation-chapter-6-section-1
+  knowledge_tags:
+  - 信用证审核
+  - 不符点与改证
+  - UCP 600
+  - 单证相符
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-6-section-2
+  title: 交单结汇与装运通知
+  description: 确认装运通知、核对装运详情、安排接货与 L/C 项下付款。
+  learning_objectives:
+  - 准确核对装运详情
+  - 专业安排接货与清关
+  - 理解 L/C 项下「单证相符即付款」机制
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-6-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-6-section-2
+  conversation_prompt_id: conversation-chapter-6-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-6-section-2
+  evaluation_prompt_id: evaluation-chapter-6-section-2
+  knowledge_tags:
+  - 装运通知
+  - 交单结汇
+  - L/C 单证相符付款
+  - 接货与清关
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published

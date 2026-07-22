@@ -1,0 +1,30 @@
+id: scenario-chapter-8-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 8-2 · 应对抗辩，证据反驳\",\n  \"scenario_summary\": \"NovaTech 进行了部分抗辩（切走水渍、质疑质量索赔依据）。翰霖需用证据反驳、坚持合理索赔。\"\
+  ,\n  \"student_task\": \"以翰霖名义回应 NovaTech 的抗辩——对水渍走保险表示认可（如确属合理），对 35 件质量问题以 CCIC 证据坚持索赔、反驳卖方推诿。\",\n  \"student_role\"\
+  : \"中国买方 · 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\"\
+  : \"NT-IM250 · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n\
+  \    \"用证据有效反驳卖方的不当推诿\",\n    \"坚持有依据的索赔\",\n    \"保持专业理性（不情绪化、不无理加码）\"\n  ],\n  \"checklist\": [\n    \"认可水渍走保险（如合理）\"\
+  ,\n    \"以 CCIC 证据坚持 35 件质量索赔\",\n    \"反驳容差/抽样质疑，保持对事不对人\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, thank you\
+  \ for your claim. As noted, the 15 water-damaged sets fall to the cargo insurers under ICC(A). On the 35 sets, we have now\
+  \ studied your submission, but we are not yet able to accept the amount as framed — may we discuss the basis and the figures?\"\
+  ,\n  \"market_landscape\": \"面对 CCIC 权威证据，卖方会据理压缩责任范围与金额，但不一味否认。\",\n  \"timeline\": \"2027 年 4 月下旬。\",\n  \"logistics\"\
+  : \"CCIC 报告、35 件色温/亮度问题；卖方质疑抽样/容差。\",\n  \"risks\": [],\n  \"knowledge_points\": [\n    \"抗辩与反驳\",\n    \"证据效力\",\n    \"\
+  容差与抽样\",\n    \"理性谈判\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\": \"字符串\"\
+  , \"scenario_summary\": \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\", \"product\"\
+  : \"字符串\",\n    \"negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\
+  \n  },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\"\
+  : \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。
