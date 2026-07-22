@@ -1,0 +1,35 @@
+id: evaluation-negotiation
+version: 1.1.0
+purpose: evaluation
+training_modes: [negotiation, business_email, document_review]
+publication_status: published
+input_variables:
+  - scenario_public_json
+  - student_messages
+  - rubric_json
+output_schema: evaluation_candidate_v1
+template: |
+  依据 {{ rubric_json }} 只评价学生一方在 {{ scenario_public_json }} 中的表现。
+  学生消息为 {{ student_messages }}。
+  评价必须给出量规中的全部维度，并为每条证据提供学生 message_id 与逐字引用。
+  不得引用 AI 对手发言，不得虚构学生表达，不计算最终总分。
+  只输出合法 json（JSON），不要 Markdown，结构必须是：
+  {
+    "level": "字符串",
+    "summary": "字符串",
+    "strengths": ["字符串"],
+    "improvements": ["字符串"],
+    "next_actions": ["字符串"],
+    "dimensions": [{
+      "dimension_key": "量规原始 key",
+      "score": 0到100的数字,
+      "comment": "字符串",
+      "evidence": [{"message_id": "UUID", "quote": "逐字引用", "reason": "字符串"}]
+    }],
+    "knowledge_tags": ["字符串"]
+  }
+change_log:
+  - version: 1.1.0
+    change: 明确结构化维度、分数与逐字证据 JSON Schema。
+  - version: 1.0.0
+    change: 将 3-1 文字化通关条件改为结构化评价候选输出。

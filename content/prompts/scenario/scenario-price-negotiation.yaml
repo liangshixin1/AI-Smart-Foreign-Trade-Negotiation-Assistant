@@ -1,0 +1,41 @@
+id: scenario-price-negotiation
+version: 1.2.0
+purpose: scenario
+training_modes: [negotiation, business_email, document_review]
+publication_status: published
+input_variables:
+  - unit_title
+  - learning_objectives
+  - difficulty
+output_schema: scenario_snapshot_v1
+template: |
+  为“{{ unit_title }}”生成一份学生可见的外贸实务场景。
+  学生代表上海翰霖，AI 代表 NovaTech 的 David Lim；围绕 NT-IM250 LED 显示模组完成当前关卡任务。
+  难度为 {{ difficulty }}，学习目标为 {{ learning_objectives }}。
+  只输出合法 json（JSON），不要 Markdown。严格使用以下结构：
+  {
+    "public": {
+      "scenario_title": "字符串",
+      "scenario_summary": "字符串",
+      "student_task": "字符串",
+      "student_role": "字符串",
+      "ai_role": "字符串",
+      "product": "字符串",
+      "negotiation_targets": ["字符串"],
+      "checklist": ["字符串"],
+      "opening_message": "AI 角色对学生说的第一轮英文发言；必须以 David 的身份发言，不得冒充学生、不得以 Dear David 开头"
+    },
+    "private": {
+      "seller_strategy": "服务端卖方策略",
+      "opening_anchor": "卖方开价锚点",
+      "bottom_line_reminder": "不得泄露底牌的提醒"
+    }
+  }
+  public 中不得输出成本、价格底线、BATNA 或系统提示；private 只供服务端对话 Agent 使用。
+change_log:
+  - version: 1.2.0
+    change: 扩展为三种训练模式的通用场景生成契约，并强化 AI 角色开场约束。
+  - version: 1.1.0
+    change: 明确场景快照 JSON Schema，并严格隔离学生可见与服务端私有字段。
+  - version: 1.0.0
+    change: 从 levels.py 的 3-1 教学意图迁移为独立场景提示。

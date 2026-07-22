@@ -1,0 +1,58 @@
+id: chapter-2
+title: 流程 2 · 报盘（Offer）
+sort_order: 2
+units:
+- id: chapter-2-section-1
+  title: 应对虚盘
+  description: 识破无约束力的虚盘（USD 290 subject to confirmation），推动对方转为实盘。
+  learning_objectives:
+  - 识破 subject to confirmation 意味着无约束力
+  - 要求对方发出有约束力的实盘
+  - 初步表达对 290 价格的保留
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-1-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-2-section-1
+  conversation_prompt_id: conversation-chapter-2-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-2-section-1
+  evaluation_prompt_id: evaluation-chapter-2-section-1
+  knowledge_tags:
+  - 虚盘 vs 实盘
+  - 要约的法律性质（CISG 14-16）
+  - subject to confirmation
+  - 锚定效应
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-2-section-2
+  title: 接收实盘并理解其约束力
+  description: 复核实盘六要素，理解约束力与有效期，并在有效期内回应。
+  learning_objectives:
+  - 准确复核实盘六要素
+  - 体现对「实盘有约束力 + 有效期」的理解
+  - 在有效期内做出回应（接受或还盘）
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-2-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-2-section-2
+  conversation_prompt_id: conversation-chapter-2-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-2-section-2
+  evaluation_prompt_id: evaluation-chapter-2-section-2
+  knowledge_tags:
+  - 实盘六要素
+  - 实盘的约束力
+  - 发盘有效期
+  - 要约与承诺（CISG）
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published

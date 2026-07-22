@@ -1,0 +1,76 @@
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.crt
+
+# Python environments, bytecode and tooling
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+
+# JavaScript dependencies and package caches
+node_modules/
+**/node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+
+# Builds, tests and reports
+dist/
+**/dist/
+build/
+coverage/
+playwright-report/
+test-results/
+*.log
+
+# Local databases and runtime state
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+uploads/
+storage/
+media/
+
+# Generated artifacts and local QA workspaces
+tmp/
+temp/
+output/
+outputs/
+artifacts/
+*.inspect.ndjson
+*.qa.ndjson
+~$*.xlsx
+~$*.pptx
+
+# Vite and framework caches
+.vite/
+.cache/

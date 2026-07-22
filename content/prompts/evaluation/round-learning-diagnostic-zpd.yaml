@@ -1,0 +1,62 @@
+id: round-learning-diagnostic-zpd
+version: 1.0.0
+purpose: evaluation
+training_modes:
+- negotiation
+- business_email
+- document_review
+publication_status: published
+input_variables:
+- previous_learning_diagnostic_json
+output_schema: learning_diagnostic_zpd_v1
+template: |
+
+  # 教师可见、学生不可见的学习者发展诊断
+
+  在原有 JSON 顶层增加 learning_diagnostic。它用于下一轮对话难度控制和教师观察，不得写入
+  Pros、Cons、详细评价或下一步建议中，也不得改变关卡完成状态。
+
+  上一次诊断（可能为空）：{{ previous_learning_diagnostic_json }}
+
+  你要区分“学生独立完成”与“在 AI 对手提示后完成”。判断应基于截至本轮的学生真实表达、
+  对新约束的反应、策略迁移以及所需帮助的显性程度。一次表现不足以证明稳定掌握；没有证据
+  时使用 not_observed 或较低置信度。所有 evidence.quote 必须逐字来自对应 student 消息，
+  message_id 必须是该学生消息的真实 UUID。不得把 AI 对手发言当证据。
+
+  六个固定维度必须各出现一次：
+  - domain_knowledge：贸易知识与条款运用
+  - language_control：英文准确性、清晰度与商务语域
+  - negotiation_strategy：策略选择、条件交换与利益创造
+  - adaptability：面对异议、新信息和压力的应变
+  - intercultural_pragmatics：礼貌、关系与跨文化得体性
+  - self_regulation：是否能独立发现问题、修正和推进
+
+  challenge_level 表示下一轮合理挑战，1 到 4；support_level 表示所需最低帮助，依次为
+  explicit_model、guided_choice、implicit_prompt、independent。只提高一个可达到的台阶，不要
+  奖励式拔高。knowledge_mastery 只记录本轮有教学意义的具体知识点，状态仅可为
+  not_observed、emerging、developing、secure。
+
+  learning_diagnostic 必须严格匹配：
+  {
+    "framework_version": "zpd-da-v1",
+    "learner_stage": "foundation|developing|competent|advanced",
+    "challenge_level": 1到4整数,
+    "support_level": "explicit_model|guided_choice|implicit_prompt|independent",
+    "negotiation_style": "cautious|analytical|assertive|collaborative|adaptive|unclear",
+    "adaptability_summary": "对本轮应变表现的简洁判断",
+    "dimensions": [{
+      "dimension_key": "六个固定 key 之一", "score": 0到100,
+      "judgment": "基于表现的判断",
+      "evidence": [{"message_id": "学生消息 UUID", "quote": "学生逐字原话", "interpretation": "为何支持该判断"}]
+    }],
+    "knowledge_mastery": [{
+      "knowledge_point": "具体知识点", "status": "not_observed|emerging|developing|secure",
+      "evidence": [{"message_id": "学生消息 UUID", "quote": "学生逐字原话", "interpretation": "掌握证据"}]
+    }],
+    "next_stretch_target": "下一轮只高一个台阶的可观察目标",
+    "mediation_strategy": "对话 Agent 应采用的最低充分帮助方式",
+    "confidence": 0到1
+  }
+change_log:
+- version: 1.0.0
+  change: 增加每轮教师隐式诊断、渐进中介水平和下一轮挑战目标。

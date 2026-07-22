@@ -1,0 +1,58 @@
+id: chapter-4
+title: 流程 4 · 接受与订货（Acceptance & Order）
+sort_order: 4
+units:
+- id: chapter-4-section-1
+  title: 确认成交与拟备销售确认书
+  description: 准确复述并确认全部成交条款，请对方拟备销售确认书。
+  learning_objectives:
+  - 条款复述准确无误（价格、数量、总额、付款、交期、增值）
+  - 构成有效接受
+  - 合理催促开证
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-3-section-3
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-4-section-1
+  conversation_prompt_id: conversation-chapter-4-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-4-section-1
+  evaluation_prompt_id: evaluation-chapter-4-section-1
+  knowledge_tags:
+  - 有效接受的构成
+  - 销售确认书
+  - 条款精确性
+  - 催开信用证
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-4-section-2
+  title: 催开信用证
+  description: 及时专业地处理开证沟通，理解交期自收证起算的紧迫性。
+  learning_objectives:
+  - 及时、专业地处理开证沟通
+  - 理解「交期自收证起算」的紧迫性
+  - 告知开证行与关键证内条款或开证时间承诺
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-4-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-4-section-2
+  conversation_prompt_id: conversation-chapter-4-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-4-section-2
+  evaluation_prompt_id: evaluation-chapter-4-section-2
+  knowledge_tags:
+  - 催开信用证
+  - 交期起算点
+  - 开证行
+  - 证内条款
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published

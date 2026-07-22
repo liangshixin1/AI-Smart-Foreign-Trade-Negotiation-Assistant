@@ -1,0 +1,58 @@
+id: chapter-5
+title: 流程 5 · 包装与装运（Packing & Shipment）
+sort_order: 5
+units:
+- id: chapter-5-section-1
+  title: 包装与唛头磋商
+  description: 提出专业合理的包装要求与唛头内容，兼顾防护与成本。
+  learning_objectives:
+  - 提出专业、合理、要素齐全的包装要求
+  - 约定规范的唛头内容
+  - 兼顾防护要点与成本
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-4-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-5-section-1
+  conversation_prompt_id: conversation-chapter-5-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-5-section-1
+  evaluation_prompt_id: evaluation-chapter-5-section-1
+  knowledge_tags:
+  - 包装条款
+  - 唛头
+  - 精密电子防护
+  - 成本控制
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-5-section-2
+  title: 分批/转船磋商与催装
+  description: 就分批/转船做出专业表态（拒绝分批、接受香港转船不延误总交期）。
+  learning_objectives:
+  - 对分批/转船做出有依据的专业表态
+  - 理解 UCP 600 下分批默认允许、需在 L/C 明确
+  - 确保转船不延误总交期，妥善处理催装/改证配合
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-5-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-5-section-2
+  conversation_prompt_id: conversation-chapter-5-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-5-section-2
+  evaluation_prompt_id: evaluation-chapter-5-section-2
+  knowledge_tags:
+  - 分批装运
+  - 转船
+  - UCP 600 下的分批/转船
+  - 催装与装运通知
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published

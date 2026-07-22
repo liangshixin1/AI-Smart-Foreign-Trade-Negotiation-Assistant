@@ -1,0 +1,23 @@
+{
+  "name": "foreign-trade-negotiation-platform",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev:web": "pnpm --dir apps/web dev",
+    "dev:api": ".venv/bin/uvicorn app.main:app --app-dir apps/api --reload --port 8000",
+    "db:migrate": ".venv/bin/alembic -c apps/api/alembic.ini upgrade head",
+    "seed:users": "PYTHONPATH=apps/api .venv/bin/python -m app.cli seed-dev-users",
+    "seed:curriculum": "PYTHONPATH=apps/api .venv/bin/python -m app.cli import-curriculum",
+    "seed:classroom": "PYTHONPATH=apps/api .venv/bin/python -m app.cli seed-dev-classroom",
+    "smoke:deepseek": "PYTHONPATH=apps/api .venv/bin/python scripts/smoke_deepseek.py",
+    "smoke:neo4j-phase2": "PYTHONPATH=apps/api .venv/bin/python scripts/smoke_neo4j_phase2.py",
+    "format": "pnpm --dir apps/web format && .venv/bin/ruff format apps/api",
+    "format:check": "pnpm --dir apps/web format:check && .venv/bin/ruff format --check apps/api",
+    "lint": "pnpm --dir apps/web lint && .venv/bin/ruff check apps/api",
+    "typecheck": "pnpm --dir apps/web typecheck && .venv/bin/mypy apps/api/app",
+    "test": "pnpm --dir apps/web test:run && .venv/bin/pytest apps/api/tests",
+    "build": "pnpm --dir apps/web build",
+    "check:lines": ".venv/bin/python scripts/check_file_lengths.py",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:lines"
+  }
+}

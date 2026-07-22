@@ -1,0 +1,31 @@
+id: scenario-chapter-7-section-1
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 7-1 · 检验条款磋商\",\n  \"scenario_summary\": \"签约前后，双方商定检验安排。翰霖希望第三方公证机构装运前检验、并保留货到复验权（双重检验）。\"\
+  ,\n  \"student_task\": \"以翰霖名义提出检验条款——装运前由 CCIC/SGS 检验出证、以装港检验为交货依据、但保留货到 30 天内复验及索赔权。\",\n  \"student_role\": \"中国买方 ·\
+  \ 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\": \"NT-IM250\
+  \ · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n    \"明确检验机构、标准、时限与复验权范围\"\
+  ,\n    \"理解装港检验与到货复验的风险分配\",\n    \"形成专业、平衡的检验条款\"\n  ],\n  \"checklist\": [\n    \"装运前由 CCIC/SGS 检验出证、作为交货依据\",\n    \"\
+  保留货到 30 天内复验及索赔权\",\n    \"明确复验须凭权威机构 survey report、限于隐蔽缺陷\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, before\
+  \ we finalise, shall we agree the inspection clause? We are content to have pre-shipment inspection by a neutral agency\
+  \ such as CCIC or SGS, with its certificate forming part of the L/C documents. I would welcome your proposed wording on\
+  \ the basis of delivery and any reinspection rights.\",\n  \"market_landscape\": \"货物是精密 LED 模组；卖方力争限制无限期复验翻案。\",\n  \"\
+  timeline\": \"2027 年 4 月初。\",\n  \"logistics\": \"装运港检验证书拟作为 L/C 交单单据之一。\",\n  \"risks\": [],\n  \"knowledge_points\": [\n\
+  \    \"检验条款\",\n    \"CCIC/SGS\",\n    \"装港检验 vs 到货复验\",\n    \"风险分配\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n{\n\
+  \  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\"\
+  : \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"\
+  ],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\"\
+  , \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message\
+  \ 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

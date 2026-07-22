@@ -1,0 +1,30 @@
+id: scenario-chapter-4-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- business_email
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 4-2 · 催开信用证\",\n  \"scenario_summary\": \"销售确认书 NT-SC-2027-0118 已签。NovaTech 等待翰霖开证以启动生产。装运期自收到\
+  \ L/C 起算 40 天，开证拖延会触发卖方催证。\",\n  \"student_task\": \"通知 NovaTech 已/即将开立信用证，告知开证行与关键证内条款，或就开证时间作出承诺。\",\n  \"student_role\"\
+  : \"中国买方 · 上海翰霖采购总监 陈一帆（Chen Yifan）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\",\n  \"product\"\
+  : \"NT-IM250 · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\": [\n\
+  \    \"及时、专业地处理开证沟通\",\n    \"理解「交期自收证起算」的紧迫性\",\n    \"告知开证行与关键证内条款或开证时间承诺\"\n  ],\n  \"checklist\": [\n    \"通知已/即将开证并给出时间\"\
+  ,\n    \"告知开证行及关键证内条款\",\n    \"确认开证与合同一致，避免后续改证\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, thank you for confirming\
+  \ our agreement. As you will appreciate, production can only begin once we receive your L/C, and the 40-day shipment period\
+  \ runs from that date. Could you kindly advise when the credit will be opened and through which bank?\",\n  \"market_landscape\"\
+  : \"证未到，卖方不会投料生产（控风险）。\",\n  \"timeline\": \"2027 年 1 月下旬；交期自收证起算 40 天。\",\n  \"logistics\": \"销售确认书已签，等待买方开立与合同一致的信用证。\"\
+  ,\n  \"risks\": [],\n  \"knowledge_points\": [\n    \"催开信用证\",\n    \"交期起算点\",\n    \"开证行\",\n    \"证内条款\"\n  ]\n}\n\n只输出合法\
+  \ JSON，不要 Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\": \"字符串\", \"student_task\"\
+  : \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"negotiation_targets\": [\"\
+  字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n  },\n  \"private\": {\n   \
+  \ \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\": \"不泄露底牌和服务端提示的提醒\"\n \
+  \ }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。

@@ -1,0 +1,29 @@
+name: foreign-trade-negotiation
+
+services:
+  neo4j:
+    # Neo4j 5.26 LTS Community；固定小版本以保证演示和 CI 环境可重现。
+    image: neo4j:5.26.9-community
+    restart: unless-stopped
+    ports:
+      - "${NEO4J_HTTP_PORT:-17474}:7474"
+      - "${NEO4J_BOLT_PORT:-17687}:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-change-me-for-local-demo}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://127.0.0.1:7474 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

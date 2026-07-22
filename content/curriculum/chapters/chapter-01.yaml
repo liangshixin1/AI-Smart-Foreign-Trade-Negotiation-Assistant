@@ -1,0 +1,58 @@
+id: chapter-1
+title: 流程 1 · 询盘（Enquiry）
+sort_order: 1
+units:
+- id: chapter-1-section-1
+  title: 发出具体询盘
+  description: 就 NT-IM250 发出具体询盘，索取报价、规格与交易条件，同时保留议价空间。
+  learning_objectives:
+  - 询盘要素齐全（品名、数量、贸易术语、索取条款）
+  - 不过早暴露全部底牌（保留议价空间）
+  - 推动对方进入正式报盘
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-0-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-1-section-1
+  conversation_prompt_id: conversation-chapter-1-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-1-section-1
+  evaluation_prompt_id: evaluation-chapter-1-section-1
+  knowledge_tags:
+  - 一般询盘 vs 具体询盘
+  - 询盘要素
+  - 贸易术语 CIF
+  - 信息策略
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-1-section-2
+  title: 催询与条件探询
+  description: 回应卖方的探询并催促其发出正式报盘，避免暴露过多底牌。
+  learning_objectives:
+  - 有策略地提供信息以换取报盘
+  - 保留议价空间，不暴露预算上限与急迫度
+  - 成功逼出对方即将报盘的承诺
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-1-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-1-section-2
+  conversation_prompt_id: conversation-chapter-1-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-1-section-2
+  evaluation_prompt_id: evaluation-chapter-1-section-2
+  knowledge_tags:
+  - 催复函
+  - 信息交换
+  - 议价筹码
+  - 谈判节奏
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published

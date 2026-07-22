@@ -1,0 +1,19 @@
+id: price-negotiation
+version: 1.0.0
+training_mode: negotiation
+publication_status: published
+input_variables:
+  - unit_title
+  - learning_objectives
+  - difficulty
+workspace_contract:
+  required_public_fields:
+    - scenario_title
+    - scenario_summary
+    - student_task
+    - student_role
+    - ai_role
+    - product
+    - negotiation_targets
+    - checklist
+    - opening_message

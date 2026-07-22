@@ -1,0 +1,85 @@
+id: chapter-8
+title: 流程 8 · 投诉、索赔与理赔（Complaints, Claims & Settlement）★高强度博弈★
+sort_order: 8
+units:
+- id: chapter-8-section-1
+  title: 提出质量索赔
+  description: 撰写证据链完整的质量索赔函，正确切分保险与质量两类责任。
+  learning_objectives:
+  - 索赔函证据链完整（证书、编号/数量、损失计算）
+  - 援引合同/检验条款、诉求合理、设定回应期限
+  - （加分）水渍损失走保险、质量问题向卖方索赔（区分两类责任）
+  training_mode: business_email
+  prerequisite_unit_ids:
+  - chapter-7-section-3
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: business-email
+  rubric_id: email-writing
+  scenario_prompt_id: scenario-chapter-8-section-1
+  conversation_prompt_id: conversation-chapter-8-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-8-section-1
+  evaluation_prompt_id: evaluation-chapter-8-section-1
+  knowledge_tags:
+  - 质量索赔
+  - 证据链
+  - 责任切分（保险 vs 质量）
+  - CIF 风险转移
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-8-section-2
+  title: 应对抗辩，证据反驳
+  description: 用 CCIC 证据反驳卖方推诿、坚持合理索赔并保持理性。
+  learning_objectives:
+  - 用证据有效反驳卖方的不当推诿
+  - 坚持有依据的索赔
+  - 保持专业理性（不情绪化、不无理加码）
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-8-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-8-section-2
+  conversation_prompt_id: conversation-chapter-8-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-8-section-2
+  evaluation_prompt_id: evaluation-chapter-8-section-2
+  knowledge_tags:
+  - 抗辩与反驳
+  - 证据效力
+  - 容差与抽样
+  - 理性谈判
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published
+- id: chapter-8-section-3
+  title: 理赔和解
+  description: 谈成对己方有实质价值又维护长期关系的理赔和解方案。
+  learning_objectives:
+  - 谈成对己方有实质价值且维护长期关系的方案
+  - 在补偿金额/方式上达成双赢
+  - 确认结案、维护合作
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-8-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-8-section-3
+  conversation_prompt_id: conversation-chapter-8-section-3
+  round_evaluation_prompt_id: round-evaluation-chapter-8-section-3
+  evaluation_prompt_id: evaluation-chapter-8-section-3
+  knowledge_tags:
+  - 理赔和解
+  - 非现金补偿
+  - 互利共赢
+  - 争议收束
+  sort_order: 2
+  version: 2.1.0
+  publication_status: published

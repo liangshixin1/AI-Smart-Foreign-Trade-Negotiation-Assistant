@@ -1,0 +1,85 @@
+id: chapter-7
+title: 流程 7 · 商检、保险与仲裁（Inspection, Insurance & Arbitration）
+sort_order: 7
+units:
+- id: chapter-7-section-1
+  title: 检验条款磋商
+  description: 提出专业、平衡的检验条款（装港检验 + 限定范围的到货复验权）。
+  learning_objectives:
+  - 明确检验机构、标准、时限与复验权范围
+  - 理解装港检验与到货复验的风险分配
+  - 形成专业、平衡的检验条款
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-6-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-7-section-1
+  conversation_prompt_id: conversation-chapter-7-section-1
+  round_evaluation_prompt_id: round-evaluation-chapter-7-section-1
+  evaluation_prompt_id: evaluation-chapter-7-section-1
+  knowledge_tags:
+  - 检验条款
+  - CCIC/SGS
+  - 装港检验 vs 到货复验
+  - 风险分配
+  sort_order: 0
+  version: 2.1.0
+  publication_status: published
+- id: chapter-7-section-2
+  title: 投保险别磋商
+  description: 理解 ICC 险别与 CIF 法定最低投保义务，就险别与保费承担磋商。
+  learning_objectives:
+  - 理解 ICC(A/B/C) 险别差异
+  - 理解 INCOTERMS 2020 下 CIF 法定最低仅 ICC(C)
+  - 就险别与保费承担做出知情、专业决策
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-7-section-1
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-7-section-2
+  conversation_prompt_id: conversation-chapter-7-section-2
+  round_evaluation_prompt_id: round-evaluation-chapter-7-section-2
+  evaluation_prompt_id: evaluation-chapter-7-section-2
+  knowledge_tags:
+  - ICC(A/B/C) 险别
+  - INCOTERMS 2020 CIF/CIP 投保差异
+  - 保额 110%
+  - 保费承担
+  sort_order: 1
+  version: 2.1.0
+  publication_status: published
+- id: chapter-7-section-3
+  title: 仲裁条款磋商
+  description: 形成有效、明确的仲裁条款，避免「或裁或审」。
+  learning_objectives:
+  - 形成有效、明确的仲裁条款（机构/地点/规则/效力齐全）
+  - 避免「或裁或审」的无效条款
+  - 可争取中立第三地（SIAC/HKIAC）
+  training_mode: negotiation
+  prerequisite_unit_ids:
+  - chapter-7-section-2
+  estimated_minutes: 20
+  difficulty_options:
+  - standard
+  template_id: price-negotiation
+  rubric_id: negotiation
+  scenario_prompt_id: scenario-chapter-7-section-3
+  conversation_prompt_id: conversation-chapter-7-section-3
+  round_evaluation_prompt_id: round-evaluation-chapter-7-section-3
+  evaluation_prompt_id: evaluation-chapter-7-section-3
+  knowledge_tags:
+  - 仲裁条款
+  - CIETAC/SIAC/HKIAC
+  - 纽约公约
+  - 或裁或审无效
+  sort_order: 2
+  version: 2.1.0
+  publication_status: published

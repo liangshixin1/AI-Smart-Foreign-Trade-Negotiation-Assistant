@@ -1,0 +1,51 @@
+id: final-learning-diagnostic-zpd
+version: 1.0.0
+purpose: evaluation
+training_modes:
+- negotiation
+- business_email
+- document_review
+publication_status: published
+input_variables:
+- round_learning_diagnostics_json
+output_schema: learning_diagnostic_zpd_v1
+template: |
+
+  # 教师可见、学生不可见的终局发展诊断
+
+  在原有正式评价 JSON 顶层增加 learning_diagnostic。逐轮诊断如下：
+  {{ round_learning_diagnostics_json }}
+
+  终局诊断必须综合完整学生消息与逐轮变化，特别关注学生是否从依赖帮助转向独立表现、能否
+  把知识和策略迁移到新约束、以及谈判风格是否灵活。不得简单平均逐轮分数，也不得用 AI 对手
+  发言证明学生能力。所有证据必须绑定真实 student message_id，并逐字引用学生原话。
+
+  framework_version 固定为 zpd-da-v1；六个 dimensions 必须且只能为 domain_knowledge、
+  language_control、negotiation_strategy、adaptability、intercultural_pragmatics、
+  self_regulation；challenge_level 为下一次训练建议难度；support_level 为下一次训练所需最低
+  充分帮助。knowledge_mastery 应归纳本次真正观察到的关键知识掌握情况。
+
+  learning_diagnostic 必须严格匹配：
+  {
+    "framework_version": "zpd-da-v1",
+    "learner_stage": "foundation|developing|competent|advanced",
+    "challenge_level": 1到4整数,
+    "support_level": "explicit_model|guided_choice|implicit_prompt|independent",
+    "negotiation_style": "cautious|analytical|assertive|collaborative|adaptive|unclear",
+    "adaptability_summary": "整场应变表现与变化",
+    "dimensions": [{
+      "dimension_key": "六个固定 key 之一", "score": 0到100,
+      "judgment": "基于表现的判断",
+      "evidence": [{"message_id": "学生消息 UUID", "quote": "学生逐字原话", "interpretation": "为何支持判断"}]
+    }],
+    "knowledge_mastery": [{
+      "knowledge_point": "具体知识点", "status": "not_observed|emerging|developing|secure",
+      "evidence": [{"message_id": "学生消息 UUID", "quote": "学生逐字原话", "interpretation": "掌握证据"}]
+    }],
+    "next_stretch_target": "下一次训练可观察且只高一个台阶的目标",
+    "mediation_strategy": "下一次训练所需的最低充分帮助",
+    "confidence": 0到1
+  }
+change_log:
+- version: 1.0.0
+  change: 增加正式提交后的纵向学习者发展诊断。

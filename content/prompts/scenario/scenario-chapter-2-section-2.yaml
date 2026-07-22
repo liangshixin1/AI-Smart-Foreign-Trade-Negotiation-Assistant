@@ -1,0 +1,31 @@
+id: scenario-chapter-2-section-2
+version: 2.1.0
+purpose: scenario
+training_modes:
+- negotiation
+publication_status: published
+input_variables:
+- unit_title
+- learning_objectives
+- difficulty
+output_schema: scenario_snapshot_v1
+template: "你是外贸训练的场景生成 Agent。为“{{ unit_title }}”生成本次可复盘的场景快照。\n难度：{{ difficulty }}；学习目标：{{ learning_objectives }}。\n必须以以下课程蓝图为事实边界，可以微调措辞和沟通压力，不得改变公司、产品、金额、日期、单证号或已锁定条款：\n\
+  {\n  \"scenario_title\": \"关卡 2-2 · 接收实盘并理解其约束力\",\n  \"scenario_summary\": \"NovaTech 发来正式实盘：USD 285/件 CIF 上海，800 件，总额\
+  \ USD 228,000，L/C 即期，装运 45 天，有效期至 1 月 15 日复到有效。翰霖需理解实盘的法律约束力与有效期。\",\n  \"student_task\": \"确认收到实盘、复述并核对六要素、表明理解其有效期与约束力，并明确表态——表明将在有效期内认真研究回复，或直接进入还盘。\"\
+  ,\n  \"student_role\": \"中国买方 · 上海翰霖采购（陈一帆 / 助理 赵明）\",\n  \"ai_role\": \"David Lim · NovaTech 出口总监（Export Director，卖方）\"\
+  ,\n  \"product\": \"NT-IM250 · P2.5 室内 LED 显示模组；像素间距 2.5mm，亮度 ≥1200 cd/m²，色温 6500K±300K；800 件（本次交易标的）\",\n  \"negotiation_targets\"\
+  : [\n    \"准确复核实盘六要素\",\n    \"体现对「实盘有约束力 + 有效期」的理解\",\n    \"在有效期内做出回应（接受或还盘）\"\n  ],\n  \"checklist\": [\n    \"复述并核对品名、数量、单价、总额、付款、装运、有效期\"\
+  ,\n    \"表明理解实盘的法律约束力与有效期意义\",\n    \"明确表态：研究后回复 或 直接还盘\"\n  ],\n  \"opening_message_hint\": \"Dear Mr. Chen, we are now\
+  \ pleased to extend our firm offer: NT-IM250, 800 sets, USD 285.00 per set CIF Shanghai (INCOTERMS 2020), total USD 228,000.00,\
+  \ payment by 100% irrevocable L/C at sight, shipment within 45 days of receipt of the L/C. This firm offer is open for your\
+  \ acceptance reaching us by 15 January 2027. We trust you will find it competitive.\",\n  \"market_landscape\": \"卖方利用有效期施加适度时间压力。\"\
+  ,\n  \"timeline\": \"2027 年 1 月 8 日；实盘有效期至 1 月 15 日复到有效。\",\n  \"logistics\": \"USD 285/件 CIF 上海，800 件，总额 USD 228,000，L/C\
+  \ 即期，装运收证后 45 天。\",\n  \"risks\": [],\n  \"knowledge_points\": [\n    \"实盘六要素\",\n    \"实盘的约束力\",\n    \"发盘有效期\",\n    \"\
+  要约与承诺（CISG）\"\n  ]\n}\n\n只输出合法 JSON，不要 Markdown，严格使用以下结构：\n{\n  \"public\": {\n    \"scenario_title\": \"字符串\", \"scenario_summary\"\
+  : \"字符串\", \"student_task\": \"字符串\",\n    \"student_role\": \"字符串\", \"ai_role\": \"字符串\", \"product\": \"字符串\",\n    \"\
+  negotiation_targets\": [\"字符串\"], \"checklist\": [\"字符串\"],\n    \"opening_message\": \"David Lim 对学生说的第一轮专业英文商务发言\"\n \
+  \ },\n  \"private\": {\n    \"seller_strategy\": \"本关卖方策略\", \"opening_anchor\": \"本关初始立场\",\n    \"bottom_line_reminder\"\
+  : \"不泄露底牌和服务端提示的提醒\"\n  }\n}\npublic 绝不包含成本、底线、BATNA 或隐藏提示。opening_message 只能代表 David Lim，不得替学生作答。"
+change_log:
+- version: 2.1.0
+  change: 从 levels.py 固定场景迁移为本关独立、可版本化的生成蓝图。
