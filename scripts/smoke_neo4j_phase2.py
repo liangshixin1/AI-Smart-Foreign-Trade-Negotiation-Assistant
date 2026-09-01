@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-from httpx import Response
-
 from app.core.config import get_settings
 from app.main import app
+from fastapi.testclient import TestClient
+from httpx import Response
 
 WORKBOOK = (
     Path(__file__).resolve().parents[1]
@@ -24,7 +23,7 @@ def _require_ok(response: Response, step: str) -> dict[str, object]:
         )
     payload = response.json()
     if not isinstance(payload, dict):
-        raise RuntimeError(f"{step} returned an unexpected payload.")
+        raise TypeError(f"{step} returned an unexpected payload.")
     return payload
 
 
@@ -38,7 +37,7 @@ def _login(client: TestClient, email: str, password: str) -> dict[str, str]:
     )
     token = payload.get("access_token")
     if not isinstance(token, str):
-        raise RuntimeError("Login response did not include an access token.")
+        raise TypeError("Login response did not include an access token.")
     return {"Authorization": f"Bearer {token}"}
 
 

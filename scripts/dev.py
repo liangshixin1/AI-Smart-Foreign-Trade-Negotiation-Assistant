@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import argparse
@@ -13,7 +15,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import IO
-
 
 ROOT = Path(__file__).resolve().parents[1]
 TMP_DIR = ROOT / "tmp" / "dev"

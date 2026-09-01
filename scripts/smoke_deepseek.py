@@ -5,11 +5,10 @@ import json
 import uuid
 
 import httpx
-from sqlalchemy import select
-
 from app.core.config import Settings
 from app.db.session import build_engine, build_session_factory
 from app.modules.training.models import LLMInvocation
+from sqlalchemy import select
 
 
 def require_success(response: httpx.Response, step: str) -> dict[str, object]:
@@ -19,7 +18,7 @@ def require_success(response: httpx.Response, step: str) -> dict[str, object]:
         )
     payload = response.json()
     if not isinstance(payload, dict):
-        raise RuntimeError(f"{step} returned a non-object response")
+        raise TypeError(f"{step} returned a non-object response")
     return payload
 
 
@@ -33,14 +32,14 @@ def auth(client: httpx.Client, identifier: str, password: str) -> dict[str, str]
     )
     token = payload.get("access_token")
     if not isinstance(token, str):
-        raise RuntimeError("Login response did not contain an access token")
+        raise TypeError("Login response did not contain an access token")
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_target(course_map: dict[str, object]) -> tuple[str, str | None]:
     chapters = course_map.get("chapters")
     if not isinstance(chapters, list):
-        raise RuntimeError("Course map did not contain chapters")
+        raise TypeError("Course map did not contain chapters")
     completed_unit_id: str | None = None
     for chapter in chapters:
         if not isinstance(chapter, dict) or not isinstance(chapter.get("units"), list):

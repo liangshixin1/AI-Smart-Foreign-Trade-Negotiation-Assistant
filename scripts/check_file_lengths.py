@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 # tmp 仅放置文档构建器和渲染预览；legacy 是重构前的只读快照。
 # 两者都不属于当前可部署业务代码，也不能稀释或阻断新架构的质量门槛。
