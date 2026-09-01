@@ -60,7 +60,7 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-浏览器打开 `http://localhost:5173`，使用 `student@example.test` 登录。密码是初始化时
+浏览器打开 `http://localhost:5174`，使用 `student@example.test` 登录。密码是初始化时
 `DEV_SEED_PASSWORD` 的实际值。
 
 ## 4. 学生端手工验收路径

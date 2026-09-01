@@ -7,7 +7,7 @@
         <p>系统隐藏 Neo4j 建模复杂度；本周演示环境只发布经人工批准的变更集。</p>
       </div>
       <button type="button" class="secondary" :disabled="busy" @click="downloadTemplate">
-        下载 DSL 2.0 模板
+        下载专家原始图谱 3.0 模板
       </button>
     </header>
 
@@ -19,7 +19,7 @@
     <div class="upload-card">
       <label>
         <strong>选择教学案例表</strong>
-        <span>仅支持系统 DSL 2.0 `.xlsx`，最大 5 MB。</span>
+        <span>支持专家原始 8-Sheet 图谱 3.0 `.xlsx`，最大 5 MB；2.1/2.0 仍可由接口兼容导入。</span>
         <input type="file" accept=".xlsx" :disabled="busy" @change="selectFile" />
       </label>
       <button type="button" class="primary" :disabled="!file || busy" @click="uploadSelected">

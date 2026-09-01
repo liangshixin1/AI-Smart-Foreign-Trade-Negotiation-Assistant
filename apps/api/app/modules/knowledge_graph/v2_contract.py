@@ -13,6 +13,7 @@ V2_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
         "CoreOutcome",
         "EstimatedMinutes",
         "Difficulty",
+        "ShortNameZH",
     ),
     "Phenomena": (
         "PhenomenonID",
@@ -23,6 +24,7 @@ V2_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
         "Sequence",
         "MustAppear",
         "DynamicTrigger",
+        "ShortNameZH",
     ),
     "KnowledgeResources": (
         "ResourceID",
@@ -33,6 +35,7 @@ V2_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
         "ReferenceSource",
         "LearningRequirement",
         "DisplayTiming",
+        "ShortNameZH",
     ),
     "NegotiationStrategies": (
         "StrategyID",
@@ -43,6 +46,7 @@ V2_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
         "ExampleExpression",
         "DiscouragedActions",
         "ExpectedImpact",
+        "ShortNameZH",
     ),
     "GraphRelations(Edges)": ("SourceID", "RelationType", "TargetID"),
     "Scaffolds": (
@@ -85,6 +89,13 @@ V2_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
         "MarkdownContent",
         "ContentStatus",
     ),
+}
+
+# 2.0 初版工作簿没有中文短名列. 导入器继续兼容旧表, 避免已发给教师的
+# 模板突然失效; 新模板则以 ShortNameZH 驱动紧凑的图谱标签.
+V2_LEGACY_SHEET_HEADERS: dict[str, tuple[str, ...]] = {
+    sheet: tuple(column for column in headers if column != "ShortNameZH")
+    for sheet, headers in V2_SHEET_HEADERS.items()
 }
 
 V2_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {

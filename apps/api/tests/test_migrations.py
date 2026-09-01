@@ -37,6 +37,14 @@ def test_alembic_upgrades_empty_database(monkeypatch, tmp_path: Path) -> None:  
         "knowledge_graph_change_sets",
         "knowledge_graph_publications",
         "knowledge_graph_audit_events",
+        "knowledge_node_display_overrides",
+        "knowledge_graph_stage_snapshots",
+        "knowledge_graph_phenomenon_snapshots",
+        "knowledge_graph_knowledge_point_snapshots",
+        "knowledge_graph_phenomenon_knowledge_edges",
+        "knowledge_graph_translation_overlays",
+        "knowledge_graph_scenario_stage_bindings",
+        "knowledge_graph_scenario_phenomenon_bindings",
         "alembic_version",
     } <= tables
     columns = {column["name"] for column in inspector.get_columns("round_evaluations")}
@@ -44,4 +52,8 @@ def test_alembic_upgrades_empty_database(monkeypatch, tmp_path: Path) -> None:  
     assert "learning_diagnostic" in columns
     evaluation_columns = {column["name"] for column in inspector.get_columns("evaluations")}
     assert "learning_diagnostic" in evaluation_columns
+    evidence_columns = {
+        column["name"] for column in inspector.get_columns("graph_learning_evidence")
+    }
+    assert {"knowledge_point_node_keys", "knowledge_type_breakdown"} <= evidence_columns
     get_settings.cache_clear()

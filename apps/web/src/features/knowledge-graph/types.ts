@@ -1,11 +1,19 @@
-export type KnowledgeNodeType = 'phenomenon' | 'knowledge_resource' | 'strategy'
+export type KnowledgeNodeType =
+  'stage' | 'scenario' | 'phenomenon' | 'knowledge_point' | 'knowledge_resource' | 'strategy'
+
+export type KnowledgePointType =
+  'Concept' | 'Correspondence' | 'Cross-cultural' | 'Legal' | 'Procedure' | 'Risk' | 'Strategy'
 
 export interface KnowledgeGraphNode {
   id: string
   type: KnowledgeNodeType
   label: string
+  short_label: string
   source_type: string
+  knowledge_type?: KnowledgePointType
   properties: Record<string, unknown>
+  display_revision?: number
+  has_display_override?: boolean
 }
 
 export interface KnowledgeGraphEdge {
@@ -32,6 +40,7 @@ export interface AttemptScaffold {
   phenomena: KnowledgeGraphNode[]
   knowledge_resources: KnowledgeGraphNode[]
   strategies: KnowledgeGraphNode[]
+  knowledge_points: KnowledgeGraphNode[]
   scaffolds: ScaffoldHint[]
   edges: KnowledgeGraphEdge[]
 }
@@ -57,6 +66,8 @@ export interface KnowledgeWeakUnit {
   phenomenon_ids: string[]
   knowledge_resource_ids: string[]
   strategy_ids: string[]
+  knowledge_point_ids: string[]
+  knowledge_type_breakdown: Record<string, number>
   scaffold_reveal_count: number
   scaffold_use_count: number
   students_using_scaffolds: number
@@ -96,3 +107,12 @@ export type LearningContentInput = Pick<
   LearningContent,
   'title' | 'summary' | 'markdown_body' | 'status'
 >
+
+export interface NodeDisplayMutation {
+  graph_version: string
+  node_id: string
+  short_label: string
+  revision: number
+  has_override: boolean
+  updated_at: string | null
+}

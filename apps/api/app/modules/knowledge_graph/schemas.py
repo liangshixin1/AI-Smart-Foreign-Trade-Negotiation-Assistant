@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ValidationIssueResponse(BaseModel):
@@ -82,7 +83,42 @@ class GraphNodeResponse(BaseModel):
     id: str
     type: str
     label: str
+    short_label: str
     properties: dict[str, object]
+    display_revision: int = 0
+    has_display_override: bool = False
+
+
+class NodeDisplayUpdateRequest(BaseModel):
+    graph_version: str = Field(min_length=1, max_length=80)
+    short_name_zh: str = Field(min_length=2, max_length=16)
+    expected_revision: int = Field(ge=0)
+
+    @field_validator("short_name_zh")
+    @classmethod
+    def validate_short_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2 or len(normalized) > 16:
+            raise ValueError("中文短名应为 2 至 16 个字符。")
+        if any(
+            char in "<>\r\n" or unicodedata.category(char).startswith("C") for char in normalized
+        ):
+            raise ValueError("中文短名不能包含换行、尖括号或控制字符。")
+        return normalized
+
+
+class NodeDisplayRestoreRequest(BaseModel):
+    graph_version: str = Field(min_length=1, max_length=80)
+    expected_revision: int = Field(ge=1)
+
+
+class NodeDisplayMutationResponse(BaseModel):
+    graph_version: str
+    node_id: str
+    short_label: str
+    revision: int
+    has_override: bool
+    updated_at: datetime | None = None
 
 
 class GraphEdgeResponse(BaseModel):
@@ -109,6 +145,7 @@ class StudentScaffoldResponse(BaseModel):
     phenomena: list[GraphNodeResponse]
     knowledge_resources: list[GraphNodeResponse]
     strategies: list[GraphNodeResponse]
+    knowledge_points: list[GraphNodeResponse]
     scaffolds: list[ScaffoldHintResponse]
     edges: list[GraphEdgeResponse]
 
@@ -155,6 +192,8 @@ class GraphLearningEvidenceResponse(BaseModel):
     phenomenon_node_keys: list[str]
     strategy_node_keys: list[str]
     knowledge_resource_node_keys: list[str]
+    knowledge_point_node_keys: list[str]
+    knowledge_type_breakdown: dict[str, int]
     score: float
     evidence_summary: str
     mapping_method: str
@@ -170,6 +209,8 @@ class WeakUnitKnowledgeInsight(BaseModel):
     phenomenon_ids: list[str]
     knowledge_resource_ids: list[str]
     strategy_ids: list[str]
+    knowledge_point_ids: list[str]
+    knowledge_type_breakdown: dict[str, int]
     scaffold_reveal_count: int
     scaffold_use_count: int
     students_using_scaffolds: int

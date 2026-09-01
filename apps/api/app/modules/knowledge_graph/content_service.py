@@ -295,20 +295,28 @@ class KnowledgeContentService:
         properties = raw if isinstance(raw, dict) else {}
         title = str(
             properties.get("Title")
+            or properties.get("KnowledgeNameZH")
             or properties.get("ResourceName")
             or properties.get("StrategyName")
             or properties.get("标题（必填）")
             or properties.get("策略名称（必填）")
             or node_key
         )
-        status = str(properties.get("ContentStatus", "draft"))
+        default_status = (
+            "published" if properties.get("translation_status") == "reviewed" else "draft"
+        )
+        status = str(properties.get("ContentStatus", default_status))
+        summary = str(properties.get("Summary") or properties.get("DefinitionZH") or "")
+        markdown_body = str(properties.get("MarkdownContent") or "")
+        if not markdown_body and summary:
+            markdown_body = f"## {title}\n\n{summary}"
         return LearningContentResponse(
             graph_version=graph.graph_version,
             node_id=node_key,
             node_type=str(node["type"]),
             title=title,
-            summary=str(properties.get("Summary", "")),
-            markdown_body=str(properties.get("MarkdownContent", "")),
+            summary=summary,
+            markdown_body=markdown_body,
             assets=self._asset_responses(graph.graph_version, node_key),
             status="published" if status == "published" else "draft",
             updated_at=None,

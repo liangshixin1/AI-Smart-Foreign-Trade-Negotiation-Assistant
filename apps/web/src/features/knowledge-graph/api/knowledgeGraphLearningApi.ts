@@ -8,7 +8,9 @@ import type {
   KnowledgeInsights,
   LearningContent,
   LearningContentInput,
+  NodeDisplayMutation,
   KnowledgeNodeType,
+  KnowledgePointType,
   ScaffoldEventType,
   ScaffoldHint,
 } from '../types'
@@ -17,7 +19,10 @@ interface GraphNodeWire {
   id: string
   type: string
   label: string
+  short_label: string
   properties: Record<string, unknown>
+  display_revision?: number
+  has_display_override?: boolean
 }
 interface GraphEdgeWire extends Omit<KnowledgeGraphEdge, 'properties'> {
   properties: Record<string, unknown>
@@ -28,23 +33,51 @@ interface GraphViewWire extends Omit<KnowledgeGraphView, 'nodes' | 'edges'> {
 }
 interface AttemptScaffoldWire extends Omit<
   AttemptScaffold,
-  'scenario' | 'phenomena' | 'knowledge_resources' | 'strategies' | 'edges'
+  'scenario' | 'phenomena' | 'knowledge_resources' | 'strategies' | 'knowledge_points' | 'edges'
 > {
   scenario: GraphNodeWire | null
   phenomena: GraphNodeWire[]
   knowledge_resources: GraphNodeWire[]
   strategies: GraphNodeWire[]
+  knowledge_points?: GraphNodeWire[]
   edges: GraphEdgeWire[]
 }
 
 function normalizedType(type: string): KnowledgeNodeType {
+  if (type === 'Stage') return 'stage'
+  if (type === 'Scenario') return 'scenario'
   if (type === 'Phenomenon') return 'phenomenon'
   if (type === 'NegotiationStrategy') return 'strategy'
+  if (type === 'KnowledgePoint') return 'knowledge_point'
   return 'knowledge_resource'
 }
 
+function knowledgeType(node: GraphNodeWire): KnowledgePointType | undefined {
+  const value = node.properties.KnowledgeTypeCode ?? node.properties.Type
+  return typeof value === 'string' &&
+    [
+      'Concept',
+      'Correspondence',
+      'Cross-cultural',
+      'Legal',
+      'Procedure',
+      'Risk',
+      'Strategy',
+    ].includes(value)
+    ? (value as KnowledgePointType)
+    : undefined
+}
+
 function normalizeNode(node: GraphNodeWire): KnowledgeGraphNode {
-  return { ...node, source_type: node.type, type: normalizedType(node.type) }
+  const expertType = knowledgeType(node)
+  return {
+    ...node,
+    source_type: node.type,
+    type: normalizedType(node.type),
+    ...(expertType ? { knowledge_type: expertType } : {}),
+    display_revision: node.display_revision ?? 0,
+    has_display_override: node.has_display_override ?? false,
+  }
 }
 
 function normalizeGraph(graph: GraphViewWire): KnowledgeGraphView {
@@ -58,6 +91,9 @@ function normalizeScaffold(value: AttemptScaffoldWire): AttemptScaffold {
     phenomena: value.phenomena.map(normalizeNode),
     knowledge_resources: value.knowledge_resources.map(normalizeNode),
     strategies: value.strategies.map(normalizeNode),
+    knowledge_points: (
+      value.knowledge_points ?? [...value.knowledge_resources, ...value.strategies]
+    ).map(normalizeNode),
   }
 }
 
@@ -97,6 +133,42 @@ export const knowledgeGraphLearningApi = {
   studentGraph: async (token: string) =>
     normalizeGraph(
       await request<GraphViewWire>('/api/v1/knowledge-graph/student/graph', {}, token),
+    ),
+  updateNodeDisplay: (
+    token: string,
+    nodeId: string,
+    graphVersion: string,
+    shortNameZh: string,
+    expectedRevision: number,
+  ) =>
+    request<NodeDisplayMutation>(
+      `/api/v1/knowledge-graph/teacher/nodes/${encodeURIComponent(nodeId)}/display`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          graph_version: graphVersion,
+          short_name_zh: shortNameZh,
+          expected_revision: expectedRevision,
+        }),
+      },
+      token,
+    ),
+  restoreNodeDisplay: (
+    token: string,
+    nodeId: string,
+    graphVersion: string,
+    expectedRevision: number,
+  ) =>
+    request<NodeDisplayMutation>(
+      `/api/v1/knowledge-graph/teacher/nodes/${encodeURIComponent(nodeId)}/display/restore`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          graph_version: graphVersion,
+          expected_revision: expectedRevision,
+        }),
+      },
+      token,
     ),
   studentContent: (token: string, nodeId: string) =>
     request<LearningContent>(

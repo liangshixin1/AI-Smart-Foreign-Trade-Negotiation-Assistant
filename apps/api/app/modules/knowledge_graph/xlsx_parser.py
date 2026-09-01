@@ -8,7 +8,15 @@ from xml.etree import ElementTree as ET
 
 from app.modules.knowledge_graph.contract import CHECK_COLUMN, SHEET_HEADERS
 from app.modules.knowledge_graph.types import ImportIssue, ParsedWorkbookData
-from app.modules.knowledge_graph.v2_contract import V2_SHEET_HEADERS
+from app.modules.knowledge_graph.v2_contract import (
+    V2_LEGACY_SHEET_HEADERS,
+    V2_SHEET_HEADERS,
+)
+from app.modules.knowledge_graph.v3_contract import (
+    EXPERT_V3_REQUIRED_SHEETS,
+    EXPERT_V3_SHEET_HEADERS,
+)
+from app.modules.knowledge_graph.v21_contract import V21_SHEET_HEADERS
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_UNCOMPRESSED_SIZE = 20 * 1024 * 1024
@@ -97,6 +105,7 @@ def _worksheet_rows(
     expected_headers: tuple[str, ...],
     header_row: int,
     template_label: str,
+    legacy_headers: tuple[str, ...] | None = None,
 ) -> tuple[list[dict[str, object]], list[ImportIssue]]:
     root = ET.fromstring(archive.read(path))
     raw_rows: dict[int, dict[int, tuple[object, bool]]] = {}
@@ -110,11 +119,21 @@ def _worksheet_rows(
         raw_rows[row_number] = cells
 
     header_cells = raw_rows.get(header_row, {})
-    actual_headers = tuple(
-        str(header_cells.get(i, ("", False))[0]) for i in range(len(expected_headers))
-    )
+    header_width = max(header_cells, default=-1) + 1
+    header_values = [str(header_cells.get(i, ("", False))[0]) for i in range(header_width)]
+    while header_values and not header_values[-1]:
+        header_values.pop()
+    actual_headers = tuple(header_values)
     issues: list[ImportIssue] = []
-    if actual_headers != expected_headers:
+    accepted_headers = (
+        (expected_headers,)
+        if legacy_headers is None
+        else (
+            expected_headers,
+            legacy_headers,
+        )
+    )
+    if actual_headers not in accepted_headers:
         issues.append(
             ImportIssue(
                 severity="error",
@@ -125,17 +144,18 @@ def _worksheet_rows(
             )
         )
         return [], issues
+    row_headers = actual_headers
 
     rows: list[dict[str, object]] = []
     for row_number in sorted(number for number in raw_rows if number > header_row)[:MAX_DATA_ROWS]:
         cells = raw_rows[row_number]
-        values = [cells.get(index, ("", False))[0] for index in range(len(expected_headers))]
-        content_values = values[:-1] if expected_headers[-1] == CHECK_COLUMN else values
+        values = [cells.get(index, ("", False))[0] for index in range(len(row_headers))]
+        content_values = values[:-1] if row_headers[-1] == CHECK_COLUMN else values
         if not any(value not in ("", None) for value in content_values):
             continue
-        item = {header: values[index] for index, header in enumerate(expected_headers)}
+        item = {header: values[index] for index, header in enumerate(row_headers)}
         item["__row__"] = row_number
-        for index, header in enumerate(expected_headers):
+        for index, header in enumerate(row_headers):
             if cells.get(index, ("", False))[1] and header != CHECK_COLUMN:
                 issues.append(
                     ImportIssue(
@@ -152,12 +172,35 @@ def _worksheet_rows(
     return rows, issues
 
 
+def _worksheet_matrix(archive: zipfile.ZipFile, path: str, shared: list[str]) -> list[list[object]]:
+    """读取完整 Sheet 值, 供说明页与衍生统计页做交叉校验。"""
+
+    root = ET.fromstring(archive.read(path))
+    indexed_rows: dict[int, dict[int, object]] = {}
+    max_column = -1
+    for row in root.findall(f".//{{{NS_MAIN}}}row"):
+        row_number = int(row.attrib.get("r", "0"))
+        values: dict[int, object] = {}
+        for cell in row.findall(f"{{{NS_MAIN}}}c"):
+            index = _column_index(cell.attrib.get("r", "A1"))
+            max_column = max(max_column, index)
+            values[index] = _normalise(_cell_value(cell, shared))
+        indexed_rows[row_number] = values
+    if not indexed_rows:
+        return []
+    return [
+        [indexed_rows.get(row_number, {}).get(index, "") for index in range(max_column + 1)]
+        for row_number in range(1, max(indexed_rows) + 1)
+    ]
+
+
 def _parse_workbook(
     content: bytes,
     sheet_headers: dict[str, tuple[str, ...]],
     *,
     header_row: int,
     template_label: str,
+    legacy_sheet_headers: dict[str, tuple[str, ...]] | None = None,
 ) -> ParsedWorkbookData:
     if len(content) > MAX_FILE_SIZE:
         raise WorkbookRejected("文件超过 5 MB 限制。")
@@ -203,6 +246,7 @@ def _parse_workbook(
                 expected_headers,
                 header_row,
                 template_label,
+                legacy_sheet_headers.get(sheet_name) if legacy_sheet_headers else None,
             )
             result.sheets[sheet_name] = rows
             result.issues.extend(issues)
@@ -214,4 +258,49 @@ def parse_teacher_workbook(content: bytes) -> ParsedWorkbookData:
 
 
 def parse_teacher_workbook_v2(content: bytes) -> ParsedWorkbookData:
-    return _parse_workbook(content, V2_SHEET_HEADERS, header_row=1, template_label="2.0")
+    return _parse_workbook(
+        content,
+        V2_SHEET_HEADERS,
+        header_row=1,
+        template_label="2.0",
+        legacy_sheet_headers=V2_LEGACY_SHEET_HEADERS,
+    )
+
+
+def parse_teacher_workbook_v21(content: bytes) -> ParsedWorkbookData:
+    return _parse_workbook(
+        content,
+        V21_SHEET_HEADERS,
+        header_row=1,
+        template_label="2.1（专家组三层图谱）",
+    )
+
+
+def parse_expert_workbook_v3(content: bytes) -> ParsedWorkbookData:
+    """按专家原始 8-Sheet 契约读取, 不改名、不拆分知识点类型。"""
+
+    parsed = _parse_workbook(
+        content,
+        EXPERT_V3_SHEET_HEADERS,
+        header_row=1,
+        template_label="3.0（专家原始图谱）",
+    )
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        names = set(archive.namelist())
+        paths = _sheet_paths(archive)
+        shared = _shared_strings(archive)
+        for sheet_name in EXPERT_V3_REQUIRED_SHEETS:
+            path = paths.get(sheet_name)
+            if not path or path not in names:
+                if sheet_name not in EXPERT_V3_SHEET_HEADERS:
+                    parsed.issues.append(
+                        ImportIssue(
+                            severity="error",
+                            code="template.sheet_missing",
+                            sheet_name=sheet_name,
+                            message=f"缺少专家源表工作表：{sheet_name}。",
+                        )
+                    )
+                continue
+            parsed.raw_sheets[sheet_name] = _worksheet_matrix(archive, path, shared)
+    return parsed

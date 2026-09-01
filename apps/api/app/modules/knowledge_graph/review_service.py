@@ -87,6 +87,33 @@ class KnowledgeReviewService:
     ) -> KnowledgeGraphPublication:
         existing = self.repository.publication_for_change_set(change_set.id)
         if existing is not None:
+            if existing.status == "rolled_back" and change_set.status == "approved":
+                try:
+                    self.graph_store.publish(
+                        existing.graph_version,
+                        change_set.nodes,
+                        change_set.relationships,
+                    )
+                except Exception as exc:
+                    raise AppError(
+                        code="knowledge_graph.storage_unavailable",
+                        message="Neo4j 不可用，版本恢复未执行。",
+                        status_code=503,
+                        retryable=True,
+                    ) from exc
+                self.repository.activate_publication(existing)
+                change_set.status = "published"
+                job = self.repository.get_import(change_set.import_job_id)
+                if job:
+                    job.status = "published"
+                self.repository.audit(
+                    actor_id,
+                    "graph.reactivated",
+                    "publication",
+                    existing.id,
+                )
+                self.repository.commit()
+                self.repository.refresh(existing)
             return existing
         if change_set.status not in {"approved", "publication_failed"}:
             raise AppError(
@@ -152,8 +179,17 @@ class KnowledgeReviewService:
                 message="只能回滚当前激活的演示版本。",
                 status_code=409,
             )
+        previous = self.repository.previous_publication(publication)
         try:
-            self.graph_store.deactivate(publication.graph_version)
+            if previous is None:
+                self.graph_store.deactivate(publication.graph_version)
+            else:
+                payload = previous.graph_payload
+                nodes = payload.get("nodes", [])
+                relationships = payload.get("relationships", [])
+                if not isinstance(nodes, list) or not isinstance(relationships, list):
+                    raise ValueError("Previous graph payload is invalid")
+                self.graph_store.publish(previous.graph_version, nodes, relationships)
         except Exception as exc:
             raise AppError(
                 code="knowledge_graph.storage_unavailable",
@@ -164,13 +200,21 @@ class KnowledgeReviewService:
         publication.status = "rolled_back"
         publication.is_active = False
         publication.rolled_back_at = utc_now()
+        if previous is not None:
+            self.repository.activate_publication(previous)
         change_set = self.repository.get_change_set(publication.change_set_id)
         if change_set:
             change_set.status = "approved"
             job = self.repository.get_import(change_set.import_job_id)
             if job:
                 job.status = "approved"
-        self.repository.audit(actor_id, "graph.rolled_back", "publication", publication.id)
+        self.repository.audit(
+            actor_id,
+            "graph.rolled_back",
+            "publication",
+            publication.id,
+            {"restored_graph_version": previous.graph_version if previous else None},
+        )
         self.repository.commit()
         self.repository.refresh(publication)
         return publication

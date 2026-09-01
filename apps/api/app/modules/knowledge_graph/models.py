@@ -85,6 +85,134 @@ class KnowledgeGraphChangeSet(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class KnowledgeGraphKnowledgeType(Base):
+    """专家定义的七类知识点字典, 代码值不可由教师界面随意改名。"""
+
+    __tablename__ = "knowledge_graph_knowledge_types"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name_zh: Mapped[str] = mapped_column(String(40))
+    sort_order: Mapped[int] = mapped_column(Integer)
+
+
+class KnowledgeGraphStageSnapshot(Base):
+    __tablename__ = "knowledge_graph_stage_snapshots"
+    __table_args__ = (UniqueConstraint("change_set_id", "stage_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    stage_id: Mapped[str] = mapped_column(String(20), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    name_en: Mapped[str] = mapped_column(String(255))
+    short_en: Mapped[str] = mapped_column(String(120))
+    description_en: Mapped[str] = mapped_column(Text)
+    obe_outcome_en: Mapped[str] = mapped_column(Text)
+    source_row_number: Mapped[int] = mapped_column(Integer)
+    source_row_hash: Mapped[str] = mapped_column(String(64))
+
+
+class KnowledgeGraphPhenomenonSnapshot(Base):
+    __tablename__ = "knowledge_graph_phenomenon_snapshots"
+    __table_args__ = (UniqueConstraint("change_set_id", "phenomenon_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    phenomenon_id: Mapped[str] = mapped_column(String(20), index=True)
+    stage_id: Mapped[str] = mapped_column(String(20), index=True)
+    name_en: Mapped[str] = mapped_column(String(255))
+    description_en: Mapped[str] = mapped_column(Text)
+    risk: Mapped[str] = mapped_column(String(20), index=True)
+    frequency: Mapped[str] = mapped_column(String(20), index=True)
+    linked_knowledge_count: Mapped[int] = mapped_column(Integer)
+    source_row_number: Mapped[int] = mapped_column(Integer)
+    source_row_hash: Mapped[str] = mapped_column(String(64))
+
+
+class KnowledgeGraphKnowledgePointSnapshot(Base):
+    __tablename__ = "knowledge_graph_knowledge_point_snapshots"
+    __table_args__ = (UniqueConstraint("change_set_id", "knowledge_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_id: Mapped[str] = mapped_column(String(20), index=True)
+    knowledge_type_code: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_graph_knowledge_types.code"), index=True
+    )
+    home_stage_id: Mapped[str] = mapped_column(String(20), index=True)
+    name_en: Mapped[str] = mapped_column(String(255))
+    definition_en: Mapped[str] = mapped_column(Text)
+    phenomena_served: Mapped[int] = mapped_column(Integer)
+    stages_served: Mapped[int] = mapped_column(Integer)
+    source_row_number: Mapped[int] = mapped_column(Integer)
+    source_row_hash: Mapped[str] = mapped_column(String(64))
+
+
+class KnowledgeGraphPhenomenonKnowledgeEdge(Base):
+    __tablename__ = "knowledge_graph_phenomenon_knowledge_edges"
+    __table_args__ = (UniqueConstraint("change_set_id", "phenomenon_id", "knowledge_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    stage_id: Mapped[str] = mapped_column(String(20), index=True)
+    phenomenon_id: Mapped[str] = mapped_column(String(20), index=True)
+    knowledge_id: Mapped[str] = mapped_column(String(20), index=True)
+    addressing_note_en: Mapped[str] = mapped_column(Text)
+    source_row_number: Mapped[int] = mapped_column(Integer)
+    source_row_hash: Mapped[str] = mapped_column(String(64))
+
+
+class KnowledgeGraphTranslationOverlay(Base):
+    __tablename__ = "knowledge_graph_translation_overlays"
+    __table_args__ = (
+        UniqueConstraint("change_set_id", "entity_type", "entity_id", "field_name", "locale"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(40), index=True)
+    entity_id: Mapped[str] = mapped_column(String(30), index=True)
+    field_name: Mapped[str] = mapped_column(String(50))
+    locale: Mapped[str] = mapped_column(String(12), default="zh-CN")
+    translated_text: Mapped[str] = mapped_column(Text)
+    translation_status: Mapped[str] = mapped_column(String(30), default="reviewed")
+
+
+class KnowledgeGraphScenarioStageBinding(Base):
+    __tablename__ = "knowledge_graph_scenario_stage_bindings"
+    __table_args__ = (UniqueConstraint("change_set_id", "scenario_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    scenario_id: Mapped[str] = mapped_column(String(30), index=True)
+    stage_id: Mapped[str] = mapped_column(String(20), index=True)
+    course_unit_id: Mapped[str] = mapped_column(String(120), index=True)
+
+
+class KnowledgeGraphScenarioPhenomenonBinding(Base):
+    __tablename__ = "knowledge_graph_scenario_phenomenon_bindings"
+    __table_args__ = (UniqueConstraint("change_set_id", "scenario_id", "phenomenon_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    change_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_graph_change_sets.id", ondelete="CASCADE"), index=True
+    )
+    scenario_id: Mapped[str] = mapped_column(String(30), index=True)
+    phenomenon_id: Mapped[str] = mapped_column(String(20), index=True)
+    mapping_method: Mapped[str] = mapped_column(String(30), default="stage_scope")
+
+
 class KnowledgeGraphPublication(Base):
     __tablename__ = "knowledge_graph_publications"
 
@@ -113,6 +241,26 @@ class KnowledgeGraphAuditEvent(Base):
     target_id: Mapped[str] = mapped_column(String(80))
     details: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class KnowledgeNodeDisplayOverride(Base):
+    """教师对已发布节点展示名称的版本化覆盖, 不修改 Neo4j 原始节点."""
+
+    __tablename__ = "knowledge_node_display_overrides"
+    __table_args__ = (UniqueConstraint("graph_version", "node_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    graph_version: Mapped[str] = mapped_column(String(80), index=True)
+    node_key: Mapped[str] = mapped_column(String(180), index=True)
+    short_name_zh: Mapped[str] = mapped_column(String(32))
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __mapper_args__ = {"version_id_col": revision}  # noqa: RUF012
 
 
 class KnowledgeScaffoldInteraction(Base):
@@ -149,6 +297,8 @@ class GraphLearningEvidence(Base):
     phenomenon_node_keys: Mapped[list[str]] = mapped_column(JSON)
     strategy_node_keys: Mapped[list[str]] = mapped_column(JSON)
     knowledge_resource_node_keys: Mapped[list[str]] = mapped_column(JSON)
+    knowledge_point_node_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
+    knowledge_type_breakdown: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
     score: Mapped[float] = mapped_column(Float)
     evidence_summary: Mapped[str] = mapped_column(Text)
     mapping_method: Mapped[str] = mapped_column(String(50), default="unit_scope_inferred")

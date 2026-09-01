@@ -36,9 +36,7 @@
                 :class="{ recommended: recommendationFor(resource.id) }"
               >
                 <div class="item-meta">
-                  <span class="kind">{{
-                    propertyText(resource, 'resource_type', '知识资源')
-                  }}</span>
+                  <span class="kind">{{ knowledgeTypeLabel(resource) }}</span>
                   <span v-if="recommendationFor(resource.id)" class="round-badge">本轮建议</span>
                 </div>
                 <RouterLink :to="learningRoute(resource.id)">{{ resource.label }}</RouterLink>
@@ -46,7 +44,7 @@
                   {{
                     propertyFirst(
                       resource,
-                      ['Summary', 'Definition_Content', 'explanation'],
+                      ['Summary', 'DefinitionZH', 'Definition_Content', 'explanation'],
                       '用于理解并处理当前商务局面。',
                     )
                   }}
@@ -82,7 +80,7 @@
                   {{
                     propertyFirst(
                       strategy,
-                      ['Summary', 'RecommendedActions', 'action'],
+                      ['Summary', 'DefinitionZH', 'RecommendedActions', 'action'],
                       '根据当前条件选择合适的应对行动。',
                     )
                   }}
@@ -192,6 +190,19 @@ function propertyFirst(node: KnowledgeGraphNode, keys: string[], fallback: strin
     if (value) return value
   }
   return fallback
+}
+
+function knowledgeTypeLabel(node: KnowledgeGraphNode): string {
+  const labels: Record<string, string> = {
+    Concept: '概念',
+    Correspondence: '函电',
+    'Cross-cultural': '跨文化',
+    Legal: '法律规则',
+    Procedure: '业务流程',
+    Risk: '风险管理',
+    Strategy: '策略战术',
+  }
+  return labels[node.knowledge_type ?? ''] ?? propertyText(node, 'resource_type', '知识资源')
 }
 
 function learningRoute(nodeId: string): { path: string; query: { returnTo: string } } {

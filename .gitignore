@@ -17,6 +17,10 @@ Thumbs.db
 *.pem
 *.key
 *.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
 
 # Python environments, bytecode and tooling
 .venv/
@@ -61,6 +65,7 @@ storage/
 media/
 
 # Generated artifacts and local QA workspaces
+.tmp-artifact/
 tmp/
 temp/
 output/

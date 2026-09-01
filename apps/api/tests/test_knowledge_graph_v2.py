@@ -6,7 +6,14 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 from test_auth import auth_header, login
+
+from app.modules.knowledge_graph.models import (
+    KnowledgeGraphAuditEvent,
+    KnowledgeNodeDisplayOverride,
+)
 
 TEMPLATE = (
     Path(__file__).resolve().parents[3]
@@ -77,7 +84,11 @@ def test_v2_reuses_global_nodes_and_learning_content_is_editable(client: TestCli
     student = auth_header(login(client, "student")["access_token"])
     graph = client.get("/api/v1/knowledge-graph/student/graph", headers=student)
     assert graph.status_code == 200
-    assert graph.json()["node_count"] == 142
+    assert graph.json()["node_count"] == 162
+    scenario = next(item for item in graph.json()["nodes"] if item["type"] == "Scenario")
+    assert scenario["short_label"]
+    phenomenon = next(item for item in graph.json()["nodes"] if item["type"] == "Phenomenon")
+    assert phenomenon["short_label"] != phenomenon["label"]
 
     content_url = "/api/v1/knowledge-graph/student/content/knowledge%3AK001"
     initial = client.get(content_url, headers=student)
@@ -173,3 +184,136 @@ def test_round_evaluation_selects_only_fixed_v2_candidates(
     assert all(
         item["node_id"].startswith(allowed_prefixes) for item in completed["recommendations"]
     )
+
+
+def test_teacher_display_override_is_versioned_audited_and_does_not_mutate_graph(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    curriculum_enrollment: None,
+) -> None:
+    del curriculum_enrollment
+    teacher, _, _ = _publish_v2(client)
+    student = auth_header(login(client, "student")["access_token"])
+    initial_graph = client.get("/api/v1/knowledge-graph/teacher/graph", headers=teacher).json()
+    phenomenon = next(item for item in initial_graph["nodes"] if item["type"] == "Phenomenon")
+    original_label = phenomenon["short_label"]
+    node_path = phenomenon["id"].replace(":", "%3A")
+
+    updated = client.put(
+        f"/api/v1/knowledge-graph/teacher/nodes/{node_path}/display",
+        headers=teacher,
+        json={
+            "graph_version": initial_graph["graph_version"],
+            "short_name_zh": "客户压价应对",
+            "expected_revision": 0,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["revision"] == 1
+    assert updated.json()["has_override"] is True
+
+    teacher_node = next(
+        item
+        for item in client.get("/api/v1/knowledge-graph/teacher/graph", headers=teacher).json()[
+            "nodes"
+        ]
+        if item["id"] == phenomenon["id"]
+    )
+    student_node = next(
+        item
+        for item in client.get("/api/v1/knowledge-graph/student/graph", headers=student).json()[
+            "nodes"
+        ]
+        if item["id"] == phenomenon["id"]
+    )
+    assert teacher_node["short_label"] == "客户压价应对"
+    assert teacher_node["display_revision"] == 1
+    assert teacher_node["has_display_override"] is True
+    assert student_node["short_label"] == "客户压价应对"
+
+    attempt = client.post(
+        "/api/v1/attempts",
+        headers=student,
+        json={"unit_id": "chapter-0-section-1", "difficulty": "standard"},
+    )
+    assert attempt.status_code == 201, attempt.text
+    scaffold = client.get(
+        f"/api/v1/knowledge-graph/student/attempts/{attempt.json()['id']}/scaffolds",
+        headers=student,
+    )
+    assert scaffold.status_code == 200, scaffold.text
+    matching_support = [
+        item for item in scaffold.json()["phenomena"] if item["id"] == phenomenon["id"]
+    ]
+    assert matching_support[0]["short_label"] == "客户压价应对"
+
+    stored = client.app.state.graph_store.read(initial_graph["graph_version"])
+    raw_node = next(item for item in stored.nodes if item["stable_key"] == phenomenon["id"])
+    assert raw_node["properties"]["ShortNameZH"] == original_label
+
+    stale = client.put(
+        f"/api/v1/knowledge-graph/teacher/nodes/{node_path}/display",
+        headers=teacher,
+        json={
+            "graph_version": initial_graph["graph_version"],
+            "short_name_zh": "过期覆盖名称",
+            "expected_revision": 0,
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "knowledge_graph.display_revision_conflict"
+
+    invalid = client.put(
+        f"/api/v1/knowledge-graph/teacher/nodes/{node_path}/display",
+        headers=teacher,
+        json={
+            "graph_version": initial_graph["graph_version"],
+            "short_name_zh": "<script>",
+            "expected_revision": 1,
+        },
+    )
+    assert invalid.status_code == 422
+    forbidden = client.put(
+        f"/api/v1/knowledge-graph/teacher/nodes/{node_path}/display",
+        headers=student,
+        json={
+            "graph_version": initial_graph["graph_version"],
+            "short_name_zh": "学生不可修改",
+            "expected_revision": 1,
+        },
+    )
+    assert forbidden.status_code == 403
+
+    restored = client.post(
+        f"/api/v1/knowledge-graph/teacher/nodes/{node_path}/display/restore",
+        headers=teacher,
+        json={
+            "graph_version": initial_graph["graph_version"],
+            "expected_revision": 1,
+        },
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["short_label"] == original_label
+    assert restored.json()["revision"] == 0
+    assert restored.json()["has_override"] is False
+
+    with session_factory() as db:
+        assert db.scalar(select(KnowledgeNodeDisplayOverride)) is None
+        events = list(
+            db.scalars(
+                select(KnowledgeGraphAuditEvent).where(
+                    KnowledgeGraphAuditEvent.target_id == phenomenon["id"],
+                    KnowledgeGraphAuditEvent.action.in_(
+                        ("graph.node_display_updated", "graph.node_display_restored")
+                    ),
+                )
+            )
+        )
+        assert {event.action for event in events} == {
+            "graph.node_display_updated",
+            "graph.node_display_restored",
+        }
+        updated_event = next(
+            event for event in events if event.action == "graph.node_display_updated"
+        )
+        assert updated_event.details["previous_value"] == original_label

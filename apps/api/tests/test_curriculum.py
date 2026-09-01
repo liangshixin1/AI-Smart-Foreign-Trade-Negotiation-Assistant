@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from conftest import TEST_PASSWORD
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import cli as cli_module
 from app.modules.curriculum.import_service import CurriculumImporter
 from app.modules.curriculum.models import CourseVersion, TrainingUnit
 
@@ -28,6 +30,50 @@ def test_import_is_idempotent(session_factory: sessionmaker[Session]) -> None:
         assert first.id == second.id
         assert db.scalar(select(func.count()).select_from(CourseVersion)) == 1
         assert db.scalar(select(func.count()).select_from(TrainingUnit)) == 20
+
+
+def configure_cli_session(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+) -> None:
+    monkeypatch.setattr(cli_module, "get_settings", lambda: object())
+    monkeypatch.setattr(cli_module, "build_engine", lambda settings: settings)
+    monkeypatch.setattr(
+        cli_module,
+        "build_session_factory",
+        lambda engine: session_factory,
+    )
+
+
+def test_dev_curriculum_seed_keeps_existing_published_version(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content_root = Path(__file__).resolve().parents[3] / "content"
+    with session_factory() as db:
+        CurriculumImporter(db, content_root).import_slice()
+    configure_cli_session(monkeypatch, session_factory)
+
+    def fail_if_imported(unused_root: Path) -> None:
+        del unused_root
+        raise AssertionError("Existing published curriculum must not be overwritten.")
+
+    monkeypatch.setattr(cli_module, "import_curriculum", fail_if_imported)
+    cli_module.ensure_dev_curriculum(content_root)
+
+
+def test_dev_curriculum_seed_imports_when_database_is_empty(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content_root = Path(__file__).resolve().parents[3] / "content"
+    configure_cli_session(monkeypatch, session_factory)
+    imported: list[Path] = []
+    monkeypatch.setattr(cli_module, "import_curriculum", imported.append)
+
+    cli_module.ensure_dev_curriculum(content_root)
+
+    assert imported == [content_root]
 
 
 def test_student_can_read_current_map_and_unit(

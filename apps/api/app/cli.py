@@ -66,6 +66,25 @@ def import_curriculum(content_root: Path) -> None:
     print(f"Curriculum version ready: {version.version} ({version.manifest_hash[:12]})")
 
 
+def ensure_dev_curriculum(content_root: Path) -> None:
+    """Initialize curriculum only when no published version exists."""
+    settings = get_settings()
+    factory = build_session_factory(build_engine(settings))
+    with factory() as db:
+        existing = db.scalar(
+            select(CourseVersion)
+            .where(CourseVersion.status == "published")
+            .order_by(CourseVersion.published_at.desc())
+        )
+        if existing is not None:
+            print(
+                "Published curriculum already exists; "
+                f"keeping version {existing.version} unchanged."
+            )
+            return
+    import_curriculum(content_root)
+
+
 def seed_dev_classroom() -> None:
     settings = get_settings()
     if settings.app_env == "production":
@@ -108,7 +127,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=["seed-dev-users", "import-curriculum", "seed-dev-classroom"],
+        choices=[
+            "seed-dev-users",
+            "import-curriculum",
+            "ensure-dev-curriculum",
+            "seed-dev-classroom",
+        ],
     )
     parser.add_argument(
         "--content-root",
@@ -120,6 +144,8 @@ def main() -> None:
         seed_dev_users()
     elif args.command == "import-curriculum":
         import_curriculum(args.content_root)
+    elif args.command == "ensure-dev-curriculum":
+        ensure_dev_curriculum(args.content_root)
     elif args.command == "seed-dev-classroom":
         seed_dev_classroom()
 

@@ -12,20 +12,58 @@ function jsonResponse(value: unknown): Response {
 describe('knowledgeGraphLearningApi', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('maps Neo4j labels to the three teaching view node types', async () => {
+  it('maps legacy and unified Neo4j knowledge nodes without losing expert type', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         jsonResponse({
           graph_version: 'kg-1',
           nodes: [
-            { id: 'p1', type: 'Phenomenon', label: '客户压价', properties: {} },
-            { id: 's1', type: 'NegotiationStrategy', label: '条件让步', properties: {} },
-            { id: 'k1', type: 'TradeRule', label: 'CISG', properties: {} },
-            { id: 'k2', type: 'Terminology', label: 'L/C', properties: {} },
+            {
+              id: 'c1',
+              type: 'Scenario',
+              label: 'Price Negotiation',
+              short_label: '价格谈判',
+              properties: {},
+            },
+            {
+              id: 'p1',
+              type: 'Phenomenon',
+              label: 'Price pressure',
+              short_label: '客户压价',
+              properties: {},
+            },
+            {
+              id: 's1',
+              type: 'NegotiationStrategy',
+              label: 'Conditional concession',
+              short_label: '条件让步',
+              properties: {},
+            },
+            {
+              id: 'k1',
+              type: 'TradeRule',
+              label: 'CISG',
+              short_label: 'CISG规则',
+              properties: {},
+            },
+            {
+              id: 'k2',
+              type: 'Terminology',
+              label: 'L/C',
+              short_label: '信用证',
+              properties: {},
+            },
+            {
+              id: 'k3',
+              type: 'KnowledgePoint',
+              label: 'Conditional concession strategy',
+              short_label: '条件让步',
+              properties: { KnowledgeTypeCode: 'Strategy' },
+            },
           ],
           edges: [],
-          node_count: 4,
+          node_count: 6,
           edge_count: 0,
         }),
       ),
@@ -34,12 +72,16 @@ describe('knowledgeGraphLearningApi', () => {
     const graph = await knowledgeGraphLearningApi.teacherGraph('token')
 
     expect(graph.nodes.map((node) => node.type)).toEqual([
+      'scenario',
       'phenomenon',
       'strategy',
       'knowledge_resource',
       'knowledge_resource',
+      'knowledge_point',
     ])
-    expect(graph.nodes[2]?.source_type).toBe('TradeRule')
+    expect(graph.nodes[3]?.source_type).toBe('TradeRule')
+    expect(graph.nodes[1]?.short_label).toBe('客户压价')
+    expect(graph.nodes[5]?.knowledge_type).toBe('Strategy')
   })
 
   it('sends an idempotent scaffold interaction payload', async () => {
@@ -62,6 +104,39 @@ describe('knowledgeGraphLearningApi', () => {
       event_type: 'revealed',
       level: '一级',
       client_event_id: 'scaffold-event-1',
+    })
+  })
+
+  it('sends a version-bound optimistic display update', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        graph_version: 'kg-1',
+        node_id: 'phenomenon:P01',
+        short_label: '客户压价应对',
+        revision: 2,
+        has_override: true,
+        updated_at: '2026-07-26T10:00:00Z',
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await knowledgeGraphLearningApi.updateNodeDisplay(
+      'token',
+      'phenomenon:P01',
+      'kg-1',
+      '客户压价应对',
+      1,
+    )
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/phenomenon%3AP01/display')
+    expect(options.method).toBe('PUT')
+    expect(typeof options.body).toBe('string')
+    if (typeof options.body !== 'string') throw new Error('Expected JSON request body')
+    expect(JSON.parse(options.body)).toEqual({
+      graph_version: 'kg-1',
+      short_name_zh: '客户压价应对',
+      expected_revision: 1,
     })
   })
 

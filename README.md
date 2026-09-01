@@ -10,21 +10,33 @@
 
 项目以 [MIT License](./LICENSE) 开源，公开仓库为 [liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant)。重构前版本已冻结在 [`legacy/`](./legacy/LEGACY_NOTICE.md)，不作为当前运行时依赖。
 
-截至 **2026年7月22日10:00（北京时间）**，项目达到 **Milestone 1：可展示 Demo**。谈判训练与教学知识图谱均已形成早期闭环，可以用于项目演示、内部试用、教学评审和下一阶段迭代；它仍是内测版本，不应被描述为已经达到生产部署标准。
+截至 **2026年9月1日（北京时间）**，项目达到 **Milestone 2-0901：专家知识图谱驱动的内测候选版**。在 Milestone 1 的“场景—谈判—评价—学情”闭环之上，本版本完成专家 8-Sheet 知识图谱 3.0 的严格导入、Neo4j 正式发布、训练动态推荐、教师学情消费和多版本回滚，可以用于甲方演示、项目组内测与教学评审；它仍不是生产部署完成态。
 
 ## 里程碑快照
 
-| 项目         | Milestone 1 状态                                    |
-| ------------ | --------------------------------------------------- |
-| 产品阶段     | 可展示、可操作、可追溯的内测 Demo                   |
-| 课程版本     | `2.2.1-beta.22`                                     |
-| 课程规模     | 9 个外贸流程、20 个结构化训练小节                   |
-| 训练模式     | 谈判对话、商务邮件、文本/单证审阅                   |
-| AI 架构      | 场景、对话、评价三个独立 Agent，三把独立 API Key    |
-| 教学知识图谱 | 402 个内部节点、525 条关系；学生/教师端展示教学投影 |
-| 数据库迁移   | Alembic `20260722_0012 (head)`                      |
-| 自动化验证   | Web 20 项、API 37 项测试通过                        |
-| 当前定位     | Demo / 教学验证版，而非生产正式版                   |
+| 项目         | Milestone 2-0901 状态                                       |
+| ------------ | ----------------------------------------------------------- |
+| 发布标识     | `Milestone 2-0901`                                          |
+| 产品阶段     | 可演示、可内测、可追溯、可回滚的教学验证版                  |
+| 课程版本     | `2.2.1-beta.22`                                             |
+| 课程规模     | 9 个外贸流程、20 个结构化训练小节                           |
+| 训练模式     | 谈判对话、商务邮件、文本/单证审阅                           |
+| AI 架构      | 场景、对话、评价三个独立 Agent，三把独立 API Key            |
+| 专家图谱事实 | 9 Stage、66 Phenomenon、118 KnowledgePoint、298 条专家关系  |
+| 教学知识图谱 | 345 个 3.0 内部节点、516 条关系；教学投影 213 节点/384 关系 |
+| 数据库迁移   | Alembic `20260901_0014 (head)`                              |
+| 自动化验证   | Web 23 项、API 47 项测试通过；真实 Neo4j 发布/回滚通过      |
+| 当前定位     | Milestone 2 内测候选版，而非生产正式版                      |
+
+### Milestone 2-0901 新增能力
+
+- **专家事实一比一入库**：严格验证专家工作簿 8 个 Sheet、表头、引用、知识类型和 `9/66/118/298` 基线，原始英文事实不被平台翻译或教学扩展覆盖。
+- **中文教学覆盖层**：中文名称、短名和定义独立维护，既精简图谱视觉，又保留专家原始名称用于追溯。
+- **课程与图谱接通**：20 个 Scenario 映射至一级主题和关键现象，知识点与分级线索能够进入学生训练支持库。
+- **逐轮智能推荐**：Neo4j 提供可信固定候选，LLM 只在候选集合内根据最新一轮对话选择高亮知识、策略与线索。
+- **教师学情消费**：学习证据统一落到 KnowledgePoint，并可按七类知识点、现象和关卡聚合薄弱项。
+- **版本治理与回滚**：3.0 为当前活动图谱，2.1 等历史版本继续服务旧 Attempt；真实 Neo4j 回滚与恢复演练已通过。
+- **跨平台启动与端口隔离**：macOS、Linux、Windows 提供一键启动入口；本项目前端使用 `5174`，避免占用项目组其他 `5173` 服务。
 
 ## 为什么值得做
 
@@ -82,7 +94,7 @@
 - 分别配置场景、对话、评价 Agent 的模型和 API Key。
 - 校验三把 Key 全部存在且互不相同；Key 只写入，不回显。
 - 配置 DeepSeek API 基址、超时与重试策略，并独立测试三个 Agent。
-- 下载“教师教学知识图谱 DSL 2.0”Excel模板并导入教学案例。
+- 下载专家原始知识图谱 3.0 Excel 包，按 8-Sheet 契约校验并导入。
 - 查看按工作表、行、列定位的校验问题和确定性图谱变更集。
 - 审核后原子发布到 Neo4j；发布失败不切换活动版本。
 - 查看活动版本、执行回滚并保留审计事件。
@@ -145,26 +157,23 @@ ZPD 与 `i+1` 在这里互补但不混同：前者关注“帮助下可达到的
 
 - `Scenario`：课程中的可训练任务。
 - `Phenomenon`：客户压价、虚盘、付款拖延、投诉等关键局面。
-- `Terminology`、`TradeRule`、`DocumentKnowledge`、`BusinessProcess`、`CommunicationKnowledge`、`MarketKnowledge`：可学习、可引用的知识资源。
-- `NegotiationStrategy`：条件让步、利益交换、锚定、澄清与风险控制等策略战术。
+- `Stage`：专家定义的 9 个外贸业务一级主题。
+- `KnowledgePoint`：一比一保存专家定义的 118 个知识点，并以 `Concept`、`Correspondence`、`Cross-cultural`、`Legal`、`Procedure`、`Risk`、`Strategy` 七类区分。
 - `Scaffold`：分级线索、句框和认知提示；前端统一称“线索提示”。
-- `RubricDimension` 与 `NegotiationOutcome`：连接行动、结果与评价。
+- 评价量规、学习内容和媒体属于平台教学扩展层，不反向污染专家事实。
 
-内部图谱使用 `EXPOSES`、`ADDRESSES`、`SUPPORTS`、`SCAFFOLDS`、`ASSESSES_WITH`、`MAY_LEAD_TO` 等稳定关系。Milestone 1 演示数据包括：
+3.0 核心图谱使用 `Stage → CONTAINS_PHENOMENON → Phenomenon → REQUIRES_KNOWLEDGE → KnowledgePoint`，场景通过 `Stage → CONTAINS_SCENARIO → Scenario` 接入课程。2.1 的 `SUPPORTS/ADDRESSES` 仍保留为历史 Attempt 双读兼容。当前 3.0 数据包括：
 
-| 节点类型              |                    数量 |
-| --------------------- | ----------------------: |
-| Scenario              |                      20 |
-| Phenomenon            |                      40 |
-| 知识资源              |                      77 |
-| NegotiationStrategy   |                      25 |
-| Scaffold              |                      80 |
-| RubricDimension       |                      60 |
-| NegotiationOutcome    |                      40 |
-| 其他角色/学习成果节点 |                      60 |
-| **合计**              | **402 节点 / 525 关系** |
+| 节点类型             |                    数量 |
+| -------------------- | ----------------------: |
+| Stage                |                       9 |
+| Scenario             |                      20 |
+| Phenomenon           |                      66 |
+| KnowledgePoint       |                     118 |
+| Scaffold（教学扩展） |                     132 |
+| **合计**             | **345 节点 / 516 关系** |
 
-学生和教师看到的是克制的“现象—知识资源—策略战术”教学投影，而不是把全部内部节点堆到一张大图。训练中的智能推荐采用“**Neo4j 固定候选 + LLM 根据最新对话选择**”：图谱保证候选可信、关系可追溯，模型负责判断此刻最需要哪一项，不能生成候选集合之外的节点。
+学生和教师看到的是克制的 213 节点、384 关系教学投影，而不是把线索节点堆到一张大图。英文专家事实不可变，中文名称、短名和精讲作为独立覆盖层维护；节点详情以弹窗展示完整信息。训练中的智能推荐采用“**Neo4j 固定候选 + LLM 根据最新对话选择**”：图谱保证候选可信、关系可追溯，模型负责判断此刻最需要哪一项，不能生成候选集合之外的节点。
 
 ### 教师 DSL 到 Neo4j 的发布链
 
@@ -294,7 +303,7 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 
 ## 项目目录
 
-以下目录来自 Milestone 1 当前仓库的实际文件，而不是目标架构占位。目录说明同时回答“代码在哪里”和“它负责什么”，便于产品、教学、前端、后端与测试人员快速接手。
+以下目录来自 Milestone 2-0901 当前仓库的实际文件，而不是目标架构占位。目录说明同时回答“代码在哪里”和“它负责什么”，便于产品、教学、前端、后端与测试人员快速接手。
 
 ### 顶层结构
 
@@ -386,25 +395,28 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 
 #### 知识图谱模块 `app/modules/knowledge_graph`
 
-| 文件                                 | 职责                                                     |
-| ------------------------------------ | -------------------------------------------------------- |
-| `contract.py` / `v2_contract.py`     | 定义教师 Excel 教学设计语言的工作表、列和语义契约。      |
-| `xlsx_parser.py`                     | 安全读取工作簿并保留可定位到表、行、列的问题信息。       |
-| `validation.py` / `v2_validation.py` | 校验必填项、引用、枚举、复用关系和发布条件。             |
-| `compiler.py` / `v2_compiler.py`     | 将教师案例 DSL 编译为节点、关系、学习资源和 Change Set。 |
-| `import_service.py`                  | 组织上传、预检、差异审核、发布、替换和回滚流程。         |
-| `review_service.py`                  | 生成技术员/专家可读的问题清单、变更摘要与教学预览。      |
-| `repository.py`                      | 保存导入批次、发布版本、节点内容与关系元数据。           |
-| `models.py`                          | 图谱导入、学习内容、媒体资产和学习证据等关系库模型。     |
-| `types.py`                           | 图谱领域枚举、值对象和内部类型。                         |
-| `schemas.py`                         | 图谱导入、可视化、推荐、内容编辑与学习证据 API 契约。    |
-| `consumption_service.py`             | 生成学生/教师 Cytoscape 图投影、统计和图谱洞察。         |
-| `scaffold_service.py`                | 按 Scenario 和 Phenomenon 召回固定知识、策略与线索候选。 |
-| `recommendation_service.py`          | 在固定图谱候选中让 LLM 根据最新对话选择本轮高亮项。      |
-| `prompt_context.py`                  | 把经验证的图谱候选注入场景、对话与评价提示词。           |
-| `content_service.py`                 | 编辑 Markdown 精讲，上传、读取和删除视频/PPT学习资产。   |
-| `learning_evidence_service.py`       | 记录学生查看资源、接受提示等可用于教师分析的学习证据。   |
-| `router.py`                          | 提供导入治理、学生/教师图谱、训练推荐和学习内容 API。    |
+| 文件                                                       | 职责                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `contract.py` / `v2_contract.py` / `v21_contract.py`       | 定义历史教师 DSL 与 2.1 双语图谱契约。                     |
+| `v3_contract.py`                                           | 一比一冻结专家原始 8-Sheet 表头、七类知识点与基线数量。    |
+| `xlsx_parser.py`                                           | 安全读取工作簿并保留可定位到表、行、列的问题信息。         |
+| `v3_validation.py`                                         | 交叉校验 01–07 Sheet、引用、衍生视图和 9/66/118/298 基线。 |
+| `validation.py` / `v2_validation.py` / `v21_validation.py` | 校验历史模板并维持回归兼容。                               |
+| `v3_compiler.py` / `v3_extensions.py`                      | 编译专家事实层，并叠加 20 个课程场景和 132 个分级线索。    |
+| `compiler.py` / `v2_compiler.py` / `v21_compiler.py`       | 编译历史教师 DSL 与 2.1 图谱。                             |
+| `import_service.py`                                        | 组织上传、预检、差异审核、发布、替换和回滚流程。           |
+| `review_service.py`                                        | 生成技术员/专家可读的问题清单、变更摘要与教学预览。        |
+| `repository.py`                                            | 保存导入批次、发布版本、节点内容与关系元数据。             |
+| `models.py`                                                | 图谱导入、学习内容、媒体资产和学习证据等关系库模型。       |
+| `types.py`                                                 | 图谱领域枚举、值对象和内部类型。                           |
+| `schemas.py`                                               | 图谱导入、可视化、推荐、内容编辑与学习证据 API 契约。      |
+| `consumption_service.py`                                   | 生成学生/教师 Cytoscape 图投影、统计和图谱洞察。           |
+| `scaffold_service.py`                                      | 按 Scenario 和 Phenomenon 召回固定知识、策略与线索候选。   |
+| `recommendation_service.py`                                | 在固定图谱候选中让 LLM 根据最新对话选择本轮高亮项。        |
+| `prompt_context.py`                                        | 把经验证的图谱候选注入场景、对话与评价提示词。             |
+| `content_service.py`                                       | 编辑 Markdown 精讲，上传、读取和删除视频/PPT学习资产。     |
+| `learning_evidence_service.py`                             | 记录学生查看资源、接受提示等可用于教师分析的学习证据。     |
+| `router.py`                                                | 提供导入治理、学生/教师图谱、训练推荐和学习内容 API。      |
 
 #### 其他业务模块
 
@@ -424,10 +436,10 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 
 #### 数据库迁移与后端测试
 
-- `alembic/versions/0001` 至 `0012` 按时间建立认证、课程、训练、逐轮反馈、故障恢复、Checklist、教师 DSL 图谱、图谱消费、学习内容、媒体上传和 ZPD 诊断；所有数据库变化都必须继续追加迁移，禁止修改已执行版本。
+- `alembic/versions/0001` 至 `0014` 按时间建立认证、课程、训练、逐轮反馈、故障恢复、Checklist、图谱消费、学习内容、媒体上传、ZPD 诊断、展示覆盖和 3.0 专家事实快照；所有数据库变化都必须继续追加迁移，禁止修改已执行版本。
 - `tests/test_auth.py`、`test_curriculum.py` 验证认证、权限与课程读取。
 - `tests/test_training_flow.py`、`test_evaluation_recovery.py` 验证状态机、流式训练、提交、评价与失败恢复。
-- `tests/test_knowledge_graph_import.py`、`test_knowledge_graph_phase2.py`、`test_knowledge_graph_v2.py` 验证 DSL 导入、Neo4j 消费、内容和推荐闭环。
+- `tests/test_knowledge_graph_import.py`、`test_knowledge_graph_phase2.py`、`test_knowledge_graph_v2.py`、`test_knowledge_graph_v21.py`、`test_knowledge_graph_v3.py` 验证多版本导入、Neo4j 双读、内容、推荐和回滚恢复闭环。
 - `tests/test_teacher_technician.py` 验证教师学情、名册和技术员配置权限。
 - `tests/test_deepseek_provider.py` 验证 DeepSeek 协议适配；`test_migrations.py`、`test_system.py` 验证迁移和系统级契约。
 
@@ -481,7 +493,8 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | 组件/模块                                                                | 职责                                                           |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
 | `components/KnowledgeGraphCanvas.vue`                                    | 封装 Cytoscape.js 画布、布局、缩放、选择和高亮。               |
-| `components/KnowledgeGraphExplorer.vue`                                  | 组合图谱筛选、图例、详情和响应式交互。                         |
+| `components/KnowledgeGraphExplorer.vue`                                  | 组合场景/节点筛选、中文检索、图例和响应式交互。                |
+| `components/GraphNodeDialog.vue`                                         | 用无障碍弹窗展示正式名称、中文短名、属性与直接关联。           |
 | `components/KnowledgeInsightPanel.vue`                                   | 呈现教师侧图谱覆盖、薄弱现象和学习行为洞察。                   |
 | `components/KnowledgeEvidenceReplay.vue`                                 | 将学生图谱学习证据与具体训练回放关联。                         |
 | `components/TrainingKnowledgeScaffold.vue`                               | 右栏“你可能需要的”知识、策略和线索支持库；新增推荐用颜色区分。 |
@@ -541,7 +554,10 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `prompts/conversation/`                                                  | 每个小节的对话 Agent 提示词及 `adaptive-conversation-zpd.yaml` 自适应增量。 |
 | `prompts/evaluation/`                                                    | 每小节逐轮/终结评价、结构修复和 ZPD 诊断提示词。                            |
 | `knowledge-graph/templates/teacher-case-dsl-v1.xlsx`                     | 第一阶段教师案例 DSL 模板，保留兼容测试。                                   |
-| `knowledge-graph/templates/teacher-knowledge-graph-v2.xlsx`              | 当前正式教学设计模板，用共享知识/策略支持多个现象。                         |
+| `knowledge-graph/templates/teacher-knowledge-graph-v2.xlsx`              | 2.0 教师教学设计模板，保留兼容和回归测试。                                  |
+| `knowledge-graph/templates/expert-knowledge-graph-v2.1.xlsx`             | 历史 2.1 图谱，保留旧 Attempt 与回归测试。                                  |
+| `knowledge-graph/templates/expert-knowledge-graph-v3.xlsx`               | 当前正式专家 8-Sheet 英文事实源表，导入时叠加独立中文翻译与课程映射。       |
+| `knowledge-graph/translations/expert-v3-zh.json`                         | 3.0 中文名称、短名和定义覆盖，不改写专家英文事实。                          |
 
 提示词 YAML 均包含唯一ID、版本、用途、输入变量 Schema、输出 Schema、适用模式、模板正文和修改记录；已发布内容不原地覆盖，新增教学内容必须发布新的 `CourseVersion` 或提示词版本。
 
@@ -564,13 +580,58 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 
 ## 本地启动
 
-### 1. 环境要求
+### 推荐：跨平台一键启动
+
+一键入口会在首次运行时自动创建安全的本地 `.env`、Python虚拟环境，安装后端与前端依赖，启动 Docker/Neo4j，执行迁移与幂等开发种子，最后启动 FastAPI 和 Vue/Vite。已有 `.env` 的配置值不会被覆盖；脚本只会为缺失或空白的认证 Pepper、开发种子密码和本地 Neo4j密码生成随机值，真实 DeepSeek Key 不会被改写、生成或上传。
+
+macOS：
+
+```bash
+./scripts/start-dev.sh
+```
+
+Windows（双击 `scripts/start-dev.cmd`，或在 PowerShell运行）：
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+Linux：
+
+```bash
+./scripts/start-dev.sh
+```
+
+macOS缺失的 Python、Node.js、pnpm、Docker CLI、Compose和 Colima 可由 Homebrew自动补齐；Windows由 winget安装 Python 3.12、Node.js LTS和 Docker Desktop。Windows首次安装 Docker Desktop 后，若系统要求启用 WSL 2、虚拟化或重启，应完成系统提示后重新运行脚本。Linux发行版差异较大，脚本自动安装项目依赖，但要求系统已提供 Python 3.12+、Node.js 20+、pnpm 11+、Docker和 Compose。
+
+macOS/Linux可选参数：
+
+```text
+--bootstrap-only   只创建环境并安装依赖，不启动数据库和服务
+--skip-seed        启动时跳过开发账号、课程和示例班级种子
+```
+
+Windows PowerShell使用 `-BootstrapOnly` 和 `-SkipSeed`。
+
+启动成功后：
+
+- Web：`http://127.0.0.1:5174`
+- API文档：`http://127.0.0.1:8000/docs`
+- Neo4j Browser：`http://127.0.0.1:17474`
+- 三类测试账号密码：查看本地 `.env` 的 `DEV_SEED_PASSWORD`
+- 开发日志：`tmp/dev/api.log`、`tmp/dev/web.log`
+
+按 `Ctrl+C` 会停止由该脚本启动的前后端，Neo4j容器和本地数据会保留。重复运行会根据依赖文件摘要判断是否需要重新安装，不会每次全量下载。
+
+### 手工启动
+
+#### 1. 环境要求
 
 - Python 3.12+
 - Node.js 与 pnpm 11+
 - Docker（运行 Neo4j）
 
-### 2. 安装
+#### 2. 安装
 
 ```bash
 python3 -m venv .venv
@@ -581,7 +642,7 @@ cp apps/api/.env.example .env
 
 请修改根目录 `.env`：设置强随机 `AUTH_TOKEN_PEPPER`、本地 `DEV_SEED_PASSWORD`，并让 `NEO4J_PASSWORD` 与 Docker Compose 使用相同值。不要提交 `.env`。
 
-### 3. 初始化
+#### 3. 初始化
 
 ```bash
 docker compose up -d neo4j
@@ -591,7 +652,7 @@ pnpm seed:curriculum
 pnpm seed:classroom
 ```
 
-### 4. 启动
+#### 4. 启动
 
 分别打开两个终端：
 
@@ -603,7 +664,7 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-访问 `http://127.0.0.1:5173`。
+访问 `http://127.0.0.1:5174`。
 
 默认 `LLM_PROVIDER=mock`，便于无成本开发。真实联调需要把它改为 `deepseek`，并配置三把互不相同的 Key：
 
@@ -644,6 +705,8 @@ pnpm smoke:neo4j-phase2
 
 当前自动化测试重点覆盖：RBAC和越权、Attempt状态转换、幂等提交、LLM失败与结构化修复、评价重试、ZPD诊断容错、进度统计、教师班级权限、课程路线、流式消息、自动保存、图谱导入安全、发布回滚和内容媒体访问。
 
+Milestone 2-0901 的统一质量门槛实测结果：Prettier、ESLint、Ruff、Vue TypeScript strict、Mypy、文件长度检查全部通过；Vitest 为 **13 个测试文件、23 项测试通过**，Pytest 为 **47 项测试通过**，Vite 生产构建完成 **282 个模块**。真实服务健康检查、Neo4j 3.0 发布、2.1 回滚和 3.0 恢复均已执行。视频/PPTX预览依赖仍有大分包警告，属于下一阶段性能优化项，不影响本版本构建通过。
+
 ## 安全与隐私边界
 
 - 三把 Agent Key 必须独立，技术员端不回显明文。
@@ -656,17 +719,17 @@ pnpm smoke:neo4j-phase2
 - 发布的课程、提示词和图谱版本不原地改写；新内容通过新版本发布。
 - Demo 使用 SQLite 保存媒体和训练数据，公开部署前必须完成数据分级、备份和对象存储改造。
 
-## Milestone 1 已完成与尚未完成
+## Milestone 2-0901 已完成与尚未完成
 
 ### 已完成：可展示闭环
 
 - 学生：登录→选关→场景→流式谈判→逐轮反馈→正式提交→评价→进度。
 - 教师：班级总览→学生筛选→学生详情→完整回放→结构化薄弱点与ZPD诊断。
-- 技术员：三 Agent配置与测试→教师DSL导入→审核→Neo4j发布/回滚。
+- 技术员：三 Agent配置与测试→专家 8-Sheet 图谱导入→严格校验→审核→Neo4j发布/回滚。
 - 知识学习：图谱浏览→训练推荐→Markdown/视频/PPTX学习→教师编辑发布。
-- 工程：RBAC、状态机、迁移、版本绑定、错误恢复、测试和质量门槛。
+- 工程：RBAC、状态机、迁移、图谱双读、版本绑定、错误恢复、跨平台启动、测试和质量门槛。
 
-### 下一阶段：从 Demo 走向可试点产品
+### 下一阶段：从内测候选版走向可试点产品
 
 优先级应继续服从“真实教学闭环”，而不是先做炫技功能。
 
@@ -705,4 +768,4 @@ pnpm smoke:neo4j-phase2
 
 ---
 
-**Milestone 1 的意义，不是证明“系统已经完成”，而是证明核心教学假设已经可以被真实操作、真实观察和真实质疑。下一阶段所有开发，都应从这些证据出发。**
+**Milestone 2-0901 的意义，不是把知识图谱放进系统里，而是让可信知识真正进入学生行动、教师判断和教学复盘。下一阶段所有开发，仍应从可追溯的真实学习证据出发。**

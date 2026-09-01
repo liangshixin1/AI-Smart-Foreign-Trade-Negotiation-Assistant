@@ -25,6 +25,8 @@ describe('KnowledgeInsightPanel', () => {
               phenomenon_ids: ['p1'],
               knowledge_resource_ids: ['k1', 'k2'],
               strategy_ids: ['s1'],
+              knowledge_point_ids: ['k1', 'k2', 's1'],
+              knowledge_type_breakdown: { Concept: 2, Strategy: 1 },
               scaffold_reveal_count: 6,
               scaffold_use_count: 4,
               students_using_scaffolds: 3,

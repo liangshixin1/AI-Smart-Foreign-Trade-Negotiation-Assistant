@@ -60,6 +60,7 @@ def compile_teacher_workbook_v2(
             "CoreOutcome",
             "EstimatedMinutes",
             "Difficulty",
+            "ShortNameZH",
         )
         # 保留消费层既有的课程绑定字段, 避免改变训练 Attempt 与图谱的架构契约。
         properties["对应课程小节（必填）"] = row["CourseUnit"]
@@ -106,6 +107,7 @@ def compile_teacher_workbook_v2(
             "Sequence",
             "MustAppear",
             "DynamicTrigger",
+            "ShortNameZH",
         )
         properties["教师希望学生识别什么（必填）"] = row["TeacherRecognitionPoint"]
         properties["学生会看到/听到什么（必填）"] = row["PhenomenonDescription"]
@@ -125,6 +127,7 @@ def compile_teacher_workbook_v2(
                 "ReferenceSource",
                 "LearningRequirement",
                 "DisplayTiming",
+                "ShortNameZH",
             ),
             **content.get(identifier, {}),
         }
@@ -150,6 +153,7 @@ def compile_teacher_workbook_v2(
                 "ExampleExpression",
                 "DiscouragedActions",
                 "ExpectedImpact",
+                "ShortNameZH",
             ),
             **content.get(identifier, {}),
         }

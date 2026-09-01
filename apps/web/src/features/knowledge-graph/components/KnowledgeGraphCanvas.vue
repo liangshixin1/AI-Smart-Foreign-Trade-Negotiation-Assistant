@@ -38,7 +38,15 @@ function elements(): ElementDefinition[] {
   )
   const nodes: ElementDefinition[] = props.graph.nodes
     .filter((node) => visible.has(node.id))
-    .map((node) => ({ data: { id: node.id, label: node.label, nodeType: node.type } }))
+    .map((node) => ({
+      data: {
+        id: node.id,
+        label: node.short_label,
+        formalLabel: node.label,
+        nodeType: node.type,
+        knowledgeType: node.knowledge_type ?? '',
+      },
+    }))
   const edges: ElementDefinition[] = props.graph.edges
     .filter((edge) => visible.has(edge.source) && visible.has(edge.target))
     .map((edge) => ({
@@ -56,8 +64,12 @@ function relationshipLabel(type: string): string {
   return (
     {
       INVOLVES: '涉及',
+      CONTAINS_SCENARIO: '训练场景',
+      CONTAINS_PHENOMENON: '教学现象',
       REQUIRES_KNOWLEDGE: '需要知识',
       HANDLED_BY: '可用策略',
+      EXPOSES: '呈现',
+      ADDRESSES: '应对',
       SUPPORTS: '支持',
     }[type] ?? type
   )
@@ -71,7 +83,6 @@ function render(): void {
     elements: elements(),
     minZoom: 0.25,
     maxZoom: 2.4,
-    wheelSensitivity: 0.2,
     style: [
       {
         selector: 'node',
@@ -89,11 +100,55 @@ function render(): void {
         },
       },
       {
+        selector: 'node[nodeType="stage"]',
+        style: {
+          'background-color': '#0f4c5c',
+          'border-color': '#d8ebe7',
+          'border-width': 3,
+          width: 70,
+          height: 46,
+          shape: 'round-rectangle',
+          color: '#0a353f',
+          'font-size': 12,
+          'font-weight': 800,
+          'text-valign': 'top',
+          'text-margin-y': -9,
+        },
+      },
+      {
         selector: 'node[nodeType="phenomenon"]',
         style: { 'background-color': '#d19a38', width: 44, height: 44 },
       },
+      {
+        selector: 'node[nodeType="scenario"]',
+        style: {
+          'background-color': '#6f5aa8',
+          'border-color': '#ffffff',
+          'border-width': 2,
+          width: 54,
+          height: 38,
+          shape: 'round-rectangle',
+          'text-valign': 'top',
+          'text-margin-y': -8,
+          'font-weight': 700,
+        },
+      },
       { selector: 'node[nodeType="knowledge_resource"]', style: { 'background-color': '#2f78a8' } },
       { selector: 'node[nodeType="strategy"]', style: { 'background-color': '#176b4d' } },
+      { selector: 'node[nodeType="knowledge_point"]', style: { 'background-color': '#2f78a8' } },
+      { selector: 'node[knowledgeType="Concept"]', style: { 'background-color': '#3f7cac' } },
+      {
+        selector: 'node[knowledgeType="Correspondence"]',
+        style: { 'background-color': '#7b61a8' },
+      },
+      {
+        selector: 'node[knowledgeType="Cross-cultural"]',
+        style: { 'background-color': '#a85f7b' },
+      },
+      { selector: 'node[knowledgeType="Legal"]', style: { 'background-color': '#315b7d' } },
+      { selector: 'node[knowledgeType="Procedure"]', style: { 'background-color': '#2b8a83' } },
+      { selector: 'node[knowledgeType="Risk"]', style: { 'background-color': '#b36b35' } },
+      { selector: 'node[knowledgeType="Strategy"]', style: { 'background-color': '#176b4d' } },
       {
         selector: 'edge',
         style: {
@@ -117,8 +172,12 @@ function render(): void {
       animate: false,
       fit: true,
       padding: 48,
-      idealEdgeLength: () => 86,
-      nodeRepulsion: () => 5400,
+      idealEdgeLength: (edge) => (edge.data('label') === '呈现' ? 112 : 86),
+      nodeRepulsion: (node) => {
+        if (node.data('nodeType') === 'stage') return 15000
+        if (node.data('nodeType') === 'scenario') return 9000
+        return 6000
+      },
     },
   })
   instance.on('tap', 'node', (event) => {
@@ -162,7 +221,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .canvas-shell {
   position: relative;
-  min-height: 620px;
+  min-height: 760px;
   overflow: hidden;
   background: #f8faf9;
 }
@@ -197,7 +256,7 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 760px) {
   .canvas-shell {
-    min-height: 520px;
+    min-height: 560px;
   }
 }
 </style>

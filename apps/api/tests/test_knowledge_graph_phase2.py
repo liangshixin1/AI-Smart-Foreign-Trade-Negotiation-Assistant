@@ -187,6 +187,7 @@ def test_teacher_graph_prompt_boundaries_and_learning_evidence(
     assert graph_response.status_code == 200
     graph = graph_response.json()
     assert {item["type"] for item in graph["nodes"]} <= {
+        "Scenario",
         "Phenomenon",
         "NegotiationStrategy",
         "Terminology",

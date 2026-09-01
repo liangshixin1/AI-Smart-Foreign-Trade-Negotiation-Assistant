@@ -64,8 +64,26 @@ class GraphLearningEvidenceService:
                 if edge.get("source") in selected_nodes
                 and edge.get("type") in {"SUPPORTS", "ADDRESSES"}
             }
+            related_phenomena.update(
+                str(edge["source"])
+                for edge in graph.relationships
+                if edge.get("target") in selected_nodes and edge.get("type") == "REQUIRES_KNOWLEDGE"
+            )
             phenomena = sorted(set(phenomena) & related_phenomena)
             mapping_method = "fixed_candidates_llm_selected"
+        graph = self.consumption.graph_by_version(version)
+        by_id = {str(node["stable_key"]): node for node in graph.nodes}
+        knowledge_points = sorted(set(resources) | set(strategies))
+        type_breakdown: dict[str, int] = {}
+        for node_id in knowledge_points:
+            raw = by_id.get(node_id, {}).get("properties")
+            properties = raw if isinstance(raw, dict) else {}
+            knowledge_type = str(
+                properties.get("KnowledgeTypeCode")
+                or properties.get("Type")
+                or ("Strategy" if node_id in strategies else "LegacyResource")
+            )
+            type_breakdown[knowledge_type] = type_breakdown.get(knowledge_type, 0) + 1
         self.db.add(
             GraphLearningEvidence(
                 round_evaluation_id=round_evaluation_id,
@@ -75,6 +93,8 @@ class GraphLearningEvidenceService:
                 phenomenon_node_keys=phenomena,
                 strategy_node_keys=strategies,
                 knowledge_resource_node_keys=resources,
+                knowledge_point_node_keys=knowledge_points,
+                knowledge_type_breakdown=type_breakdown,
                 score=score,
                 evidence_summary=evidence_summary[:1000],
                 mapping_method=mapping_method,

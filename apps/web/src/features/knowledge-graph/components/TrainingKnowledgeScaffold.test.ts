@@ -27,6 +27,7 @@ const scaffold: AttemptScaffold = {
       type: 'phenomenon',
       source_type: 'Phenomenon',
       label: '客户压价',
+      short_label: '客户压价',
       properties: { cue: '客户以竞品报价要求降价。' },
     },
   ],
@@ -36,6 +37,7 @@ const scaffold: AttemptScaffold = {
       type: 'knowledge_resource',
       source_type: 'KnowledgeResource',
       label: '价格构成',
+      short_label: '价格构成',
       properties: { Summary: '理解报价中的成本与利润空间。' },
     },
   ],
@@ -45,9 +47,11 @@ const scaffold: AttemptScaffold = {
       type: 'strategy',
       source_type: 'Strategy',
       label: '条件让步',
+      short_label: '条件让步',
       properties: { Summary: '让步必须换取对方的对等承诺。' },
     },
   ],
+  knowledge_points: [],
   scaffolds: [
     {
       id: 'hint-1',

@@ -44,9 +44,13 @@ class GraphRecommendationService:
             (
                 str(properties[key])
                 for key in (
+                    "ResourceNameZH",
+                    "StrategyNameZH",
+                    "KnowledgeNameZH",
                     "Title",
                     "ResourceName",
                     "StrategyName",
+                    "KnowledgeNameEN",
                     "标题（必填）",
                     "策略名称（必填）",
                 )
@@ -58,6 +62,8 @@ class GraphRecommendationService:
             (
                 str(properties[key])
                 for key in (
+                    "DefinitionZH",
+                    "DefinitionEN",
                     "Summary",
                     "Definition_Content",
                     "RecommendedActions",

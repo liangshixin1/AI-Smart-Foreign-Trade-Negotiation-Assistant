@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     app_name: str = "AI Foreign-Trade Negotiation API"
     app_env: Literal["development", "test", "production"] = "development"
     database_url: str = "sqlite:///./dev.db"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:5174", "http://127.0.0.1:5174"]
     auth_token_pepper: str = Field(
         default="development-only-token-pepper-change-me",
         min_length=32,

@@ -12,7 +12,10 @@ from app.integrations.knowledge_graph.base import GraphStore, StoredGraph
 from app.modules.assessment.models import Evaluation
 from app.modules.classrooms.models import Classroom, Enrollment
 from app.modules.curriculum.models import TrainingUnit
-from app.modules.knowledge_graph.models import KnowledgeScaffoldInteraction
+from app.modules.knowledge_graph.models import (
+    KnowledgeNodeDisplayOverride,
+    KnowledgeScaffoldInteraction,
+)
 from app.modules.knowledge_graph.repository import KnowledgeGraphRepository
 from app.modules.knowledge_graph.schemas import (
     GraphEdgeResponse,
@@ -24,6 +27,8 @@ from app.modules.knowledge_graph.schemas import (
 from app.modules.training.models import Attempt
 
 KNOWLEDGE_NODE_TYPES = {
+    "KnowledgePoint",
+    "KnowledgeResource",
     "Terminology",
     "TradeRule",
     "DocumentKnowledge",
@@ -31,8 +36,18 @@ KNOWLEDGE_NODE_TYPES = {
     "CommunicationKnowledge",
     "MarketKnowledge",
 }
-TEACHER_VISIBLE_NODE_TYPES = KNOWLEDGE_NODE_TYPES | {"Phenomenon", "NegotiationStrategy"}
+TEACHER_VISIBLE_NODE_TYPES = KNOWLEDGE_NODE_TYPES | {
+    "Stage",
+    "Scenario",
+    "Phenomenon",
+    "NegotiationStrategy",
+}
 LABEL_FIELDS = (
+    "StageNameZH",
+    "PhenomenonNameZH",
+    "ResourceNameZH",
+    "StrategyNameZH",
+    "KnowledgeNameZH",
     "Title",
     "ResourceName",
     "StrategyName",
@@ -43,6 +58,16 @@ LABEL_FIELDS = (
     "教师希望学生识别什么（必填）",
     "案例名称（必填）",
     "name",
+    "StageNameEN",
+    "PhenomenonNameEN",
+    "ResourceNameEN",
+    "StrategyNameEN",
+    "KnowledgeNameEN",
+)
+SHORT_LABEL_FIELDS = (
+    "ShortNameZH",
+    "中文短名称",
+    "中文短名",
 )
 
 
@@ -146,6 +171,18 @@ class KnowledgeGraphConsumptionService:
         unit_insights: list[WeakUnitKnowledgeInsight] = []
         for unit_database_id, unit_key, title, count, average in rows:
             related = self._related_ids(graph, str(unit_key), str(title))
+            knowledge_point_ids = sorted(set(related[1]) | set(related[2]))
+            by_id = {str(node["stable_key"]): node for node in graph.nodes}
+            type_breakdown: dict[str, int] = {}
+            for node_id in knowledge_point_ids:
+                raw = by_id.get(node_id, {}).get("properties")
+                properties = raw if isinstance(raw, dict) else {}
+                node_type = str(
+                    properties.get("KnowledgeTypeCode")
+                    or properties.get("Type")
+                    or ("Strategy" if node_id in related[2] else "LegacyResource")
+                )
+                type_breakdown[node_type] = type_breakdown.get(node_type, 0) + 1
             score = round(float(average), 1)
             scaffold_counts = self.db.execute(
                 select(
@@ -172,6 +209,8 @@ class KnowledgeGraphConsumptionService:
                     phenomenon_ids=related[0],
                     knowledge_resource_ids=related[1],
                     strategy_ids=related[2],
+                    knowledge_point_ids=knowledge_point_ids,
+                    knowledge_type_breakdown=type_breakdown,
                     scaffold_reveal_count=int(scaffold_counts[0] or 0),
                     scaffold_use_count=int(scaffold_counts[1] or 0),
                     students_using_scaffolds=int(scaffold_counts[2] or 0),
@@ -225,6 +264,11 @@ class KnowledgeGraphConsumptionService:
             payload["knowledge_resources"] = [
                 self._prompt_node(by_id[item]) for item in resources if item in by_id
             ]
+            payload["knowledge_points"] = [
+                self._prompt_node(by_id[item])
+                for item in sorted(set(resources) | set(strategies))
+                if item in by_id
+            ]
         return graph.graph_version, payload
 
     def _related_ids(
@@ -234,11 +278,22 @@ class KnowledgeGraphConsumptionService:
         if scenario is None:
             return [], [], []
         scenario_id = str(scenario["stable_key"])
-        phenomena = {
+        direct_phenomena = {
             str(item["target"])
             for item in graph.relationships
-            if item.get("source") == scenario_id and item.get("type") == "EXPOSES"
+            if item.get("source") == scenario_id and item.get("type") in {"EXPOSES", "FOCUSES_ON"}
         }
+        stage_ids = {
+            str(item["source"])
+            for item in graph.relationships
+            if item.get("target") == scenario_id and item.get("type") == "CONTAINS_SCENARIO"
+        }
+        stage_phenomena = {
+            str(item["target"])
+            for item in graph.relationships
+            if item.get("source") in stage_ids and item.get("type") == "CONTAINS_PHENOMENON"
+        }
+        phenomena = direct_phenomena | stage_phenomena
         resources = {
             str(item["source"])
             for item in graph.relationships
@@ -249,6 +304,20 @@ class KnowledgeGraphConsumptionService:
             for item in graph.relationships
             if item.get("target") in phenomena and item.get("type") == "ADDRESSES"
         }
+        knowledge_points = {
+            str(item["target"])
+            for item in graph.relationships
+            if item.get("source") in phenomena and item.get("type") == "REQUIRES_KNOWLEDGE"
+        }
+        by_id = {str(node["stable_key"]): node for node in graph.nodes}
+        for node_id in knowledge_points:
+            node = by_id.get(node_id, {})
+            raw = node.get("properties")
+            properties = raw if isinstance(raw, dict) else {}
+            if str(properties.get("KnowledgeTypeCode") or properties.get("Type")) == "Strategy":
+                strategies.add(node_id)
+            else:
+                resources.add(node_id)
         return sorted(phenomena), sorted(resources), sorted(strategies)
 
     def _active_graph(self) -> StoredGraph:
@@ -317,7 +386,7 @@ class KnowledgeGraphConsumptionService:
             for item in graph.relationships
             if item.get("source") in ids and item.get("target") in ids
         ]
-        nodes = [self._node(item) for item in selected]
+        nodes = self.node_responses(graph.graph_version, selected)
         return GraphViewResponse(
             graph_version=graph.graph_version,
             nodes=nodes,
@@ -325,6 +394,14 @@ class KnowledgeGraphConsumptionService:
             node_count=len(nodes),
             edge_count=len(edges),
         )
+
+    def node_responses(
+        self, graph_version: str, items: list[dict[str, object]]
+    ) -> list[GraphNodeResponse]:
+        """只在展示读模型中合并教师覆盖, 不污染 Agent 使用的原始图谱属性."""
+        node_keys = {str(item["stable_key"]) for item in items}
+        overrides = self.repository.display_overrides(graph_version, node_keys)
+        return [self._node(item, overrides.get(str(item["stable_key"]))) for item in items]
 
     @staticmethod
     def _scenario_for_unit(
@@ -344,18 +421,33 @@ class KnowledgeGraphConsumptionService:
         return None
 
     @classmethod
-    def _node(cls, item: dict[str, object]) -> GraphNodeResponse:
+    def _node(
+        cls,
+        item: dict[str, object],
+        override: KnowledgeNodeDisplayOverride | None = None,
+    ) -> GraphNodeResponse:
         properties = item.get("properties")
         normalized = properties if isinstance(properties, dict) else {}
         label = next(
             (str(normalized[key]) for key in LABEL_FIELDS if normalized.get(key)),
             str(item["stable_key"]),
         )
+        short_label = (
+            override.short_name_zh
+            if override
+            else next(
+                (str(normalized[key]) for key in SHORT_LABEL_FIELDS if normalized.get(key)),
+                label,
+            )
+        )
         return GraphNodeResponse(
             id=str(item["stable_key"]),
             type=str(item["type"]),
             label=label,
+            short_label=short_label,
             properties=normalized,
+            display_revision=override.revision if override else 0,
+            has_display_override=override is not None,
         )
 
     @staticmethod

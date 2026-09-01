@@ -25,6 +25,11 @@
         :graph="graph"
         content-base="/teacher/knowledge-content/"
         content-action-label="编辑教学内容"
+        editable-display
+        :display-saving="displaySaving"
+        :display-error="displayError"
+        @save-display="updateNodeDisplay"
+        @restore-display="restoreNodeDisplay"
       />
     </template>
   </RoleWorkspaceLayout>
@@ -37,7 +42,16 @@ import {
   useTeacherKnowledgeGraph,
 } from '@/features/knowledge-graph/teacherGraph'
 
-const { graph, loading, error, reload } = useTeacherKnowledgeGraph()
+const {
+  graph,
+  loading,
+  error,
+  displaySaving,
+  displayError,
+  reload,
+  updateNodeDisplay,
+  restoreNodeDisplay,
+} = useTeacherKnowledgeGraph()
 </script>
 
 <style scoped>

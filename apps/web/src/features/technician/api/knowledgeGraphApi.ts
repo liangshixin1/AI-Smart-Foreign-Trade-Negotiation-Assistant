@@ -26,7 +26,7 @@ export const knowledgeGraphApi = {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'X-File-Name': encodeURIComponent(file.name),
-          'X-Template-Version': '2.0',
+          'X-Template-Version': '3.0',
         },
         body: file,
       },

@@ -47,6 +47,11 @@
               <dd>{{ unit.strategy_ids.length }}</dd>
             </div>
           </dl>
+          <div v-if="Object.keys(unit.knowledge_type_breakdown).length" class="type-breakdown">
+            <span v-for="(count, type) in unit.knowledge_type_breakdown" :key="type">
+              {{ typeLabel(type) }} {{ count }}
+            </span>
+          </div>
           <p class="scaffold-usage">
             展开提示 {{ unit.scaffold_reveal_count }} 次 · 采用 {{ unit.scaffold_use_count }} 次
             <template v-if="scopeIsClassroom">
@@ -75,6 +80,20 @@ const attentionCount = computed(
   () => props.insights?.weak_units.filter((item) => item.needs_attention).length ?? 0,
 )
 const scopeIsClassroom = computed(() => props.insights?.scope === 'classroom')
+function typeLabel(type: string): string {
+  return (
+    {
+      Concept: '概念',
+      Correspondence: '函电',
+      'Cross-cultural': '跨文化',
+      Legal: '法律',
+      Procedure: '流程',
+      Risk: '风险',
+      Strategy: '策略',
+      LegacyResource: '知识',
+    }[type] ?? type
+  )
+}
 </script>
 
 <style scoped>
@@ -153,6 +172,18 @@ dt {
 .scaffold-usage {
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-border);
+}
+.type-breakdown {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: var(--space-2) 0;
+}
+.type-breakdown span {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 dl {
   justify-content: flex-start;

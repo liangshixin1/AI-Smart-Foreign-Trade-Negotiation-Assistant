@@ -10,11 +10,14 @@ NODE_LABELS = {
     item: item
     for item in (
         "Scenario",
+        "Stage",
         "StudentRole",
         "CounterpartyRole",
         "LearningOutcome",
         "Phenomenon",
         "NegotiationStrategy",
+        "KnowledgeResource",
+        "KnowledgePoint",
         "Terminology",
         "TradeRule",
         "DocumentKnowledge",
@@ -32,9 +35,13 @@ RELATION_TYPES = {
         "ASSIGNS_ROLE",
         "SIMULATES_COUNTERPARTY",
         "TARGETS_OUTCOME",
+        "CONTAINS_SCENARIO",
+        "CONTAINS_PHENOMENON",
         "EXPOSES",
         "ADDRESSES",
         "SUPPORTS",
+        "REQUIRES_KNOWLEDGE",
+        "FOCUSES_ON",
         "SCAFFOLDS",
         "ASSESSES_WITH",
         "MAY_LEAD_TO",
@@ -208,6 +215,10 @@ class Neo4jGraphStore:
             (
                 str(property_map[key])
                 for key in (
+                    "StageNameZH",
+                    "PhenomenonNameZH",
+                    "ResourceNameZH",
+                    "StrategyNameZH",
                     "Title",
                     "ResourceName",
                     "StrategyName",

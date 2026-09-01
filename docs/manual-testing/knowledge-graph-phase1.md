@@ -15,7 +15,7 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-使用技术员账号登录 `http://127.0.0.1:5173/technician`。开发环境默认账号为 `technician@example.test`，密码取自 `.env` 的 `DEV_SEED_PASSWORD`。
+使用技术员账号登录 `http://127.0.0.1:5174/technician`。开发环境默认账号为 `technician@example.test`，密码取自 `.env` 的 `DEV_SEED_PASSWORD`。
 
 ## 最小演示闭环
 

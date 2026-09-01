@@ -12,11 +12,24 @@ from app.modules.knowledge_graph.v2_compiler import (
     compile_teacher_workbook_v2,
 )
 from app.modules.knowledge_graph.v2_validation import validate_teacher_workbook_v2
+from app.modules.knowledge_graph.v3_compiler import (
+    COMPILER_VERSION_V3,
+    compile_expert_workbook_v3,
+    load_translation_payload,
+)
+from app.modules.knowledge_graph.v3_validation import validate_expert_workbook_v3
+from app.modules.knowledge_graph.v21_compiler import (
+    COMPILER_VERSION_V21,
+    compile_teacher_workbook_v21,
+)
+from app.modules.knowledge_graph.v21_validation import validate_teacher_workbook_v21
 from app.modules.knowledge_graph.validation import validate_teacher_workbook
 from app.modules.knowledge_graph.xlsx_parser import (
     WorkbookRejected,
+    parse_expert_workbook_v3,
     parse_teacher_workbook,
     parse_teacher_workbook_v2,
+    parse_teacher_workbook_v21,
 )
 
 
@@ -32,10 +45,10 @@ class KnowledgeImportService:
         content: bytes,
         template_version: str,
     ) -> tuple[KnowledgeImportJob, bool]:
-        if template_version not in {"1.0", "2.0"}:
+        if template_version not in {"1.0", "2.0", "2.1", "3.0"}:
             raise AppError(
                 code="knowledge_graph.template_version_unsupported",
-                message="当前只支持教师 DSL 1.0 或 2.0 模板。",
+                message="当前支持教师 DSL 1.0、2.0、专家图谱 2.1 与专家原始图谱 3.0。",
                 status_code=422,
             )
         if not filename.lower().endswith(".xlsx"):
@@ -49,11 +62,14 @@ class KnowledgeImportService:
         if existing is not None:
             return existing, True
         try:
-            parsed = (
-                parse_teacher_workbook_v2(content)
-                if template_version == "2.0"
-                else parse_teacher_workbook(content)
-            )
+            if template_version == "3.0":
+                parsed = parse_expert_workbook_v3(content)
+            elif template_version == "2.1":
+                parsed = parse_teacher_workbook_v21(content)
+            elif template_version == "2.0":
+                parsed = parse_teacher_workbook_v2(content)
+            else:
+                parsed = parse_teacher_workbook(content)
         except WorkbookRejected as exc:
             raise AppError(
                 code="knowledge_graph.workbook_rejected",
@@ -68,32 +84,46 @@ class KnowledgeImportService:
             content=content,
             template_version=template_version,
         )
-        issues = (
-            validate_teacher_workbook_v2(parsed)
-            if template_version == "2.0"
-            else validate_teacher_workbook(parsed)
-        )
+        if template_version == "3.0":
+            issues = validate_expert_workbook_v3(parsed)
+        elif template_version == "2.1":
+            issues = validate_teacher_workbook_v21(parsed)
+        elif template_version == "2.0":
+            issues = validate_teacher_workbook_v2(parsed)
+        else:
+            issues = validate_teacher_workbook(parsed)
         self.repository.add_issues(job.id, issues)
         job.error_count = sum(issue.severity == "error" for issue in issues)
         job.warning_count = sum(issue.severity == "warning" for issue in issues)
         if job.error_count:
             job.status = "validation_failed"
         else:
-            compiled = (
-                compile_teacher_workbook_v2(parsed, self.repository.active_node_keys())
-                if template_version == "2.0"
-                else compile_teacher_workbook(parsed, self.repository.active_node_keys())
-            )
-            self.repository.add_change_set(
+            if template_version == "3.0":
+                compiled = compile_expert_workbook_v3(parsed, self.repository.active_node_keys())
+                compiler_version = COMPILER_VERSION_V3
+            elif template_version == "2.1":
+                compiled = compile_teacher_workbook_v21(parsed, self.repository.active_node_keys())
+                compiler_version = COMPILER_VERSION_V21
+            elif template_version == "2.0":
+                compiled = compile_teacher_workbook_v2(parsed, self.repository.active_node_keys())
+                compiler_version = COMPILER_VERSION_V2
+            else:
+                compiled = compile_teacher_workbook(parsed, self.repository.active_node_keys())
+                compiler_version = COMPILER_VERSION
+            change_set = self.repository.add_change_set(
                 job.id,
-                compiler_version=(
-                    COMPILER_VERSION_V2 if template_version == "2.0" else COMPILER_VERSION
-                ),
+                compiler_version=compiler_version,
                 teaching_preview=compiled.teaching_preview,
                 nodes=compiled.nodes,
                 relationships=compiled.relationships,
                 summary=compiled.summary,
             )
+            if template_version == "3.0":
+                self.repository.add_expert_v3_snapshots(
+                    change_set.id,
+                    parsed,
+                    load_translation_payload(),
+                )
             job.status = "review_ready"
         self.repository.audit(
             actor_id,

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from httpx import Response
-from neo4j import GraphDatabase
 
 from app.core.config import get_settings
 from app.main import app
@@ -14,19 +13,8 @@ WORKBOOK = (
     / "content"
     / "knowledge-graph"
     / "templates"
-    / "teacher-knowledge-graph-v2.xlsx"
+    / "expert-knowledge-graph-v3.xlsx"
 )
-
-
-def _clear_old_graph(settings: object) -> None:
-    uri = getattr(settings, "neo4j_uri")
-    username = getattr(settings, "neo4j_username")
-    secret = getattr(settings, "neo4j_password")
-    password = secret.get_secret_value() if secret else ""
-    database = getattr(settings, "neo4j_database")
-    with GraphDatabase.driver(uri, auth=(username, password)) as driver:
-        with driver.session(database=database) as session:
-            session.run("MATCH (n) DETACH DELETE n").consume()
 
 
 def _require_ok(response: Response, step: str) -> dict[str, object]:
@@ -81,7 +69,7 @@ def run() -> None:
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     ),
                     "X-File-Name": WORKBOOK.name,
-                    "X-Template-Version": "2.0",
+                    "X-Template-Version": "3.0",
                 },
                 content=WORKBOOK.read_bytes(),
             ),
@@ -114,37 +102,14 @@ def run() -> None:
                 "approve change set",
             )
             status = str(change_set["status"])
-        if status == "approved":
-            active_response = client.get(
-                "/api/v1/knowledge-graph/publications/active", headers=technician
+        if status in {"approved", "publication_failed"}:
+            publication = _require_ok(
+                client.post(
+                    f"/api/v1/knowledge-graph/change-sets/{change_set['id']}/publish",
+                    headers=technician,
+                ),
+                "publish to Neo4j",
             )
-            old_publication = (
-                active_response.json() if active_response.status_code == 200 else None
-            )
-            old_graph = None
-            if isinstance(old_publication, dict) and old_publication.get(
-                "graph_version"
-            ):
-                old_graph = client.app.state.graph_store.read(
-                    str(old_publication["graph_version"])
-                )
-            _clear_old_graph(settings)
-            try:
-                publication = _require_ok(
-                    client.post(
-                        f"/api/v1/knowledge-graph/change-sets/{change_set['id']}/publish",
-                        headers=technician,
-                    ),
-                    "publish to Neo4j",
-                )
-            except Exception:
-                if old_graph is not None:
-                    client.app.state.graph_store.publish(
-                        old_graph.graph_version,
-                        old_graph.nodes,
-                        old_graph.relationships,
-                    )
-                raise
         elif status == "published":
             publication = _require_ok(
                 client.get(
@@ -163,13 +128,13 @@ def run() -> None:
         )
         node_count = int(graph["node_count"])
         edge_count = int(graph["edge_count"])
-        # 教师图仅投影现象、知识资源和策略；场景等内部节点不进入该视图。
-        if node_count != 142 or edge_count != 245:
+        # 教师图投影一级主题、训练场景、现象、知识资源和策略战术。
+        if node_count != 213 or edge_count != 384:
             raise RuntimeError(
                 "Neo4j graph is unexpectedly small after the full-course import."
             )
         print(
-            "Neo4j knowledge graph 2.0 smoke passed:",
+            "Neo4j expert knowledge graph 3.0 smoke passed:",
             f"version={publication['graph_version']}",
             f"teacher_nodes={node_count}",
             f"teacher_edges={edge_count}",

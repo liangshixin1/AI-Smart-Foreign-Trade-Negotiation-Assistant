@@ -15,6 +15,7 @@ from app.integrations.knowledge_graph.base import GraphStore
 from app.modules.auth.dependencies import Principal, require_roles
 from app.modules.knowledge_graph.consumption_service import KnowledgeGraphConsumptionService
 from app.modules.knowledge_graph.content_service import ASSET_MAX_BYTES, KnowledgeContentService
+from app.modules.knowledge_graph.display_service import KnowledgeNodeDisplayService
 from app.modules.knowledge_graph.import_service import KnowledgeImportService
 from app.modules.knowledge_graph.models import KnowledgeContentAsset
 from app.modules.knowledge_graph.repository import KnowledgeGraphRepository
@@ -26,6 +27,9 @@ from app.modules.knowledge_graph.schemas import (
     ImportJobResponse,
     LearningContentResponse,
     LearningContentUpdateRequest,
+    NodeDisplayMutationResponse,
+    NodeDisplayRestoreRequest,
+    NodeDisplayUpdateRequest,
     PublicationResponse,
     ReviewDecisionRequest,
     ScaffoldEventRequest,
@@ -45,7 +49,7 @@ TEMPLATE_PATH = (
     / "content"
     / "knowledge-graph"
     / "templates"
-    / "teacher-knowledge-graph-v2.xlsx"
+    / "expert-knowledge-graph-v3.xlsx"
 )
 
 
@@ -76,7 +80,7 @@ def download_template(_: Contributor) -> FileResponse:
     return FileResponse(
         TEMPLATE_PATH,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="teacher-knowledge-graph-v2.xlsx",
+        filename="expert-knowledge-graph-v3.xlsx",
     )
 
 
@@ -86,7 +90,7 @@ async def upload_workbook(
     principal: Contributor,
     db: Annotated[Session, Depends(get_db)],
     x_file_name: Annotated[str, Header(alias="X-File-Name")] = "teacher-case.xlsx",
-    x_template_version: Annotated[str, Header(alias="X-Template-Version")] = "2.0",
+    x_template_version: Annotated[str, Header(alias="X-Template-Version")] = "3.0",
 ) -> ImportJobResponse:
     content_length = int(request.headers.get("Content-Length", "0") or 0)
     if content_length > 5 * 1024 * 1024:
@@ -288,6 +292,38 @@ def student_graph(
     db: Annotated[Session, Depends(get_db)],
 ) -> GraphViewResponse:
     return KnowledgeGraphConsumptionService(db, _graph_store(request)).student_graph()
+
+
+@router.put(
+    "/teacher/nodes/{node_key}/display",
+    response_model=NodeDisplayMutationResponse,
+)
+def update_node_display(
+    node_key: str,
+    payload: NodeDisplayUpdateRequest,
+    request: Request,
+    principal: Teacher,
+    db: Annotated[Session, Depends(get_db)],
+) -> NodeDisplayMutationResponse:
+    return KnowledgeNodeDisplayService(db, _graph_store(request)).update(
+        node_key, payload, principal.user.id
+    )
+
+
+@router.post(
+    "/teacher/nodes/{node_key}/display/restore",
+    response_model=NodeDisplayMutationResponse,
+)
+def restore_node_display(
+    node_key: str,
+    payload: NodeDisplayRestoreRequest,
+    request: Request,
+    principal: Teacher,
+    db: Annotated[Session, Depends(get_db)],
+) -> NodeDisplayMutationResponse:
+    return KnowledgeNodeDisplayService(db, _graph_store(request)).restore(
+        node_key, payload, principal.user.id
+    )
 
 
 def _asset_response(asset: KnowledgeContentAsset) -> Response:

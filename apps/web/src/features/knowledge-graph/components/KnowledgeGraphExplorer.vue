@@ -2,7 +2,7 @@
   <section class="explorer">
     <header class="toolbar">
       <div class="legend" aria-label="节点类型筛选">
-        <label v-for="item in filters" :key="item.type" :class="item.type">
+        <label v-for="item in availableFilters" :key="item.type" :class="item.type">
           <input v-model="visibleTypes" type="checkbox" :value="item.type" />
           <i aria-hidden="true" />{{ item.label }}
           <span>{{ countFor(item.type) }}</span>
@@ -10,55 +10,66 @@
       </div>
       <label class="search">
         <span>查找节点</span>
-        <input v-model.trim="query" type="search" placeholder="输入现象、知识或策略" />
+        <input v-model.trim="query" type="search" placeholder="输入主题、场景、现象、知识或策略" />
       </label>
     </header>
+    <nav v-if="knowledgeTypeOptions.length" class="knowledge-type-nav" aria-label="知识点类型筛选">
+      <span>知识点类型</span>
+      <label v-for="item in knowledgeTypeOptions" :key="item.type">
+        <input v-model="visibleKnowledgeTypes" type="checkbox" :value="item.type" />
+        {{ item.label }} <small>{{ item.count }}</small>
+      </label>
+    </nav>
+    <nav v-if="stageOptions.length" class="stage-nav" aria-label="一级主题筛选">
+      <button
+        :class="{ active: selectedStageId === null }"
+        type="button"
+        @click="selectedStageId = null"
+      >
+        全部主题
+      </button>
+      <button
+        v-for="stage in stageOptions"
+        :key="stage.id"
+        :class="{ active: selectedStageId === stage.id }"
+        type="button"
+        @click="selectedStageId = stage.id"
+      >
+        {{ stage.short_label }}
+      </button>
+    </nav>
     <div class="content">
       <KnowledgeGraphCanvas
         :graph="filteredGraph"
         :visible-types="visibleTypes"
         @select="selectedId = $event"
       />
-      <aside aria-live="polite">
-        <template v-if="selectedNode">
-          <span :class="['node-kind', selectedNode.type]">{{ typeLabel(selectedNode.type) }}</span>
-          <h2>{{ selectedNode.label }}</h2>
-          <p>{{ textProperty(selectedNode, 'description', '暂无补充说明。') }}</p>
-          <RouterLink
-            v-if="props.contentBase && selectedNode.type !== 'phenomenon'"
-            class="content-link"
-            :to="`${props.contentBase}${encodeURIComponent(selectedNode.id)}`"
-          >
-            {{ props.contentActionLabel }} →
-          </RouterLink>
-          <dl>
-            <div v-for="entry in displayProperties" :key="entry[0]">
-              <dt>{{ entry[0] }}</dt>
-              <dd>{{ entry[1] }}</dd>
-            </div>
-          </dl>
-          <h3>直接关联 {{ neighbors.length }}</h3>
-          <button
-            v-for="node in neighbors"
-            :key="node.id"
-            type="button"
-            @click="selectedId = node.id"
-          >
-            {{ node.label }}
-          </button>
-        </template>
-        <template v-else>
-          <p class="empty">选择一个节点，查看它与教学现象、知识资源和策略战术的联系。</p>
-        </template>
-      </aside>
     </div>
+    <footer class="graph-hint">
+      <span aria-hidden="true">↗</span>
+      选择一个节点，查看它与一级主题、训练场景、教学现象、知识资源和策略战术的联系。
+    </footer>
+    <GraphNodeDialog
+      :node="selectedNode"
+      :neighbors="neighbors"
+      :content-base="props.contentBase"
+      :content-action-label="props.contentActionLabel"
+      :editable-display="props.editableDisplay"
+      :display-saving="props.displaySaving"
+      :display-error="props.displayError"
+      @close="selectedId = null"
+      @select="selectedId = $event"
+      @save-display="forwardDisplaySave"
+      @restore-display="forwardDisplayRestore"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import type { KnowledgeGraphNode, KnowledgeGraphView, KnowledgeNodeType } from '../types'
+import type { KnowledgeGraphView, KnowledgeNodeType, KnowledgePointType } from '../types'
+import GraphNodeDialog from './GraphNodeDialog.vue'
 import KnowledgeGraphCanvas from './KnowledgeGraphCanvas.vue'
 
 const props = withDefaults(
@@ -66,24 +77,120 @@ const props = withDefaults(
     graph: KnowledgeGraphView
     contentBase?: string
     contentActionLabel?: string
+    editableDisplay?: boolean
+    displaySaving?: boolean
+    displayError?: string | null
   }>(),
-  { contentBase: '', contentActionLabel: '查看学习内容' },
+  {
+    contentBase: '',
+    contentActionLabel: '查看学习内容',
+    editableDisplay: false,
+    displaySaving: false,
+    displayError: null,
+  },
 )
+const emit = defineEmits<{
+  'save-display': [nodeId: string, shortNameZh: string, expectedRevision: number]
+  'restore-display': [nodeId: string, expectedRevision: number]
+}>()
 const filters: { type: KnowledgeNodeType; label: string }[] = [
+  { type: 'stage', label: '一级主题' },
+  { type: 'scenario', label: '训练场景' },
   { type: 'phenomenon', label: '现象' },
+  { type: 'knowledge_point', label: '知识点' },
   { type: 'knowledge_resource', label: '知识资源' },
   { type: 'strategy', label: '策略战术' },
 ]
 const visibleTypes = ref<KnowledgeNodeType[]>(filters.map((item) => item.type))
+const visibleKnowledgeTypes = ref<KnowledgePointType[]>([
+  'Concept',
+  'Correspondence',
+  'Cross-cultural',
+  'Legal',
+  'Procedure',
+  'Risk',
+  'Strategy',
+])
 const query = ref('')
 const selectedId = ref<string | null>(null)
+const selectedStageId = ref<string | null>(null)
+const KNOWLEDGE_TYPE_LABELS: Record<KnowledgePointType, string> = {
+  Concept: '概念',
+  Correspondence: '函电',
+  'Cross-cultural': '跨文化',
+  Legal: '法律规则',
+  Procedure: '业务流程',
+  Risk: '风险管理',
+  Strategy: '策略战术',
+}
+const availableFilters = computed(() => filters.filter((item) => countFor(item.type) > 0))
+const knowledgeTypeOptions = computed(() =>
+  (Object.entries(KNOWLEDGE_TYPE_LABELS) as [KnowledgePointType, string][])
+    .map(([type, label]) => ({
+      type,
+      label,
+      count: props.graph.nodes.filter((node) => node.knowledge_type === type).length,
+    }))
+    .filter((item) => item.count > 0),
+)
+
+const stageOptions = computed(() =>
+  props.graph.nodes
+    .filter((node) => node.type === 'stage')
+    .sort(
+      (left, right) =>
+        Number(left.properties.Sequence ?? 0) - Number(right.properties.Sequence ?? 0),
+    ),
+)
+
+const stageNeighborhood = computed(() => {
+  if (!selectedStageId.value) return null
+  const ids = new Set<string>([selectedStageId.value])
+  const firstHop = props.graph.edges.filter((edge) => edge.source === selectedStageId.value)
+  firstHop.forEach((edge) => ids.add(edge.target))
+  const phenomenonIds = new Set(
+    firstHop.filter((edge) => edge.type === 'CONTAINS_PHENOMENON').map((edge) => edge.target),
+  )
+  props.graph.edges.forEach((edge) => {
+    if (phenomenonIds.has(edge.target)) ids.add(edge.source)
+    if (phenomenonIds.has(edge.source)) ids.add(edge.target)
+  })
+  return ids
+})
 
 const filteredGraph = computed<KnowledgeGraphView>(() => {
   const keyword = query.value.toLocaleLowerCase('zh-CN')
-  if (!keyword) return props.graph
-  const matched = props.graph.nodes.filter((node) =>
-    node.label.toLocaleLowerCase('zh-CN').includes(keyword),
+  const stageScopedNodes = stageNeighborhood.value
+    ? props.graph.nodes.filter((node) => stageNeighborhood.value?.has(node.id))
+    : props.graph.nodes
+  const scopedNodes = stageScopedNodes.filter(
+    (node) =>
+      node.type !== 'knowledge_point' ||
+      !node.knowledge_type ||
+      visibleKnowledgeTypes.value.includes(node.knowledge_type),
   )
+  if (!keyword) {
+    const scopedIds = new Set(scopedNodes.map((node) => node.id))
+    const edges = props.graph.edges.filter(
+      (edge) => scopedIds.has(edge.source) && scopedIds.has(edge.target),
+    )
+    return {
+      ...props.graph,
+      nodes: scopedNodes,
+      edges,
+      node_count: scopedNodes.length,
+      edge_count: edges.length,
+    }
+  }
+  const matched = scopedNodes.filter((node) => {
+    const propertyText = Object.values(node.properties)
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+    return [node.short_label, node.label, propertyText]
+      .join(' ')
+      .toLocaleLowerCase('zh-CN')
+      .includes(keyword)
+  })
   const connectedIds = new Set(matched.map((node) => node.id))
   props.graph.edges.forEach((edge) => {
     if (connectedIds.has(edge.source) || connectedIds.has(edge.target)) {
@@ -91,9 +198,14 @@ const filteredGraph = computed<KnowledgeGraphView>(() => {
       connectedIds.add(edge.target)
     }
   })
-  const nodes = props.graph.nodes.filter((node) => connectedIds.has(node.id))
+  const scopedIds = new Set(scopedNodes.map((node) => node.id))
+  const nodes = scopedNodes.filter((node) => connectedIds.has(node.id))
   const edges = props.graph.edges.filter(
-    (edge) => connectedIds.has(edge.source) && connectedIds.has(edge.target),
+    (edge) =>
+      scopedIds.has(edge.source) &&
+      scopedIds.has(edge.target) &&
+      connectedIds.has(edge.source) &&
+      connectedIds.has(edge.target),
   )
   return { ...props.graph, nodes, edges, node_count: nodes.length, edge_count: edges.length }
 })
@@ -109,26 +221,15 @@ const neighbors = computed(() => {
   })
   return props.graph.nodes.filter((node) => ids.has(node.id)).slice(0, 12)
 })
-const displayProperties = computed(() =>
-  selectedNode.value
-    ? Object.entries(selectedNode.value.properties)
-        .filter(
-          (entry): entry is [string, string | number | boolean] =>
-            entry[1] !== null && entry[0] !== 'description',
-        )
-        .slice(0, 8)
-    : [],
-)
 
 function countFor(type: KnowledgeNodeType): number {
   return props.graph.nodes.filter((node) => node.type === type).length
 }
-function typeLabel(type: KnowledgeNodeType): string {
-  return filters.find((item) => item.type === type)?.label ?? type
+function forwardDisplaySave(nodeId: string, shortNameZh: string, expectedRevision: number): void {
+  emit('save-display', nodeId, shortNameZh, expectedRevision)
 }
-function textProperty(node: KnowledgeGraphNode, key: string, fallback: string): string {
-  const value = node.properties[key]
-  return typeof value === 'string' ? value : fallback
+function forwardDisplayRestore(nodeId: string, expectedRevision: number): void {
+  emit('restore-display', nodeId, expectedRevision)
 }
 </script>
 
@@ -168,10 +269,21 @@ function textProperty(node: KnowledgeGraphNode, key: string, fallback: string): 
   border-radius: 50%;
   background: #688078;
 }
+.legend .stage i {
+  border-radius: 2px;
+  background: #0f4c5c;
+}
 .legend .phenomenon i {
   background: #d19a38;
 }
+.legend .scenario i {
+  border-radius: 3px;
+  background: #6f5aa8;
+}
 .legend .knowledge_resource i {
+  background: #2f78a8;
+}
+.legend .knowledge_point i {
   background: #2f78a8;
 }
 .legend .strategy i {
@@ -192,91 +304,82 @@ function textProperty(node: KnowledgeGraphNode, key: string, fallback: string): 
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
-.content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+.knowledge-type-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  background: #fbfcfb;
+  color: var(--color-muted);
+  font-size: 0.75rem;
 }
-aside {
-  padding: var(--space-5);
-  overflow: auto;
-  border-left: 1px solid var(--color-border);
+.knowledge-type-nav > span {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+.knowledge-type-nav label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
   background: var(--color-surface);
 }
-aside h2 {
-  margin: var(--space-2) 0;
-  font-size: 1.2rem;
-}
-aside h3 {
-  margin-top: var(--space-6);
-  font-size: 0.85rem;
-}
-aside p,
-.empty {
+.knowledge-type-nav small {
   color: var(--color-muted);
-  font-size: 0.82rem;
 }
-.node-kind {
-  padding: 3px 7px;
-  border-radius: 999px;
-  color: white;
-  background: #688078;
-  font-size: 0.68rem;
+.content {
+  min-width: 0;
 }
-.node-kind.phenomenon {
-  background: #b47a16;
-}
-.node-kind.knowledge_resource {
-  background: #2f78a8;
-}
-.node-kind.strategy {
-  background: #176b4d;
-}
-dl {
-  display: grid;
+.stage-nav {
+  display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-5);
-}
-dl div {
-  display: grid;
-  gap: 2px;
-}
-dt {
-  color: var(--color-muted);
-  font-size: 0.68rem;
-}
-dd {
-  margin: 0;
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
-}
-aside button {
-  width: 100%;
-  padding: var(--space-2);
-  border: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
   border-bottom: 1px solid var(--color-border);
-  color: var(--color-primary);
-  background: transparent;
-  text-align: left;
+  background: #f7faf8;
+}
+.stage-nav button {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: var(--color-surface);
   cursor: pointer;
 }
-.content-link {
-  display: inline-flex;
-  margin: var(--space-2) 0 var(--space-3);
+.stage-nav button.active {
+  border-color: #0f4c5c;
+  color: #fff;
+  background: #0f4c5c;
+}
+.graph-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: 0.85rem;
+}
+.graph-hint span {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
   color: var(--color-primary);
-  font-size: 0.82rem;
-  font-weight: 750;
+  background: var(--color-primary-soft);
 }
 @media (max-width: 800px) {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-  .content {
-    grid-template-columns: 1fr;
-  }
-  aside {
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
   }
 }
 </style>

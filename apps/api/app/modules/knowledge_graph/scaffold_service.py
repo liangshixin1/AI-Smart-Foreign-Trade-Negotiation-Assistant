@@ -42,16 +42,26 @@ class KnowledgeScaffoldService:
                 phenomena=[],
                 knowledge_resources=[],
                 strategies=[],
+                knowledge_points=[],
                 scaffolds=[],
                 edges=[],
             )
         scenario_id = str(scenario["stable_key"])
-        phenomenon_ids = self._sources_or_targets(graph, scenario_id, "EXPOSES", "target")
-        strategy_ids = self._related_sources(graph, phenomenon_ids, "ADDRESSES")
-        resource_ids = self._related_sources(graph, phenomenon_ids, "SUPPORTS")
+        related = self.graph_query._related_ids(graph, unit.unit_key, unit.title)
+        phenomenon_ids = set(related[0])
+        resource_ids = set(related[1])
+        strategy_ids = set(related[2])
         scaffold_ids = self._related_sources(graph, phenomenon_ids, "SCAFFOLDS")
         selected_ids = {scenario_id} | phenomenon_ids | strategy_ids | resource_ids | scaffold_ids
         by_id = {str(node["stable_key"]): node for node in graph.nodes}
+        display_ids = {scenario_id} | phenomenon_ids | strategy_ids | resource_ids
+        display_by_id = {
+            node.id: node
+            for node in self.graph_query.node_responses(
+                graph.graph_version,
+                [by_id[node_id] for node_id in display_ids if node_id in by_id],
+            )
+        }
         interactions = list(
             self.db.scalars(
                 select(KnowledgeScaffoldInteraction).where(
@@ -64,10 +74,11 @@ class KnowledgeScaffoldService:
             attempt_id=attempt.id,
             unit_id=unit.unit_key,
             graph_version=graph.graph_version,
-            scenario=self.graph_query._node(scenario),
-            phenomena=self._nodes(by_id, phenomenon_ids),
-            knowledge_resources=self._nodes(by_id, resource_ids),
-            strategies=self._nodes(by_id, strategy_ids),
+            scenario=display_by_id[scenario_id],
+            phenomena=self._nodes(display_by_id, phenomenon_ids),
+            knowledge_resources=self._nodes(display_by_id, resource_ids),
+            strategies=self._nodes(display_by_id, strategy_ids),
+            knowledge_points=self._nodes(display_by_id, resource_ids | strategy_ids),
             scaffolds=self._scaffold_hints(graph, by_id, scaffold_ids, interactions),
             edges=[
                 self.graph_query._edge(item)
@@ -149,10 +160,9 @@ class KnowledgeScaffoldService:
             if edge.get("target") in target_ids and edge.get("type") == relation_type
         }
 
-    def _nodes(
-        self, by_id: dict[str, dict[str, object]], ids: Iterable[str]
-    ) -> list[GraphNodeResponse]:
-        return [self.graph_query._node(by_id[item]) for item in sorted(ids) if item in by_id]
+    @staticmethod
+    def _nodes(by_id: dict[str, GraphNodeResponse], ids: Iterable[str]) -> list[GraphNodeResponse]:
+        return [by_id[item] for item in sorted(ids) if item in by_id]
 
     @staticmethod
     def _level_rank(value: str) -> int:
