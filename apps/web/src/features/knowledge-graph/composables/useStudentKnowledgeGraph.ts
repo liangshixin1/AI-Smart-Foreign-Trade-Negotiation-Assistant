@@ -5,7 +5,7 @@ import { useAuthStore } from '@/features/auth/stores/auth'
 import { knowledgeGraphLearningApi } from '../api/knowledgeGraphLearningApi'
 import type { KnowledgeGraphView } from '../types'
 
-export function useStudentKnowledgeGraph() {
+export function useStudentKnowledgeGraph(attemptId?: string) {
   const auth = useAuthStore()
   const graph = ref<KnowledgeGraphView | null>(null)
   const loading = ref(true)
@@ -15,7 +15,9 @@ export function useStudentKnowledgeGraph() {
     loading.value = true
     error.value = null
     try {
-      graph.value = await knowledgeGraphLearningApi.studentGraph(auth.accessToken)
+      graph.value = attemptId
+        ? await knowledgeGraphLearningApi.studentAttemptGraph(auth.accessToken, attemptId)
+        : await knowledgeGraphLearningApi.studentGraph(auth.accessToken)
     } catch (cause: unknown) {
       error.value = cause instanceof Error ? cause.message : '知识图谱加载失败。'
     } finally {

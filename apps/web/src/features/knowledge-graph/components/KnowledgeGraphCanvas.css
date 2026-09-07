@@ -1,0 +1,44 @@
+.canvas-shell {
+  position: relative;
+  min-height: 790px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 10%, rgb(216 235 227 / 48%), transparent 36%), #f7faf8;
+}
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+.controls {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+}
+.controls button {
+  min-width: 42px;
+  height: 40px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 94%);
+  cursor: pointer;
+}
+.controls button:last-child {
+  border-right: 0;
+}
+.controls button:focus-visible {
+  outline: 3px solid var(--color-primary-soft);
+  outline-offset: -3px;
+}
+@media (max-width: 760px) {
+  .canvas-shell {
+    min-height: 620px;
+  }
+}

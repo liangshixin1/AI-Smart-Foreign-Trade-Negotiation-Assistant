@@ -7,15 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 from test_auth import auth_header, login
 
+from app.modules.assessment.schemas import GraphRecommendationCandidate
 from app.modules.auth.models import User
 from app.modules.curriculum.models import Chapter, TrainingUnit
+from app.modules.knowledge_graph.consumption_service import base_display_label
 from app.modules.knowledge_graph.models import (
     KnowledgeGraphKnowledgePointSnapshot,
     KnowledgeGraphPhenomenonKnowledgeEdge,
     KnowledgeGraphPhenomenonSnapshot,
+    KnowledgeGraphScenarioPhenomenonBinding,
     KnowledgeGraphStageSnapshot,
     KnowledgeGraphTranslationOverlay,
 )
+from app.modules.knowledge_graph.recommendation_service import GraphRecommendationService
 from app.modules.knowledge_graph.v3_validation import validate_expert_workbook_v3
 from app.modules.knowledge_graph.xlsx_parser import parse_expert_workbook_v3
 from app.modules.training.models import Attempt
@@ -69,17 +73,53 @@ def test_expert_source_eight_sheets_pass_strict_validation() -> None:
     assert len(parsed.sheets["04_Edges"]) == 298
 
 
+def test_reviewed_v3_name_zh_replaces_legacy_short_name() -> None:
+    properties: dict[str, object] = {
+        "KnowledgeNameZH": "询盘定义",
+        "ShortNameZH": "旧版截断名称",
+        "translation_status": "reviewed",
+    }
+    assert base_display_label(properties, "询盘定义") == "询盘定义"
+    assert base_display_label({"ShortNameZH": "旧版短名"}, "正式名称") == "旧版短名"
+
+
+def test_recommendation_evidence_cannot_be_saved_as_unused() -> None:
+    selected = GraphRecommendationCandidate(
+        node_id="knowledge:K015",
+        confidence=0.9,
+        reason="学生引用了明确有效期。",
+        reveal_level=1,
+        application_state="recalled_unused",
+        evidence_excerpt="acceptance reaching you by 15 January 2027",
+    )
+    result = GraphRecommendationService.validate_selection(
+        [
+            {
+                "node_id": "knowledge:K015",
+                "node_type": "knowledge_resource",
+                "title": "发盘有效期",
+                "contextual_how": "明确有效期限。",
+            }
+        ],
+        [selected],
+        [],
+    )
+    assert result[0]["application_state"] == "applied_partially"
+    assert result[0]["evidence_excerpt"] == selected.evidence_excerpt
+
+
 def test_expert_v3_import_persists_facts_and_compiles_unified_graph(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
     teacher, change = _publish_v3(client)
-    assert change["compiler_version"] == "expert-fact-compiler/3.0"
+    assert change["compiler_version"] == "expert-fact-compiler/3.1"
     assert change["summary"]["node_count"] == 345
-    assert change["summary"]["relationship_count"] == 516
+    assert change["summary"]["relationship_count"] == 568
     assert change["summary"]["teacher_node_count"] == 213
-    assert change["summary"]["teacher_edge_count"] == 384
+    assert change["summary"]["teacher_edge_count"] == 436
     knowledge = [node for node in change["nodes"] if node["type"] == "KnowledgePoint"]
     assert len(knowledge) == 118
+    assert all("ShortNameZH" not in node["properties"] for node in knowledge)
     assert {node["properties"]["KnowledgeTypeCode"] for node in knowledge} == {
         "Concept",
         "Correspondence",
@@ -95,10 +135,20 @@ def test_expert_v3_import_persists_facts_and_compiles_unified_graph(
         and edge["type"] == "REQUIRES_KNOWLEDGE"
         for edge in change["relationships"]
     )
+    assert {
+        edge["target"]
+        for edge in change["relationships"]
+        if edge["source"] == "scenario:S05" and edge["type"] == "FOCUSES_ON"
+    } == {"phenomenon:P2.02", "phenomenon:P2.07"}
     graph = client.get("/api/v1/knowledge-graph/teacher/graph", headers=teacher)
     assert graph.status_code == 200, graph.text
     assert graph.json()["node_count"] == 213
-    assert graph.json()["edge_count"] == 384
+    assert graph.json()["edge_count"] == 436
+    assert all(
+        node["short_label"] == node["label"]
+        for node in graph.json()["nodes"]
+        if node["type"] in {"stage", "phenomenon", "knowledge_point"}
+    )
 
     with session_factory() as db:
         assert db.scalar(select(func.count()).select_from(KnowledgeGraphStageSnapshot)) == 9
@@ -110,7 +160,11 @@ def test_expert_v3_import_persists_facts_and_compiles_unified_graph(
             db.scalar(select(func.count()).select_from(KnowledgeGraphPhenomenonKnowledgeEdge))
             == 298
         )
-        assert db.scalar(select(func.count()).select_from(KnowledgeGraphTranslationOverlay)) == 588
+        assert db.scalar(select(func.count()).select_from(KnowledgeGraphTranslationOverlay)) == 395
+        assert (
+            db.scalar(select(func.count()).select_from(KnowledgeGraphScenarioPhenomenonBinding))
+            == 52
+        )
 
 
 def test_expert_v3_attempt_reads_unified_knowledge_as_compatible_groups(
@@ -151,10 +205,15 @@ def test_expert_v3_attempt_reads_unified_knowledge_as_compatible_groups(
     assert scaffold.status_code == 200, scaffold.text
     payload = scaffold.json()
     assert payload["scenario"]["id"] == "scenario:S15"
-    assert len(payload["phenomena"]) == 7
-    assert len(payload["knowledge_resources"]) == 20
+    assert {item["id"] for item in payload["phenomena"]} == {
+        "phenomenon:P7.01",
+        "phenomenon:P7.02",
+        "phenomenon:P7.04",
+        "phenomenon:P7.06",
+    }
+    assert len(payload["knowledge_resources"]) == 11
     assert len(payload["strategies"]) == 1
-    assert len(payload["scaffolds"]) == 14
+    assert len(payload["scaffolds"]) == 8
 
 
 def test_expert_v3_knowledge_point_exposes_bilingual_default_learning_content(

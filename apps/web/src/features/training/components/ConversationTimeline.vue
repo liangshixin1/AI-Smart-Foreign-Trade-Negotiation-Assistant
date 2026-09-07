@@ -10,7 +10,23 @@
           <p v-if="message.status === 'failed'">本轮 AI 回复失败，你的上一条消息已经保存。</p>
           <p v-else>{{ message.content }}</p>
         </article>
-        <RoundFeedbackCard v-if="feedbackFor(message.id)" :evaluation="feedbackFor(message.id)!" />
+        <div
+          v-if="feedbackFor(message.id)"
+          :class="[
+            'feedback-selectable',
+            {
+              enabled: selectableRounds,
+              selected: selectedRoundId === feedbackFor(message.id)?.id,
+            },
+          ]"
+          :role="selectableRounds ? 'button' : undefined"
+          :tabindex="selectableRounds ? 0 : undefined"
+          @click="selectRound(feedbackFor(message.id)?.id)"
+          @keydown.enter="selectRound(feedbackFor(message.id)?.id)"
+          @keydown.space.prevent="selectRound(feedbackFor(message.id)?.id)"
+        >
+          <RoundFeedbackCard :evaluation="feedbackFor(message.id)!" />
+        </div>
       </template>
     </div>
     <button
@@ -32,7 +48,16 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { RoundEvaluation, TrainingMessage } from '../types'
 import RoundFeedbackCard from './RoundFeedbackCard.vue'
 
-const props = defineProps<{ messages: TrainingMessage[]; evaluations: RoundEvaluation[] }>()
+const props = withDefaults(
+  defineProps<{
+    messages: TrainingMessage[]
+    evaluations: RoundEvaluation[]
+    selectableRounds?: boolean
+    selectedRoundId?: string | null
+  }>(),
+  { selectableRounds: false, selectedRoundId: null },
+)
+const emit = defineEmits<{ 'select-round': [roundId: string] }>()
 const timelineElement = ref<HTMLElement | null>(null)
 const followsLatest = ref(true)
 const showJumpButton = ref(false)
@@ -59,7 +84,10 @@ function handleScroll(): void {
 function scrollToLatest(behavior: ScrollBehavior): void {
   const element = timelineElement.value
   if (!element) return
-  element.scrollTo({ top: element.scrollHeight, behavior })
+  const reducedMotion = element.ownerDocument.defaultView?.matchMedia(
+    '(prefers-reduced-motion: reduce)',
+  ).matches
+  element.scrollTo({ top: element.scrollHeight, behavior: reducedMotion ? 'auto' : behavior })
   followsLatest.value = true
   showJumpButton.value = false
 }
@@ -84,6 +112,9 @@ onMounted(async () => {
 function feedbackFor(messageId: string): RoundEvaluation | undefined {
   return props.evaluations.find((item) => item.assistant_message_id === messageId)
 }
+function selectRound(roundId: string | undefined): void {
+  if (props.selectableRounds && roundId) emit('select-round', roundId)
+}
 </script>
 
 <style scoped>
@@ -102,7 +133,7 @@ function feedbackFor(messageId: string): RoundEvaluation | undefined {
   overflow-y: auto;
 }
 .message {
-  width: min(82%, 680px);
+  width: min(90%, 680px);
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -159,6 +190,24 @@ function feedbackFor(messageId: string): RoundEvaluation | undefined {
   font-size: 1.2rem;
   line-height: 1;
 }
+.feedback-selectable.enabled {
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+.feedback-selectable.enabled:hover,
+.feedback-selectable.enabled:focus-visible {
+  border-color: #d6a041;
+  outline: none;
+  transform: translateY(-1px);
+}
+.feedback-selectable.selected {
+  border-color: #d99427;
+  box-shadow: 0 0 0 3px rgb(217 148 39 / 12%);
+}
 @keyframes message-in {
   from {
     opacity: 0;
@@ -174,6 +223,18 @@ function feedbackFor(messageId: string): RoundEvaluation | undefined {
 @media (prefers-reduced-motion: reduce) {
   .message {
     animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .timeline {
+    padding: 16px 14px;
+    gap: 14px;
+  }
+  .message {
+    width: 94%;
+    padding: 14px;
+    font-size: 14px;
+    box-shadow: none;
   }
 }
 </style>

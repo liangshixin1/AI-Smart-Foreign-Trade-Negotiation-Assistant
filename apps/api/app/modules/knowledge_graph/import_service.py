@@ -60,7 +60,14 @@ class KnowledgeImportService:
         source_hash = hashlib.sha256(content).hexdigest()
         existing = self.repository.find_import(actor_id, source_hash, template_version)
         if existing is not None:
-            return existing, True
+            existing_change = self.repository.change_set_for_import(existing.id)
+            compiler_is_current = not (
+                template_version == "3.0"
+                and existing_change is not None
+                and existing_change.compiler_version != COMPILER_VERSION_V3
+            )
+            if compiler_is_current:
+                return existing, True
         try:
             if template_version == "3.0":
                 parsed = parse_expert_workbook_v3(content)

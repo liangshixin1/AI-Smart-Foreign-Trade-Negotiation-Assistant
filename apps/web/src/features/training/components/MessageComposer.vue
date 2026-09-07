@@ -83,4 +83,19 @@ button:disabled {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
 }
+@media (max-width: 640px) {
+  .composer {
+    padding: 12px 14px max(12px, env(safe-area-inset-bottom));
+  }
+  textarea {
+    min-height: 72px;
+    max-height: 28dvh;
+  }
+  .composer div {
+    gap: 8px;
+  }
+  .composer span {
+    font-size: 10px;
+  }
+}
 </style>

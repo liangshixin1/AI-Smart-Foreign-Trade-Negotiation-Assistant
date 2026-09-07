@@ -20,6 +20,7 @@ from app.modules.knowledge_graph.models import (
     KnowledgeGraphStageSnapshot,
     KnowledgeGraphTranslationOverlay,
     KnowledgeImportJob,
+    KnowledgeLearningActivity,
     KnowledgeNodeDisplayOverride,
     KnowledgeValidationIssue,
     KnowledgeWorkbookAsset,
@@ -44,11 +45,13 @@ class KnowledgeGraphRepository:
         self, owner_id: uuid.UUID, source_hash: str, template_version: str
     ) -> KnowledgeImportJob | None:
         return self.db.scalar(
-            select(KnowledgeImportJob).where(
+            select(KnowledgeImportJob)
+            .where(
                 KnowledgeImportJob.uploaded_by_user_id == owner_id,
                 KnowledgeImportJob.source_hash == source_hash,
                 KnowledgeImportJob.template_version == template_version,
             )
+            .order_by(KnowledgeImportJob.created_at.desc())
         )
 
     def get_import(self, job_id: uuid.UUID) -> KnowledgeImportJob | None:
@@ -156,11 +159,9 @@ class KnowledgeGraphRepository:
                     source_row_hash=_row_hash(row),
                 )
             )
-        phenomena_by_stage: dict[str, list[str]] = {}
         for row in data.sheets["02_L2_Phenomena"]:
             stage_id = str(row["Stage ID"])
             phenomenon_id = str(row["Phenomenon ID"])
-            phenomena_by_stage.setdefault(stage_id, []).append(phenomenon_id)
             self.db.add(
                 KnowledgeGraphPhenomenonSnapshot(
                     change_set_id=change_set_id,
@@ -203,9 +204,9 @@ class KnowledgeGraphRepository:
                 )
             )
         field_maps = {
-            "stages": ("stage", ("name_zh", "short_name_zh", "description_zh", "obe_outcome_zh")),
-            "phenomena": ("phenomenon", ("name_zh", "short_name_zh", "description_zh")),
-            "knowledge": ("knowledge_point", ("name_zh", "short_name_zh", "definition_zh")),
+            "stages": ("stage", ("name_zh", "description_zh", "obe_outcome_zh")),
+            "phenomena": ("phenomenon", ("name_zh", "description_zh")),
+            "knowledge": ("knowledge_point", ("name_zh", "definition_zh")),
         }
         for group, (entity_type, fields) in field_maps.items():
             for item in translations[group]:
@@ -229,13 +230,13 @@ class KnowledgeGraphRepository:
                     course_unit_id=scenario["unit"],
                 )
             )
-            for phenomenon_id in phenomena_by_stage[scenario["stage_id"]]:
+            for phenomenon_id in scenario["phenomenon_ids"]:
                 self.db.add(
                     KnowledgeGraphScenarioPhenomenonBinding(
                         change_set_id=change_set_id,
                         scenario_id=scenario["id"],
                         phenomenon_id=phenomenon_id,
-                        mapping_method="stage_scope",
+                        mapping_method="scenario_curated",
                     )
                 )
 
@@ -367,6 +368,55 @@ class KnowledgeGraphRepository:
         )
         self.db.add(publication)
         return publication
+
+    def learning_activity_by_client_event(
+        self, student_id: uuid.UUID, client_event_id: str
+    ) -> KnowledgeLearningActivity | None:
+        return self.db.scalar(
+            select(KnowledgeLearningActivity).where(
+                KnowledgeLearningActivity.student_id == student_id,
+                KnowledgeLearningActivity.client_event_id == client_event_id,
+            )
+        )
+
+    def completed_learning_activity(
+        self, student_id: uuid.UUID, graph_version: str, node_key: str
+    ) -> KnowledgeLearningActivity | None:
+        return self.db.scalar(
+            select(KnowledgeLearningActivity)
+            .where(
+                KnowledgeLearningActivity.student_id == student_id,
+                KnowledgeLearningActivity.graph_version == graph_version,
+                KnowledgeLearningActivity.node_key == node_key,
+                KnowledgeLearningActivity.event_type == "completed",
+            )
+            .order_by(KnowledgeLearningActivity.created_at.desc())
+        )
+
+    def add_learning_activity(
+        self,
+        *,
+        student_id: uuid.UUID,
+        graph_version: str,
+        node_key: str,
+        node_type: str,
+        event_type: str,
+        source: str,
+        attempt_id: uuid.UUID | None,
+        client_event_id: str,
+    ) -> KnowledgeLearningActivity:
+        activity = KnowledgeLearningActivity(
+            student_id=student_id,
+            graph_version=graph_version,
+            node_key=node_key,
+            node_type=node_type,
+            event_type=event_type,
+            source=source,
+            attempt_id=attempt_id,
+            client_event_id=client_event_id,
+        )
+        self.db.add(activity)
+        return activity
 
     def audit(
         self,

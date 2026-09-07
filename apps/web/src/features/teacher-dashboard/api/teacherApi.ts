@@ -1,5 +1,6 @@
 import { request } from '@/shared/api/http'
 import type { Attempt } from '@/features/training/types'
+import type { SimulationSession } from '@/features/simulation/types'
 import type {
   Classroom,
   Overview,
@@ -19,6 +20,7 @@ export interface AttemptReplay {
   graph_learning_evidence: GraphLearningEvidence[]
   round_learning_diagnostics: RoundLearningDiagnostic[]
   final_learning_diagnostic: LearningDiagnostic | null
+  simulation: SimulationSession | null
 }
 
 export type DiagnosticDimensionKey =
@@ -89,10 +91,22 @@ export interface GraphLearningEvidence {
   phenomenon_node_keys: string[]
   strategy_node_keys: string[]
   knowledge_resource_node_keys: string[]
+  knowledge_point_node_keys: string[]
+  knowledge_type_breakdown: Record<string, number>
+  node_evidence?: Array<{
+    node_id: string
+    node_type: string
+    application_state: string
+    evidence_excerpt: string
+    reason: string
+    contextual_how: string
+    confidence: number
+  }>
   score: number
   evidence_summary: string
   mapping_method: string
   created_at: string
+  node_labels: Record<string, string>
 }
 
 export const teacherApi = {

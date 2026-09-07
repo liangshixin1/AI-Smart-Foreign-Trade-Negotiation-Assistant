@@ -10,11 +10,8 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.errors import AppError
 from app.integrations.knowledge_graph.base import GraphStore
-from app.modules.knowledge_graph.consumption_service import (
-    LABEL_FIELDS,
-    SHORT_LABEL_FIELDS,
-    TEACHER_VISIBLE_NODE_TYPES,
-)
+from app.modules.knowledge_graph.consumption_service import TEACHER_VISIBLE_NODE_TYPES
+from app.modules.knowledge_graph.display_labels import LABEL_FIELDS, base_display_label
 from app.modules.knowledge_graph.models import KnowledgeNodeDisplayOverride
 from app.modules.knowledge_graph.repository import KnowledgeGraphRepository
 from app.modules.knowledge_graph.schemas import (
@@ -157,10 +154,7 @@ class KnowledgeNodeDisplayService:
             (str(normalized[key]) for key in LABEL_FIELDS if normalized.get(key)),
             node_key,
         )
-        base_short_label = next(
-            (str(normalized[key]) for key in SHORT_LABEL_FIELDS if normalized.get(key)),
-            formal_label,
-        )
+        base_short_label = base_display_label(normalized, formal_label)
         return DisplayNode(
             graph_version=graph_version,
             node_key=node_key,

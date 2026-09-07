@@ -1,15 +1,26 @@
 <template>
   <section class="roadmap" aria-labelledby="roadmap-title">
     <h2 id="roadmap-title">课程路线</h2>
-    <article
+    <details
       v-for="(chapter, chapterIndex) in chapters"
       :key="chapter.id"
+      :open="
+        chapterIndex === 0 ||
+        chapter.units.some((unit) =>
+          ['in_progress', 'pending_evaluation', 'evaluation_failed'].includes(unit.status),
+        )
+      "
       :style="{ '--chapter-index': chapterIndex }"
     >
-      <p class="chapter-label">
+      <summary class="chapter-label">
         <span>{{ String(chapterIndex + 1).padStart(2, '0') }}</span
         >{{ chapter.title }}
-      </p>
+        <small
+          >{{ chapter.units.filter((unit) => unit.status === 'completed').length }} /
+          {{ chapter.units.length }}</small
+        >
+        <i aria-hidden="true">⌄</i>
+      </summary>
       <template v-for="unit in chapter.units" :key="unit.id">
         <div v-if="unit.status === 'locked'" class="unit locked" aria-disabled="true">
           <div>
@@ -30,7 +41,7 @@
           >
         </RouterLink>
       </template>
-    </article>
+    </details>
   </section>
 </template>
 
@@ -74,15 +85,13 @@ p {
   margin: 0;
 }
 
-article {
+details {
   position: relative;
-  display: grid;
-  gap: var(--space-3);
-  padding-left: var(--space-6);
+  padding: 0 0 0 24px;
   animation: chapter-in 280ms ease-out both;
   animation-delay: calc(var(--chapter-index) * 30ms);
 }
-article::before {
+details::before {
   position: absolute;
   top: 2rem;
   bottom: -1rem;
@@ -103,7 +112,7 @@ article::before {
   display: grid;
   width: 30px;
   height: 30px;
-  margin-left: -2.05rem;
+  margin-left: -24px;
   place-items: center;
   border: 1px solid var(--color-border);
   border-radius: 50%;
@@ -119,7 +128,8 @@ article::before {
   gap: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-4);
+  padding: 18px 20px;
+  margin-top: 10px;
   color: inherit;
   text-decoration: none;
   background: var(--color-surface);
@@ -170,6 +180,43 @@ a:hover {
     align-items: flex-start;
     flex-direction: column;
     gap: var(--space-3);
+  }
+}
+summary {
+  list-style: none;
+  min-height: 48px;
+  cursor: pointer;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+.chapter-label small {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chapter-label i {
+  font-style: normal;
+  transition: transform 180ms ease;
+}
+details[open] .chapter-label i {
+  transform: rotate(180deg);
+}
+details:not([open])::before {
+  display: none;
+}
+.unit p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+@media (max-width: 620px) {
+  .unit {
+    padding: 14px;
+  }
+  .chapter-label {
+    font-size: 13px;
+    gap: 8px;
   }
 }
 </style>

@@ -6,6 +6,8 @@ import type {
   KnowledgeGraphNode,
   KnowledgeGraphView,
   KnowledgeInsights,
+  LearningActivity,
+  LearningActivitySource,
   LearningContent,
   LearningContentInput,
   NodeDisplayMutation,
@@ -130,9 +132,25 @@ export const knowledgeGraphLearningApi = {
     normalizeGraph(
       await request<GraphViewWire>('/api/v1/knowledge-graph/teacher/graph', {}, token),
     ),
+  teacherAttemptGraph: async (token: string, attemptId: string) =>
+    normalizeGraph(
+      await request<GraphViewWire>(
+        `/api/v1/knowledge-graph/teacher/attempts/${attemptId}/graph`,
+        {},
+        token,
+      ),
+    ),
   studentGraph: async (token: string) =>
     normalizeGraph(
       await request<GraphViewWire>('/api/v1/knowledge-graph/student/graph', {}, token),
+    ),
+  studentAttemptGraph: async (token: string, attemptId: string) =>
+    normalizeGraph(
+      await request<GraphViewWire>(
+        `/api/v1/knowledge-graph/student/attempts/${attemptId}/graph`,
+        {},
+        token,
+      ),
     ),
   updateNodeDisplay: (
     token: string,
@@ -174,6 +192,27 @@ export const knowledgeGraphLearningApi = {
     request<LearningContent>(
       `/api/v1/knowledge-graph/student/content/${encodeURIComponent(nodeId)}`,
       {},
+      token,
+    ),
+  recordLearningActivity: (
+    token: string,
+    nodeId: string,
+    eventType: 'viewed' | 'completed',
+    source: LearningActivitySource,
+    attemptId: string | null,
+    clientEventId: string,
+  ) =>
+    request<LearningActivity>(
+      `/api/v1/knowledge-graph/student/content/${encodeURIComponent(nodeId)}/activities`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          event_type: eventType,
+          source,
+          attempt_id: attemptId,
+          client_event_id: clientEventId,
+        }),
+      },
       token,
     ),
   teacherContents: (token: string) =>
@@ -231,4 +270,6 @@ export const knowledgeGraphLearningApi = {
       {},
       token,
     ),
+  ownInsights: (token: string) =>
+    request<KnowledgeInsights>('/api/v1/knowledge-graph/student/me/insights', {}, token),
 }

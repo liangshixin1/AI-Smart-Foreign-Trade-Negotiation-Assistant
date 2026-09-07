@@ -1,12 +1,12 @@
 <template>
-  <section class="editor" aria-label="中文短名维护">
+  <section class="editor" aria-label="图谱显示名称维护">
     <div v-if="!editing" class="read-state">
       <span v-if="node.has_display_override" class="revised">教师已修订</span>
-      <button type="button" class="edit-button" @click="startEditing">编辑中文短名</button>
+      <button type="button" class="edit-button" @click="startEditing">编辑图谱显示名称</button>
     </div>
     <form v-else @submit.prevent="save">
       <label for="node-short-name">
-        中文短名
+        图谱显示名称
         <span>{{ draft.trim().length }}/16</span>
       </label>
       <input
@@ -19,13 +19,13 @@
         :disabled="saving"
         @keydown.esc.prevent="cancel"
       />
-      <p class="guidance">用于图谱紧凑展示；正式名称、节点关系和训练逻辑不会改变。</p>
+      <p class="guidance">仅覆盖本版本的前端展示；专家中文名称、节点关系和训练逻辑不会改变。</p>
       <p v-if="validationError || (submitted && error)" class="error" role="alert">
         {{ validationError || error }}
       </p>
       <div class="preview">
         <span>图谱预览</span>
-        <strong>{{ draft.trim() || '中文短名' }}</strong>
+        <strong>{{ draft.trim() || '图谱显示名称' }}</strong>
       </div>
       <div class="actions">
         <button type="button" :disabled="saving" @click="cancel">取消</button>
@@ -43,11 +43,11 @@
           class="primary"
           :disabled="saving || Boolean(validationError) || !hasChanges"
         >
-          {{ saving ? '保存中…' : '保存短名' }}
+          {{ saving ? '保存中…' : '保存显示名称' }}
         </button>
       </div>
       <div v-if="confirmingRestore" class="restore-confirm" role="alert">
-        <p>恢复后将显示本图谱版本导入时的中文短名。</p>
+        <p>恢复后将重新显示专家图谱中的中文名称。</p>
         <button type="button" :disabled="saving" @click="confirmingRestore = false">
           暂不恢复
         </button>

@@ -4,16 +4,17 @@
     description="围绕真实训练局面查看现象、知识资源与策略战术的连接；点击节点可追溯直接关联。"
   >
     <nav><RouterLink to="/teacher">← 返回班级总览</RouterLink></nav>
-    <p v-if="loading" class="state">正在从 Neo4j 读取已发布图谱…</p>
+    <p v-if="loading" class="state">正在读取已发布的教学图谱…</p>
     <section v-else-if="error" class="state error" role="alert">
       <p>{{ error }}</p>
       <button type="button" @click="reload">重试</button>
     </section>
     <template v-else-if="graph">
       <header class="summary">
-        <span
-          >图谱版本 <strong>{{ graph.graph_version }}</strong></span
-        >
+        <details class="version-info">
+          <summary>图谱版本</summary>
+          <span>{{ graph.graph_version }}</span>
+        </details>
         <span
           ><strong>{{ graph.node_count }}</strong> 个节点</span
         >
@@ -72,6 +73,8 @@ nav a {
 }
 .summary {
   display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: var(--space-5);
   margin-bottom: var(--space-4);
   color: var(--color-muted);
@@ -79,5 +82,13 @@ nav a {
 }
 .summary strong {
   color: var(--color-ink);
+}
+.version-info {
+  font-size: 12px;
+}
+.version-info span {
+  display: block;
+  max-width: 230px;
+  padding-top: 6px;
 }
 </style>

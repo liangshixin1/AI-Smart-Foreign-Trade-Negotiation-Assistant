@@ -25,6 +25,12 @@ export const router = createRouter({
       meta: { requiredRole: 'student' },
     },
     {
+      path: '/student/attempts/:attemptId/briefing',
+      name: 'attempt-briefing',
+      component: () => import('@/pages/student/AttemptBriefingPage.vue'),
+      meta: { requiredRole: 'student' },
+    },
+    {
       path: '/student/attempts/:attemptId',
       name: 'training-workspace',
       component: () => import('@/pages/student/TrainingWorkspacePage.vue'),

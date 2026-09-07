@@ -196,6 +196,7 @@ function statusLabel(status: string): string {
 <style scoped>
 .panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   margin-bottom: var(--space-8);
   padding: clamp(1rem, 2.5vw, 2rem);
@@ -369,6 +370,23 @@ button:disabled {
   }
   .workflow {
     display: none;
+  }
+}
+.panel > *,
+.upload-card > *,
+.hero > *,
+.publication > * {
+  min-width: 0;
+}
+.upload-card input {
+  width: 100%;
+}
+@media (max-width: 760px) {
+  .upload-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workflow {
+    flex-wrap: wrap;
   }
 }
 </style>

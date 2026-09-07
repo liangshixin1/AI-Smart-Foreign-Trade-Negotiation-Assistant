@@ -299,9 +299,30 @@ class GraphLearningEvidence(Base):
     knowledge_resource_node_keys: Mapped[list[str]] = mapped_column(JSON)
     knowledge_point_node_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
     knowledge_type_breakdown: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+    node_evidence: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     score: Mapped[float] = mapped_column(Float)
     evidence_summary: Mapped[str] = mapped_column(Text)
     mapping_method: Mapped[str] = mapped_column(String(50), default="unit_scope_inferred")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class KnowledgeLearningActivity(Base):
+    """学生对知识或策略教学内容的可审计学习活动。"""
+
+    __tablename__ = "knowledge_learning_activities"
+    __table_args__ = (UniqueConstraint("student_id", "client_event_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    graph_version: Mapped[str] = mapped_column(String(80), index=True)
+    node_key: Mapped[str] = mapped_column(String(180), index=True)
+    node_type: Mapped[str] = mapped_column(String(50), index=True)
+    event_type: Mapped[str] = mapped_column(String(24), index=True)
+    source: Mapped[str] = mapped_column(String(24), index=True)
+    attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("attempts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    client_event_id: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

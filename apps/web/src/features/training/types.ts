@@ -42,6 +42,15 @@ export interface GraphRecommendation {
   confidence: number
   reason: string
   reveal_level: number
+  application_state?:
+    | 'applied_correctly'
+    | 'applied_partially'
+    | 'misapplied'
+    | 'recalled_unused'
+    | 'missed_required'
+    | 'recommended_next'
+  evidence_excerpt?: string
+  contextual_how?: string
 }
 
 export interface RoundEvaluation {
@@ -97,6 +106,15 @@ export interface Attempt {
   unit_id: string
   unit_title: string
   training_mode: 'negotiation' | 'business_email' | 'document_review'
+  experience_mode: 'chat' | 'simulation'
+  conversation_revision: number
+  simulation_summary: {
+    profile_id: string
+    profile_version: string
+    asset_pack_version: string
+    analysis_status: string
+    state_revision: number
+  } | null
   status: AttemptStatus
   difficulty: string
   scenario: ScenarioPublic | null
@@ -114,6 +132,7 @@ export interface AttemptHistoryItem {
   unit_id: string
   unit_title: string
   training_mode: Attempt['training_mode']
+  experience_mode: Attempt['experience_mode']
   status: AttemptStatus
   overall_score: number | null
   retry_of_attempt_id: string | null

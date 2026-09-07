@@ -22,22 +22,29 @@ class GraphRecommendationService:
         except AppError:
             # 图谱不可用时保留原有对话与评价闭环, 但不允许模型自由生成推荐。
             return []
-        _, resource_ids, strategy_ids = self.consumption._related_ids(
+        phenomenon_ids, resource_ids, strategy_ids = self.consumption._related_ids(
             graph, unit.unit_key, unit.title
         )
         by_id = {str(node["stable_key"]): node for node in graph.nodes}
         return [
-            self._candidate(by_id[node_id], "knowledge_resource")
+            self._candidate(
+                by_id[node_id], "knowledge_resource", graph.relationships, phenomenon_ids
+            )
             for node_id in resource_ids
             if node_id in by_id
         ] + [
-            self._candidate(by_id[node_id], "strategy")
+            self._candidate(by_id[node_id], "strategy", graph.relationships, phenomenon_ids)
             for node_id in strategy_ids
             if node_id in by_id
         ]
 
     @staticmethod
-    def _candidate(node: dict[str, object], node_type: str) -> dict[str, object]:
+    def _candidate(
+        node: dict[str, object],
+        node_type: str,
+        relationships: list[dict[str, object]],
+        phenomenon_ids: list[str],
+    ) -> dict[str, object]:
         raw = node.get("properties")
         properties = raw if isinstance(raw, dict) else {}
         title = next(
@@ -74,11 +81,42 @@ class GraphRecommendationService:
             ),
             "",
         )
+        node_id = str(node["stable_key"])
+        phenomenon_set = set(phenomenon_ids)
+        contextual_how = ""
+        for relationship in relationships:
+            linked = (
+                relationship.get("source") == node_id
+                and relationship.get("target") in phenomenon_set
+            ) or (
+                relationship.get("target") == node_id
+                and relationship.get("source") in phenomenon_set
+            )
+            if not linked:
+                continue
+            raw_relationship = relationship.get("properties")
+            relation_properties = raw_relationship if isinstance(raw_relationship, dict) else {}
+            contextual_how = next(
+                (
+                    str(relation_properties[key])
+                    for key in (
+                        "AddressingNoteZH",
+                        "AddressingNoteEN",
+                        "how",
+                        "教学用途",
+                    )
+                    if relation_properties.get(key)
+                ),
+                "",
+            )
+            if contextual_how:
+                break
         return {
-            "node_id": str(node["stable_key"]),
+            "node_id": node_id,
             "node_type": node_type,
             "title": title,
             "summary": summary[:900],
+            "contextual_how": contextual_how[:900],
         }
 
     @staticmethod
@@ -101,11 +139,24 @@ class GraphRecommendationService:
                 if item.node_id in seen:
                     continue
                 seen.add(item.node_id)
+                application_state = item.application_state
+                evidence_excerpt = item.evidence_excerpt.strip()
+                # 模型偶尔会同时声称“未运用”又引用学生确实使用该知识的原话。
+                # 证据存在时保守归为“部分运用”。避免把矛盾状态写入长期学情。
+                if evidence_excerpt and application_state in {
+                    "recalled_unused",
+                    "missed_required",
+                    "recommended_next",
+                }:
+                    application_state = "applied_partially"
                 result.append(
                     {
                         **item.model_dump(),
+                        "application_state": application_state,
+                        "evidence_excerpt": evidence_excerpt,
                         "node_type": expected_type,
                         "title": source["title"],
+                        "contextual_how": source.get("contextual_how", ""),
                     }
                 )
         return result

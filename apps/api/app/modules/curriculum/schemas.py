@@ -50,3 +50,4 @@ class UnitDetailResponse(BaseModel):
     knowledge_tags: list[str]
     rubric_dimensions: list[RubricDimensionResponse]
     status: str
+    supported_experience_modes: list[str]

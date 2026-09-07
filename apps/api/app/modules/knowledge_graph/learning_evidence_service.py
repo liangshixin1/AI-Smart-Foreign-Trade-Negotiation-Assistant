@@ -95,6 +95,19 @@ class GraphLearningEvidenceService:
                 knowledge_resource_node_keys=resources,
                 knowledge_point_node_keys=knowledge_points,
                 knowledge_type_breakdown=type_breakdown,
+                node_evidence=[
+                    {
+                        "node_id": str(item.get("node_id", "")),
+                        "node_type": str(item.get("node_type", "")),
+                        "application_state": str(item.get("application_state", "recommended_next")),
+                        "evidence_excerpt": str(item.get("evidence_excerpt", ""))[:240],
+                        "reason": str(item.get("reason", ""))[:300],
+                        "contextual_how": str(item.get("contextual_how", ""))[:900],
+                        "confidence": float(str(item.get("confidence", 0.0))),
+                    }
+                    for item in recommendations or []
+                    if item.get("node_id")
+                ],
                 score=score,
                 evidence_summary=evidence_summary[:1000],
                 mapping_method=mapping_method,

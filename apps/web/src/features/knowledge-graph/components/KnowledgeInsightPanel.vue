@@ -3,63 +3,112 @@
     <header>
       <div>
         <p>知识图谱学情</p>
-        <h2 id="knowledge-insight-title">从训练证据定位待加强环节</h2>
+        <h2 id="knowledge-insight-title">从阶段下钻到现象、知识与策略证据</h2>
       </div>
       <button v-if="error" type="button" @click="$emit('retry')">重试</button>
     </header>
-    <p v-if="loading" class="state">正在聚合现象、知识资源与策略表现…</p>
+    <p v-if="loading" class="state">正在聚合每轮图谱证据与学习行为…</p>
     <p v-else-if="error" class="state error" role="alert">{{ error }}</p>
-    <p v-else-if="!insights?.weak_units.length" class="state">
-      暂无知识图谱学情；学生完成正式评价后会在此形成证据。
+    <p v-else-if="!hasEvidence" class="state">
+      暂无图谱学情；完成一轮训练评价或学习一项知识后会在此形成证据。
     </p>
-    <template v-else>
+    <template v-else-if="insights">
       <div class="summary">
-        <span
-          ><strong>{{ insights.completed_attempts }}</strong> 次完成训练</span
-        >
-        <span
-          ><strong>{{ insights.average_score ?? '-' }}</strong> 平均分</span
-        >
-        <span
-          ><strong>{{ attentionCount }}</strong> 个待加强小节</span
-        >
+        <article>
+          <strong>{{ insights.evidence_rounds }}</strong
+          ><span>证据轮次</span>
+        </article>
+        <article>
+          <strong>{{ insights.students_with_evidence }}</strong
+          ><span>涉及学生</span>
+        </article>
+        <article>
+          <strong>{{ insights.learning_views }}</strong
+          ><span>内容回访</span>
+        </article>
+        <article>
+          <strong>{{ insights.learning_completions }}</strong
+          ><span>完成学习</span>
+        </article>
+        <article>
+          <strong>{{ insights.average_score ?? '-' }}</strong
+          ><span>正式评价均分</span>
+        </article>
       </div>
-      <ul>
-        <li v-for="unit in insights.weak_units" :key="unit.unit_id">
-          <div>
+
+      <TeacherKnowledgeAnalyticsGraph :insights="insights" />
+
+      <section v-if="insights.stage_insights.length" class="block stages">
+        <div class="section-heading">
+          <h3>阶段表现</h3>
+          <span>按真实轮次证据聚合</span>
+        </div>
+        <div class="stage-strip">
+          <article
+            v-for="stage in insights.stage_insights"
+            :key="stage.node_id"
+            :class="{ attention: stage.needs_attention }"
+          >
+            <span>{{ stage.label }}</span>
+            <strong>{{ stage.average_score ?? '-' }}</strong>
+            <small>{{ stage.evidence_count }} 轮证据</small>
+          </article>
+        </div>
+      </section>
+
+      <div class="drilldown">
+        <section class="block">
+          <div class="section-heading">
+            <h3>需优先巩固的知识与策略</h3>
+            <span>可进入教学内容</span>
+          </div>
+          <ul class="knowledge-list">
+            <li v-for="item in visibleKnowledge" :key="item.node_id">
+              <div>
+                <span>{{ typeLabel(item.knowledge_type) }}</span>
+                <b :class="{ attention: item.needs_attention }">{{ item.average_score ?? '-' }}</b>
+              </div>
+              <RouterLink :to="`${contentBase}${encodeURIComponent(item.node_id)}`">
+                {{ item.label }}
+              </RouterLink>
+              <p>
+                {{ item.evidence_count }} 轮证据 · 被建议 {{ item.recommendation_count }} 次 ·
+                学习完成 {{ item.content_completion_count }} 次
+              </p>
+            </li>
+          </ul>
+        </section>
+
+        <section class="block">
+          <div class="section-heading">
+            <h3>高频或薄弱现象</h3>
+            <span>观察提示依赖</span>
+          </div>
+          <ul class="phenomenon-list">
+            <li v-for="item in visiblePhenomena" :key="item.node_id">
+              <div>
+                <small>{{ item.stage_label ?? '未归属阶段' }}</small
+                ><b>{{ item.average_score ?? '-' }}</b>
+              </div>
+              <strong>{{ item.label }}</strong>
+              <p>
+                {{ item.evidence_count }} 轮 · 展开提示 {{ item.scaffold_reveal_count }} 次 · 采用
+                {{ item.scaffold_use_count }} 次
+              </p>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <details v-if="insights.weak_units.length" class="unit-evidence">
+        <summary>查看关卡级兼容统计（{{ insights.weak_units.length }}）</summary>
+        <ul>
+          <li v-for="unit in insights.weak_units" :key="unit.unit_id">
             <strong>{{ unit.unit_title }}</strong>
-            <span :class="{ attention: unit.needs_attention }">
-              {{ unit.needs_attention ? '需要关注' : '已有证据' }}
-            </span>
-          </div>
-          <p>{{ unit.attempt_count }} 次训练 · 平均 {{ unit.average_score ?? '-' }} 分</p>
-          <dl>
-            <div>
-              <dt>现象</dt>
-              <dd>{{ unit.phenomenon_ids.length }}</dd>
-            </div>
-            <div>
-              <dt>知识</dt>
-              <dd>{{ unit.knowledge_resource_ids.length }}</dd>
-            </div>
-            <div>
-              <dt>策略</dt>
-              <dd>{{ unit.strategy_ids.length }}</dd>
-            </div>
-          </dl>
-          <div v-if="Object.keys(unit.knowledge_type_breakdown).length" class="type-breakdown">
-            <span v-for="(count, type) in unit.knowledge_type_breakdown" :key="type">
-              {{ typeLabel(type) }} {{ count }}
-            </span>
-          </div>
-          <p class="scaffold-usage">
-            展开提示 {{ unit.scaffold_reveal_count }} 次 · 采用 {{ unit.scaffold_use_count }} 次
-            <template v-if="scopeIsClassroom">
-              · {{ unit.students_using_scaffolds }} 名学生使用
-            </template>
-          </p>
-        </li>
-      </ul>
+            <span>{{ unit.attempt_count }} 次完成 · 平均 {{ unit.average_score ?? '-' }} 分</span>
+          </li>
+        </ul>
+      </details>
     </template>
   </section>
 </template>
@@ -68,30 +117,40 @@
 import { computed } from 'vue'
 
 import type { KnowledgeInsights } from '../types'
+import TeacherKnowledgeAnalyticsGraph from './TeacherKnowledgeAnalyticsGraph.vue'
 
-const props = defineProps<{
-  insights: KnowledgeInsights | null
-  loading: boolean
-  error: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    insights: KnowledgeInsights | null
+    loading: boolean
+    error: string | null
+    contentBase?: string
+  }>(),
+  { contentBase: '/teacher/knowledge-content/' },
+)
 defineEmits<{ retry: [] }>()
 
-const attentionCount = computed(
-  () => props.insights?.weak_units.filter((item) => item.needs_attention).length ?? 0,
+const hasEvidence = computed(
+  () =>
+    Boolean(props.insights) &&
+    ((props.insights?.evidence_rounds ?? 0) > 0 ||
+      (props.insights?.learning_views ?? 0) > 0 ||
+      (props.insights?.weak_units.length ?? 0) > 0),
 )
-const scopeIsClassroom = computed(() => props.insights?.scope === 'classroom')
-function typeLabel(type: string): string {
+const visibleKnowledge = computed(() => props.insights?.knowledge_insights.slice(0, 8) ?? [])
+const visiblePhenomena = computed(() => props.insights?.phenomenon_insights.slice(0, 7) ?? [])
+
+function typeLabel(type: string | null): string {
   return (
     {
       Concept: '概念',
       Correspondence: '函电',
       'Cross-cultural': '跨文化',
-      Legal: '法律',
-      Procedure: '流程',
-      Risk: '风险',
-      Strategy: '策略',
-      LegacyResource: '知识',
-    }[type] ?? type
+      Legal: '法律规则',
+      Procedure: '业务流程',
+      Risk: '风险管理',
+      Strategy: '策略战术',
+    }[type ?? ''] ?? '知识资源'
   )
 }
 </script>
@@ -101,13 +160,14 @@ function typeLabel(type: string): string {
   margin: var(--space-6) 0;
   padding: var(--space-5);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: #fafcfb;
 }
 header,
-li > div,
-.summary,
-dl {
+.section-heading,
+.knowledge-list li > div,
+.phenomenon-list li > div,
+.unit-evidence li {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,6 +175,7 @@ dl {
 }
 header p,
 header h2,
+.section-heading h3,
 li p {
   margin: 0;
 }
@@ -124,7 +185,7 @@ header p {
   font-weight: 800;
 }
 header h2 {
-  font-size: 1.05rem;
+  font-size: 1.12rem;
 }
 button {
   border: 0;
@@ -132,73 +193,131 @@ button {
   background: transparent;
   cursor: pointer;
 }
-.state {
+.state,
+.section-heading span,
+li p,
+li small,
+.summary span {
   color: var(--color-muted);
+  font-size: 0.76rem;
 }
 .error,
 .attention {
-  color: var(--color-danger);
+  color: var(--color-danger) !important;
 }
 .summary {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
   margin: var(--space-4) 0;
-  color: var(--color-muted);
-  font-size: 0.78rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-border);
+}
+.summary article {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3);
+  background: var(--color-surface);
 }
 .summary strong {
-  color: var(--color-ink);
-  font-size: 1rem;
+  font-size: 1.25rem;
 }
-ul {
+.block {
+  min-width: 0;
+  margin-top: var(--space-5);
+}
+.section-heading {
+  margin-bottom: var(--space-3);
+}
+.section-heading h3 {
+  font-size: 0.95rem;
+}
+.stage-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-2);
+}
+.stage-strip article {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3);
+  border-top: 3px solid var(--color-primary);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--color-surface);
+}
+.stage-strip article.attention {
+  border-top-color: var(--color-danger);
+}
+.stage-strip strong {
+  font-size: 1.3rem;
+}
+.stage-strip small {
+  color: var(--color-muted);
+}
+.drilldown {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: var(--space-5);
+}
+.knowledge-list,
+.phenomenon-list,
+.unit-evidence ul {
+  display: grid;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
-li {
+.knowledge-list li,
+.phenomenon-list li {
+  display: grid;
+  gap: 4px;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
 }
-li span,
-li p,
-dt {
-  color: var(--color-muted);
-  font-size: 0.72rem;
+.knowledge-list li > div span {
+  color: #17628a;
+  font-size: 0.7rem;
+  font-weight: 800;
 }
-.scaffold-usage {
-  padding-top: var(--space-2);
+.knowledge-list a {
+  color: var(--color-ink);
+  font-weight: 750;
+  text-decoration: none;
+}
+.knowledge-list a:hover {
+  color: var(--color-primary);
+}
+.phenomenon-list strong {
+  font-size: 0.84rem;
+}
+.unit-evidence {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--color-border);
 }
-.type-breakdown {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin: var(--space-2) 0;
+.unit-evidence summary {
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
 }
-.type-breakdown span {
-  padding: 3px 6px;
-  border-radius: 999px;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
+.unit-evidence ul {
+  margin-top: var(--space-3);
 }
-dl {
-  justify-content: flex-start;
-  margin: var(--space-3) 0 0;
+.unit-evidence li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
 }
-dl div {
-  display: flex;
-  gap: 3px;
-}
-dd {
-  margin: 0;
-  font-weight: 750;
-}
-@media (max-width: 800px) {
-  ul {
+@media (max-width: 900px) {
+  .summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .drilldown {
     grid-template-columns: 1fr;
   }
 }

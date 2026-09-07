@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.modules.simulation.schemas import SimulationSummaryResponse
 
 
 class ScenarioPublic(BaseModel):
@@ -32,6 +35,7 @@ class ScenarioCandidate(BaseModel):
 class CreateAttemptRequest(BaseModel):
     unit_id: str
     difficulty: str = "standard"
+    experience_mode: Literal["chat", "simulation"] = "chat"
 
 
 class MessageRequest(BaseModel):
@@ -65,6 +69,9 @@ class GraphRecommendationResponse(BaseModel):
     confidence: float
     reason: str
     reveal_level: int
+    application_state: str = "recommended_next"
+    evidence_excerpt: str = ""
+    contextual_how: str = ""
 
 
 class RoundEvaluationResponse(BaseModel):
@@ -120,6 +127,9 @@ class AttemptResponse(BaseModel):
     unit_id: str
     unit_title: str
     training_mode: str
+    experience_mode: Literal["chat", "simulation"]
+    conversation_revision: int
+    simulation_summary: SimulationSummaryResponse | None = None
     status: str
     difficulty: str
     scenario: ScenarioPublic | None
@@ -137,6 +147,7 @@ class AttemptHistoryItemResponse(BaseModel):
     unit_id: str
     unit_title: str
     training_mode: str
+    experience_mode: Literal["chat", "simulation"]
     status: str
     overall_score: float | None
     retry_of_attempt_id: uuid.UUID | None

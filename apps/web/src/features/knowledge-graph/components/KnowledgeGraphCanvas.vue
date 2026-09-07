@@ -1,9 +1,9 @@
 <template>
-  <div class="canvas-shell">
+  <div class="canvas-shell" :class="`mode-${mode}`">
     <div ref="container" class="canvas" role="img" :aria-label="ariaLabel" />
-    <div class="controls" aria-label="图谱视图控制">
-      <button type="button" title="放大" @click="zoomBy(1.2)">＋</button>
-      <button type="button" title="缩小" @click="zoomBy(0.8)">－</button>
+    <div v-if="showControls" class="controls" aria-label="图谱视图控制">
+      <button type="button" title="放大" aria-label="放大图谱" @click="zoomBy(1.2)">＋</button>
+      <button type="button" title="缩小" aria-label="缩小图谱" @click="zoomBy(0.8)">－</button>
       <button type="button" title="适应画布" @click="fit">适应</button>
     </div>
   </div>
@@ -11,178 +11,312 @@
 
 <script setup lang="ts">
 import cytoscape from 'cytoscape'
-import type { Core, ElementDefinition, NodeSingular } from 'cytoscape'
+import type { Core, NodeSingular } from 'cytoscape'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { buildGraphElements } from '../graphElements'
+import { contextPositions } from '../contextLayout'
+import {
+  nearestInteractiveNode,
+  progressiveFocusNodeIds,
+  shouldActivateImmediately,
+  withinFocusCorridor,
+} from '../graphInteraction'
+import { knowledgeGraphStylesheet } from '../graphStyles'
+import { panoramaLayout } from '../panoramaLayout'
+import type { GraphViewMode } from '../graphPresentation'
+import type { GraphVisualOverlay } from '../graphOverlay'
 import type { KnowledgeGraphView, KnowledgeNodeType } from '../types'
 
-const props = defineProps<{
-  graph: KnowledgeGraphView
-  visibleTypes: KnowledgeNodeType[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    graph: KnowledgeGraphView
+    layoutGraph?: KnowledgeGraphView
+    visibleTypes: KnowledgeNodeType[]
+    mode?: GraphViewMode
+    selectedNodeId?: string | null
+    overlay?: GraphVisualOverlay | null
+    showControls?: boolean
+  }>(),
+  {
+    layoutGraph: (rawProps: { graph: KnowledgeGraphView }) => rawProps.graph,
+    mode: 'teaching',
+    selectedNodeId: null,
+    overlay: null,
+    showControls: true,
+  },
+)
 const emit = defineEmits<{ select: [nodeId: string] }>()
 const container = ref<HTMLElement | null>(null)
 let instance: Core | null = null
 let resizeObserver: ResizeObserver | null = null
+let intersectionObserver: IntersectionObserver | null = null
+let hasFittedOnFirstReveal = false
+let reducedMotion = false
+let semanticBaseZoom = 1
+let proximityNodeId: string | null = null
+let pendingNodeId: string | null = null
+let pendingFocusTimer: number | null = null
+let highlightTimer: number | null = null
+let previousRevision = ''
+let previousCurrentIds = new Set<string>()
+const TAKEOVER_DELAY_MS = 180
 
 const ariaLabel = computed(
   () =>
-    `知识图谱，共 ${String(props.graph.node_count)} 个节点、${String(props.graph.edge_count)} 条关系`,
+    `${props.mode === 'teaching' ? '九阶段教学地图' : '知识关系全景'}，共 ${String(props.graph.node_count)} 个节点、${String(props.graph.edge_count)} 条关系。可缩放并选择节点查看详情。`,
 )
 
-function elements(): ElementDefinition[] {
-  const visible = new Set(
-    props.graph.nodes
-      .filter((node) => props.visibleTypes.includes(node.type))
-      .map((node) => node.id),
-  )
-  const nodes: ElementDefinition[] = props.graph.nodes
-    .filter((node) => visible.has(node.id))
-    .map((node) => ({
-      data: {
-        id: node.id,
-        label: node.short_label,
-        formalLabel: node.label,
-        nodeType: node.type,
-        knowledgeType: node.knowledge_type ?? '',
-      },
-    }))
-  const edges: ElementDefinition[] = props.graph.edges
-    .filter((edge) => visible.has(edge.source) && visible.has(edge.target))
-    .map((edge) => ({
-      data: {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        label: relationshipLabel(edge.type),
-      },
-    }))
-  return [...nodes, ...edges]
-}
-
-function relationshipLabel(type: string): string {
-  return (
-    {
-      INVOLVES: '涉及',
-      CONTAINS_SCENARIO: '训练场景',
-      CONTAINS_PHENOMENON: '教学现象',
-      REQUIRES_KNOWLEDGE: '需要知识',
-      HANDLED_BY: '可用策略',
-      EXPOSES: '呈现',
-      ADDRESSES: '应对',
-      SUPPORTS: '支持',
-    }[type] ?? type
-  )
-}
-
-function render(): void {
+function createInstance(): void {
   if (!container.value) return
-  instance?.destroy()
   instance = cytoscape({
     container: container.value,
-    elements: elements(),
-    minZoom: 0.25,
-    maxZoom: 2.4,
-    style: [
-      {
-        selector: 'node',
-        style: {
-          label: 'data(label)',
-          width: 32,
-          height: 32,
-          'font-size': 10,
-          'text-wrap': 'wrap',
-          'text-max-width': '92px',
-          'text-valign': 'bottom',
-          'text-margin-y': 7,
-          'background-color': '#688078',
-          color: '#17211d',
-        },
-      },
-      {
-        selector: 'node[nodeType="stage"]',
-        style: {
-          'background-color': '#0f4c5c',
-          'border-color': '#d8ebe7',
-          'border-width': 3,
-          width: 70,
-          height: 46,
-          shape: 'round-rectangle',
-          color: '#0a353f',
-          'font-size': 12,
-          'font-weight': 800,
-          'text-valign': 'top',
-          'text-margin-y': -9,
-        },
-      },
-      {
-        selector: 'node[nodeType="phenomenon"]',
-        style: { 'background-color': '#d19a38', width: 44, height: 44 },
-      },
-      {
-        selector: 'node[nodeType="scenario"]',
-        style: {
-          'background-color': '#6f5aa8',
-          'border-color': '#ffffff',
-          'border-width': 2,
-          width: 54,
-          height: 38,
-          shape: 'round-rectangle',
-          'text-valign': 'top',
-          'text-margin-y': -8,
-          'font-weight': 700,
-        },
-      },
-      { selector: 'node[nodeType="knowledge_resource"]', style: { 'background-color': '#2f78a8' } },
-      { selector: 'node[nodeType="strategy"]', style: { 'background-color': '#176b4d' } },
-      { selector: 'node[nodeType="knowledge_point"]', style: { 'background-color': '#2f78a8' } },
-      { selector: 'node[knowledgeType="Concept"]', style: { 'background-color': '#3f7cac' } },
-      {
-        selector: 'node[knowledgeType="Correspondence"]',
-        style: { 'background-color': '#7b61a8' },
-      },
-      {
-        selector: 'node[knowledgeType="Cross-cultural"]',
-        style: { 'background-color': '#a85f7b' },
-      },
-      { selector: 'node[knowledgeType="Legal"]', style: { 'background-color': '#315b7d' } },
-      { selector: 'node[knowledgeType="Procedure"]', style: { 'background-color': '#2b8a83' } },
-      { selector: 'node[knowledgeType="Risk"]', style: { 'background-color': '#b36b35' } },
-      { selector: 'node[knowledgeType="Strategy"]', style: { 'background-color': '#176b4d' } },
-      {
-        selector: 'edge',
-        style: {
-          width: 1.2,
-          label: 'data(label)',
-          'font-size': 8,
-          color: '#6d7b75',
-          'line-color': '#c4cec9',
-          'target-arrow-color': '#9eaaa4',
-          'target-arrow-shape': 'triangle',
-          'curve-style': 'bezier',
-          'text-background-color': '#ffffff',
-          'text-background-opacity': 0.8,
-          'text-background-padding': '2px',
-        },
-      },
-      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#17211d' } },
-    ],
-    layout: {
-      name: 'cose',
-      animate: false,
-      fit: true,
-      padding: 48,
-      idealEdgeLength: (edge) => (edge.data('label') === '呈现' ? 112 : 86),
-      nodeRepulsion: (node) => {
-        if (node.data('nodeType') === 'stage') return 15000
-        if (node.data('nodeType') === 'scenario') return 9000
-        return 6000
-      },
-    },
+    elements: [],
+    minZoom: 0.22,
+    maxZoom: 2.6,
+    style: knowledgeGraphStylesheet,
   })
-  instance.on('tap', 'node', (event) => {
+  const core = instance
+  core.on('tap', 'node', (event) => {
     emit('select', (event.target as NodeSingular).id())
   })
+  core.on('mouseover', 'node', (event) => {
+    const node = event.target as NodeSingular
+    if (container.value) container.value.style.cursor = 'pointer'
+    node.addClass('is-hovered')
+    requestProximityFocus(node.id())
+  })
+  core.on('mouseout', 'node', (event) => {
+    const node = event.target as NodeSingular
+    node.removeClass('is-hovered')
+    if (pendingNodeId === node.id()) cancelPendingFocus()
+  })
+  core.on('mousemove', (event) => {
+    if (event.target !== core) return
+    const interactionGraph = props.layoutGraph
+    const permittedIds = proximityNodeId
+      ? progressiveFocusNodeIds(interactionGraph, proximityNodeId)
+      : undefined
+    const nearbyPermitted = nearestInteractiveNode(
+      core,
+      props.mode,
+      event.renderedPosition,
+      proximityNodeId ? 34 : 18,
+      permittedIds,
+    )
+    if (nearbyPermitted) {
+      requestProximityFocus(nearbyPermitted.id())
+      return
+    }
+    if (
+      proximityNodeId &&
+      props.mode === 'panorama' &&
+      withinFocusCorridor(core, interactionGraph, proximityNodeId, event.renderedPosition)
+    ) {
+      return
+    }
+    const nearby = nearestInteractiveNode(core, props.mode, event.renderedPosition, 18)
+    if (nearby) {
+      requestProximityFocus(nearby.id())
+      return
+    }
+    cancelPendingFocus()
+    proximityNodeId = null
+    if (container.value) container.value.style.cursor = 'default'
+    applyFocus(props.selectedNodeId)
+  })
+  core.on('tap', (event) => {
+    if (event.target !== core) return
+    const nearby = nearestInteractiveNode(core, props.mode, event.renderedPosition, 22)
+    if (nearby) emit('select', nearby.id())
+  })
+  core.on('zoom', updateSemanticZoom)
+}
+
+function clearProximityFocus(): void {
+  cancelPendingFocus()
+  proximityNodeId = null
+  if (container.value) container.value.style.cursor = 'default'
+  applyFocus(props.selectedNodeId)
+}
+
+function requestProximityFocus(nodeId: string): void {
+  if (nodeId === proximityNodeId) {
+    cancelPendingFocus()
+    return
+  }
+  const interactionGraph = props.layoutGraph
+  if (
+    props.mode !== 'panorama' ||
+    shouldActivateImmediately(interactionGraph, proximityNodeId, nodeId)
+  ) {
+    activateProximityFocus(nodeId)
+    return
+  }
+  schedulePendingFocus(nodeId)
+}
+
+function activateProximityFocus(nodeId: string): void {
+  cancelPendingFocus()
+  proximityNodeId = nodeId
+  if (container.value) container.value.style.cursor = 'pointer'
+  applyFocus(nodeId)
+}
+
+function schedulePendingFocus(nodeId: string): void {
+  if (pendingNodeId === nodeId && pendingFocusTimer !== null) return
+  cancelPendingFocus()
+  const ownerWindow = container.value?.ownerDocument.defaultView
+  if (!ownerWindow) {
+    activateProximityFocus(nodeId)
+    return
+  }
+  pendingNodeId = nodeId
+  pendingFocusTimer = ownerWindow.setTimeout(() => {
+    if (pendingNodeId === nodeId) activateProximityFocus(nodeId)
+  }, TAKEOVER_DELAY_MS)
+}
+
+function cancelPendingFocus(): void {
+  const ownerWindow = container.value?.ownerDocument.defaultView
+  if (pendingFocusTimer !== null && ownerWindow) ownerWindow.clearTimeout(pendingFocusTimer)
+  pendingFocusTimer = null
+  pendingNodeId = null
+}
+
+function syncGraph(): void {
+  if (!instance) createInstance()
+  if (!instance) return
+  cancelPendingFocus()
+  proximityNodeId = null
+  const layoutGraph = props.layoutGraph
+  const positions =
+    props.mode === 'context' ? contextPositions(props.graph) : panoramaLayout(layoutGraph).positions
+  const nextCurrentIds = new Set(
+    props.overlay?.nodes
+      .filter((item) => item.emphasis === 'current_round')
+      .map((item) => item.node_id) ?? [],
+  )
+  const newlyCurrentIds = new Set(
+    [...nextCurrentIds].filter((nodeId) => !previousCurrentIds.has(nodeId)),
+  )
+  instance.batch(() => {
+    instance?.elements().remove()
+    instance?.add(
+      buildGraphElements(
+        props.graph,
+        props.visibleTypes,
+        props.mode,
+        positions,
+        layoutGraph,
+        props.overlay,
+      ),
+    )
+  })
+  runLayout()
+  applyFocus(props.selectedNodeId)
+  pulseNewNodes(newlyCurrentIds)
+  previousCurrentIds = nextCurrentIds
+  previousRevision = props.overlay?.revision ?? ''
+}
+
+function runLayout(): void {
+  if (!instance) return
+  if (props.mode === 'teaching') {
+    instance.one('layoutstop', captureSemanticBaseZoom)
+    instance
+      .layout({
+        name: 'preset',
+        fit: true,
+        padding: 72,
+        animate: !reducedMotion,
+        animationDuration: 320,
+      })
+      .run()
+  } else {
+    instance.one('layoutstop', captureSemanticBaseZoom)
+    instance
+      .layout({
+        name: 'preset',
+        animate: !reducedMotion,
+        animationDuration: 360,
+        fit: true,
+        padding: props.mode === 'context' ? 34 : 76,
+      })
+      .run()
+  }
+  nextFrame(updateSemanticZoom)
+}
+
+function captureSemanticBaseZoom(): void {
+  if (!instance) return
+  semanticBaseZoom = instance.zoom()
+  updateSemanticZoom()
+}
+
+function updateSemanticZoom(): void {
+  if (!instance) return
+  const zoom = instance.zoom()
+  const semanticNodes = instance.nodes().filter((node) => {
+    const semanticTypes = ['knowledge_point', 'knowledge_resource', 'strategy']
+    if (props.mode === 'panorama') semanticTypes.push('phenomenon')
+    return semanticTypes.includes(String(node.data('nodeType')))
+  })
+  semanticNodes.removeClass('show-label')
+  const threshold = props.mode === 'context' ? semanticBaseZoom * 0.72 : semanticBaseZoom * 1.3
+  if (zoom >= threshold) semanticNodes.addClass('show-label')
+}
+
+function pulseNewNodes(nodeIds: Set<string>): void {
+  if (!instance || reducedMotion || !nodeIds.size || previousRevision === '') return
+  if (highlightTimer !== null) {
+    container.value?.ownerDocument.defaultView?.clearTimeout(highlightTimer)
+  }
+  nodeIds.forEach((nodeId) => instance?.getElementById(nodeId).addClass('is-newly-emphasized'))
+  highlightTimer =
+    container.value?.ownerDocument.defaultView?.setTimeout(() => {
+      nodeIds.forEach((nodeId) =>
+        instance?.getElementById(nodeId).removeClass('is-newly-emphasized'),
+      )
+      highlightTimer = null
+    }, 520) ?? null
+}
+
+function applyFocus(nodeId: string | null | undefined): void {
+  if (!instance) return
+  const all = instance.elements()
+  all.removeClass('is-dimmed is-related is-focused')
+  if (!nodeId) return
+  const node = instance.getElementById(nodeId)
+  if (!node.length) return
+  const focusedIds =
+    props.mode === 'panorama'
+      ? progressiveFocusNodeIds(props.graph, node.id())
+      : new Set([node.id()])
+  if (props.mode !== 'panorama') {
+    node
+      .closedNeighborhood()
+      .nodes()
+      .forEach((item) => {
+        focusedIds.add(item.id())
+      })
+  }
+  all.addClass('is-dimmed')
+  instance.nodes().forEach((item) => {
+    if (!focusedIds.has(item.id())) return
+    item.removeClass('is-dimmed').addClass('is-related')
+  })
+  instance.edges().forEach((edge) => {
+    if (
+      focusedIds.has(edge.source().id()) &&
+      focusedIds.has(edge.target().id()) &&
+      edge.data('edgeType') !== 'STAGE_FLOW'
+    ) {
+      edge.removeClass('is-dimmed').addClass('is-related')
+    }
+  })
+  node.removeClass('is-related')
+  node.addClass('is-focused')
 }
 
 function zoomBy(factor: number): void {
@@ -193,70 +327,64 @@ function zoomBy(factor: number): void {
   })
 }
 function fit(): void {
-  instance?.fit(undefined, 48)
+  instance?.fit(undefined, 64)
+  captureSemanticBaseZoom()
+}
+
+function nextFrame(callback: () => void): void {
+  container.value?.ownerDocument.defaultView?.requestAnimationFrame(callback)
 }
 
 watch(
-  () => [props.graph, props.visibleTypes] as const,
+  () => [props.graph, props.layoutGraph, props.visibleTypes, props.mode, props.overlay] as const,
   async () => {
     await nextTick()
-    render()
+    syncGraph()
   },
   { deep: true },
 )
+watch(() => props.selectedNodeId, applyFocus)
 
 onMounted(() => {
-  render()
+  const ownerWindow = container.value?.ownerDocument.defaultView
+  reducedMotion =
+    typeof ownerWindow?.matchMedia === 'function'
+      ? ownerWindow.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  createInstance()
+  syncGraph()
   if (container.value) {
-    resizeObserver = new ResizeObserver(() => instance?.resize())
-    resizeObserver.observe(container.value)
+    container.value.addEventListener('mouseleave', clearProximityFocus)
+    const Observer = ownerWindow?.ResizeObserver
+    if (Observer) {
+      resizeObserver = new Observer(() => instance?.resize())
+      resizeObserver.observe(container.value)
+    }
+    const VisibilityObserver = ownerWindow?.IntersectionObserver
+    if (VisibilityObserver) {
+      intersectionObserver = new VisibilityObserver((entries) => {
+        const entry = entries[0]
+        if (!entry?.isIntersecting || hasFittedOnFirstReveal) return
+        hasFittedOnFirstReveal = true
+        nextFrame(() => {
+          instance?.resize()
+          fit()
+        })
+      })
+      intersectionObserver.observe(container.value)
+    }
   }
 })
 onBeforeUnmount(() => {
+  cancelPendingFocus()
+  if (highlightTimer !== null) {
+    container.value?.ownerDocument.defaultView?.clearTimeout(highlightTimer)
+  }
+  container.value?.removeEventListener('mouseleave', clearProximityFocus)
   resizeObserver?.disconnect()
+  intersectionObserver?.disconnect()
   instance?.destroy()
 })
 </script>
 
-<style scoped>
-.canvas-shell {
-  position: relative;
-  min-height: 760px;
-  overflow: hidden;
-  background: #f8faf9;
-}
-.canvas {
-  position: absolute;
-  inset: 0;
-}
-.controls {
-  position: absolute;
-  z-index: 1;
-  top: var(--space-3);
-  right: var(--space-3);
-  display: flex;
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-soft);
-}
-.controls button {
-  min-width: 38px;
-  height: 38px;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-right: 1px solid var(--color-border);
-  color: var(--color-ink);
-  background: var(--color-surface);
-  cursor: pointer;
-}
-.controls button:last-child {
-  border-right: 0;
-}
-@media (max-width: 760px) {
-  .canvas-shell {
-    min-height: 560px;
-  }
-}
-</style>
+<style scoped src="./KnowledgeGraphCanvas.css"></style>

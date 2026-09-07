@@ -15,7 +15,93 @@ class MockLLMProvider:
     """Deterministic local provider for tests and interface development."""
 
     def complete(self, request: LLMRequest) -> LLMResponse:
-        if request.purpose == "scenario":
+        if request.metadata.get("simulation_kind") == "briefing":
+            content = json.dumps(
+                {
+                    "schema_version": "simulation.briefing.v1",
+                    "briefing": [
+                        {
+                            "id": "brief-01",
+                            "kind": "narration",
+                            "speaker_id": "narrator",
+                            "rendered_text": "你走进白天的会谈室，把已经收到的报价单放在桌面上。",
+                            "fact_refs": [],
+                            "scene_id": "meeting-room-day",
+                            "character_id": "david-lim",
+                            "expression": "neutral",
+                            "action": "none",
+                        },
+                        {
+                            "id": "brief-02",
+                            "kind": "narration",
+                            "speaker_id": "narrator",
+                            "rendered_text": (
+                                "今天你代表上海翰霖采购一方，负责提出有依据的价格还盘。"
+                            ),
+                            "fact_refs": ["student_role"],
+                            "scene_id": "meeting-room-day",
+                            "character_id": "david-lim",
+                            "expression": "neutral",
+                            "action": "none",
+                        },
+                        {
+                            "id": "brief-03",
+                            "kind": "narration",
+                            "speaker_id": "narrator",
+                            "rendered_text": "对面的 David Lim 代表 NovaTech 坚守当前报价。",
+                            "fact_refs": ["ai_role"],
+                            "scene_id": "meeting-room-day",
+                            "character_id": "david-lim",
+                            "expression": "thinking",
+                            "action": "none",
+                        },
+                        {
+                            "id": "brief-04",
+                            "kind": "narration",
+                            "speaker_id": "narrator",
+                            "rendered_text": "本轮围绕 NT-IM250 显示模组的单价与交换条件展开。",
+                            "fact_refs": ["product"],
+                            "scene_id": "meeting-room-day",
+                            "character_id": "david-lim",
+                            "expression": "neutral",
+                            "action": "none",
+                        },
+                        {
+                            "id": "brief-05",
+                            "kind": "narration",
+                            "speaker_id": "narrator",
+                            "rendered_text": "你的目标是说明还盘依据，并用互惠条件推动下一步。",
+                            "fact_refs": ["student_task"],
+                            "scene_id": "meeting-room-day",
+                            "character_id": "david-lim",
+                            "expression": "neutral",
+                            "action": "none",
+                        },
+                    ],
+                    "opening": {
+                        "beats": [
+                            {
+                                "id": "opening-01",
+                                "kind": "speech",
+                                "speaker_id": "david-lim",
+                                "text": "Our offer reflects the value of the NT-IM250.",
+                                "expression": "neutral",
+                                "action": "none",
+                            },
+                            {
+                                "id": "opening-02",
+                                "kind": "speech",
+                                "speaker_id": "david-lim",
+                                "text": "What terms would make this work for your team?",
+                                "expression": "thinking",
+                                "action": "head_tilt",
+                            },
+                        ]
+                    },
+                },
+                ensure_ascii=False,
+            )
+        elif request.purpose == "scenario":
             content = json.dumps(
                 {
                     "public": {
@@ -41,10 +127,65 @@ class MockLLMProvider:
                 ensure_ascii=False,
             )
         elif request.purpose == "conversation":
-            content = (
-                "We appreciate your reasoning. If you can increase the order to 1,000 units "
-                "and accept an irrevocable L/C at sight, we could consider USD 282 CIF Shanghai."
-            )
+            if request.metadata.get("simulation_kind") == "turn":
+                trust_band = request.metadata.get("trust_band")
+                willingness_band = request.metadata.get("willingness_band")
+                if trust_band == "cautious":
+                    lines = [
+                        {
+                            "id": "line-01",
+                            "kind": "speech",
+                            "speaker_id": "david-lim",
+                            "text": "Please explain the commercial basis for that proposal.",
+                            "expression": "confused",
+                            "action": "head_tilt",
+                        }
+                    ]
+                elif trust_band == "positive" and willingness_band == "positive":
+                    lines = [
+                        {
+                            "id": "line-01",
+                            "kind": "speech",
+                            "speaker_id": "david-lim",
+                            "text": (
+                                "Let us confirm the remaining payment term and summarize "
+                                "our progress."
+                            ),
+                            "expression": "pleased",
+                            "action": "nod",
+                        }
+                    ]
+                else:
+                    lines = [
+                        {
+                            "id": "line-01",
+                            "kind": "speech",
+                            "speaker_id": "david-lim",
+                            "text": "A lower price needs a stronger order commitment.",
+                            "expression": "thinking",
+                            "action": "head_tilt",
+                        },
+                        {
+                            "id": "line-02",
+                            "kind": "speech",
+                            "speaker_id": "david-lim",
+                            "text": "What volume can your team confirm?",
+                            "expression": "neutral",
+                            "action": "none",
+                        },
+                    ]
+                content = json.dumps(
+                    {
+                        "schema_version": "simulation.turn.v1",
+                        "beats": lines,
+                    }
+                )
+            else:
+                content = (
+                    "We appreciate your reasoning. If you can increase the order to 1,000 units "
+                    "and accept an irrevocable L/C at sight, we could consider "
+                    "USD 282 CIF Shanghai."
+                )
         elif request.metadata.get("evaluation_kind") == "round":
             checklist = json.loads(request.metadata.get("checklist_json", "[]"))
             graph_candidates = json.loads(request.metadata.get("graph_candidates_json", "[]"))
@@ -52,55 +193,83 @@ class MockLLMProvider:
                 item for item in graph_candidates if item.get("node_type") == "knowledge_resource"
             ]
             strategies = [item for item in graph_candidates if item.get("node_type") == "strategy"]
-            content = json.dumps(
-                {
-                    "score": 74,
-                    "pros": "还盘理由明确，并保持了合作语气。",
-                    "cons": "交换条件仍不够量化。",
-                    "detailed_evaluation": (
-                        "本轮能够用订单规模支撑目标价，但尚未把数量、付款方式和价格"
-                        "组成明确的条件交换方案。"
-                    ),
-                    "next_step_suggestion": "下一轮提出增加数量换取明确降价。",
-                    "checklist_results": [
-                        {
-                            "item": item,
-                            "satisfied": index == 0,
-                            "rationale": (
-                                "本轮已经给出数量条件作为谈判依据。"
-                                if index == 0
-                                else "目前尚未同时确认价格和付款条件。"
-                            ),
-                        }
-                        for index, item in enumerate(checklist)
-                    ],
-                    "knowledge_recommendations": [
-                        {
-                            "node_id": item["node_id"],
-                            "confidence": 0.88,
-                            "reason": "该知识可以直接解释本轮表达中的业务边界。",
-                            "reveal_level": 1,
-                        }
-                        for item in knowledge[:1]
-                    ],
-                    "strategy_recommendations": [
-                        {
-                            "node_id": item["node_id"],
-                            "confidence": 0.84,
-                            "reason": "该策略与本轮尚未量化的条件交换直接相关。",
-                            "reveal_level": 1,
-                        }
-                        for item in strategies[:1]
-                    ],
-                    "learning_diagnostic": _mock_learning_diagnostic(
-                        request.metadata.get(
-                            "student_message_id", "00000000-0000-0000-0000-000000000000"
+            round_payload = {
+                "score": 74,
+                "pros": "还盘理由明确，并保持了合作语气。",
+                "cons": "交换条件仍不够量化。",
+                "detailed_evaluation": (
+                    "本轮能够用订单规模支撑目标价，但尚未把数量、付款方式和价格"
+                    "组成明确的条件交换方案。"
+                ),
+                "next_step_suggestion": "下一轮提出增加数量换取明确降价。",
+                "checklist_results": [
+                    {
+                        "item": item,
+                        "satisfied": index == 0,
+                        "rationale": (
+                            "本轮已经给出数量条件作为谈判依据。"
+                            if index == 0
+                            else "目前尚未同时确认价格和付款条件。"
                         ),
-                        "Could you offer USD 278 if we increase the order?",
+                    }
+                    for index, item in enumerate(checklist)
+                ],
+                "knowledge_recommendations": [
+                    {
+                        "node_id": item["node_id"],
+                        "confidence": 0.88,
+                        "reason": "该知识可以直接解释本轮表达中的业务边界。",
+                        "reveal_level": 1,
+                    }
+                    for item in knowledge[:1]
+                ],
+                "strategy_recommendations": [
+                    {
+                        "node_id": item["node_id"],
+                        "confidence": 0.84,
+                        "reason": "该策略与本轮尚未量化的条件交换直接相关。",
+                        "reveal_level": 1,
+                    }
+                    for item in strategies[:1]
+                ],
+                "learning_diagnostic": _mock_learning_diagnostic(
+                    request.metadata.get(
+                        "student_message_id", "00000000-0000-0000-0000-000000000000"
                     ),
-                },
-                ensure_ascii=False,
-            )
+                    (
+                        request.metadata.get("student_message_content", "")
+                        if request.metadata.get("experience_mode") == "simulation"
+                        else "Could you offer USD 278 if we increase the order?"
+                    ),
+                ),
+            }
+            if request.metadata.get("experience_mode") == "simulation":
+                student_id = request.metadata.get(
+                    "student_message_id", "00000000-0000-0000-0000-000000000000"
+                )
+                student_content = request.metadata.get("student_message_content", "")
+                round_payload["simulation_observation"] = {
+                    "schema_version": "simulation.observation.v1",
+                    "events": [
+                        {
+                            "kind": "evidence_backed_proposal",
+                            "target_key": "unit_price",
+                            "confidence": 0.9,
+                            "evidence": [{"message_id": student_id, "quote": student_content}],
+                            "reason": "本轮提出了带有订单依据的还盘方案。",
+                            "normalized_fact_signature": "order-backed-counteroffer",
+                        }
+                    ],
+                    "term_candidates": [],
+                    "milestone_candidates": [
+                        {
+                            "key": "reasoned_counteroffer",
+                            "message_ids": [student_id],
+                            "reason": "学生给出了还盘依据。",
+                        }
+                    ],
+                }
+            content = json.dumps(round_payload, ensure_ascii=False)
         else:
             message_id = request.metadata.get("evidence_message_id", "missing")
             quote = request.metadata.get("evidence_quote", "")

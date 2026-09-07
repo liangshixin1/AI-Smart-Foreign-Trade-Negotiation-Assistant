@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "simulation.asset-pack.v1",
+  "id": "david-lim",
+  "version": "v1-draft",
+  "status": "draft",
+  "approved": false,
+  "character": {
+    "id": "david-lim",
+    "displayName": "David Lim",
+    "identitySource": "docs/david.jpg",
+    "backgroundTreatment": "true-alpha-chroma-keyed",
+    "avatar": "characters/david-lim/avatar.webp",
+    "expressions": {
+      "neutral": "characters/david-lim/neutral.webp",
+      "thinking": "characters/david-lim/thinking.webp",
+      "pleased": "characters/david-lim/pleased.webp",
+      "frustrated": "characters/david-lim/frustrated.webp",
+      "confused": "characters/david-lim/confused.webp"
+    },
+    "actions": ["none", "nod", "head_tilt"]
+  },
+  "scenes": {
+    "meeting-room-day": "scenes/meeting-room-day.webp"
+  },
+  "fallback": {
+    "expression": "neutral",
+    "scene": "solid-color"
+  },
+  "sha256": {
+    "characters/david-lim/avatar.webp": "0574c91525264873e1e004b03d4e3397209066e8e8c6ba3ce8ca4dd6bbe7e3b5",
+    "characters/david-lim/confused.webp": "b9d7cb6cddb3e372dbab2afda67d8bfce34121271b905d20c6d659946d041ce9",
+    "characters/david-lim/frustrated.webp": "a92ceeb658513817d0f71d2b3f2d25aed01e650e28fa2b5bbf3755baf6756512",
+    "characters/david-lim/neutral.webp": "75b3c5bf16ceac28a14e02c97cc0753d01e87c363914f0a2f20a0401a81e3ba1",
+    "characters/david-lim/pleased.webp": "3b4222a8ea16fda92325c00f1408a85fe8dc0f9acc3fa82596784f8c33ee97f2",
+    "characters/david-lim/thinking.webp": "5211958bdad21f113ba696a8168e7b360be94813de79cb061ca7427bc4927624",
+    "scenes/meeting-room-day.webp": "9dea16e74ffe23aa747e1d108a02d2b7f82c684b93e5404d9fa0add2e6a24ea7"
+  }
+}

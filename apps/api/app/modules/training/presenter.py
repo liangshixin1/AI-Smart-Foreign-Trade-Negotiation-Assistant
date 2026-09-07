@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from app.modules.assessment.models import Evaluation, RoundEvaluation
 from app.modules.curriculum.models import TrainingUnit
 from app.modules.training.models import Attempt
@@ -24,6 +26,20 @@ def present_attempt(
     round_evaluations: list[RoundEvaluation] | None = None,
     repository: TrainingRepository | None = None,
 ) -> AttemptResponse:
+    simulation_summary = None
+    if repository is not None and attempt.experience_mode == "simulation":
+        from app.modules.simulation.repository import SimulationRepository
+        from app.modules.simulation.schemas import SimulationSummaryResponse
+
+        session = SimulationRepository(repository.db).session(attempt.id)
+        if session is not None:
+            simulation_summary = SimulationSummaryResponse(
+                profile_id=session.profile_id,
+                profile_version=session.profile_version,
+                asset_pack_version=session.asset_pack_version,
+                analysis_status=session.analysis_status,
+                state_revision=session.latest_state_revision,
+            )
     draft = repository.draft(attempt.id) if repository else None
     evaluation_response = None
     if evaluation is not None:
@@ -64,6 +80,9 @@ def present_attempt(
         unit_id=unit.unit_key,
         unit_title=unit.title,
         training_mode=unit.training_mode,
+        experience_mode=cast(Literal["chat", "simulation"], attempt.experience_mode),
+        conversation_revision=attempt.conversation_revision,
+        simulation_summary=simulation_summary,
         status=attempt.status,
         difficulty=attempt.difficulty,
         scenario=(

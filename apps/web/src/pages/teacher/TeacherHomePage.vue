@@ -46,31 +46,41 @@
           </li>
         </ul>
       </section>
-      <KnowledgeInsightPanel
-        :insights="knowledgeInsights"
-        :loading="knowledgeLoading"
-        :error="knowledgeError"
-        @retry="loadKnowledgeInsights"
-      />
       <section class="tools">
-        <form @submit.prevent="createStudent">
-          <input v-model="form.student_no" placeholder="学号" required /><input
-            v-model="form.display_name"
-            placeholder="姓名"
-            required
-          /><input v-model="form.email" type="email" placeholder="邮箱" required /><input
-            v-model="form.initial_password"
-            type="password"
-            placeholder="初始密码（8位以上）"
-            required
-          /><button>新增学生</button>
-        </form>
-        <label class="import"
-          >批量导入 CSV <input type="file" accept=".csv,text/csv" @change="importCsv"
-        /></label>
-        <small>CSV 表头：student_no,display_name,email,initial_password</small>
+        <details class="roster-tools">
+          <summary>管理学生名册 <span>新增或批量导入</span></summary>
+          <form @submit.prevent="createStudent">
+            <input v-model="form.student_no" aria-label="学号" placeholder="学号" required /><input
+              v-model="form.display_name"
+              aria-label="姓名"
+              placeholder="姓名"
+              required
+            /><input
+              v-model="form.email"
+              aria-label="邮箱"
+              type="email"
+              placeholder="邮箱"
+              required
+            /><input
+              v-model="form.initial_password"
+              aria-label="初始密码"
+              type="password"
+              placeholder="初始密码（8位以上）"
+              required
+            /><button>新增学生</button>
+          </form>
+          <label class="import"
+            >批量导入 CSV <input type="file" accept=".csv,text/csv" @change="importCsv"
+          /></label>
+          <small>CSV 表头：student_no,display_name,email,initial_password</small>
+        </details>
         <div class="filters">
-          <input v-model="search" type="search" placeholder="按姓名、学号或邮箱搜索" />
+          <input
+            v-model="search"
+            aria-label="搜索学生"
+            type="search"
+            placeholder="按姓名、学号或邮箱搜索"
+          />
           <select v-model="riskFilter" aria-label="风险状态">
             <option value="all">全部风险状态</option>
             <option value="attention">需要关注</option>
@@ -102,8 +112,11 @@
             </tr>
           </thead>
           <tbody>
+            <tr v-if="!filteredStudents.length">
+              <td colspan="6" class="empty-students">没有符合条件的学生，请调整筛选条件。</td>
+            </tr>
             <tr v-for="student in filteredStudents" :key="student.id">
-              <td>
+              <td data-label="学生">
                 <template v-if="editingId === student.id">
                   <input v-model="editForm.display_name" aria-label="姓名" />
                   <input v-model="editForm.email" type="email" aria-label="邮箱" />
@@ -113,13 +126,13 @@
                   ><small>{{ student.student_no }} · {{ student.email }}</small>
                 </template>
               </td>
-              <td>
+              <td data-label="学习进度">
                 <strong>{{ student.completion_rate }}%</strong>
                 <small>{{ student.current_unit_title ?? '尚未开始' }}</small>
               </td>
-              <td>{{ student.latest_score ?? '-' }}</td>
-              <td>{{ formatDate(student.last_active_at) }}</td>
-              <td>
+              <td data-label="最近得分">{{ student.latest_score ?? '-' }}</td>
+              <td data-label="最后活跃">{{ formatDate(student.last_active_at) }}</td>
+              <td data-label="状态 / 风险">
                 <span v-if="student.risk_reasons.length" class="risk">{{
                   student.risk_reasons.join('、')
                 }}</span
@@ -140,6 +153,12 @@
           </tbody>
         </table>
       </div>
+      <KnowledgeInsightPanel
+        :insights="knowledgeInsights"
+        :loading="knowledgeLoading"
+        :error="knowledgeError"
+        @retry="loadKnowledgeInsights"
+      />
     </template>
   </RoleWorkspaceLayout>
 </template>
@@ -460,6 +479,10 @@ tbody tr {
 tbody tr:hover {
   background: #f8faf9;
 }
+td small {
+  display: block;
+  margin-top: 3px;
+}
 td:first-child {
   display: grid;
 }
@@ -495,6 +518,110 @@ td:first-child {
   .weaknesses,
   .weaknesses ul {
     grid-template-columns: 1fr;
+  }
+}
+.roster-tools {
+  margin-bottom: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.roster-tools summary {
+  padding: 4px 0;
+  color: var(--color-ink);
+  font-weight: 650;
+}
+.roster-tools summary span {
+  margin-left: 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.roster-tools form {
+  margin: 16px 0;
+}
+.roster-tools .import {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  height: auto;
+}
+.empty-students {
+  padding: 32px;
+  color: var(--color-muted);
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .section {
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .tools {
+    padding: 14px;
+  }
+  .filters {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .filters input {
+    min-width: 0;
+  }
+  .tools form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .table-wrap {
+    overflow: visible;
+    border: 0;
+  }
+  table,
+  tbody {
+    display: block;
+  }
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  tbody tr {
+    display: block;
+    margin-bottom: 14px;
+    padding: 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+  }
+  td,
+  td:first-child {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 6px;
+    padding: 10px 0;
+    border: 0;
+    font-size: 13px;
+  }
+  td[data-label]::before {
+    content: attr(data-label);
+    color: var(--color-muted);
+    grid-row: span 2;
+    font-size: 12px;
+  }
+  td.actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-bottom: 0;
+    border-top: 1px solid var(--color-border);
+  }
+  .actions button,
+  .actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  td.empty-students {
+    display: block;
   }
 }
 </style>

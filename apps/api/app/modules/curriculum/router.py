@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -25,7 +25,10 @@ def current_map(
 @router.get("/units/{unit_id}", response_model=UnitDetailResponse)
 def unit_detail(
     unit_id: str,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[Principal, Depends(require_roles("student"))],
 ) -> UnitDetailResponse:
-    return CurriculumService(CurriculumRepository(db)).get_unit(principal.user, unit_id)
+    return CurriculumService(
+        CurriculumRepository(db), request.app.state.settings.simulation_enabled
+    ).get_unit(principal.user, unit_id)

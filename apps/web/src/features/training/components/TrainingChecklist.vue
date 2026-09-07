@@ -7,6 +7,12 @@
         <li v-for="target in scenario.negotiation_targets" :key="target">{{ target }}</li>
       </ol>
     </section>
+    <LiveKnowledgeCompass
+      v-if="scaffold"
+      class="compass"
+      :scaffold="scaffold"
+      :evaluations="evaluations"
+    />
     <section class="precheck">
       <header>
         <div>
@@ -48,6 +54,7 @@ import { computed } from 'vue'
 
 import { TrainingKnowledgeScaffold } from '@/features/knowledge-graph'
 import type { AttemptScaffold, ScaffoldHint } from '@/features/knowledge-graph'
+import LiveKnowledgeCompass from '@/features/knowledge-graph/components/LiveKnowledgeCompass.vue'
 
 import type { RoundEvaluation, ScenarioPublic } from '../types'
 
@@ -136,6 +143,9 @@ h3 {
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
+}
+.compass {
+  margin-top: var(--space-5);
 }
 .precheck header {
   display: flex;

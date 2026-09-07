@@ -79,7 +79,67 @@ export interface KnowledgeInsights {
   graph_version: string
   completed_attempts: number
   average_score: number | null
+  evidence_rounds: number
+  students_with_evidence: number
+  learning_views: number
+  learning_completions: number
+  stage_insights: StageLearningInsight[]
+  phenomenon_insights: PhenomenonLearningInsight[]
+  knowledge_insights: KnowledgeNodeLearningInsight[]
   weak_units: KnowledgeWeakUnit[]
+}
+
+export interface KnowledgeNodeLearningInsight {
+  node_id: string
+  label: string
+  node_type: string
+  knowledge_type: string | null
+  evidence_count: number
+  attempt_count: number
+  student_count: number
+  average_score: number | null
+  needs_attention: boolean
+  recommendation_count: number
+  content_view_count: number
+  content_completion_count: number
+  last_activity_at: string | null
+}
+
+export interface PhenomenonLearningInsight {
+  node_id: string
+  label: string
+  stage_id: string | null
+  stage_label: string | null
+  evidence_count: number
+  attempt_count: number
+  student_count: number
+  average_score: number | null
+  needs_attention: boolean
+  scaffold_reveal_count: number
+  scaffold_use_count: number
+}
+
+export interface StageLearningInsight {
+  node_id: string
+  label: string
+  evidence_count: number
+  attempt_count: number
+  student_count: number
+  average_score: number | null
+  needs_attention: boolean
+}
+
+export type LearningActivitySource = 'map' | 'training' | 'evaluation' | 'profile'
+
+export interface LearningActivity {
+  id: string
+  graph_version: string
+  node_key: string
+  node_type: string
+  event_type: 'viewed' | 'completed'
+  source: LearningActivitySource
+  attempt_id: string | null
+  created_at: string
 }
 
 export interface LearningContent {

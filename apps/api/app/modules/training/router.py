@@ -30,13 +30,15 @@ student_required = require_roles("student")
 def _service(request: Request, db: Session) -> TrainingService:
     provider: LLMProvider = request.app.state.llm_provider
     graph_store: GraphStore = request.app.state.graph_store
-    return TrainingService(db, provider, graph_store)
+    return TrainingService(db, provider, graph_store, request.app.state.settings.simulation_enabled)
 
 
 def _recovery(request: Request, db: Session) -> TrainingRecoveryService:
     provider: LLMProvider = request.app.state.llm_provider
     graph_store: GraphStore = request.app.state.graph_store
-    return TrainingRecoveryService(db, provider, graph_store)
+    return TrainingRecoveryService(
+        db, provider, graph_store, request.app.state.settings.simulation_enabled
+    )
 
 
 @router.get("", response_model=list[AttemptHistoryItemResponse])
@@ -54,8 +56,11 @@ def create_attempt(
     request: Request,
     principal: Annotated[Principal, Depends(student_required)],
     db: Annotated[Session, Depends(get_db)],
+    idempotency_key: Annotated[
+        str | None, Header(alias="Idempotency-Key", min_length=8, max_length=120)
+    ] = None,
 ) -> AttemptResponse:
-    return _service(request, db).create_attempt(principal.user, payload)
+    return _service(request, db).create_attempt(principal.user, payload, idempotency_key)
 
 
 @router.get("/{attempt_id}", response_model=AttemptResponse)

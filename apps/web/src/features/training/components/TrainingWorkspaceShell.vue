@@ -1,11 +1,28 @@
 <template>
-  <main :class="['workspace', { 'brief-collapsed': briefCollapsed }]">
+  <main :class="['workspace', `mobile-${mobilePanel}`, { 'brief-collapsed': briefCollapsed }]">
+    <nav class="mobile-panels" aria-label="训练面板">
+      <button
+        v-for="panel in panels"
+        :key="panel.id"
+        type="button"
+        :aria-pressed="mobilePanel === panel.id"
+        :aria-controls="`training-${panel.id}`"
+        @click="mobilePanel = panel.id"
+      >
+        {{ panel.label }}
+      </button>
+    </nav>
     <ScenarioBrief
+      id="training-brief"
+      class="brief-panel"
       :scenario="attempt.scenario"
       :collapsed="briefCollapsed"
       @toggle="briefCollapsed = !briefCollapsed"
     />
-    <section :class="['conversation', { 'has-heading': workspaceLabel }]">
+    <section
+      id="training-conversation"
+      :class="['conversation', { 'has-heading': workspaceLabel }]"
+    >
       <header v-if="workspaceLabel" class="workspace-heading">
         <strong>{{ workspaceLabel }}</strong>
         <span>{{ workspaceHint }}</span>
@@ -21,6 +38,8 @@
       />
     </section>
     <TrainingChecklist
+      id="training-support"
+      class="support-panel"
       :scenario="attempt.scenario"
       :evaluations="attempt.round_evaluations"
       :scaffold="scaffold"
@@ -65,6 +84,12 @@ const props = withDefaults(
 
 const draft = defineModel<string>('draft', { required: true })
 const briefCollapsed = ref(false)
+const mobilePanel = ref<'brief' | 'conversation' | 'support'>('conversation')
+const panels = [
+  { id: 'brief', label: '场景简报' },
+  { id: 'conversation', label: '训练对话' },
+  { id: 'support', label: '目标与辅助' },
+] as const
 const {
   scaffold,
   loading: scaffoldLoading,
@@ -112,15 +137,55 @@ const {
   color: var(--color-muted);
   font-size: 0.8rem;
 }
-@media (max-width: 900px) {
+.mobile-panels {
+  display: none;
+}
+@media (max-width: 1100px) {
   .workspace,
   .workspace.brief-collapsed {
     grid-template-columns: 1fr;
-    height: auto;
-    overflow-y: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    overflow: hidden;
+  }
+  .mobile-panels {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .mobile-panels button {
+    flex: 1;
+    padding: 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-muted);
+    font-size: 13px;
+  }
+  .mobile-panels button[aria-pressed='true'] {
+    background: var(--color-primary-soft);
+    color: var(--color-primary-strong);
+    font-weight: 700;
+  }
+  .workspace:not(.mobile-brief) > .brief-panel,
+  .workspace:not(.mobile-conversation) > .conversation,
+  .workspace:not(.mobile-support) > .support-panel {
+    display: none;
   }
   .conversation {
-    min-height: 72vh;
+    min-height: 0;
+  }
+  .brief-panel,
+  .support-panel {
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .workspace-heading {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

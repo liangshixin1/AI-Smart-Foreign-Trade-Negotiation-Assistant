@@ -4,39 +4,44 @@
 
 **© AI赋能：智能时代的外贸谈判策略与实战项目组**
 
-梁 诗 忻    软件设计
+梁 诗 忻 软件设计
 
 本项目是一个面向外贸与商务英语教学的多 Agent 智能训练平台。它不是“替学生写答案”的聊天机器人，而是一套围绕真实任务构建的教学系统：学生进入情境、亲自谈判、接受动态挑战、获得结构化评价；教师看到的不只是分数，还能追溯学生说了什么、用了什么策略、需要什么帮助以及下一步应该教什么。
 
 项目以 [MIT License](./LICENSE) 开源，公开仓库为 [liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant)。重构前版本已冻结在 [`legacy/`](./legacy/LEGACY_NOTICE.md)，不作为当前运行时依赖。
 
-截至 **2026年9月1日（北京时间）**，项目达到 **Milestone 2-0901：专家知识图谱驱动的内测候选版**。在 Milestone 1 的“场景—谈判—评价—学情”闭环之上，本版本完成专家 8-Sheet 知识图谱 3.0 的严格导入、Neo4j 正式发布、训练动态推荐、教师学情消费和多版本回滚，可以用于甲方演示、项目组内测与教学评审；它仍不是生产部署完成态。
+截至 **2026年9月7日（北京时间）**，项目达到 **Milestone 2-0907：知识图谱与 AVG 仿真融合的内测候选版**。在 Milestone 2-0901 的专家知识图谱教学闭环之上，本版本新增轻量二维 AVG 仿真谈判、证据驱动的谈判态势、短台词与分镜持久化、教师仿真回放，并保留原 IM 训练体验。当前功能 MVP 已通过 mock 闭环与自动化回归；真实模型十轮联调、正式角色审美批准和移动真机软键盘仍需单独验收，因此它仍不是生产部署完成态。
 
 ## 里程碑快照
 
-| 项目         | Milestone 2-0901 状态                                       |
+| 项目         | Milestone 2-0907 状态                                       |
 | ------------ | ----------------------------------------------------------- |
-| 发布标识     | `Milestone 2-0901`                                          |
+| 发布标识     | `Milestone 2-0907`                                          |
 | 产品阶段     | 可演示、可内测、可追溯、可回滚的教学验证版                  |
 | 课程版本     | `2.2.1-beta.22`                                             |
 | 课程规模     | 9 个外贸流程、20 个结构化训练小节                           |
-| 训练模式     | 谈判对话、商务邮件、文本/单证审阅                           |
+| 训练模式     | 谈判对话、商务邮件、文本/单证审阅；谈判关卡可选 IM/AVG 体验 |
 | AI 架构      | 场景、对话、评价三个独立 Agent，三把独立 API Key            |
 | 专家图谱事实 | 9 Stage、66 Phenomenon、118 KnowledgePoint、298 条专家关系  |
-| 教学知识图谱 | 345 个 3.0 内部节点、516 条关系；教学投影 213 节点/384 关系 |
-| 数据库迁移   | Alembic `20260901_0014 (head)`                              |
-| 自动化验证   | Web 23 项、API 47 项测试通过；真实 Neo4j 发布/回滚通过      |
+| 教学知识图谱 | 345 个 3.0 内部节点、568 条关系；教学投影 213 节点/436 关系 |
+| 数据库迁移   | Alembic `20260907_0017 (head)`                              |
+| 自动化验证   | Web 55 项、API 62 项测试通过；IM/AVG mock 闭环通过          |
 | 当前定位     | Milestone 2 内测候选版，而非生产正式版                      |
 
-### Milestone 2-0901 新增能力
+### Milestone 2-0907 新增能力
 
 - **专家事实一比一入库**：严格验证专家工作簿 8 个 Sheet、表头、引用、知识类型和 `9/66/118/298` 基线，原始英文事实不被平台翻译或教学扩展覆盖。
 - **中文教学覆盖层**：中文名称、短名和定义独立维护，既精简图谱视觉，又保留专家原始名称用于追溯。
 - **课程与图谱接通**：20 个 Scenario 映射至一级主题和关键现象，知识点与分级线索能够进入学生训练支持库。
 - **逐轮智能推荐**：Neo4j 提供可信固定候选，LLM 只在候选集合内根据最新一轮对话选择高亮知识、策略与线索。
 - **教师学情消费**：学习证据统一落到 KnowledgePoint，并可按七类知识点、现象和关卡聚合薄弱项。
+- **图谱化学习证据**：学生训练、评价、个人学习画像与教师班级、个人、回放视图共用一套动态叠加语义；当前轮次、历史轨迹、掌握状态和教学缺口可以直接在关系图中追溯。
 - **版本治理与回滚**：3.0 为当前活动图谱，2.1 等历史版本继续服务旧 Attempt；真实 Neo4j 回滚与恢复演练已通过。
 - **跨平台启动与端口隔离**：macOS、Linux、Windows 提供一键启动入口；本项目前端使用 `5174`，避免占用项目组其他 `5173` 服务。
+- **双体验谈判**：符合条件的 negotiation 关卡可在新建 Attempt 前选择“对话模式”或“仿真模式”；选择被写入 `experience_mode`，同一 Attempt 内不切换，历史 IM 记录不会被改写。
+- **AVG 情境演出**：公共事实派生的逐句简报、固定角色立绘、5 种表情、3 种轻动作、逐句打字机、自由输入、历史和刷新恢复共同组成轻量二维舞台，不引入游戏引擎。
+- **证据驱动态势**：沟通信任、合作意愿和条款共识由评价候选事件与服务器规则共同产生；变化绑定原话、去重、限幅并与正式成绩分离。
+- **一致性与教师回放**：短台词继续保存为 Message 真值，分镜与态势作为版本化附属记录；提交冻结相关 hash，教师可查看模式、完整台词、分镜、态势 revision 和公开证据。
 
 ## 为什么值得做
 
@@ -61,10 +66,13 @@
 - 学生消息先保存再调用 AI；断网或模型失败不会丢失输入。
 - 每轮由评价 Agent 生成分数、Pros、Cons、详细评价、下一步建议和 Checklist。
 - 训练右栏集中呈现“你可能所需要的”知识资源、策略技巧和线索提示；最新推荐以不同颜色突出。
+- 训练情境图只在逐轮评价完成后更新：固定候选保持可见，最新知识路径高亮，历史轮次渐隐。
 - 草稿自动保存，长对话自动跟随；主动上滑时出现“回到最新消息”。
 - 正式提交前二次确认；提交后冻结场景、消息和内容版本。
 - 正式评价展示总体结果、维度分、雷达图、优点、改进、证据和下一步行动。
 - 评价失败可直接重试，不需要重新谈判。
+- 在支持仿真的谈判关卡选择 AVG 体验，先看公共情境简报，再以自由文本完成短回合商务交锋。
+- 查看三维谈判态势、条款里程碑和每轮原话证据；态势仅解释当前局面，不代表人格、好感或正式成绩。
 - 浏览“现象—知识资源—策略战术”知识图谱，查看 Markdown 精讲、视频和 PPTX。
 - 只有评价成功并进入 `completed` 的 Attempt 才计入完成进度。
 
@@ -82,6 +90,7 @@
 - 完整回放：场景快照、全部消息、正式提交、逐轮反馈、正式评价和引用证据。
 - 教师私有 ZPD 诊断：知识掌握、语言控制、谈判策略、应变能力、跨文化语用、自我调节，以及谈判风格、最低帮助和下一发展目标。
 - 图谱学情：把完成记录映射到现象、知识资源和策略，统计线索展开、采用与薄弱关卡。
+- 图谱化学情：可切换综合表现、局面风险、知识掌握和教学缺口；训练回放中的对话轮次与图谱证据同步。
 - 教学知识图谱：Cytoscape.js 二维浏览、搜索、类型筛选和邻接关系追溯。
 - 学习内容维护：Markdown 编辑、视频/PPTX上传、教师预览、发布状态控制。
 
@@ -103,7 +112,7 @@
 
 ### 开发人员：在稳定边界上继续迭代
 
-开发者面对的不是一个“万能 AI Service”，而是可独立测试的业务模块、版本化教学内容和明确的外部适配器。页面只组合 Feature，路由只处理鉴权与输入输出，业务规则位于应用服务，数据访问经过 Repository，LLM 与 Neo4j 都位于集成边界。
+开发者面对的不是一个“万能 AI Service”，而是可独立测试的业务模块、版本化教学内容和明确的外部适配器。页面只组合 Feature，路由只处理鉴权与输入输出，业务规则位于应用服务，数据访问经过 Repository，LLM 与 Neo4j 都位于集成边界。AVG 仿真沿用同一 Attempt、Message、评价和权限链，演出层只保存分镜、资产与播放所需元数据，不另建一套聊天真值。
 
 ## 一次训练如何运行
 
@@ -173,7 +182,18 @@ ZPD 与 `i+1` 在这里互补但不混同：前者关注“帮助下可达到的
 | Scaffold（教学扩展） |                     132 |
 | **合计**             | **345 节点 / 516 关系** |
 
-学生和教师看到的是克制的 213 节点、384 关系教学投影，而不是把线索节点堆到一张大图。英文专家事实不可变，中文名称、短名和精讲作为独立覆盖层维护；节点详情以弹窗展示完整信息。训练中的智能推荐采用“**Neo4j 固定候选 + LLM 根据最新对话选择**”：图谱保证候选可信、关系可追溯，模型负责判断此刻最需要哪一项，不能生成候选集合之外的节点。
+学生和教师看到的是克制的 213 节点、436 关系教学投影，而不是把线索节点堆到一张大图。新增的 52 条场景级教学映射使每个课程关卡优先召回精确现象，只有旧图谱缺少精确映射时才回退到阶段范围。英文专家事实不可变，中文名称、显示覆盖和精讲作为独立覆盖层维护；节点详情以弹窗展示完整信息。训练中的智能推荐采用“**Neo4j 固定候选 + LLM 根据最新对话选择**”：图谱保证候选可信、关系可追溯，模型负责判断此刻最需要哪一项，不能生成候选集合之外的节点。
+
+### 知识图谱教学消费闭环
+
+- **训练前与自主学习**：场景简报展示固定全景图，只点亮本关 Stage—Phenomenon—KnowledgePoint 链和个人复习重点；学生仍可进入视频、PPTX 与 Markdown 精讲。
+- **训练中**：同一套稳定坐标缩为低干扰“局面罗盘”，全图仍以无文字小点保留空间记忆，只给当前阶段、局面和最多两项本轮建议完整标签；右栏另显示不超过三张情境化行动卡。
+- **评价后**：完整图谱恢复为按轮回放和差距图。学生可区分正确应用、部分应用、误用、召回未使用、应召回未召回和下一步建议，并回到对应对话证据。
+- **学生画像**：学生首页展示图谱证据轮次、知识回访、完成学习与优先巩固项，不把“打开页面”误判为掌握。
+- **教师学情**：班级与个人学情按 `Stage → Phenomenon → KnowledgePoint` 下钻，融合每轮分数、Agent 推荐次数、提示展开/采用和内容学习行为；教师可从知识项进入教学内容维护。
+- **证据回放**：每轮图谱映射保留版本、中文节点名、分数和评价摘要，可回到具体 Attempt；当前图谱统计不会混入历史版本证据。
+
+学习行为由 `KnowledgeLearningActivity` 记录 `viewed/completed`、来源、学生、可选 Attempt 和图谱版本。它与 `GraphLearningEvidence` 分离：前者回答“学生是否访问或完成学习”，后者通过 `node_evidence` 回答“哪一轮真实表达对哪个节点表现为正确应用、误用或遗漏”，二者都不把大模型输出直接当作课程完成判定。
 
 ### 教师 DSL 到 Neo4j 的发布链
 
@@ -260,7 +280,7 @@ flowchart TB
 - 课程内容：`Course`、`CourseVersion`、`Chapter`、`TrainingUnit`、`TrainingTemplate`、`PromptTemplate`、`Rubric`。
 - 训练证据：`Attempt`、`ScenarioSnapshot`、`Message`、`Submission`、`AttemptEvent`。
 - 评价进度：`RoundEvaluation`、`Evaluation`、`EvaluationDimension`、`CompetencyEvidence`、`ProgressRecord`。
-- 图谱治理：导入任务、校验问题、变更集、发布版本、审计事件、线索互动、学习内容与媒体资产。
+- 图谱治理与消费：导入任务、校验问题、变更集、发布版本、审计事件、线索互动、轮次学习证据、内容学习活动、学习内容与媒体资产。
 
 每次 Attempt 都绑定课程版本、提示词版本、模型信息、图谱版本和场景快照。正式提交冻结对话内容；重练创建新 Attempt，并通过 `retry_of_attempt_id` 保留来源关系。
 
@@ -291,19 +311,20 @@ completed           → retry_created（创建新 Attempt）
 | 认证与本人 | `POST /api/v1/auth/login`、`refresh`、`logout`、`GET /api/v1/me`                          |
 | 课程       | `GET /api/v1/courses/current/map`、`GET /api/v1/units/{unit_id}`                          |
 | 训练       | `POST /api/v1/attempts`、`GET /attempts/{id}`、草稿、消息、流式消息、提交、评价重试、重练 |
+| AVG 仿真   | 学生仿真恢复/分析重试、完整分镜事件、教师公共证据回放                                     |
 | 学生进度   | `GET /api/v1/me/progress`、`GET /api/v1/attempts`                                         |
 | 教师学情   | 班级总览、学生列表、学生详情、Attempt回放、学生CRUD与名册导入                             |
 | 图谱学习   | 学生/教师图谱、训练线索、互动事件、学习内容和媒体读取                                     |
 | 图谱治理   | Excel导入、问题清单、教学预览、Change Set审核、发布与回滚                                 |
 | 技术员     | LLM配置读取/保存、三 Agent 连通性测试                                                     |
 
-SSE 使用稳定事件：`message.started`、`message.delta`、`message.completed`、`message.failed`、`round_evaluation.started`、`round_evaluation.completed`、`round_evaluation.failed`、`stream.closed`。前端不依赖随意拼装的 JSON 片段。
+SSE 使用稳定事件：`message.started`、`message.delta`、`message.completed`、`message.failed`、`round_evaluation.started`、`round_evaluation.completed`、`round_evaluation.failed`、`simulation.turn.ready`、`simulation.state.updated`、`stream.closed`。普通 IM 保持文本流；AVG 只在完整结构化回复校验并原子保存后发送可播放事件，前端不解析半截 JSON。
 
 统一错误响应包含稳定错误码、用户可读消息、`retryable` 和请求关联ID。日志不得记录密码、Token、API Key或完整敏感对话。
 
 ## 项目目录
 
-以下目录来自 Milestone 2-0901 当前仓库的实际文件，而不是目标架构占位。目录说明同时回答“代码在哪里”和“它负责什么”，便于产品、教学、前端、后端与测试人员快速接手。
+以下目录来自 Milestone 2-0907 当前仓库的实际文件，而不是目标架构占位。目录说明同时回答“代码在哪里”和“它负责什么”，便于产品、教学、前端、后端与测试人员快速接手。
 
 ### 顶层结构
 
@@ -317,6 +338,7 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 │   ├── curriculum/           # 课程版本与20个小节
 │   ├── prompts/              # 场景、对话、逐轮评价、终结评价提示词
 │   ├── rubrics/              # 谈判、邮件、单证量规
+│   ├── simulation/           # AVG关卡配置、正式资产源与版本清单
 │   ├── training-templates/   # 训练模式模板
 │   └── knowledge-graph/      # 教师DSL正式模板
 ├── docs/                     # 审计、架构、工单、评审、就绪度与手工验收
@@ -382,6 +404,16 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `service.py`                  | 向路由提供稳定训练用例门面，协调上述细粒度服务。                             |
 | `router.py`                   | 暴露 Attempt、消息、流式对话、提交、评价重试与重练 API。                     |
 
+#### AVG 仿真模块 `app/modules/simulation`
+
+| 文件/职责 | 说明 |
+| --- | --- |
+| `schemas.py`、`validators.py` | 定义版本化短台词、分镜、观察事件和公共响应契约，校验长度、事实、表情动作与私有信息边界。 |
+| `profile_service.py`、`briefing_service.py` | 绑定代表关卡配置，只从公共事实生成并固化叙事简报与一次性开场。 |
+| `turn_service.py`、`conversation_service.py` | 领取数据库生成租约，完成结构化短回复校验、纠正重试以及 Message/Presentation 原子提交。 |
+| `state_rules.py`、`state_service.py` | 以纯规则验证评价候选、去重、限幅并生成可重放的谈判态势快照。 |
+| `repository.py`、`presenter.py`、`service.py`、`router.py` | 提供幂等持久化、学生本人读取、教师班级权限回放和独立分析重试。 |
+
 #### 评价模块 `app/modules/assessment`
 
 | 文件                       | 职责                                                             |
@@ -415,8 +447,11 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `recommendation_service.py`                                | 在固定图谱候选中让 LLM 根据最新对话选择本轮高亮项。        |
 | `prompt_context.py`                                        | 把经验证的图谱候选注入场景、对话与评价提示词。             |
 | `content_service.py`                                       | 编辑 Markdown 精讲，上传、读取和删除视频/PPT学习资产。     |
-| `learning_evidence_service.py`                             | 记录学生查看资源、接受提示等可用于教师分析的学习证据。     |
-| `router.py`                                                | 提供导入治理、学生/教师图谱、训练推荐和学习内容 API。      |
+| `learning_activity_service.py`                             | 幂等记录学生查看和明确完成知识学习的行为。                 |
+| `learning_evidence_service.py`                             | 将逐轮评价保存为节点级应用状态、证据摘录和版本化回放证据。 |
+| `insights_service.py` / `insight_aggregation.py`           | 聚合个人、班级的知识表现、行为和教学缺口。                 |
+| `learning_router.py`                                       | 提供学生学习内容、行为记录和教师内容维护 API。             |
+| `router.py`                                                | 提供导入治理、学生/教师图谱、训练脚手架和洞察 API。        |
 
 #### 其他业务模块
 
@@ -436,12 +471,13 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 
 #### 数据库迁移与后端测试
 
-- `alembic/versions/0001` 至 `0014` 按时间建立认证、课程、训练、逐轮反馈、故障恢复、Checklist、图谱消费、学习内容、媒体上传、ZPD 诊断、展示覆盖和 3.0 专家事实快照；所有数据库变化都必须继续追加迁移，禁止修改已执行版本。
+- `alembic/versions/0001` 至 `0017` 按时间建立认证、课程、训练、逐轮反馈、故障恢复、Checklist、图谱消费、学习内容、媒体上传、ZPD 诊断、展示覆盖、3.0 专家事实快照、学习活动、节点级应用证据，以及 AVG 会话、分镜、态势事件/快照与创建幂等记录；所有数据库变化都必须继续追加迁移，禁止修改已执行版本。
 - `tests/test_auth.py`、`test_curriculum.py` 验证认证、权限与课程读取。
 - `tests/test_training_flow.py`、`test_evaluation_recovery.py` 验证状态机、流式训练、提交、评价与失败恢复。
 - `tests/test_knowledge_graph_import.py`、`test_knowledge_graph_phase2.py`、`test_knowledge_graph_v2.py`、`test_knowledge_graph_v21.py`、`test_knowledge_graph_v3.py` 验证多版本导入、Neo4j 双读、内容、推荐和回滚恢复闭环。
 - `tests/test_teacher_technician.py` 验证教师学情、名册和技术员配置权限。
 - `tests/test_deepseek_provider.py` 验证 DeepSeek 协议适配；`test_migrations.py`、`test_system.py` 验证迁移和系统级契约。
+- `tests/test_simulation.py` 验证仿真创建/消息幂等、并发租约、短台词契约、态势证据、权限、提交冻结和私有数据隔离。
 
 ### 前端 `apps/web/src`
 
@@ -455,6 +491,7 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `pages/ForbiddenPage.vue`                       | 越权访问的明确反馈与安全返回入口。                             |
 | `pages/student/StudentHomePage.vue`             | 学生路线、总体进度、最近表现、推荐下一步与知识学习入口。       |
 | `pages/student/UnitPreparationPage.vue`         | 展示目标、时长、场景、角色、任务和评价维度，并创建或恢复训练。 |
+| `pages/student/AttemptBriefingPage.vue`         | 训练前用全景图聚焦本关路径、个人复习重点和开始任务入口。       |
 | `pages/student/TrainingWorkspacePage.vue`       | 组合场景栏、模式工作台、对话、Checklist 和智能学习支持。       |
 | `pages/student/EvaluationPage.vue`              | 呈现结论、雷达图、维度摘要、证据、行动建议与重练入口。         |
 | `pages/student/StudentKnowledgeGraphPage.vue`   | 浏览现象—知识资源—策略战术图谱。                               |
@@ -488,16 +525,41 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `composables/useAttemptHistory.ts`       | 查询和整理学生历史训练。                           |
 | `api/trainingApi.ts`、`types.ts`         | 集中训练 HTTP/SSE 调用和严格 TypeScript 契约。     |
 
+#### AVG 仿真 Feature `features/simulation`
+
+| 组件/模块 | 职责 |
+| --- | --- |
+| `components/SimulationWorkspace.vue` | 组合角色舞台、台词、输入、态势、历史、简报和学习支持，并复用训练生命周期。 |
+| `components/CharacterStage.vue`、`DialogueBox.vue` | 呈现固定背景/立绘、白名单轻动作、逐句台词和身份安全降级。 |
+| `components/BriefingPlayer.vue`、`SimulationControls.vue` | 提供即时显示、下一句、速度、跳过摘要和重看。 |
+| `components/NegotiationStatusBar.vue`、`SimulationTranscript.vue` | 显示三维态势、条款/里程碑、原话证据和 Message 历史。 |
+| `composables/useDialoguePlayback.ts`、`useTypewriter.ts` | 管理与网络/Attempt 分离的本地播放状态、grapheme、暂停、取消和减少动态效果。 |
+| `composables/useSimulationSession.ts`、`useSimulationAssets.ts` | 恢复服务端会话与 analysis，加载清单并处理表情、立绘和背景降级。 |
+| `api/simulationApi.ts`、`types.ts` | 集中仿真读取/重试 API 和严格运行时契约。 |
+
 #### 知识图谱 Feature `features/knowledge-graph`
 
 | 组件/模块                                                                | 职责                                                           |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
 | `components/KnowledgeGraphCanvas.vue`                                    | 封装 Cytoscape.js 画布、布局、缩放、选择和高亮。               |
+| `components/KnowledgeGraphPhaseView.vue`                                 | 复用固定全景坐标，并按训练前/中/后/教师阶段切换信息密度。      |
+| `components/ContextKnowledgeGraph.vue`                                   | 复用画布、状态图例和节点详情，承载各业务页面的小型关系图。     |
+| `components/KnowledgeGraphOverlayLegend.vue`                             | 统一学生学习状态与教师分数/关注语义，避免颜色含义漂移。        |
+| `components/LiveKnowledgeCompass.vue`                                    | 训练右栏的低干扰全景罗盘、情境化建议卡和完整图切换。           |
+| `components/AttemptLiveKnowledgeGraph.vue`                               | 在训练右栏呈现固定候选、最新轮次和历史推荐轨迹。               |
+| `components/EvaluationKnowledgeGraph.vue`                                | 按轮切换评价后的知识证据路径与行动建议。                       |
+| `components/StudentKnowledgeProfileGraph.vue`                            | 在学生首页显示个人阶段—现象—知识状态图。                       |
+| `components/TeacherKnowledgeAnalyticsGraph.vue`                          | 提供班级/个人的表现、风险、掌握与教学缺口视角。                |
+| `components/TeacherAttemptKnowledgeGraph.vue`                            | 将教师回放中的具体对话轮次与图谱证据同步。                     |
+| `components/KnowledgeNodeContextGraph.vue`                               | 在学习内容页呈现当前知识的跨阶段适用位置。                     |
 | `components/KnowledgeGraphExplorer.vue`                                  | 组合场景/节点筛选、中文检索、图例和响应式交互。                |
 | `components/GraphNodeDialog.vue`                                         | 用无障碍弹窗展示正式名称、中文短名、属性与直接关联。           |
 | `components/KnowledgeInsightPanel.vue`                                   | 呈现教师侧图谱覆盖、薄弱现象和学习行为洞察。                   |
 | `components/KnowledgeEvidenceReplay.vue`                                 | 将学生图谱学习证据与具体训练回放关联。                         |
 | `components/TrainingKnowledgeScaffold.vue`                               | 右栏“你可能需要的”知识、策略和线索支持库；新增推荐用颜色区分。 |
+| `components/TrainingSupportFocus.vue`                                    | 将当前现象与本轮推荐组成紧凑、可跳转的关系聚焦。               |
+| `components/EvaluationLearningPath.vue`                                  | 汇总多轮图谱建议，形成评价后的可执行复习路径。                 |
+| `components/StudentKnowledgeProgress.vue`                                | 在学生首页呈现证据轮次、学习完成与优先巩固项。                 |
 | `components/MarkdownLearningContent.vue`                                 | 安全渲染理论精讲 Markdown。                                    |
 | `components/LearningVideoPlayer.vue`                                     | 播放上传的视频资产并处理加载失败。                             |
 | `components/LearningPptxViewer.vue`                                      | 在浏览器内预览上传的 PPTX。                                    |
@@ -505,12 +567,18 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `components/LearningAssetUploader.vue`                                   | 教师上传、替换、预览和删除视频/PPT。                           |
 | `composables/useAttemptScaffold.ts`                                      | 获取固定候选并合并每轮 LLM 高亮推荐。                          |
 | `composables/useKnowledgeInsights.ts`                                    | 获取教师图谱统计与学习洞察。                                   |
+| `composables/useStudentKnowledgeInsights.ts`                             | 获取学生自己的图谱学习画像。                                   |
+| `composables/useLearningActivity.ts`                                     | 幂等记录知识查看与明确完成行为。                               |
 | `composables/useLearningContent.ts`                                      | 读取和保存 Markdown、资源元数据。                              |
 | `composables/useLearningAssetFile.ts`                                    | 管理媒体文件上传、下载和预览生命周期。                         |
 | `composables/useStudentKnowledgeGraph.ts`、`useTeacherKnowledgeGraph.ts` | 分别管理学生和教师图谱查询与筛选状态。                         |
 | `api/knowledgeGraphLearningApi.ts`                                       | 集中学生/教师图谱、内容、证据与媒体 API。                      |
+| `graphOverlay.ts` / `graphPhaseOverlay.ts`                               | 计算画像、回放及训练前/中/后全图叠加语义。                     |
+| `graphElements.ts` / `graphStyles.ts`                                    | 把叠加状态转换为 Cytoscape 元素与分阶段视觉规则。              |
 | `teacherGraph.ts`、`teacherInsights.ts`、`teacherEvidence.ts`            | 将服务端数据转换成教师图谱、洞察与回放视图模型。               |
 | `types.ts`、`index.ts`                                                   | 图谱类型和 Feature 对外公开入口，避免跨 Feature 深层导入。     |
+| `graphOverlay.ts`                                                        | 将 Neo4j 稳定结构与 SQL 动态学习证据合成为类型化视觉叠加层。   |
+| `contextLayout.ts`                                                       | 为业务子图提供稳定的阶段/场景—现象—知识分层布局。              |
 
 #### 其他前端 Feature 与共享层
 
@@ -553,6 +621,9 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | `prompts/scenario/`                                                      | 每个小节独立的场景 Agent 提示词；文件名绑定 unit ID。                       |
 | `prompts/conversation/`                                                  | 每个小节的对话 Agent 提示词及 `adaptive-conversation-zpd.yaml` 自适应增量。 |
 | `prompts/evaluation/`                                                    | 每小节逐轮/终结评价、结构修复和 ZPD 诊断提示词。                            |
+| `prompts/simulation/`                                                    | AVG 公共简报、短台词、逐轮观察与正式评价 1.0.0 提示词。                     |
+| `simulation/profiles/price-counteroffer-v1.yaml`                         | `chapter-3-section-1` 的条款账本、里程碑、角色、场景和版本绑定。            |
+| `simulation/assets/david-lim-v1-draft/`                                  | 用户底图、ImageGen 派生源、透明修复记录、hash 清单和人工批准状态。           |
 | `knowledge-graph/templates/teacher-case-dsl-v1.xlsx`                     | 第一阶段教师案例 DSL 模板，保留兼容测试。                                   |
 | `knowledge-graph/templates/teacher-knowledge-graph-v2.xlsx`              | 2.0 教师教学设计模板，保留兼容和回归测试。                                  |
 | `knowledge-graph/templates/expert-knowledge-graph-v2.1.xlsx`             | 历史 2.1 图谱，保留旧 Attempt 与回归测试。                                  |
@@ -567,12 +638,16 @@ SSE 使用稳定事件：`message.started`、`message.delta`、`message.complete
 | ---------------------------------------- | ---------------------------------------------------------------- |
 | `docs/phase-0/`                          | 只读审计、范围、课程迁移、ER/状态机、API、页面地图、风险与回滚。 |
 | `docs/work-orders/`                      | 各阶段工单，记录范围、数据/API变化、验收和真实结果。             |
+| `docs/implementation/avg-simulation-mvp/` | AVG 实施、QA、截图证据、未验证项、演示与回滚记录。               |
 | `docs/manual-testing/`                   | DeepSeek三 Agent、图谱 Phase 1/2 的人工验收步骤。                |
 | `docs/readiness/negotiation-training.md` | 谈判训练进入下一阶段前的就绪度判断。                             |
 | `docs/knowledge-graph/teacher-dsl/`      | 教师 DSL 需求、架构、路线图、评审材料与模板说明。                |
 | `scripts/migrate_levels_content.py`      | 将旧 `levels.py` 教学资产转换并验证为结构化内容。                |
 | `scripts/smoke_deepseek.py`              | 使用真实三把 Key 冒烟验证场景、对话与评价 Agent。                |
 | `scripts/smoke_neo4j_phase2.py`          | 验证正式 Neo4j 导入、查询、训练消费与教师分析。                  |
+| `scripts/smoke_avg_simulation.py`        | 经明确授权后执行真实模型十轮短台词与延迟联调。                   |
+| `scripts/qa_avg_browser.mjs`、`qa_avg_closures.mjs` | 在隔离服务验证多视口、IME、AVG/IM 提交评价与教师回放。    |
+| `scripts/chroma_key_sprite.py`           | 将 ImageGen 纯绿幕角色派生为带 alpha 的浏览器资产。              |
 | `scripts/check_file_lengths.py`          | 执行单文件行数质量门槛。                                         |
 | `.github/workflows/ci.yml`               | 在持续集成中运行格式、Lint、类型、后端/前端测试和构建。          |
 
@@ -640,7 +715,7 @@ pnpm install
 cp apps/api/.env.example .env
 ```
 
-请修改根目录 `.env`：设置强随机 `AUTH_TOKEN_PEPPER`、本地 `DEV_SEED_PASSWORD`，并让 `NEO4J_PASSWORD` 与 Docker Compose 使用相同值。不要提交 `.env`。
+请修改根目录 `.env`：设置强随机 `AUTH_TOKEN_PEPPER`、本地 `DEV_SEED_PASSWORD`，并让 `NEO4J_PASSWORD` 与 Docker Compose 使用相同值。完成 0017 迁移并需要体验 AVG 时，显式设置 `SIMULATION_ENABLED=true`；默认 `false` 只关闭新建仿真，不改写旧 Attempt。不要提交 `.env`。
 
 #### 3. 初始化
 
@@ -705,7 +780,7 @@ pnpm smoke:neo4j-phase2
 
 当前自动化测试重点覆盖：RBAC和越权、Attempt状态转换、幂等提交、LLM失败与结构化修复、评价重试、ZPD诊断容错、进度统计、教师班级权限、课程路线、流式消息、自动保存、图谱导入安全、发布回滚和内容媒体访问。
 
-Milestone 2-0901 的统一质量门槛实测结果：Prettier、ESLint、Ruff、Vue TypeScript strict、Mypy、文件长度检查全部通过；Vitest 为 **13 个测试文件、23 项测试通过**，Pytest 为 **47 项测试通过**，Vite 生产构建完成 **282 个模块**。真实服务健康检查、Neo4j 3.0 发布、2.1 回滚和 3.0 恢复均已执行。视频/PPTX预览依赖仍有大分包警告，属于下一阶段性能优化项，不影响本版本构建通过。
+截至 2026年9月7日，本项目统一质量门槛实测结果：Prettier、ESLint、Ruff、Vue TypeScript strict、Mypy 和受版本控制源文件的行数门禁通过；Vitest 为 **27 个测试文件、55 项测试通过**，Pytest 为 **62 项测试通过**，Vite 生产构建完成 **353 个模块**。运行态确认 Web `5174`、API `8000` 和 0017 数据库迁移可用；浏览器以隔离 mock 服务完成 AVG 创建、简报、交锋、态势证据、刷新恢复、正式评价、教师回放和旧 IM 回归，并在 360×800、390×844、768×1024、1280×800 四个视口验证无横向溢出和输入区可用。3-1 真实运行中发现并修复了仿真开关未启用、场景结构无效后误入空白工作台的问题：服务端现会对结构错误做一次约束修复，前端失败时停留并提供重新开始入口。仿真懒加载 JS 为 9.59 KB、gzip 4.21 KB，角色浏览器资产包约 260 KB。受控的真实 DeepSeek 十轮调用、正式角色审美批准和移动真机软键盘尚未执行，不能用单次运行、mock 或视口模拟替代。既有视频/PPTX/图谱大分包警告仍为后续性能项。
 
 ## 安全与隐私边界
 
@@ -719,7 +794,7 @@ Milestone 2-0901 的统一质量门槛实测结果：Prettier、ESLint、Ruff、
 - 发布的课程、提示词和图谱版本不原地改写；新内容通过新版本发布。
 - Demo 使用 SQLite 保存媒体和训练数据，公开部署前必须完成数据分级、备份和对象存储改造。
 
-## Milestone 2-0901 已完成与尚未完成
+## Milestone 2-0907 已完成与尚未完成
 
 ### 已完成：可展示闭环
 
@@ -727,7 +802,14 @@ Milestone 2-0901 的统一质量门槛实测结果：Prettier、ESLint、Ruff、
 - 教师：班级总览→学生筛选→学生详情→完整回放→结构化薄弱点与ZPD诊断。
 - 技术员：三 Agent配置与测试→专家 8-Sheet 图谱导入→严格校验→审核→Neo4j发布/回滚。
 - 知识学习：图谱浏览→训练推荐→Markdown/视频/PPTX学习→教师编辑发布。
+- AVG 仿真：模式选择→公共简报→短台词舞台→态势/里程碑证据→刷新恢复→正式评价→教师回放。
 - 工程：RBAC、状态机、迁移、图谱双读、版本绑定、错误恢复、跨平台启动、测试和质量门槛。
+
+### 待单独验收
+
+- 经明确外发授权后运行真实 DeepSeek 十轮仿真联调，并记录首响应、台词就绪和评价就绪延迟。
+- 由用户人工审美检查 `david-lim/v1-draft` 后，决定批准或继续修改；工程透明检查不等于正式美术验收。
+- 在可获得的 Safari/iOS、Android Chrome 真机上验证软键盘、输入焦点和屏幕阅读顺序。
 
 ### 下一阶段：从内测候选版走向可试点产品
 
@@ -765,7 +847,9 @@ Milestone 2-0901 的统一质量门槛实测结果：Prettier、ESLint、Ruff、
 - [知识图谱 Phase 2验收](./docs/manual-testing/knowledge-graph-phase2.md)
 - [教师教学案例DSL文档包](./docs/knowledge-graph/teacher-dsl/README.md)
 - [知识图谱训练消费工单](./docs/work-orders/phase-kg-002-training-consumption.md)
+- [AVG 仿真模式 MVP 工单](./docs/work-orders/avg-simulation-mvp/README.md)
+- [AVG 仿真实施与 QA 记录](./docs/implementation/avg-simulation-mvp/implementation.md)
 
 ---
 
-**Milestone 2-0901 的意义，不是把知识图谱放进系统里，而是让可信知识真正进入学生行动、教师判断和教学复盘。下一阶段所有开发，仍应从可追溯的真实学习证据出发。**
+**Milestone 2-0907 的意义，不是把知识图谱和 AVG 演出堆在一起，而是让可信知识、真实表达、局面变化与教师复盘共享同一条证据链。下一阶段所有开发，仍应从可追溯的真实学习证据出发。**

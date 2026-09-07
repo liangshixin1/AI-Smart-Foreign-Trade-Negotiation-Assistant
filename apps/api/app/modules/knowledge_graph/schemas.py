@@ -194,9 +194,32 @@ class GraphLearningEvidenceResponse(BaseModel):
     knowledge_resource_node_keys: list[str]
     knowledge_point_node_keys: list[str]
     knowledge_type_breakdown: dict[str, int]
+    node_evidence: list[dict[str, object]] = Field(default_factory=list)
     score: float
     evidence_summary: str
     mapping_method: str
+    created_at: datetime
+    node_labels: dict[str, str] = Field(default_factory=dict)
+
+
+class LearningActivityRequest(BaseModel):
+    event_type: Literal["viewed", "completed"]
+    source: Literal["map", "training", "evaluation", "profile"]
+    attempt_id: uuid.UUID | None = None
+    client_event_id: str = Field(min_length=8, max_length=100)
+
+
+class LearningActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    student_id: uuid.UUID
+    graph_version: str
+    node_key: str
+    node_type: str
+    event_type: str
+    source: str
+    attempt_id: uuid.UUID | None
     created_at: datetime
 
 
@@ -216,12 +239,59 @@ class WeakUnitKnowledgeInsight(BaseModel):
     students_using_scaffolds: int
 
 
+class KnowledgeNodeLearningInsight(BaseModel):
+    node_id: str
+    label: str
+    node_type: str
+    knowledge_type: str | None
+    evidence_count: int
+    attempt_count: int
+    student_count: int
+    average_score: float | None
+    needs_attention: bool
+    recommendation_count: int
+    content_view_count: int
+    content_completion_count: int
+    last_activity_at: datetime | None
+
+
+class PhenomenonLearningInsight(BaseModel):
+    node_id: str
+    label: str
+    stage_id: str | None
+    stage_label: str | None
+    evidence_count: int
+    attempt_count: int
+    student_count: int
+    average_score: float | None
+    needs_attention: bool
+    scaffold_reveal_count: int
+    scaffold_use_count: int
+
+
+class StageLearningInsight(BaseModel):
+    node_id: str
+    label: str
+    evidence_count: int
+    attempt_count: int
+    student_count: int
+    average_score: float | None
+    needs_attention: bool
+
+
 class TeacherKnowledgeInsightsResponse(BaseModel):
     scope: Literal["classroom", "student"]
     scope_id: uuid.UUID
     graph_version: str
     completed_attempts: int
     average_score: float | None
+    evidence_rounds: int = 0
+    students_with_evidence: int = 0
+    learning_views: int = 0
+    learning_completions: int = 0
+    stage_insights: list[StageLearningInsight] = Field(default_factory=list)
+    phenomenon_insights: list[PhenomenonLearningInsight] = Field(default_factory=list)
+    knowledge_insights: list[KnowledgeNodeLearningInsight] = Field(default_factory=list)
     weak_units: list[WeakUnitKnowledgeInsight]
 
 

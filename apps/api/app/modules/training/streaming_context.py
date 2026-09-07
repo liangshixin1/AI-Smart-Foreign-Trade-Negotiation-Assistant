@@ -13,6 +13,7 @@ from app.integrations.llm.prompt_renderer import render_prompt
 from app.modules.auth.models import User
 from app.modules.curriculum.models import TrainingUnit
 from app.modules.knowledge_graph.prompt_context import KnowledgeContextProvider
+from app.modules.simulation.repository import SimulationRepository
 from app.modules.training.access import owned_attempt
 from app.modules.training.adaptive_learning import conversation_adaptation
 from app.modules.training.models import Attempt, Message
@@ -28,6 +29,7 @@ class StreamContext:
     assistant_message: Message
     request: LLMRequest | None
     replay: bool
+    generation_owner: str | None = None
 
 
 class StreamContextBuilder:
@@ -45,6 +47,37 @@ class StreamContextBuilder:
                 status_code=409,
             )
         student_message = self.repository.message_by_client_id(attempt.id, data.client_message_id)
+        if student_message is not None and student_message.content != data.content.strip():
+            raise AppError(
+                code="training.message_id_conflict",
+                message="同一消息键不能用于不同内容。",
+                status_code=409,
+            )
+        assistant_message = (
+            self.repository.message_after(attempt.id, student_message.sequence_no)
+            if student_message is not None
+            else None
+        )
+        if assistant_message is not None and assistant_message.status == "completed":
+            assert student_message is not None
+            return StreamContext(
+                attempt,
+                self.repository.unit(attempt.unit_id),
+                student_message,
+                assistant_message,
+                None,
+                True,
+            )
+        generation_owner = None
+        if attempt.experience_mode == "simulation":
+            generation_owner = data.client_message_id
+            if not SimulationRepository(self.db).claim_generation(attempt.id, generation_owner):
+                raise AppError(
+                    code="simulation.generation_in_progress",
+                    message="本训练已有一轮回复正在生成，请稍候恢复。",
+                    status_code=409,
+                    retryable=True,
+                )
         if student_message is None:
             student_message = Message(
                 attempt_id=attempt.id,
@@ -57,16 +90,6 @@ class StreamContextBuilder:
             self.db.add(student_message)
             self.db.commit()
             attempt = owned_attempt(self.repository, student, attempt.id)
-        assistant_message = self.repository.message_after(attempt.id, student_message.sequence_no)
-        if assistant_message is not None and assistant_message.status == "completed":
-            return StreamContext(
-                attempt,
-                self.repository.unit(attempt.unit_id),
-                student_message,
-                assistant_message,
-                None,
-                True,
-            )
         if attempt.scenario is None:
             raise AppError(
                 code="training.scenario_missing",
@@ -102,6 +125,16 @@ class StreamContextBuilder:
             assistant_message.status = "streaming"
             assistant_message.failure_code = None
         self.db.commit()
+        if attempt.experience_mode == "simulation":
+            return StreamContext(
+                attempt,
+                unit,
+                student_message,
+                assistant_message,
+                None,
+                False,
+                generation_owner,
+            )
         bound_version = attempt.content_bindings.get("knowledge_graph_version")
         graph_context = self.knowledge_context.conversation(
             unit, str(bound_version) if bound_version else None

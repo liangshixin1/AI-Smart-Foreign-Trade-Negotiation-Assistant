@@ -18,6 +18,7 @@ from app.modules.assessment.schemas import RubricDimensionSpec
 from app.modules.assessment.structured_evaluation import request_validated_evaluation
 from app.modules.auth.models import User
 from app.modules.progress.models import ProgressRecord
+from app.modules.simulation.profile_service import load_profile_version, load_simulation_prompt
 from app.modules.training.adaptive_learning import final_diagnostic_extension
 from app.modules.training.models import Attempt, Submission
 from app.modules.training.presenter import present_attempt
@@ -64,18 +65,29 @@ class AssessmentService:
             self.repository, attempt
         )
         prompt += diagnostic_instruction
+        prompt_id = unit.evaluation_prompt.prompt_key
+        prompt_version = unit.evaluation_prompt.version
+        if attempt.experience_mode == "simulation":
+            profile = load_profile_version(
+                attempt.content_bindings["simulation_profile_id"],
+                attempt.content_bindings["simulation_profile_version"],
+            )
+            prompt += "\n\n" + load_simulation_prompt("final")
+            prompt_id = profile.final_prompt_id
+            prompt_version = profile.final_prompt_version
         first_message = student_messages[0]
         specs = [RubricDimensionSpec.model_validate(item) for item in unit.rubric.dimensions]
         request = LLMRequest(
             purpose="evaluation",
-            prompt_template_id=unit.evaluation_prompt.prompt_key,
-            prompt_version=unit.evaluation_prompt.version,
+            prompt_template_id=prompt_id,
+            prompt_version=prompt_version,
             correlation_id=str(uuid.uuid4()),
             messages=[LLMMessage(role="system", content=prompt)],
             json_output=True,
             max_output_tokens=8192,
             metadata={
                 "attempt_id": str(attempt.id),
+                "experience_mode": attempt.experience_mode,
                 "evidence_message_id": str(first_message.id),
                 "evidence_quote": first_message.content[:180],
                 "rubric_keys": json.dumps([item.key for item in specs]),
@@ -123,8 +135,8 @@ class AssessmentService:
             learning_diagnostic=learning_diagnostic.model_dump(mode="json"),
             provider=response.provider,
             model_name=response.model,
-            prompt_template_id=unit.evaluation_prompt.prompt_key,
-            prompt_version=unit.evaluation_prompt.version,
+            prompt_template_id=prompt_id,
+            prompt_version=prompt_version,
             raw_output_reference=f"llm-invocation:{correlation_id}",
         )
         for dimension in candidate.dimensions:
@@ -174,4 +186,5 @@ class AssessmentService:
             unit,
             evaluation,
             self.repository.round_evaluations(attempt.id),
+            self.repository,
         )

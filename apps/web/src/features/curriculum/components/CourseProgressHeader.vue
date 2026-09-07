@@ -36,7 +36,9 @@ const completionRate = computed(() =>
   align-items: end;
   justify-content: space-between;
   gap: var(--space-6);
-  padding: var(--space-2) 0 var(--space-8);
+  padding: 28px 28px 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -63,13 +65,16 @@ h2 {
 
 .numbers strong {
   color: var(--color-primary);
-  font-size: 1.5rem;
+  font-size: 2.8rem;
+  font-weight: 550;
+  letter-spacing: -0.05em;
+  line-height: 1.1;
 }
 .progress-track {
   position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
+  right: 28px;
+  bottom: 16px;
+  left: 28px;
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
@@ -81,5 +86,28 @@ h2 {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--color-primary), #4ca67f);
   transition: width 420ms ease;
+}
+@media (max-width: 640px) {
+  .progress {
+    align-items: flex-start;
+    padding: 20px 20px 32px;
+    gap: 18px;
+  }
+  h2 {
+    font-size: 17px;
+  }
+  .numbers {
+    flex-shrink: 0;
+  }
+  .numbers strong {
+    font-size: 30px;
+  }
+  .numbers span {
+    font-size: 10px;
+  }
+  .progress-track {
+    left: 20px;
+    right: 20px;
+  }
 }
 </style>

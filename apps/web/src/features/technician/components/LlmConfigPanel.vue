@@ -122,6 +122,7 @@ onMounted(load)
 <style scoped>
 .llm-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   padding: clamp(1rem, 2.5vw, 2rem);
   border: 1px solid var(--color-border);
@@ -144,6 +145,7 @@ p {
 }
 .config {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   max-width: 860px;
 }
@@ -165,8 +167,10 @@ button {
   gap: var(--space-3);
 }
 fieldset {
+  min-inline-size: 0;
+  border-radius: var(--radius-sm);
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--color-border);
@@ -185,7 +189,7 @@ legend span {
 @media (max-width: 700px) {
   fieldset,
   .row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

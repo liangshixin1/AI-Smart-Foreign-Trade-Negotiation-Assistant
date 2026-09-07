@@ -17,14 +17,8 @@
           <span>{{ statusLabel(item.status) }} · {{ formatDate(item.updated_at) }}</span>
         </div>
         <b v-if="item.overall_score !== null">{{ Math.round(item.overall_score) }} 分</b>
-        <RouterLink
-          :to="
-            item.status === 'completed'
-              ? `/student/attempts/${item.id}/evaluation`
-              : `/student/attempts/${item.id}`
-          "
-        >
-          {{ item.status === 'completed' ? '查看评价' : '继续训练' }}
+        <RouterLink :to="attemptTarget(item)">
+          {{ attemptAction(item.status) }}
         </RouterLink>
       </li>
     </ul>
@@ -33,15 +27,29 @@
 
 <script setup lang="ts">
 import { useAttemptHistory } from '../composables/useAttemptHistory'
-import type { AttemptStatus } from '../types'
+import type { AttemptHistoryItem, AttemptStatus } from '../types'
 
 const { items, loading, error, reload } = useAttemptHistory()
 
 function statusLabel(status: AttemptStatus): string {
   if (status === 'completed') return '已完成'
+  if (status === 'generating_scenario') return '场景生成中'
+  if (status === 'generation_failed') return '场景生成失败'
   if (status === 'evaluation_failed') return '评价待重试'
   if (status === 'evaluating' || status === 'submitted') return '评价中'
   return '进行中'
+}
+
+function attemptTarget(item: AttemptHistoryItem): string {
+  if (item.status === 'completed') return `/student/attempts/${item.id}/evaluation`
+  if (item.status === 'generation_failed') return `/student/units/${item.unit_id}`
+  return `/student/attempts/${item.id}`
+}
+
+function attemptAction(status: AttemptStatus): string {
+  if (status === 'completed') return '查看评价'
+  if (status === 'generation_failed') return '重新开始'
+  return '继续训练'
 }
 
 function formatDate(value: string): string {

@@ -42,6 +42,12 @@ class ConversationService:
             attempt.id, data.client_message_id
         )
         if existing_student_message:
+            if existing_student_message.content != data.content.strip():
+                raise AppError(
+                    code="training.message_id_conflict",
+                    message="同一消息键不能用于不同内容。",
+                    status_code=409,
+                )
             unit = self.repository.unit(attempt.unit_id)
             assistant_message = self.repository.message_after(
                 attempt.id, existing_student_message.sequence_no
@@ -144,6 +150,7 @@ class ConversationService:
             model_name=response.model,
         )
         self.db.add(assistant_message)
+        attempt.conversation_revision += 1
         self.db.commit()
         refreshed = owned_attempt(self.repository, student, attempt.id)
         self._evaluate_round(refreshed, unit, student_message, assistant_message)

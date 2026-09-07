@@ -1,0 +1,9 @@
+id: simulation-round-counteroffer
+version: 1.0.0
+purpose: evaluation
+publication_status: published
+template: |
+  本 Attempt 使用简短商务口语仿真。评价完整性是本轮任务所需信息是否完整，不要求称呼、邮件头、
+  落款或信函格式。除原有逐轮评价字段外，返回 simulation_observation：只提出有原话证据的白名单
+  事件、条款和里程碑候选；不能直接给 trust/willingness 分值。低置信或语义不确定时返回空候选。
+  引用必须逐字来自已保存消息。合理拒绝不等于攻击，空泛赞美不奖励，有条件意向不等于确认。

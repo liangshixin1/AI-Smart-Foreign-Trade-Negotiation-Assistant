@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.integrations.knowledge_graph.base import GraphStore
 from app.integrations.llm.base import LLMProvider
 from app.modules.auth.models import User
+from app.modules.simulation.conversation_service import SimulationConversationService
 from app.modules.training.access import owned_attempt
 from app.modules.training.attempt_creation_service import AttemptCreationService
 from app.modules.training.conversation_service import ConversationService
@@ -20,15 +21,24 @@ from app.modules.training.submission_service import SubmissionService
 class TrainingService:
     """Small facade that exposes the training use cases to the route layer."""
 
-    def __init__(self, db: Session, provider: LLMProvider, graph_store: GraphStore) -> None:
+    def __init__(
+        self,
+        db: Session,
+        provider: LLMProvider,
+        graph_store: GraphStore,
+        simulation_enabled: bool = False,
+    ) -> None:
         self.db = db
         self.repository = TrainingRepository(db)
-        self.creation = AttemptCreationService(db, provider, graph_store)
+        self.creation = AttemptCreationService(db, provider, graph_store, simulation_enabled)
         self.conversation = ConversationService(db, provider, graph_store)
+        self.simulation_conversation = SimulationConversationService(db, provider, graph_store)
         self.submission = SubmissionService(db)
 
-    def create_attempt(self, student: User, data: CreateAttemptRequest) -> AttemptResponse:
-        return self.creation.create(student, data)
+    def create_attempt(
+        self, student: User, data: CreateAttemptRequest, idempotency_key: str | None = None
+    ) -> AttemptResponse:
+        return self.creation.create(student, data, idempotency_key)
 
     def get_attempt(self, student: User, attempt_id: uuid.UUID) -> AttemptResponse:
         attempt = owned_attempt(self.repository, student, attempt_id)
@@ -44,6 +54,9 @@ class TrainingService:
     def send_message(
         self, student: User, attempt_id: uuid.UUID, data: MessageRequest
     ) -> AttemptResponse:
+        attempt = owned_attempt(self.repository, student, attempt_id)
+        if attempt.experience_mode == "simulation":
+            return self.simulation_conversation.send(student, attempt_id, data)
         return self.conversation.send(student, attempt_id, data)
 
     def begin_submission(

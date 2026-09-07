@@ -128,7 +128,7 @@ def run() -> None:
         node_count = int(graph["node_count"])
         edge_count = int(graph["edge_count"])
         # 教师图投影一级主题、训练场景、现象、知识资源和策略战术。
-        if node_count != 213 or edge_count != 384:
+        if node_count != 213 or edge_count != 436:
             raise RuntimeError(
                 "Neo4j graph is unexpectedly small after the full-course import."
             )

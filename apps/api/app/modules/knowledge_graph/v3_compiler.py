@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 from app.modules.knowledge_graph.compiler import GraphBuilder
@@ -9,7 +9,7 @@ from app.modules.knowledge_graph.schemas import CompiledGraph
 from app.modules.knowledge_graph.types import ParsedWorkbookData
 from app.modules.knowledge_graph.v3_extensions import V3_SCENARIOS
 
-COMPILER_VERSION_V3 = "expert-fact-compiler/3.0"
+COMPILER_VERSION_V3 = "expert-fact-compiler/3.1"
 
 
 def load_translation_payload() -> dict[str, list[dict[str, object]]]:
@@ -44,7 +44,6 @@ def compile_expert_workbook_v3(
     stages: dict[str, str] = {}
     phenomena: dict[str, str] = {}
     knowledge: dict[str, str] = {}
-    phenomena_by_stage: dict[str, list[str]] = defaultdict(list)
 
     for row in data.sheets["01_L1_Stages"]:
         identifier = str(row["Stage ID"])
@@ -64,7 +63,6 @@ def compile_expert_workbook_v3(
             "StageID": identifier,
             "StageNameEN": row["Stage name"],
             "StageNameZH": zh["name_zh"],
-            "ShortNameZH": zh["short_name_zh"],
             "DescriptionEN": row["Description"],
             "DescriptionZH": zh["description_zh"],
             "OBETeachingOutcomeEN": row["OBE teaching outcome"],
@@ -85,7 +83,6 @@ def compile_expert_workbook_v3(
             "StageID": stage_id,
             "PhenomenonNameEN": row["Phenomenon (business problem)"],
             "PhenomenonNameZH": zh["name_zh"],
-            "ShortNameZH": zh["short_name_zh"],
             "DescriptionEN": row["Brief description"],
             "DescriptionZH": zh["description_zh"],
             "translation_status": "reviewed",
@@ -94,7 +91,6 @@ def compile_expert_workbook_v3(
             f"phenomenon:{identifier}", "Phenomenon", properties, "02_L2_Phenomena", row
         )
         phenomena[identifier] = key
-        phenomena_by_stage[stage_id].append(identifier)
         builder.relation(stages[stage_id], "CONTAINS_PHENOMENON", key)
 
     for row in data.sheets["03_L3_Knowledge"]:
@@ -108,7 +104,6 @@ def compile_expert_workbook_v3(
             "HomeStageID": row["Home stage ID"],
             "KnowledgeNameEN": row["Name"],
             "KnowledgeNameZH": zh["name_zh"],
-            "ShortNameZH": zh["short_name_zh"],
             "DefinitionEN": row["Definition"],
             "DefinitionZH": zh["definition_zh"],
             "translation_status": "reviewed",
@@ -157,12 +152,26 @@ def compile_expert_workbook_v3(
         )
         scenario_keys[scenario_id] = key
         builder.relation(stages[stage_id], "CONTAINS_SCENARIO", key)
+        for phenomenon_id in scenario["phenomenon_ids"]:
+            if phenomenon_id not in phenomena:
+                raise ValueError(
+                    f"Scenario {scenario_id} references unknown phenomenon {phenomenon_id}."
+                )
+            builder.relation(
+                key,
+                "FOCUSES_ON",
+                phenomena[phenomenon_id],
+                {
+                    "mapping_source": "platform_extension",
+                    "mapping_method": "scenario_curated",
+                },
+            )
 
     # 分级线索是平台教学层: 每个现象提供先诊断、后行动两级提示。
     for phenomenon_id, phenomenon_key in phenomena.items():
         phenomenon_zh = translations["phenomena"][phenomenon_id]
         for level, content in (
-            ("一级", f"先判断当前话语是否体现“{phenomenon_zh['short_name_zh']}”，并找出依据。"),
+            ("一级", f"先判断当前话语是否体现“{phenomenon_zh['name_zh']}”，并找出依据。"),
             ("二级", "从右侧知识点中选择一个可执行原则，把它转化为下一句谈判表达。"),
         ):
             scaffold_id = f"{phenomenon_id}-L{1 if level == '一级' else 2}"
@@ -188,7 +197,7 @@ def compile_expert_workbook_v3(
     preview: list[dict[str, object]] = []
     for scenario in V3_SCENARIOS:
         stage_id = scenario["stage_id"]
-        phenomenon_ids = set(phenomena_by_stage[stage_id])
+        phenomenon_ids = set(scenario["phenomenon_ids"])
         linked_ids = {
             str(row["Knowledge ID"])
             for row in edge_rows
@@ -233,7 +242,10 @@ def compile_expert_workbook_v3(
             + len(scenario_keys)
             + len(phenomena)
             + len(knowledge),
-            "teacher_edge_count": len(phenomena) + len(edge_rows) + len(scenario_keys),
+            "teacher_edge_count": len(phenomena)
+            + len(edge_rows)
+            + len(scenario_keys)
+            + sum(len(scenario["phenomenon_ids"]) for scenario in V3_SCENARIOS),
             "new_node_count": sum(node["change_type"] == "new" for node in nodes),
             "reused_node_count": sum(node["change_type"] == "reused" for node in nodes),
             "conflict_count": 0,

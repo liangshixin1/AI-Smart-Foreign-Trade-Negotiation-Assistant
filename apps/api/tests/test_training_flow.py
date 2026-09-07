@@ -66,6 +66,31 @@ class FirstEvaluationInvalidProvider:
                 )
         return self.delegate.complete(request)
 
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
+        yield from self.delegate.stream(request)
+
+
+class FirstScenarioInvalidProvider:
+    def __init__(self) -> None:
+        self.delegate = MockLLMProvider()
+        self.scenario_calls = 0
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        if request.purpose == "scenario":
+            self.scenario_calls += 1
+            if self.scenario_calls == 1:
+                return LLMResponse(
+                    provider="test",
+                    model="scenario-repair-test-model",
+                    content="not-json",
+                    finish_reason="stop",
+                    usage=LLMUsage(),
+                )
+        return self.delegate.complete(request)
+
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
+        yield from self.delegate.stream(request)
+
 
 class CapturingAdaptiveProvider(MockLLMProvider):
     def __init__(self) -> None:
@@ -320,6 +345,24 @@ def test_scenario_failure_enters_explicit_failed_state(
         assert db.scalar(select(func.count()).select_from(ScenarioSnapshot)) == 0
 
 
+def test_scenario_repairs_one_invalid_structured_response(
+    client: TestClient, curriculum_enrollment: None
+) -> None:
+    del curriculum_enrollment
+    provider = FirstScenarioInvalidProvider()
+    client.app.state.llm_provider = provider
+
+    response = client.post(
+        "/api/v1/attempts",
+        headers=student_headers(client),
+        json={"unit_id": "chapter-0-section-1", "difficulty": "standard"},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "in_progress"
+    assert provider.scenario_calls == 2
+
+
 def test_conversation_failure_preserves_student_message(
     client: TestClient,
     curriculum_enrollment: None,
@@ -405,6 +448,38 @@ def test_evaluation_repairs_one_invalid_structured_response(
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "completed"
     assert provider.evaluation_calls == 2
+
+
+def test_round_evaluation_repairs_one_invalid_structured_response(
+    client: TestClient,
+    curriculum_enrollment: None,
+    session_factory: sessionmaker[Session],
+) -> None:
+    del curriculum_enrollment
+    provider = FirstEvaluationInvalidProvider()
+    client.app.state.llm_provider = provider
+    headers = student_headers(client)
+    created = client.post(
+        "/api/v1/attempts",
+        headers=headers,
+        json={"unit_id": "chapter-0-section-1", "difficulty": "standard"},
+    ).json()
+    with client.stream(
+        "POST",
+        f"/api/v1/attempts/{created['id']}/messages/stream",
+        headers=headers,
+        json={
+            "client_message_id": "round-repair-0001",
+            "content": "Could you offer USD 278 if we increase the order?",
+        },
+    ) as response:
+        events = "".join(response.iter_text())
+    assert response.status_code == 200
+    assert "event: round_evaluation.completed" in events
+    assert "event: round_evaluation.failed" not in events
+    assert provider.evaluation_calls == 2
+    with session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(RoundEvaluation)) == 1
 
 
 def test_draft_is_saved_restored_and_frozen_after_submission(

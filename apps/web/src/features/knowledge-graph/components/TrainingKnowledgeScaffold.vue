@@ -205,10 +205,14 @@ function knowledgeTypeLabel(node: KnowledgeGraphNode): string {
   return labels[node.knowledge_type ?? ''] ?? propertyText(node, 'resource_type', '知识资源')
 }
 
-function learningRoute(nodeId: string): { path: string; query: { returnTo: string } } {
+function learningRoute(nodeId: string) {
   return {
     path: `/student/knowledge/${encodeURIComponent(nodeId)}`,
-    query: { returnTo: route.fullPath },
+    query: {
+      returnTo: route.fullPath,
+      source: 'training',
+      attemptId: String(route.params.attemptId),
+    },
   }
 }
 </script>

@@ -143,6 +143,11 @@ def test_student_scaffolds_are_progressive_idempotent_and_version_pinned(
     assert payload["phenomena"] and payload["strategies"] and payload["knowledge_resources"]
     assert all(item["content"] is None for item in payload["scaffolds"])
     first = payload["scaffolds"][0]
+    bound_graph = client.get(
+        f"/api/v1/knowledge-graph/student/attempts/{attempt_id}/graph", headers=headers
+    )
+    assert bound_graph.status_code == 200, bound_graph.text
+    assert bound_graph.json()["graph_version"] == publication["graph_version"]
 
     event = {
         "node_id": first["id"],
@@ -271,6 +276,11 @@ def test_teacher_graph_prompt_boundaries_and_learning_evidence(
     replay = client.get(f"/api/v1/teacher/attempts/{attempt_id}", headers=teacher)
     assert replay.status_code == 200, replay.text
     assert replay.json()["graph_learning_evidence"][0]["mapping_method"] == "unit_scope_inferred"
+    bound_graph = client.get(
+        f"/api/v1/knowledge-graph/teacher/attempts/{attempt_id}/graph", headers=teacher
+    )
+    assert bound_graph.status_code == 200, bound_graph.text
+    assert bound_graph.json()["graph_version"] == publication["graph_version"]
 
 
 def test_classroom_insights_exclude_attempts_from_historical_course_versions(
@@ -338,3 +348,58 @@ def test_classroom_insights_exclude_attempts_from_historical_course_versions(
     assert payload["completed_attempts"] == 1
     assert payload["average_score"] == 82.0
     assert payload["weak_units"][0]["attempt_count"] == 1
+
+
+def test_student_learning_activity_is_idempotent_and_visible_in_profile(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    curriculum_enrollment: None,
+    users: dict[str, object],
+) -> None:
+    del curriculum_enrollment
+    publication = _publish(client)
+    student_id = users["student"].id  # type: ignore[attr-defined]
+    attempt_id, _ = _attempt_for_graph(
+        session_factory, student_id, str(publication["graph_version"])
+    )
+    headers = auth_header(login(client, "student")["access_token"])
+    scaffold = client.get(
+        f"/api/v1/knowledge-graph/student/attempts/{attempt_id}/scaffolds", headers=headers
+    ).json()
+    node_id = scaffold["knowledge_resources"][0]["id"]
+    endpoint = f"/api/v1/knowledge-graph/student/content/{node_id}/activities"
+    viewed = {
+        "event_type": "viewed",
+        "source": "training",
+        "attempt_id": str(attempt_id),
+        "client_event_id": "learning-view-0001",
+    }
+    created = client.post(endpoint, headers=headers, json=viewed)
+    replay = client.post(endpoint, headers=headers, json=viewed)
+    assert created.status_code == 201, created.text
+    assert replay.json()["id"] == created.json()["id"]
+    teacher_headers = auth_header(login(client, "teacher")["access_token"])
+    forbidden = client.post(endpoint, headers=teacher_headers, json=viewed)
+    assert forbidden.status_code == 403
+
+    completed = client.post(
+        endpoint,
+        headers=headers,
+        json={**viewed, "event_type": "completed", "client_event_id": "learning-done-0001"},
+    )
+    repeated = client.post(
+        endpoint,
+        headers=headers,
+        json={**viewed, "event_type": "completed", "client_event_id": "learning-done-0002"},
+    )
+    assert completed.status_code == 201
+    assert repeated.json()["id"] == completed.json()["id"]
+
+    profile = client.get("/api/v1/knowledge-graph/student/me/insights", headers=headers)
+    assert profile.status_code == 200, profile.text
+    payload = profile.json()
+    assert payload["learning_views"] == 1
+    assert payload["learning_completions"] == 1
+    learned = next(item for item in payload["knowledge_insights"] if item["node_id"] == node_id)
+    assert learned["content_view_count"] == 1
+    assert learned["content_completion_count"] == 1

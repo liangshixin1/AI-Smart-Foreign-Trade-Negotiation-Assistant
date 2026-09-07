@@ -17,6 +17,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.curriculum.router import router as curriculum_router
 from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.progress.router import router as progress_router
+from app.modules.simulation.router import student_router as simulation_student_router
+from app.modules.simulation.router import teacher_router as simulation_teacher_router
 from app.modules.teacher_analytics.router import router as teacher_router
 from app.modules.technician.router import router as technician_router
 from app.modules.training.router import router as training_router
@@ -79,8 +81,10 @@ def create_app(
     application.include_router(curriculum_router)
     application.include_router(knowledge_graph_router)
     application.include_router(training_router)
+    application.include_router(simulation_student_router)
     application.include_router(progress_router)
     application.include_router(teacher_router)
+    application.include_router(simulation_teacher_router)
     application.include_router(technician_router)
     application.include_router(workspaces_router)
     register_error_handlers(application)

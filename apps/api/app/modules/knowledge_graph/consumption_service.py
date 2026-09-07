@@ -12,6 +12,7 @@ from app.integrations.knowledge_graph.base import GraphStore, StoredGraph
 from app.modules.assessment.models import Evaluation
 from app.modules.classrooms.models import Classroom, Enrollment
 from app.modules.curriculum.models import TrainingUnit
+from app.modules.knowledge_graph.display_labels import LABEL_FIELDS, base_display_label
 from app.modules.knowledge_graph.models import (
     KnowledgeNodeDisplayOverride,
     KnowledgeScaffoldInteraction,
@@ -42,33 +43,6 @@ TEACHER_VISIBLE_NODE_TYPES = KNOWLEDGE_NODE_TYPES | {
     "Phenomenon",
     "NegotiationStrategy",
 }
-LABEL_FIELDS = (
-    "StageNameZH",
-    "PhenomenonNameZH",
-    "ResourceNameZH",
-    "StrategyNameZH",
-    "KnowledgeNameZH",
-    "Title",
-    "ResourceName",
-    "StrategyName",
-    "TeacherRecognitionPoint",
-    "ScenarioName",
-    "标题（必填）",
-    "策略名称（必填）",
-    "教师希望学生识别什么（必填）",
-    "案例名称（必填）",
-    "name",
-    "StageNameEN",
-    "PhenomenonNameEN",
-    "ResourceNameEN",
-    "StrategyNameEN",
-    "KnowledgeNameEN",
-)
-SHORT_LABEL_FIELDS = (
-    "ShortNameZH",
-    "中文短名称",
-    "中文短名",
-)
 
 
 class KnowledgeGraphConsumptionService:
@@ -83,6 +57,42 @@ class KnowledgeGraphConsumptionService:
 
     def student_graph(self) -> GraphViewResponse:
         return self.teacher_graph()
+
+    def student_attempt_graph(
+        self, student_id: uuid.UUID, attempt_id: uuid.UUID
+    ) -> GraphViewResponse:
+        attempt = self.db.scalar(
+            select(Attempt).where(Attempt.id == attempt_id, Attempt.student_id == student_id)
+        )
+        if attempt is None:
+            raise AppError(
+                code="training.attempt_not_found",
+                message="训练记录不存在或无权访问。",
+                status_code=404,
+            )
+        return self._view(self._graph_for_attempt(attempt), TEACHER_VISIBLE_NODE_TYPES)
+
+    def teacher_attempt_graph(
+        self, teacher_id: uuid.UUID, attempt_id: uuid.UUID
+    ) -> GraphViewResponse:
+        attempt = self.db.scalar(
+            select(Attempt)
+            .join(Enrollment, Enrollment.student_id == Attempt.student_id)
+            .join(Classroom, Classroom.id == Enrollment.classroom_id)
+            .where(
+                Attempt.id == attempt_id,
+                Classroom.owner_teacher_id == teacher_id,
+                Classroom.status == "active",
+                Enrollment.status == "active",
+            )
+        )
+        if attempt is None:
+            raise AppError(
+                code="teacher.attempt_not_found",
+                message="训练记录不存在或无权查看。",
+                status_code=404,
+            )
+        return self._view(self._graph_for_attempt(attempt), TEACHER_VISIBLE_NODE_TYPES)
 
     def classroom_insights(
         self, teacher_id: uuid.UUID, classroom_id: uuid.UUID
@@ -293,7 +303,9 @@ class KnowledgeGraphConsumptionService:
             for item in graph.relationships
             if item.get("source") in stage_ids and item.get("type") == "CONTAINS_PHENOMENON"
         }
-        phenomena = direct_phenomena | stage_phenomena
+        # 3.1 起优先使用课程专家共同校准的场景级映射。阶段范围仅用于兼容旧图谱。
+        # 避免一个关卡错误召回同阶段所有教学现象。
+        phenomena = direct_phenomena if direct_phenomena else stage_phenomena
         resources = {
             str(item["source"])
             for item in graph.relationships
@@ -432,14 +444,7 @@ class KnowledgeGraphConsumptionService:
             (str(normalized[key]) for key in LABEL_FIELDS if normalized.get(key)),
             str(item["stable_key"]),
         )
-        short_label = (
-            override.short_name_zh
-            if override
-            else next(
-                (str(normalized[key]) for key in SHORT_LABEL_FIELDS if normalized.get(key)),
-                label,
-            )
-        )
+        short_label = override.short_name_zh if override else base_display_label(normalized, label)
         return GraphNodeResponse(
             id=str(item["stable_key"]),
             type=str(item["type"]),

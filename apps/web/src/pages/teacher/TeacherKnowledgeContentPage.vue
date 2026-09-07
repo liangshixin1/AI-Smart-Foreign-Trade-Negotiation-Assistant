@@ -50,6 +50,7 @@
         ><span class="sr-only">理论精讲（Markdown）</span
         ><textarea v-model="form.markdown_body" rows="22" required />
       </label>
+      <KnowledgeNodeContextGraph :node-id="content.node_id" audience="teacher" />
       <footer>
         <select v-model="form.status" aria-label="发布状态">
           <option value="draft">保存为草稿</option>
@@ -73,6 +74,7 @@ import { useRoute } from 'vue-router'
 import RoleWorkspaceLayout from '@/app/layouts/RoleWorkspaceLayout.vue'
 import LearningAssetUploader from '@/features/knowledge-graph/components/LearningAssetUploader.vue'
 import LearningMediaGallery from '@/features/knowledge-graph/components/LearningMediaGallery.vue'
+import KnowledgeNodeContextGraph from '@/features/knowledge-graph/components/KnowledgeNodeContextGraph.vue'
 import { useTeacherLearningContent } from '@/features/knowledge-graph/composables/useLearningContent'
 
 const route = useRoute()

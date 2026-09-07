@@ -1,4 +1,4 @@
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, shallowRef } from 'vue'
 
 import { useAuthStore } from '@/features/auth/stores/auth'
 import { ApiError } from '@/shared/api/http'
@@ -23,7 +23,9 @@ export function useAttempt(attemptId: string) {
   const submitting = ref(false)
   const error = ref<string | null>(null)
   const { draft, autosaveState, hydrateDraft } = useAttemptDraft(attemptId, attempt)
-  const pendingMessage = ref<{ content: string; id: string } | null>(null)
+  const pendingStorageKey = `training:pending-message:${attemptId}`
+  const pendingMessage = ref<{ content: string; id: string } | null>(readPendingMessage())
+  const latestStreamEvent = shallowRef<TrainingStreamEvent | null>(null)
 
   async function reload(): Promise<void> {
     if (!auth.accessToken) return
@@ -50,6 +52,7 @@ export function useAttempt(attemptId: string) {
         ? pendingMessage.value.id
         : createClientId('message')
     pendingMessage.value = { content, id: clientId }
+    savePendingMessage(pendingMessage.value)
     let messageCompleted = false
     try {
       messageCompleted = await streamAttemptMessage(
@@ -60,7 +63,10 @@ export function useAttempt(attemptId: string) {
           applyStreamEvent(event, content)
         },
       )
-      if (messageCompleted) pendingMessage.value = null
+      if (messageCompleted) {
+        pendingMessage.value = null
+        clearPendingMessage()
+      }
       if (messageCompleted) draft.value = ''
       return messageCompleted
     } catch (caught: unknown) {
@@ -73,6 +79,7 @@ export function useAttempt(attemptId: string) {
   }
 
   function applyStreamEvent(event: TrainingStreamEvent, studentContent: string): void {
+    latestStreamEvent.value = event
     if (!attempt.value) return
     // SSE 事件只增量更新当前 Attempt；刷新后仍以服务端持久化记录重新水合。
     if (event.type === 'message.started') {
@@ -124,6 +131,43 @@ export function useAttempt(attemptId: string) {
 
   function findMessage(messageId: string): TrainingMessage | undefined {
     return attempt.value?.messages.find((item) => item.id === messageId)
+  }
+
+  function readPendingMessage(): { content: string; id: string } | null {
+    try {
+      const raw = localStorage.getItem(pendingStorageKey)
+      if (!raw) return null
+      const parsed: unknown = JSON.parse(raw)
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'content' in parsed &&
+        typeof parsed.content === 'string' &&
+        'id' in parsed &&
+        typeof parsed.id === 'string'
+      ) {
+        return { content: parsed.content, id: parsed.id }
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
+
+  function savePendingMessage(value: { content: string; id: string }): void {
+    try {
+      localStorage.setItem(pendingStorageKey, JSON.stringify(value))
+    } catch {
+      // Draft persistence and server reconciliation remain available without storage.
+    }
+  }
+
+  function clearPendingMessage(): void {
+    try {
+      localStorage.removeItem(pendingStorageKey)
+    } catch {
+      // Nothing else to clear.
+    }
   }
 
   async function submit(): Promise<boolean> {
@@ -182,6 +226,7 @@ export function useAttempt(attemptId: string) {
     sending,
     submitting,
     error,
+    latestStreamEvent,
     reload,
     send,
     submit,

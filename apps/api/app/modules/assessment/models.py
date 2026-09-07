@@ -98,6 +98,7 @@ class RoundEvaluation(Base):
     checklist_results: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     recommendations: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     learning_diagnostic: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    simulation_observation: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     provider: Mapped[str] = mapped_column(String(40))
     model_name: Mapped[str] = mapped_column(String(120))
     prompt_template_id: Mapped[str] = mapped_column(String(120))

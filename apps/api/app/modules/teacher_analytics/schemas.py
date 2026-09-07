@@ -10,6 +10,7 @@ from app.modules.knowledge_graph.schemas import (
     GraphLearningEvidenceResponse,
     ScaffoldInteractionResponse,
 )
+from app.modules.simulation.schemas import SimulationResponse
 from app.modules.training.schemas import AttemptResponse
 
 
@@ -73,6 +74,7 @@ class AttemptSummary(BaseModel):
     unit_id: str
     unit_title: str
     status: str
+    experience_mode: str
     overall_score: float | None
     created_at: datetime
     completed_at: datetime | None
@@ -111,6 +113,7 @@ class AttemptReplay(BaseModel):
     graph_learning_evidence: list[GraphLearningEvidenceResponse]
     round_learning_diagnostics: list[RoundLearningDiagnostic]
     final_learning_diagnostic: LearningDiagnosticCandidate | None
+    simulation: SimulationResponse | None = None
 
 
 class RoundLearningDiagnostic(BaseModel):

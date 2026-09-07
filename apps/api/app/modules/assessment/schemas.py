@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.modules.simulation.schemas import SimulationObservationCandidate
+
 DiagnosticDimensionKey = Literal[
     "domain_knowledge",
     "language_control",
@@ -114,6 +116,15 @@ class GraphRecommendationCandidate(BaseModel):
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(min_length=1, max_length=300)
     reveal_level: int = Field(default=1, ge=1, le=3)
+    application_state: Literal[
+        "applied_correctly",
+        "applied_partially",
+        "misapplied",
+        "recalled_unused",
+        "missed_required",
+        "recommended_next",
+    ] = "recommended_next"
+    evidence_excerpt: str = Field(default="", max_length=240)
 
 
 class RoundEvaluationCandidate(BaseModel):
@@ -130,3 +141,4 @@ class RoundEvaluationCandidate(BaseModel):
         default_factory=list, max_length=3
     )
     learning_diagnostic: LearningDiagnosticCandidate
+    simulation_observation: SimulationObservationCandidate | None = None

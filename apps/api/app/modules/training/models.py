@@ -3,7 +3,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -12,6 +22,9 @@ from app.db.types import utc_now
 
 class Attempt(Base):
     __tablename__ = "attempts"
+    __table_args__ = (
+        CheckConstraint("experience_mode IN ('chat', 'simulation')", name="ck_attempt_mode"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
@@ -20,6 +33,8 @@ class Attempt(Base):
     retry_of_attempt_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("attempts.id"))
     status: Mapped[str] = mapped_column(String(32), index=True)
     difficulty: Mapped[str] = mapped_column(String(32))
+    experience_mode: Mapped[str] = mapped_column(String(20), default="chat")
+    conversation_revision: Mapped[int] = mapped_column(Integer, default=0)
     content_bindings: Mapped[dict[str, str]] = mapped_column(JSON)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -15,6 +15,7 @@ from app.modules.assessment.models import RoundEvaluation
 from app.modules.assessment.round_service import RoundAssessmentService
 from app.modules.auth.models import User
 from app.modules.knowledge_graph.learning_evidence_service import GraphLearningEvidenceService
+from app.modules.simulation.turn_service import SimulationTurnService
 from app.modules.training.invocations import stream_and_record
 from app.modules.training.repository import TrainingRepository
 from app.modules.training.schemas import MessageRequest
@@ -62,6 +63,9 @@ class StreamingConversationService:
                 "student_message_id": str(context.student_message.id),
             },
         )
+        if context.attempt.experience_mode == "simulation":
+            yield from self._simulation_events(context)
+            return
         if context.replay:
             yield from self._replay(context)
             return
@@ -126,6 +130,12 @@ class StreamingConversationService:
             )
         except (LLMProviderError, ValueError) as exc:
             category = exc.category if isinstance(exc, LLMProviderError) else "invalid_round"
+            logger.warning(
+                "Round evaluation failed attempt_id=%s assistant_message_id=%s category=%s",
+                context.attempt.id,
+                assistant.id,
+                category,
+            )
             yield sse_event(
                 "round_evaluation.failed",
                 {
@@ -139,6 +149,67 @@ class StreamingConversationService:
             self._record_graph_evidence(context, evaluation)
             yield sse_event("round_evaluation.completed", _round_payload(evaluation))
         yield sse_event("stream.closed", {"status": "completed"})
+
+    def _simulation_events(self, context: StreamContext) -> Iterator[str]:
+        service = SimulationTurnService(self.db, self.provider, self.graph_store)
+        yield sse_event(
+            "simulation.turn.preparing",
+            {
+                "message_id": str(context.assistant_message.id),
+                "phase": "generating" if not context.replay else "restoring",
+            },
+        )
+        try:
+            presentation = service.generate(context)
+        except (AppError, LLMProviderError, ValueError) as exc:
+            if not context.replay:
+                service.fail(context, exc)
+            category = (
+                exc.category if isinstance(exc, LLMProviderError) else "invalid_simulation_turn"
+            )
+            yield sse_event(
+                "message.failed",
+                {
+                    "message_id": str(context.assistant_message.id),
+                    "code": category,
+                    "message": "学生消息已保存，仿真回复暂未完成，可安全重试。",
+                    "retryable": True,
+                },
+            )
+            yield sse_event("stream.closed", {"status": "failed"})
+            return
+        yield sse_event("simulation.turn.ready", presentation.model_dump(mode="json"))
+        yield sse_event(
+            "message.completed",
+            {
+                "message_id": str(context.assistant_message.id),
+                "content": presentation.canonical_content,
+                "conversation_revision": presentation.conversation_revision,
+            },
+        )
+        yield sse_event(
+            "round_evaluation.started",
+            {"assistant_message_id": str(context.assistant_message.id)},
+        )
+        analysis = service.analyze(context)
+        if analysis.evaluation is not None:
+            yield sse_event("round_evaluation.completed", _round_payload(analysis.evaluation))
+        if analysis.state is not None:
+            yield sse_event("simulation.state.updated", analysis.state.model_dump(mode="json"))
+            yield sse_event(
+                "stream.closed", {"status": "replayed" if context.replay else "completed"}
+            )
+            return
+        yield sse_event(
+            "simulation.state.failed",
+            {
+                "assistant_message_id": str(context.assistant_message.id),
+                "code": analysis.error_category or "invalid_round",
+                "message": "台词已保存，本轮态势暂未更新，可稍后单独重试。",
+                "retryable": True,
+            },
+        )
+        yield sse_event("stream.closed", {"status": "completed_with_analysis_error"})
 
     def _replay(self, context: StreamContext) -> Iterator[str]:
         assistant = context.assistant_message
@@ -163,6 +234,13 @@ class StreamingConversationService:
                 ).evaluate(refreshed, context.unit, context.student_message, assistant)
             except (LLMProviderError, ValueError) as exc:
                 category = exc.category if isinstance(exc, LLMProviderError) else "invalid_round"
+                logger.warning(
+                    "Round evaluation replay failed attempt_id=%s "
+                    "assistant_message_id=%s category=%s",
+                    context.attempt.id,
+                    assistant.id,
+                    category,
+                )
                 yield sse_event(
                     "round_evaluation.failed",
                     {

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Annotated, Literal, cast
-from urllib.parse import quote, unquote
+from typing import Annotated, cast
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -14,10 +14,10 @@ from app.db.session import get_db
 from app.integrations.knowledge_graph.base import GraphStore
 from app.modules.auth.dependencies import Principal, require_roles
 from app.modules.knowledge_graph.consumption_service import KnowledgeGraphConsumptionService
-from app.modules.knowledge_graph.content_service import ASSET_MAX_BYTES, KnowledgeContentService
 from app.modules.knowledge_graph.display_service import KnowledgeNodeDisplayService
 from app.modules.knowledge_graph.import_service import KnowledgeImportService
-from app.modules.knowledge_graph.models import KnowledgeContentAsset
+from app.modules.knowledge_graph.insights_service import KnowledgeGraphInsightsService
+from app.modules.knowledge_graph.learning_router import router as learning_router
 from app.modules.knowledge_graph.repository import KnowledgeGraphRepository
 from app.modules.knowledge_graph.review_service import KnowledgeReviewService
 from app.modules.knowledge_graph.scaffold_service import KnowledgeScaffoldService
@@ -25,8 +25,6 @@ from app.modules.knowledge_graph.schemas import (
     GraphChangeSetResponse,
     GraphViewResponse,
     ImportJobResponse,
-    LearningContentResponse,
-    LearningContentUpdateRequest,
     NodeDisplayMutationResponse,
     NodeDisplayRestoreRequest,
     NodeDisplayUpdateRequest,
@@ -40,6 +38,7 @@ from app.modules.knowledge_graph.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
+router.include_router(learning_router)
 Contributor = Annotated[Principal, Depends(require_roles("teacher", "technician"))]
 Technician = Annotated[Principal, Depends(require_roles("technician"))]
 Student = Annotated[Principal, Depends(require_roles("student"))]
@@ -294,6 +293,30 @@ def student_graph(
     return KnowledgeGraphConsumptionService(db, _graph_store(request)).student_graph()
 
 
+@router.get("/student/attempts/{attempt_id}/graph", response_model=GraphViewResponse)
+def student_attempt_graph(
+    attempt_id: uuid.UUID,
+    request: Request,
+    principal: Student,
+    db: Annotated[Session, Depends(get_db)],
+) -> GraphViewResponse:
+    return KnowledgeGraphConsumptionService(db, _graph_store(request)).student_attempt_graph(
+        principal.user.id, attempt_id
+    )
+
+
+@router.get("/teacher/attempts/{attempt_id}/graph", response_model=GraphViewResponse)
+def teacher_attempt_graph(
+    attempt_id: uuid.UUID,
+    request: Request,
+    principal: Teacher,
+    db: Annotated[Session, Depends(get_db)],
+) -> GraphViewResponse:
+    return KnowledgeGraphConsumptionService(db, _graph_store(request)).teacher_attempt_graph(
+        principal.user.id, attempt_id
+    )
+
+
 @router.put(
     "/teacher/nodes/{node_key}/display",
     response_model=NodeDisplayMutationResponse,
@@ -326,125 +349,13 @@ def restore_node_display(
     )
 
 
-def _asset_response(asset: KnowledgeContentAsset) -> Response:
-    filename = quote(asset.filename)
-    return Response(
-        content=asset.content,
-        media_type=asset.content_type,
-        headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{filename}",
-            "Cache-Control": "private, no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
-
-
-@router.get("/student/content/{node_key}/assets/{kind}")
-def student_learning_asset(
-    node_key: str,
-    kind: Literal["video", "slides"],
+@router.get("/student/me/insights", response_model=TeacherKnowledgeInsightsResponse)
+def own_knowledge_insights(
     request: Request,
-    _: Student,
+    principal: Student,
     db: Annotated[Session, Depends(get_db)],
-) -> Response:
-    asset = KnowledgeContentService(db, _graph_store(request)).asset_binary(
-        node_key, kind, student=True
-    )
-    return _asset_response(asset)
-
-
-@router.get("/teacher/content/{node_key}/assets/{kind}")
-def teacher_learning_asset(
-    node_key: str,
-    kind: Literal["video", "slides"],
-    request: Request,
-    _: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-) -> Response:
-    asset = KnowledgeContentService(db, _graph_store(request)).asset_binary(
-        node_key, kind, student=False
-    )
-    return _asset_response(asset)
-
-
-@router.put("/teacher/content/{node_key}/assets/{kind}", response_model=LearningContentResponse)
-async def upload_teacher_learning_asset(
-    node_key: str,
-    kind: Literal["video", "slides"],
-    request: Request,
-    principal: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-    x_file_name: Annotated[str, Header(alias="X-File-Name")] = "learning-asset",
-) -> LearningContentResponse:
-    content_length = int(request.headers.get("Content-Length", "0") or 0)
-    if content_length > ASSET_MAX_BYTES[kind]:
-        limit_mb = ASSET_MAX_BYTES[kind] // 1024 // 1024
-        raise AppError(
-            code="knowledge_graph.asset_too_large",
-            message=f"文件超过 {limit_mb} MB 限制。",
-            status_code=413,
-        )
-    content = await request.body()
-    return KnowledgeContentService(db, _graph_store(request)).upload_asset(
-        node_key,
-        kind,
-        unquote(x_file_name),
-        content,
-        principal.user.id,
-    )
-
-
-@router.delete("/teacher/content/{node_key}/assets/{kind}", response_model=LearningContentResponse)
-def delete_teacher_learning_asset(
-    node_key: str,
-    kind: Literal["video", "slides"],
-    request: Request,
-    _: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-) -> LearningContentResponse:
-    return KnowledgeContentService(db, _graph_store(request)).delete_asset(node_key, kind)
-
-
-@router.get("/student/content/{node_key}", response_model=LearningContentResponse)
-def student_learning_content(
-    node_key: str,
-    request: Request,
-    _: Student,
-    db: Annotated[Session, Depends(get_db)],
-) -> LearningContentResponse:
-    return KnowledgeContentService(db, _graph_store(request)).detail(node_key, student=True)
-
-
-@router.get("/teacher/content", response_model=list[LearningContentResponse])
-def teacher_learning_contents(
-    request: Request,
-    _: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-) -> list[LearningContentResponse]:
-    return KnowledgeContentService(db, _graph_store(request)).list_for_teacher()
-
-
-@router.get("/teacher/content/{node_key}", response_model=LearningContentResponse)
-def teacher_learning_content(
-    node_key: str,
-    request: Request,
-    _: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-) -> LearningContentResponse:
-    return KnowledgeContentService(db, _graph_store(request)).detail(node_key, student=False)
-
-
-@router.put("/teacher/content/{node_key}", response_model=LearningContentResponse)
-def update_teacher_learning_content(
-    node_key: str,
-    payload: LearningContentUpdateRequest,
-    request: Request,
-    principal: Teacher,
-    db: Annotated[Session, Depends(get_db)],
-) -> LearningContentResponse:
-    return KnowledgeContentService(db, _graph_store(request)).update(
-        node_key, payload, principal.user.id
-    )
+) -> TeacherKnowledgeInsightsResponse:
+    return KnowledgeGraphInsightsService(db, _graph_store(request)).own(principal.user.id)
 
 
 @router.get(
@@ -457,7 +368,7 @@ def classroom_knowledge_insights(
     principal: Teacher,
     db: Annotated[Session, Depends(get_db)],
 ) -> TeacherKnowledgeInsightsResponse:
-    return KnowledgeGraphConsumptionService(db, _graph_store(request)).classroom_insights(
+    return KnowledgeGraphInsightsService(db, _graph_store(request)).classroom(
         principal.user.id, classroom_id
     )
 
@@ -472,6 +383,6 @@ def student_knowledge_insights(
     principal: Teacher,
     db: Annotated[Session, Depends(get_db)],
 ) -> TeacherKnowledgeInsightsResponse:
-    return KnowledgeGraphConsumptionService(db, _graph_store(request)).student_insights(
+    return KnowledgeGraphInsightsService(db, _graph_store(request)).student(
         principal.user.id, student_id
     )

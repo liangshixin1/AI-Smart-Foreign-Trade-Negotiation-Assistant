@@ -6,9 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import AppError
+from app.integrations.knowledge_graph.base import GraphStore
 from app.modules.assessment.schemas import LearningDiagnosticCandidate
 from app.modules.auth.models import User
 from app.modules.classrooms.models import Classroom, Enrollment
+from app.modules.knowledge_graph.consumption_service import KnowledgeGraphConsumptionService
 from app.modules.knowledge_graph.models import (
     GraphLearningEvidence,
     KnowledgeScaffoldInteraction,
@@ -17,6 +19,8 @@ from app.modules.knowledge_graph.schemas import (
     GraphLearningEvidenceResponse,
     ScaffoldInteractionResponse,
 )
+from app.modules.simulation.presenter import present_simulation
+from app.modules.simulation.repository import SimulationRepository
 from app.modules.teacher_analytics.competency import competency_summaries
 from app.modules.teacher_analytics.schemas import (
     AttemptReplay,
@@ -32,9 +36,12 @@ from app.modules.training.repository import TrainingRepository
 
 
 class TeacherAnalyticsService:
-    def __init__(self, db: Session, teacher_id: uuid.UUID) -> None:
+    def __init__(
+        self, db: Session, teacher_id: uuid.UUID, graph_store: GraphStore | None = None
+    ) -> None:
         self.db = db
         self.teacher_id = teacher_id
+        self.graph_store = graph_store
 
     def classroom(self, classroom_id: uuid.UUID) -> Classroom:
         item = self.db.scalar(
@@ -84,6 +91,7 @@ class TeacherAnalyticsService:
                     unit_id=unit.unit_key,
                     unit_title=unit.title,
                     status=attempt.status,
+                    experience_mode=attempt.experience_mode,
                     overall_score=evaluation.overall_score if evaluation else None,
                     created_at=attempt.created_at,
                     completed_at=attempt.completed_at,
@@ -147,12 +155,18 @@ class TeacherAnalyticsService:
         )
         round_evaluations = repository.round_evaluations(attempt.id)
         evaluation = repository.evaluation(attempt.id)
+        simulation = None
+        if attempt.experience_mode == "simulation":
+            simulation_session = SimulationRepository(self.db).session(attempt.id)
+            if simulation_session is not None:
+                simulation = present_simulation(self.db, simulation_session)
         return AttemptReplay(
             attempt=present_attempt(
                 attempt,
                 repository.unit(attempt.unit_id),
                 evaluation,
                 round_evaluations,
+                repository,
             ),
             course_version_id=attempt.course_version_id,
             content_bindings=attempt.content_bindings,
@@ -161,9 +175,7 @@ class TeacherAnalyticsService:
             scaffold_interactions=[
                 ScaffoldInteractionResponse.model_validate(item) for item in scaffold_interactions
             ],
-            graph_learning_evidence=[
-                GraphLearningEvidenceResponse.model_validate(item) for item in graph_evidence
-            ],
+            graph_learning_evidence=self._present_graph_evidence(graph_evidence),
             round_learning_diagnostics=[
                 RoundLearningDiagnostic(
                     round_evaluation_id=item.id,
@@ -179,7 +191,27 @@ class TeacherAnalyticsService:
                 if evaluation is not None and evaluation.learning_diagnostic
                 else None
             ),
+            simulation=simulation,
         )
+
+    def _present_graph_evidence(
+        self, evidence: list[GraphLearningEvidence]
+    ) -> list[GraphLearningEvidenceResponse]:
+        labels_by_version: dict[str, dict[str, str]] = {}
+        if self.graph_store is not None:
+            consumption = KnowledgeGraphConsumptionService(self.db, self.graph_store)
+            for version in {item.graph_version for item in evidence}:
+                graph = consumption.graph_by_version(version)
+                labels_by_version[version] = {
+                    node.id: node.short_label
+                    for node in consumption.node_responses(version, graph.nodes)
+                }
+        return [
+            GraphLearningEvidenceResponse.model_validate(item).model_copy(
+                update={"node_labels": labels_by_version.get(item.graph_version, {})}
+            )
+            for item in evidence
+        ]
 
     def _student_for_teacher(self, student_id: uuid.UUID) -> User:
         user = self.db.scalar(

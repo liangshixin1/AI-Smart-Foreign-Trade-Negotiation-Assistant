@@ -1,11 +1,20 @@
 import { request } from '@/shared/api/http'
 
 import type { Attempt, AttemptHistoryItem, RoundEvaluation } from '../types'
+import type { SimulationPresentation, SimulationState } from '@/features/simulation/types'
 
 export type TrainingStreamEvent =
   | { type: 'message.started'; data: { message_id: string; student_message_id: string } }
   | { type: 'message.delta'; data: { message_id: string; delta: string } }
   | { type: 'message.completed'; data: { message_id: string; content: string } }
+  | { type: 'simulation.turn.preparing'; data: { message_id: string } }
+  | { type: 'simulation.turn.ready'; data: SimulationPresentation }
+  | { type: 'simulation.state.pending'; data: { assistant_message_id: string } }
+  | { type: 'simulation.state.updated'; data: SimulationState }
+  | {
+      type: 'simulation.state.failed'
+      data: { assistant_message_id: string; code: string; message: string; retryable: boolean }
+    }
   | {
       type: 'message.failed'
       data: { message_id: string; code: string; message: string; retryable: boolean }
@@ -20,11 +29,20 @@ export type TrainingStreamEvent =
 
 export function createAttempt(
   accessToken: string,
-  input: { unit_id: string; difficulty: string },
+  input: {
+    unit_id: string
+    difficulty: string
+    experience_mode: 'chat' | 'simulation'
+  },
+  idempotencyKey?: string,
 ): Promise<Attempt> {
   return request<Attempt>(
     '/api/v1/attempts',
-    { method: 'POST', body: JSON.stringify(input) },
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+      ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    },
     accessToken,
   )
 }
@@ -97,12 +115,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function parseEvent(block: string): TrainingStreamEvent | null {
-  const eventLine = block.split('\n').find((line) => line.startsWith('event:'))
-  const dataLine = block.split('\n').find((line) => line.startsWith('data:'))
-  if (!eventLine || !dataLine) return null
+export function parseTrainingStreamEvent(block: string): TrainingStreamEvent | null {
+  const lines = block.replaceAll('\r\n', '\n').split('\n')
+  const eventLine = lines.find((line) => line.startsWith('event:'))
+  const dataLines = lines.filter((line) => line.startsWith('data:'))
+  if (!eventLine || !dataLines.length) return null
   const type = eventLine.slice(6).trim()
-  const parsed: unknown = JSON.parse(dataLine.slice(5).trim())
+  const parsed: unknown = JSON.parse(dataLines.map((line) => line.slice(5).trimStart()).join('\n'))
   if (!isRecord(parsed) || parsed.event_version !== 1) return null
   const data = { ...parsed }
   delete data.event_version
@@ -142,16 +161,23 @@ export async function streamAttemptMessage(
   while (!streamDone) {
     const { done, value } = await reader.read()
     buffer += decoder.decode(value, { stream: !done })
-    const blocks = buffer.split('\n\n')
+    const blocks = buffer.replaceAll('\r\n', '\n').split('\n\n')
     buffer = blocks.pop() ?? ''
     for (const block of blocks) {
-      const event = parseEvent(block)
+      const event = parseTrainingStreamEvent(block)
       if (event) {
         onEvent(event)
         if (event.type === 'message.completed') messageCompleted = true
       }
     }
     streamDone = done
+  }
+  if (buffer.trim()) {
+    const event = parseTrainingStreamEvent(buffer)
+    if (event) {
+      onEvent(event)
+      if (event.type === 'message.completed') messageCompleted = true
+    }
   }
   return messageCompleted
 }

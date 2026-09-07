@@ -11,11 +11,13 @@ from app.modules.curriculum.schemas import (
     UnitDetailResponse,
     UnitMapItem,
 )
+from app.modules.simulation.profile_service import SimulationProfileService
 
 
 class CurriculumService:
-    def __init__(self, repository: CurriculumRepository) -> None:
+    def __init__(self, repository: CurriculumRepository, simulation_enabled: bool = False) -> None:
         self.repository = repository
+        self.simulation_profiles = SimulationProfileService(simulation_enabled)
 
     def get_map(self, student: User) -> CourseMapResponse:
         version = self.repository.current_course(student.id)
@@ -129,4 +131,7 @@ class CurriculumService:
                 RubricDimensionResponse.model_validate(item) for item in unit.rubric.dimensions
             ],
             status=status,
+            supported_experience_modes=self.simulation_profiles.supported_modes(
+                unit.unit_key, unit.training_mode
+            ),
         )

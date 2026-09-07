@@ -107,6 +107,31 @@ describe('knowledgeGraphLearningApi', () => {
     })
   })
 
+  it('records a version-safe learning activity with its training source', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 'learning-1' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await knowledgeGraphLearningApi.recordLearningActivity(
+      'token',
+      'knowledge:K001',
+      'completed',
+      'training',
+      'attempt-1',
+      'learning-event-1',
+    )
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/knowledge%3AK001/activities')
+    expect(options.method).toBe('POST')
+    if (typeof options.body !== 'string') throw new Error('Expected JSON request body')
+    expect(JSON.parse(options.body)).toEqual({
+      event_type: 'completed',
+      source: 'training',
+      attempt_id: 'attempt-1',
+      client_event_id: 'learning-event-1',
+    })
+  })
+
   it('sends a version-bound optimistic display update', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

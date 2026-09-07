@@ -11,4 +11,5 @@ from app.modules.classrooms import models as classroom_models  # noqa: E402,F401
 from app.modules.curriculum import models as curriculum_models  # noqa: E402,F401
 from app.modules.knowledge_graph import models as knowledge_graph_models  # noqa: E402,F401
 from app.modules.progress import models as progress_models  # noqa: E402,F401
+from app.modules.simulation import models as simulation_models  # noqa: E402,F401
 from app.modules.training import models as training_models  # noqa: E402,F401

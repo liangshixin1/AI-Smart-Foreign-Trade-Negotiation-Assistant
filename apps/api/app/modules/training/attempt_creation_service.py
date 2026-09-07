@@ -7,11 +7,21 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.integrations.knowledge_graph.base import GraphStore
-from app.integrations.llm.base import LLMMessage, LLMProvider, LLMProviderError, LLMRequest
+from app.integrations.llm.base import (
+    LLMMessage,
+    LLMProvider,
+    LLMProviderError,
+    LLMRequest,
+    LLMResponse,
+)
 from app.integrations.llm.prompt_renderer import render_prompt
 from app.integrations.llm.structured_output import parse_structured_output
 from app.modules.auth.models import User
 from app.modules.knowledge_graph.prompt_context import KnowledgeContextProvider
+from app.modules.simulation.briefing_service import SimulationBriefingService
+from app.modules.simulation.models import AttemptCreationRequest
+from app.modules.simulation.profile_service import SimulationProfileService
+from app.modules.simulation.repository import SimulationRepository
 from app.modules.training.adaptive_learning import (
     ADAPTIVE_CONVERSATION_PROMPT,
     FINAL_DIAGNOSTIC_PROMPT,
@@ -27,13 +37,53 @@ from app.modules.training.state import transition
 
 
 class AttemptCreationService:
-    def __init__(self, db: Session, provider: LLMProvider, graph_store: GraphStore) -> None:
+    def __init__(
+        self,
+        db: Session,
+        provider: LLMProvider,
+        graph_store: GraphStore,
+        simulation_enabled: bool = False,
+    ) -> None:
         self.db = db
         self.provider = provider
         self.repository = TrainingRepository(db)
         self.knowledge_context = KnowledgeContextProvider(db, graph_store)
+        self.simulation_profiles = SimulationProfileService(simulation_enabled)
+        self.simulation_repository = SimulationRepository(db)
 
-    def create(self, student: User, data: CreateAttemptRequest) -> AttemptResponse:
+    def create(
+        self, student: User, data: CreateAttemptRequest, idempotency_key: str | None = None
+    ) -> AttemptResponse:
+        request_hash = stable_hash(data.model_dump(mode="json"))
+        if data.experience_mode == "simulation" and idempotency_key is None:
+            raise AppError(
+                code="simulation.idempotency_key_required",
+                message="创建仿真训练需要稳定的 Idempotency-Key。",
+                status_code=422,
+            )
+        if idempotency_key is not None:
+            existing_request = self.simulation_repository.creation_request(
+                student.id, idempotency_key
+            )
+            if existing_request is not None:
+                if existing_request.request_hash != request_hash:
+                    raise AppError(
+                        code="training.idempotency_conflict",
+                        message="同一创建键不能用于不同的训练请求。",
+                        status_code=409,
+                    )
+                existing = self.repository.attempt_for_student(
+                    student.id, existing_request.attempt_id
+                )
+                if existing is None:
+                    raise RuntimeError("Creation request references a missing attempt")
+                return present_attempt(
+                    existing,
+                    self.repository.unit(existing.unit_id),
+                    self.repository.evaluation(existing.id),
+                    self.repository.round_evaluations(existing.id),
+                    self.repository,
+                )
         unit = self.repository.unit_for_student(student.id, data.unit_id)
         if unit is None:
             raise AppError(
@@ -47,6 +97,9 @@ class AttemptCreationService:
                 message="该小节不支持所选难度。",
                 status_code=422,
             )
+        profile = None
+        if data.experience_mode == "simulation":
+            profile = self.simulation_profiles.require_available(unit.unit_key, unit.training_mode)
         completed_keys = self.repository.completed_unit_keys(
             student.id, unit.chapter.course_version_id
         )
@@ -82,16 +135,46 @@ class AttemptCreationService:
         }
         if graph_context is not None:
             content_bindings["knowledge_graph_version"] = graph_context.graph_version
+        if profile is not None:
+            content_bindings.update(
+                {
+                    "simulation_profile_id": profile.id,
+                    "simulation_profile_version": profile.version,
+                    "briefing_prompt_id": profile.briefing_prompt_id,
+                    "briefing_prompt_version": profile.briefing_prompt_version,
+                    "simulation_conversation_prompt_id": profile.conversation_prompt_id,
+                    "simulation_conversation_prompt_version": profile.conversation_prompt_version,
+                    "simulation_round_prompt_id": profile.round_prompt_id,
+                    "simulation_round_prompt_version": profile.round_prompt_version,
+                    "simulation_final_prompt_id": profile.final_prompt_id,
+                    "simulation_final_prompt_version": profile.final_prompt_version,
+                    "simulation_rubric_profile_id": profile.rubric_profile_id,
+                    "simulation_rubric_profile_version": profile.rubric_profile_version,
+                    "state_rules_version": profile.rules_version,
+                    "asset_pack_version": profile.asset_pack_version,
+                }
+            )
         attempt = Attempt(
             student_id=student.id,
             unit_id=unit.id,
             course_version_id=unit.chapter.course_version_id,
             status="not_started",
             difficulty=data.difficulty,
+            experience_mode=data.experience_mode,
             content_bindings=content_bindings,
         )
         self.db.add(attempt)
         self.db.flush()
+        creation_request = None
+        if idempotency_key is not None:
+            creation_request = AttemptCreationRequest(
+                student_id=student.id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                attempt_id=attempt.id,
+                status="started",
+            )
+            self.db.add(creation_request)
         self.db.add(transition(attempt, "generating_scenario", "attempt_created"))
         self.db.commit()
         prompt = render_prompt(
@@ -118,9 +201,10 @@ class AttemptCreationService:
             metadata=metadata,
         )
         try:
-            response = invoke_and_record(self.db, self.provider, request)
-            candidate = parse_structured_output(response.content, ScenarioCandidate)
+            response, candidate = self._validated_scenario(request)
         except LLMProviderError as exc:
+            if creation_request is not None:
+                creation_request.status = "failed"
             self.db.add(transition(attempt, "generation_failed", exc.category))
             self.db.commit()
             raise AppError(
@@ -138,16 +222,51 @@ class AttemptCreationService:
             prompt_template_id=unit.scenario_prompt.prompt_key,
             prompt_version=unit.scenario_prompt.version,
         )
-        attempt.messages.append(
-            Message(
-                sequence_no=1,
-                role="assistant",
-                content=candidate.public.opening_message,
-                status="completed",
-                provider=response.provider,
-                model_name=response.model,
+        if profile is not None:
+            SimulationBriefingService(self.db, self.provider).create(attempt, unit, profile)
+        else:
+            attempt.messages.append(
+                Message(
+                    sequence_no=1,
+                    role="assistant",
+                    content=candidate.public.opening_message,
+                    status="completed",
+                    provider=response.provider,
+                    model_name=response.model,
+                )
             )
-        )
+            attempt.conversation_revision = 1
         self.db.add(transition(attempt, "in_progress", "scenario_generated"))
+        if creation_request is not None:
+            creation_request.status = "completed"
         self.db.commit()
-        return present_attempt(attempt, unit, None)
+        return present_attempt(attempt, unit, None, repository=self.repository)
+
+    def _validated_scenario(self, request: LLMRequest) -> tuple[LLMResponse, ScenarioCandidate]:
+        """Retry one malformed scenario without duplicating the Attempt."""
+
+        current = request
+        for run_no in range(2):
+            response = invoke_and_record(self.db, self.provider, current)
+            try:
+                return response, parse_structured_output(response.content, ScenarioCandidate)
+            except LLMProviderError as exc:
+                if exc.category != "structured_output_invalid" or run_no == 1:
+                    raise
+                current = current.model_copy(
+                    update={
+                        "correlation_id": str(uuid.uuid4()),
+                        "messages": [
+                            *current.messages,
+                            LLMMessage(
+                                role="system",
+                                content=(
+                                    "上一份场景未通过 JSON Schema 校验。请重新独立生成完整 JSON，"
+                                    "严格保留所有必填字段、类型和 public/private 边界，"
+                                    "不要输出 Markdown。"
+                                ),
+                            ),
+                        ],
+                    }
+                )
+        raise RuntimeError("Scenario validation retry was exhausted")

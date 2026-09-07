@@ -1,0 +1,37 @@
+id: simulation-price-counteroffer
+version: 1.0.0
+unit_key: chapter-3-section-1
+enabled: true
+experience_mode: simulation
+training_mode: negotiation
+briefing_locale: zh-CN
+dialogue_locale: en
+character_id: david-lim
+display_name: David Lim
+asset_pack: david-lim
+asset_pack_version: v1-draft
+scene_id: meeting-room-day
+rules_version: negotiation-state-1.0.0
+briefing_prompt_id: simulation-briefing-public
+briefing_prompt_version: 1.0.0
+conversation_prompt_id: simulation-conversation-counteroffer
+conversation_prompt_version: 1.0.0
+round_prompt_id: simulation-round-counteroffer
+round_prompt_version: 1.0.0
+final_prompt_id: simulation-final-counteroffer
+final_prompt_version: 1.0.0
+rubric_profile_id: negotiation-concise-spoken-v1
+rubric_profile_version: 1.0.0
+required_term_keys:
+  - unit_price
+  - quantity_exchange
+  - payment
+required_milestone_keys:
+  - reasoned_counteroffer
+  - reciprocal_exchange
+  - explicit_next_step
+term_dependencies:
+  quantity_exchange:
+    - unit_price
+  payment:
+    - unit_price

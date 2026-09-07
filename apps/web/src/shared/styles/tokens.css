@@ -1,28 +1,33 @@
 :root {
   color-scheme: light;
-  --color-ink: #17211d;
-  --color-muted: #5f6c66;
+  --color-ink: #203531;
+  --color-muted: #647570;
   --color-surface: #ffffff;
-  --color-canvas: #f3f6f4;
-  --color-border: #d9e1dd;
-  --color-primary: #176b4d;
-  --color-primary-strong: #0f5039;
-  --color-primary-soft: #e8f3ee;
+  --color-canvas: #f5f7f5;
+  --color-border: #dfe7e2;
+  --color-primary: #167365;
+  --color-primary-strong: #10594f;
+  --color-primary-soft: #eaf5f0;
   --color-accent: #d19a38;
   --color-warning-soft: #fff7e6;
   --color-danger: #a33a32;
   --color-focus: #1d74d3;
-  --shadow-soft: 0 14px 40px rgb(25 52 42 / 8%);
+  --shadow-soft: 0 4px 24px rgb(25 52 42 / 4%);
   --shadow-raised: 0 10px 28px rgb(25 52 42 / 14%);
-  --radius-sm: 8px;
-  --radius-md: 14px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
   --radius-lg: 20px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --motion-fast: 160ms;
+  --motion-normal: 240ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --font-sans:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
 }

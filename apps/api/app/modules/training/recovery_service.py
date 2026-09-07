@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal, cast
 
 from sqlalchemy.orm import Session
 
@@ -22,10 +23,16 @@ from app.modules.training.schemas import (
 
 
 class TrainingRecoveryService:
-    def __init__(self, db: Session, provider: LLMProvider, graph_store: GraphStore) -> None:
+    def __init__(
+        self,
+        db: Session,
+        provider: LLMProvider,
+        graph_store: GraphStore,
+        simulation_enabled: bool = False,
+    ) -> None:
         self.db = db
         self.repository = TrainingRepository(db)
-        self.creation = AttemptCreationService(db, provider, graph_store)
+        self.creation = AttemptCreationService(db, provider, graph_store, simulation_enabled)
 
     def save_draft(
         self, student: User, attempt_id: uuid.UUID, data: DraftRequest
@@ -61,7 +68,12 @@ class TrainingRecoveryService:
         unit = self.repository.unit(source.unit_id)
         response = self.creation.create(
             student,
-            CreateAttemptRequest(unit_id=unit.unit_key, difficulty=source.difficulty),
+            CreateAttemptRequest(
+                unit_id=unit.unit_key,
+                difficulty=source.difficulty,
+                experience_mode=cast(Literal["chat", "simulation"], source.experience_mode),
+            ),
+            f"retry-create-{idempotency_key}",
         )
         created = owned_attempt(self.repository, student, response.id)
         created.retry_of_attempt_id = source.id
@@ -87,6 +99,7 @@ class TrainingRecoveryService:
                     unit_id=unit.unit_key,
                     unit_title=unit.title,
                     training_mode=unit.training_mode,
+                    experience_mode=cast(Literal["chat", "simulation"], attempt.experience_mode),
                     status=attempt.status,
                     overall_score=evaluation.overall_score if evaluation else None,
                     retry_of_attempt_id=attempt.retry_of_attempt_id,

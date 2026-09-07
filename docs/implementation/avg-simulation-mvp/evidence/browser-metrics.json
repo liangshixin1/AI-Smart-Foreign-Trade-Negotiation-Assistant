@@ -1,0 +1,48 @@
+{
+  "viewports": [
+    {
+      "viewport": "360x800",
+      "innerWidth": 360,
+      "innerHeight": 800,
+      "scrollWidth": 360,
+      "noHorizontalOverflow": true,
+      "composerVisible": true,
+      "sendVisible": true,
+      "dialogueAboveComposer": true
+    },
+    {
+      "viewport": "390x844",
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollWidth": 390,
+      "noHorizontalOverflow": true,
+      "composerVisible": true,
+      "sendVisible": true,
+      "dialogueAboveComposer": true
+    },
+    {
+      "viewport": "768x1024",
+      "innerWidth": 768,
+      "innerHeight": 1024,
+      "scrollWidth": 768,
+      "noHorizontalOverflow": true,
+      "composerVisible": true,
+      "sendVisible": true,
+      "dialogueAboveComposer": true
+    },
+    {
+      "viewport": "1280x800",
+      "innerWidth": 1280,
+      "innerHeight": 800,
+      "scrollWidth": 1280,
+      "noHorizontalOverflow": true,
+      "composerVisible": true,
+      "sendVisible": true,
+      "dialogueAboveComposer": true
+    }
+  ],
+  "ime": {
+    "draft": "中文输入法组合测试",
+    "dialogueUnchanged": true
+  }
+}

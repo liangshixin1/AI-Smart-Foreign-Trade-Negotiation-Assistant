@@ -6,7 +6,13 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.integrations.knowledge_graph.base import GraphStore
-from app.integrations.llm.base import LLMMessage, LLMProvider, LLMRequest
+from app.integrations.llm.base import (
+    LLMMessage,
+    LLMProvider,
+    LLMProviderError,
+    LLMRequest,
+    LLMResponse,
+)
 from app.integrations.llm.prompt_renderer import render_prompt
 from app.integrations.llm.structured_output import parse_structured_output
 from app.modules.assessment.diagnostic import bind_diagnostic_evidence
@@ -14,6 +20,7 @@ from app.modules.assessment.models import RoundEvaluation
 from app.modules.assessment.schemas import RoundEvaluationCandidate
 from app.modules.curriculum.models import TrainingUnit
 from app.modules.knowledge_graph.recommendation_service import GraphRecommendationService
+from app.modules.simulation.profile_service import load_profile_version, load_simulation_prompt
 from app.modules.training.adaptive_learning import round_diagnostic_extension
 from app.modules.training.invocations import invoke_and_record
 from app.modules.training.models import Attempt, Message
@@ -71,13 +78,31 @@ class RoundAssessmentService:
             "\n\n你还必须从下列图谱候选中按本轮学生实际表达选择最多 3 个知识资源和最多 3 个策略。"
             "不得编造候选外 ID。若本轮不需要推荐则返回空数组。"
             "输出字段 knowledge_recommendations 与 strategy_recommendations；每项严格包含 "
-            "node_id、confidence(0-1)、reason、reveal_level(1-3)。候选如下：\n"
-            + json.dumps(graph_candidates, ensure_ascii=False)
+            "node_id、confidence(0-1)、reason、reveal_level(1-3)、application_state、"
+            "evidence_excerpt。application_state 只能是 applied_correctly（已正确运用）、"
+            "applied_partially（部分运用）、misapplied（误用）、recalled_unused（已提示但未运用）、"
+            "missed_required（本轮应运用但缺失）或 recommended_next（下一轮建议）。"
+            "evidence_excerpt 只能摘录本轮学生原话；没有学生证据时必须返回空字符串。"
+            "当 application_state 为 recalled_unused、missed_required 或 recommended_next 时，"
+            "evidence_excerpt 必须为空；只要引用了学生实际运用该知识的原话，状态就必须是"
+            " applied_correctly、applied_partially 或 misapplied。"
+            "候选的 contextual_how 是该知识处理当前现象的情境说明，"
+            "应优先据此给出 reason。候选如下：\n" + json.dumps(graph_candidates, ensure_ascii=False)
         )
+        prompt_id = unit.round_evaluation_prompt.prompt_key
+        prompt_version = unit.round_evaluation_prompt.version
+        if attempt.experience_mode == "simulation":
+            profile = load_profile_version(
+                attempt.content_bindings["simulation_profile_id"],
+                attempt.content_bindings["simulation_profile_version"],
+            )
+            prompt += "\n\n" + load_simulation_prompt("round")
+            prompt_id = profile.round_prompt_id
+            prompt_version = profile.round_prompt_version
         request = LLMRequest(
             purpose="evaluation",
-            prompt_template_id=unit.round_evaluation_prompt.prompt_key,
-            prompt_version=unit.round_evaluation_prompt.version,
+            prompt_template_id=prompt_id,
+            prompt_version=prompt_version,
             correlation_id=str(uuid.uuid4()),
             messages=[
                 LLMMessage(
@@ -90,6 +115,9 @@ class RoundAssessmentService:
             metadata={
                 "attempt_id": str(attempt.id),
                 "evaluation_kind": "round",
+                "experience_mode": attempt.experience_mode,
+                "student_message_id": str(student_message.id),
+                "student_message_content": student_message.content[:600],
                 "checklist_json": json.dumps(
                     attempt.scenario.public_payload.get("checklist", []), ensure_ascii=False
                 ),
@@ -98,19 +126,16 @@ class RoundAssessmentService:
                 "diagnostic_prompt_version": diagnostic_template.version,
             },
         )
-        response = invoke_and_record(self.db, self.provider, request)
-        candidate = parse_structured_output(response.content, RoundEvaluationCandidate)
-        self._validate_checklist(candidate, attempt.scenario.public_payload)
         student_messages = [
             item
             for item in attempt.messages
             if item.role == "student" and item.status == "completed"
         ]
-        bind_diagnostic_evidence(candidate.learning_diagnostic, student_messages)
-        recommendations = self.recommendations.validate_selection(
+        response, candidate, recommendations = self._validated_candidate(
+            request,
+            attempt.scenario.public_payload,
+            student_messages,
             graph_candidates,
-            candidate.knowledge_recommendations,
-            candidate.strategy_recommendations,
         )
         evaluation = RoundEvaluation(
             attempt_id=attempt.id,
@@ -125,15 +150,64 @@ class RoundAssessmentService:
             checklist_results=[item.model_dump() for item in candidate.checklist_results],
             recommendations=recommendations,
             learning_diagnostic=candidate.learning_diagnostic.model_dump(mode="json"),
+            simulation_observation=(
+                candidate.simulation_observation.model_dump(mode="json")
+                if candidate.simulation_observation is not None
+                else {}
+            ),
             provider=response.provider,
             model_name=response.model,
-            prompt_template_id=unit.round_evaluation_prompt.prompt_key,
-            prompt_version=unit.round_evaluation_prompt.version,
+            prompt_template_id=prompt_id,
+            prompt_version=prompt_version,
             raw_output_reference=f"llm-invocation:{request.correlation_id}",
         )
         self.db.add(evaluation)
         self.db.commit()
         return evaluation
+
+    def _validated_candidate(
+        self,
+        request: LLMRequest,
+        scenario_public: dict[str, object],
+        student_messages: list[Message],
+        graph_candidates: list[dict[str, object]],
+    ) -> tuple[LLMResponse, RoundEvaluationCandidate, list[dict[str, object]]]:
+        """结构化输出首次不合规时自动纠错一次。不重复生成对话内容。"""
+
+        current_request = request
+        for attempt_index in range(2):
+            response = invoke_and_record(self.db, self.provider, current_request)
+            try:
+                candidate = parse_structured_output(response.content, RoundEvaluationCandidate)
+                self._validate_checklist(candidate, scenario_public)
+                bind_diagnostic_evidence(candidate.learning_diagnostic, student_messages)
+                recommendations = self.recommendations.validate_selection(
+                    graph_candidates,
+                    candidate.knowledge_recommendations,
+                    candidate.strategy_recommendations,
+                )
+            except (LLMProviderError, ValueError):
+                if attempt_index == 1:
+                    raise
+                current_request = current_request.model_copy(
+                    update={
+                        "correlation_id": str(uuid.uuid4()),
+                        "messages": [
+                            *current_request.messages,
+                            LLMMessage(
+                                role="system",
+                                content=(
+                                    "上一份评价未通过结构化 Schema、Checklist 或图谱候选校验。"
+                                    "请重新独立生成完整 JSON，并严格遵守所有字段、枚举、"
+                                    "证据和候选 ID 约束。"
+                                ),
+                            ),
+                        ],
+                    }
+                )
+                continue
+            return response, candidate, recommendations
+        raise RuntimeError("Round evaluation validation retry was exhausted")
 
     @staticmethod
     def _validate_checklist(

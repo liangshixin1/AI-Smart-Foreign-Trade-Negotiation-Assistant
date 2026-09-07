@@ -43,4 +43,5 @@ export interface UnitDetail {
   knowledge_tags: string[]
   rubric_dimensions: RubricDimension[]
   status: string
+  supported_experience_modes: Array<'chat' | 'simulation'>
 }

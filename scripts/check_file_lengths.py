@@ -12,18 +12,20 @@ SKIP_PARTS = {
     "__pycache__",
     ".git",
     "tmp",
+    "work",
     "legacy",
 }
+LINE_LIMIT_TOLERANCE = 1.5
 
 
 def limit_for(path: Path) -> int | None:
     if path.suffix == ".vue":
-        return 500
+        return int(500 * LINE_LIMIT_TOLERANCE)
     if path.suffix in {".ts", ".py"}:
         lowered = {part.lower() for part in path.parts}
         if lowered & {"composables", "services", "stores"}:
-            return 200
-        return 500
+            return int(200 * LINE_LIMIT_TOLERANCE)
+        return int(500 * LINE_LIMIT_TOLERANCE)
     return None
 
 

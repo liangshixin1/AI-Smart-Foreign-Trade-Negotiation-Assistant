@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.integrations.knowledge_graph.base import GraphStore
 from app.modules.assessment.models import Evaluation
 from app.modules.auth.dependencies import Principal, require_roles
 from app.modules.classrooms.models import Classroom, Enrollment
@@ -110,8 +111,11 @@ def student_progress(student_id: uuid.UUID, principal: Teacher, db: Db) -> Stude
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptReplay)
-def attempt_replay(attempt_id: uuid.UUID, principal: Teacher, db: Db) -> AttemptReplay:
-    return TeacherAnalyticsService(db, principal.user.id).attempt_replay(attempt_id)
+def attempt_replay(
+    attempt_id: uuid.UUID, request: Request, principal: Teacher, db: Db
+) -> AttemptReplay:
+    graph_store = cast(GraphStore, request.app.state.graph_store)
+    return TeacherAnalyticsService(db, principal.user.id, graph_store).attempt_replay(attempt_id)
 
 
 @router.post("/classrooms/{classroom_id}/students", response_model=StudentItem, status_code=201)

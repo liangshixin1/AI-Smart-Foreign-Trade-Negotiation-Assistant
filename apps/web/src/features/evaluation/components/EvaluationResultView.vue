@@ -283,6 +283,12 @@ li + li {
   .feedback-grid {
     grid-template-columns: 1fr;
   }
+  .verdict {
+    padding: 20px;
+  }
+  .verdict div:last-child p {
+    font-size: 15px;
+  }
   .score-block {
     padding: 0 0 var(--space-5, 20px);
     border: 0;

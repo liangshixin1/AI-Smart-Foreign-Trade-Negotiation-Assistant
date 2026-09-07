@@ -13,7 +13,12 @@ const router = createRouter({
 function mountScaffold(
   props: InstanceType<typeof TrainingKnowledgeScaffold>['$props'],
 ): ReturnType<typeof mount> {
-  return mount(TrainingKnowledgeScaffold, { props, global: { plugins: [router] } })
+  return mount(TrainingKnowledgeScaffold, {
+    props,
+    global: {
+      plugins: [router],
+    },
+  })
 }
 
 const scaffold: AttemptScaffold = {

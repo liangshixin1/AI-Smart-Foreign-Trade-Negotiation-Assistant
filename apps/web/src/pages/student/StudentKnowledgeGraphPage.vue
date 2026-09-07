@@ -1,8 +1,5 @@
 <template>
-  <RoleWorkspaceLayout
-    title="谈判知识与策略地图"
-    description="从真实商务局面进入知识与策略；图谱不是答案库，而是训练前后可回访的学习路径。"
-  >
+  <RoleWorkspaceLayout title="谈判知识与策略地图">
     <nav><RouterLink to="/student">← 返回学习路线</RouterLink></nav>
     <p v-if="loading" class="state">正在读取已发布知识图谱…</p>
     <section v-else-if="error" class="state error" role="alert">

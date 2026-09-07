@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from alembic import command
 from app.core.config import get_settings
@@ -14,6 +14,51 @@ def test_alembic_upgrades_empty_database(monkeypatch, tmp_path: Path) -> None:  
     database_url = f"sqlite:///{database_path}"
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("AUTH_TOKEN_PEPPER", "migration-test-pepper-with-thirty-two-characters")
+    get_settings.cache_clear()
+
+
+def test_upgrade_from_0016_preserves_legacy_attempt_as_chat(
+    monkeypatch,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+) -> None:
+    database_path = tmp_path / "legacy-migration-test.db"
+    database_url = f"sqlite:///{database_path}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_TOKEN_PEPPER", "migration-test-pepper-with-thirty-two-characters")
+    get_settings.cache_clear()
+    api_root = Path(__file__).resolve().parents[1]
+    config = Config(str(api_root / "alembic.ini"))
+    command.upgrade(config, "20260904_0016")
+
+    legacy_attempt_id = "12345678123456781234567812345678"
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO attempts "
+                "(id, student_id, unit_id, course_version_id, retry_of_attempt_id, "
+                "status, difficulty, content_bindings, submitted_at, completed_at, "
+                "created_at, updated_at) "
+                "VALUES (:id, :student, :unit, :course, NULL, 'in_progress', 'standard', "
+                "'{}', NULL, NULL, :created, :created)"
+            ),
+            {
+                "id": legacy_attempt_id,
+                "student": "11111111111111111111111111111111",
+                "unit": "22222222222222222222222222222222",
+                "course": "33333333333333333333333333333333",
+                "created": "2026-09-01 09:00:00",
+            },
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT experience_mode, conversation_revision FROM attempts WHERE id = :id"),
+            {"id": legacy_attempt_id},
+        ).one()
+    assert row.experience_mode == "chat"
+    assert row.conversation_revision == 0
     get_settings.cache_clear()
     api_root = Path(__file__).resolve().parents[1]
     config = Config(str(api_root / "alembic.ini"))
@@ -45,15 +90,28 @@ def test_alembic_upgrades_empty_database(monkeypatch, tmp_path: Path) -> None:  
         "knowledge_graph_translation_overlays",
         "knowledge_graph_scenario_stage_bindings",
         "knowledge_graph_scenario_phenomenon_bindings",
+        "knowledge_learning_activities",
+        "attempt_creation_requests",
+        "simulation_sessions",
+        "simulation_turn_presentations",
+        "simulation_state_events",
+        "simulation_state_snapshots",
         "alembic_version",
     } <= tables
     columns = {column["name"] for column in inspector.get_columns("round_evaluations")}
     assert "checklist_results" in columns
     assert "learning_diagnostic" in columns
+    assert "simulation_observation" in columns
+    attempt_columns = {column["name"] for column in inspector.get_columns("attempts")}
+    assert {"experience_mode", "conversation_revision"} <= attempt_columns
     evaluation_columns = {column["name"] for column in inspector.get_columns("evaluations")}
     assert "learning_diagnostic" in evaluation_columns
     evidence_columns = {
         column["name"] for column in inspector.get_columns("graph_learning_evidence")
     }
-    assert {"knowledge_point_node_keys", "knowledge_type_breakdown"} <= evidence_columns
+    assert {
+        "knowledge_point_node_keys",
+        "knowledge_type_breakdown",
+        "node_evidence",
+    } <= evidence_columns
     get_settings.cache_clear()

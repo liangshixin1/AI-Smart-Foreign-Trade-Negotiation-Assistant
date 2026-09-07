@@ -68,6 +68,7 @@ media/
 .tmp-artifact/
 tmp/
 temp/
+work/
 output/
 outputs/
 artifacts/

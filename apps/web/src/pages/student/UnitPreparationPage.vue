@@ -5,7 +5,7 @@
     <article v-else-if="unit" class="preparation">
       <header>
         <div>
-          <p>{{ unit.training_mode }} · 约 {{ unit.estimated_minutes }} 分钟</p>
+          <p>{{ modeLabel }} · 约 {{ unit.estimated_minutes }} 分钟</p>
           <h2>{{ unit.title }}</h2>
         </div>
         <span>{{ unit.status === 'available' ? '可开始' : '需先完成前置小节' }}</span>
@@ -33,6 +33,20 @@
           </option>
         </select>
       </label>
+      <fieldset v-if="unit.supported_experience_modes.length > 1" class="mode-picker">
+        <legend>体验方式</legend>
+        <label
+          v-for="option in experienceOptions"
+          :key="option.value"
+          :class="{ selected: experienceMode === option.value }"
+        >
+          <input v-model="experienceMode" type="radio" :value="option.value" />
+          <span>
+            <strong>{{ option.label }}</strong>
+            <small>{{ option.description }}</small>
+          </span>
+        </label>
+      </fieldset>
       <p v-if="startError" role="alert">{{ startError }}</p>
       <p v-if="unit.status === 'locked'" class="locked-note">
         该小节尚未解锁，请回到路线完成前置训练。
@@ -40,16 +54,16 @@
       <button
         type="button"
         :disabled="starting || unit.status === 'locked'"
-        @click="start(difficulty)"
+        @click="start(difficulty, experienceMode)"
       >
-        {{ starting ? '正在生成实战场景…' : '开始训练' }}
+        {{ starting ? '正在生成实战场景…' : startLabel }}
       </button>
     </article>
   </RoleWorkspaceLayout>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import RoleWorkspaceLayout from '@/app/layouts/RoleWorkspaceLayout.vue'
@@ -59,7 +73,30 @@ import { useStartAttempt } from '@/features/training/composables/useStartAttempt
 const { unit, loading, error } = useUnitDetail()
 const route = useRoute()
 const difficulty = ref('standard')
+const experienceMode = ref<'chat' | 'simulation'>('chat')
+const experienceOptions = [
+  { value: 'chat', label: '对话模式', description: '沿用文字工作台，适合连续长对话。' },
+  {
+    value: 'simulation',
+    label: '仿真模式',
+    description: '情境演出、简短交锋与可追溯谈判态势。',
+  },
+] as const
+const modeLabels: Record<string, string> = {
+  negotiation: '实战谈判',
+  business_email: '商务邮件',
+  document_review: '单证审阅',
+}
+const modeLabel = computed(() => modeLabels[unit.value?.training_mode ?? ''] ?? '实战训练')
+const startLabel = computed(() =>
+  experienceMode.value === 'simulation' ? '进入情境演出' : '生成场景并进入局面简报',
+)
 const { start, starting, startError } = useStartAttempt(String(route.params.unitId))
+watch(unit, (next) => {
+  if (next && !next.supported_experience_modes.includes(experienceMode.value)) {
+    experienceMode.value = 'chat'
+  }
+})
 </script>
 
 <style scoped>
@@ -103,11 +140,82 @@ label {
   gap: var(--space-2);
   max-width: 240px;
 }
+.mode-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.mode-picker legend {
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+}
+.mode-picker label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: none;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.mode-picker label.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.mode-picker input {
+  margin-top: 3px;
+}
+.mode-picker span {
+  display: grid;
+  gap: 4px;
+}
+.mode-picker small {
+  color: var(--color-muted);
+  line-height: 1.45;
+}
 select {
   min-height: 42px;
   padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
+}
+header {
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+}
+header p {
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--color-primary);
+}
+header span {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+section {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+li + li {
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  header {
+    padding: 20px;
+    flex-direction: column;
+    gap: 12px;
+  }
+  header h2 {
+    font-size: 20px;
+  }
+  .mode-picker {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

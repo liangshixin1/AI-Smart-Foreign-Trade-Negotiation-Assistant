@@ -13,7 +13,9 @@ body {
   color: var(--color-ink);
   background: var(--color-canvas);
   font-family: var(--font-sans);
-  line-height: 1.5;
+  line-height: 1.65;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -45,5 +47,87 @@ a:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Shared controls keep secondary pages as deliberate as the main workspace. */
+a {
+  color: var(--color-primary);
+  text-underline-offset: 4px;
+}
+button {
+  cursor: pointer;
+}
+button,
+input,
+textarea,
+select {
+  max-width: 100%;
+}
+button,
+input:not([type='checkbox']):not([type='radio']),
+select {
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #7a8983;
+}
+textarea {
+  line-height: 1.65;
+}
+:where(h1, h2, h3) {
+  line-height: 1.35;
+  text-wrap: balance;
+}
+:where(p, dd, li, td, strong) {
+  overflow-wrap: anywhere;
+}
+:where(main, section, article, aside, form, header) {
+  min-width: 0;
+}
+:where([role='alert']) {
+  border-radius: var(--radius-sm);
+}
+:where(summary) {
+  cursor: pointer;
+}
+:where(summary:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+:where(.table-wrap) {
+  overscroll-behavior-x: contain;
+}
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+}
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 }

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/features/auth/stores/auth'
 import { knowledgeGraphLearningApi } from '../api/knowledgeGraphLearningApi'
 import type { KnowledgeGraphView } from '../types'
 
-export function useTeacherKnowledgeGraph() {
+export function useTeacherKnowledgeGraph(attemptId?: string) {
   const auth = useAuthStore()
   const graph = ref<KnowledgeGraphView | null>(null)
   const loading = ref(true)
@@ -18,7 +18,9 @@ export function useTeacherKnowledgeGraph() {
     loading.value = true
     error.value = null
     try {
-      graph.value = await knowledgeGraphLearningApi.teacherGraph(auth.accessToken)
+      graph.value = attemptId
+        ? await knowledgeGraphLearningApi.teacherAttemptGraph(auth.accessToken, attemptId)
+        : await knowledgeGraphLearningApi.teacherGraph(auth.accessToken)
     } catch (caught: unknown) {
       error.value = caught instanceof Error ? caught.message : '知识图谱加载失败。'
     } finally {
@@ -44,7 +46,7 @@ export function useTeacherKnowledgeGraph() {
       )
       applyDisplayResult(result)
     } catch (caught: unknown) {
-      displayError.value = caught instanceof Error ? caught.message : '中文短名保存失败。'
+      displayError.value = caught instanceof Error ? caught.message : '图谱显示名称保存失败。'
     } finally {
       displaySaving.value = false
     }
@@ -63,7 +65,7 @@ export function useTeacherKnowledgeGraph() {
       )
       applyDisplayResult(result)
     } catch (caught: unknown) {
-      displayError.value = caught instanceof Error ? caught.message : '恢复原始短名失败。'
+      displayError.value = caught instanceof Error ? caught.message : '恢复专家中文名称失败。'
     } finally {
       displaySaving.value = false
     }

@@ -22,20 +22,34 @@
           <strong>本轮 {{ item.score }} 分</strong><span>{{ formatTime(item.created_at) }}</span>
         </div>
         <p>{{ item.evidence_summary }}</p>
-        <dl>
-          <div>
-            <dt>现象</dt>
-            <dd>{{ item.phenomenon_node_keys.length }}</dd>
+        <div class="node-chain">
+          <div v-if="item.phenomenon_node_keys.length">
+            <span>现象</span>
+            <b v-for="nodeId in item.phenomenon_node_keys" :key="nodeId">
+              {{ labelFor(item, nodeId) }}
+            </b>
           </div>
-          <div>
-            <dt>知识资源</dt>
-            <dd>{{ item.knowledge_resource_node_keys.length }}</dd>
+          <div v-if="item.knowledge_resource_node_keys.length">
+            <span>知识</span>
+            <RouterLink
+              v-for="nodeId in item.knowledge_resource_node_keys"
+              :key="nodeId"
+              :to="contentRoute(nodeId)"
+            >
+              {{ labelFor(item, nodeId) }}
+            </RouterLink>
           </div>
-          <div>
-            <dt>策略战术</dt>
-            <dd>{{ item.strategy_node_keys.length }}</dd>
+          <div v-if="item.strategy_node_keys.length">
+            <span>策略</span>
+            <RouterLink
+              v-for="nodeId in item.strategy_node_keys"
+              :key="nodeId"
+              :to="contentRoute(nodeId)"
+            >
+              {{ labelFor(item, nodeId) }}
+            </RouterLink>
           </div>
-        </dl>
+        </div>
       </li>
     </ol>
   </section>
@@ -62,6 +76,12 @@ const useCount = computed(
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN')
 }
+function labelFor(item: GraphLearningEvidence, nodeId: string): string {
+  return item.node_labels[nodeId] ?? nodeId
+}
+function contentRoute(nodeId: string): string {
+  return `/teacher/knowledge-content/${encodeURIComponent(nodeId)}`
+}
 </script>
 
 <style scoped>
@@ -75,8 +95,7 @@ function formatTime(value: string): string {
 header,
 header > div,
 .usage,
-li > div,
-dl {
+li > div {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -136,19 +155,28 @@ li p {
   color: var(--color-muted);
   font-size: 0.78rem;
 }
-dl {
+.node-chain {
+  display: grid;
+  gap: var(--space-2);
   margin: var(--space-2) 0 0;
 }
-dl div {
+.node-chain div {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 3px;
   font-size: 0.7rem;
 }
-dt {
+.node-chain span {
   color: var(--color-muted);
 }
-dd {
-  margin: 0;
-  font-weight: 750;
+.node-chain b,
+.node-chain a {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  font-weight: 700;
+  text-decoration: none;
 }
 </style>

@@ -31,7 +31,7 @@ const graph: KnowledgeGraphView = {
       source_type: 'Phenomenon',
       label: 'Recognise a non-firm offer and the risk of treating it as binding.',
       short_label: '将虚盘误作实盘',
-      properties: { BusinessConsequence: '买方可能基于不可依赖的价格作出决策。' },
+      properties: { StageID: 'S2', BusinessConsequence: '买方可能基于不可依赖的价格作出决策。' },
     },
     {
       id: 'knowledge:K005',
@@ -69,7 +69,7 @@ const graph: KnowledgeGraphView = {
 }
 
 describe('KnowledgeGraphExplorer', () => {
-  it('shows scenarios and opens node details in a dialog with both names', async () => {
+  it('defaults to the teaching map, keeps scenarios collapsed, and opens node details', async () => {
     const wrapper = mount(KnowledgeGraphExplorer, {
       props: { graph },
       global: {
@@ -84,11 +84,16 @@ describe('KnowledgeGraphExplorer', () => {
       },
     })
 
+    expect(wrapper.text()).toContain('教学地图')
+    expect(wrapper.text()).toContain('关系全景')
+    expect(wrapper.text()).not.toContain('训练场景')
+    await wrapper.get('.filter-toggle').trigger('click')
     expect(wrapper.text()).toContain('一级主题')
     expect(wrapper.text()).toContain('训练场景')
     expect(wrapper.text()).toContain('知识点类型')
     expect(wrapper.text()).toContain('策略战术')
-    expect(wrapper.text()).toContain('选择一个节点，查看它与一级主题')
+    expect(wrapper.text()).not.toContain('九阶段稳定布局')
+    expect(wrapper.text()).not.toContain('沿九阶段理解业务问题')
     await wrapper.get('[data-test="select-node"]').trigger('click')
 
     const dialog = wrapper.get('[role="dialog"]')
@@ -119,5 +124,38 @@ describe('KnowledgeGraphExplorer', () => {
     await wrapper.get('form').trigger('submit')
 
     expect(wrapper.emitted('save-display')).toEqual([['scenario:S04', '虚盘识别与催实盘', 0]])
+  })
+
+  it('limits search results to direct matches and their one-hop neighbors', async () => {
+    const wrapper = mount(KnowledgeGraphExplorer, {
+      props: { graph },
+      global: {
+        stubs: {
+          KnowledgeGraphCanvas: true,
+          RouterLink: { template: '<a><slot /></a>' },
+        },
+      },
+    })
+
+    await wrapper.get('input[type="search"]').setValue('宽泛询盘')
+
+    expect(wrapper.text()).toContain('当前 2 个节点')
+  })
+
+  it('organizes the text directory by stage, phenomenon, knowledge type, and node', () => {
+    const wrapper = mount(KnowledgeGraphExplorer, {
+      props: { graph },
+      global: {
+        stubs: {
+          KnowledgeGraphCanvas: true,
+          RouterLink: { template: '<a><slot /></a>' },
+        },
+      },
+    })
+
+    expect(wrapper.get('.stage-list > details > summary').text()).toContain('1 个现象')
+    expect(wrapper.get('.phenomenon-group > summary').text()).toContain('将虚盘误作实盘')
+    expect(wrapper.get('.phenomenon-content h4').text()).toContain('策略战术')
+    expect(wrapper.get('.node-list button').text()).toContain('宽泛询盘')
   })
 })

@@ -14,6 +14,11 @@
     </section>
     <template v-else-if="attempt?.evaluation">
       <EvaluationResultView :evaluation="attempt.evaluation" />
+      <EvaluationKnowledgeGraph
+        :attempt-id="String(route.params.attemptId)"
+        :evaluations="attempt.round_evaluations"
+      />
+      <EvaluationLearningPath :evaluations="attempt.round_evaluations" />
       <nav>
         <RouterLink to="/student">返回学习路线</RouterLink>
         <button type="button" :disabled="submitting" @click="startRetry">
@@ -29,6 +34,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import RoleWorkspaceLayout from '@/app/layouts/RoleWorkspaceLayout.vue'
 import EvaluationResultView from '@/features/evaluation/components/EvaluationResultView.vue'
+import EvaluationLearningPath from '@/features/knowledge-graph/components/EvaluationLearningPath.vue'
+import EvaluationKnowledgeGraph from '@/features/knowledge-graph/components/EvaluationKnowledgeGraph.vue'
 import { useAttempt } from '@/features/training/composables/useAttempt'
 
 const route = useRoute()
