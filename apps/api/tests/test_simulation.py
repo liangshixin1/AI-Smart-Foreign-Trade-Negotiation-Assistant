@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterator
 
 from conftest import TEST_PASSWORD
 from fastapi.testclient import TestClient
@@ -9,8 +10,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
-from app.integrations.llm.base import LLMMessage, LLMRequest
+from app.integrations.llm.base import (
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+    LLMStreamChunk,
+)
 from app.integrations.llm.mock import MockLLMProvider
+from app.modules.assessment.models import RoundEvaluation
+from app.modules.assessment.round_payload_repair import salvage_simulation_round
 from app.modules.curriculum.models import TrainingUnit
 from app.modules.progress.models import ProgressRecord
 from app.modules.simulation.models import (
@@ -26,6 +34,33 @@ from app.modules.simulation.schemas import SimulationObservationCandidate
 from app.modules.simulation.state_rules import apply_observation, initial_state
 from app.modules.simulation.validators import parse_turn_output, validate_turn
 from app.modules.training.models import Attempt, Message
+
+
+class RecordingMockProvider:
+    def __init__(self) -> None:
+        self.delegate = MockLLMProvider()
+        self.requests: list[LLMRequest] = []
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        return self.delegate.complete(request)
+
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
+        self.requests.append(request)
+        yield from self.delegate.stream(request)
+
+
+class MalformedOptionalRoundProvider(RecordingMockProvider):
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        response = super().complete(request)
+        if request.metadata.get("evaluation_kind") != "round":
+            return response
+        payload = json.loads(response.content)
+        payload["checklist_results"] = [{"item": "rewritten item", "satisfied": True}]
+        payload["knowledge_recommendations"] = [{"node_id": 3}]
+        payload["learning_diagnostic"] = {"learner_stage": "developing"}
+        payload["simulation_observation"] = {"events": "not-a-list"}
+        return response.model_copy(update={"content": json.dumps(payload)})
 
 
 def _student_headers(client: TestClient) -> dict[str, str]:
@@ -300,6 +335,89 @@ def test_short_turn_contract_sanitizes_animation_but_rejects_content_violations(
             raise AssertionError(f"Unsafe dialogue was accepted: {unsafe_text}")
 
 
+def test_simulation_round_salvages_only_optional_invalid_extensions() -> None:
+    candidate, degraded = salvage_simulation_round(
+        json.dumps(
+            {
+                "score": 82,
+                "pros": "The counteroffer cites a market comparison.",
+                "cons": "No reciprocal condition is offered yet.",
+                "detailed_evaluation": "The proposal is reasoned and professional.",
+                "next_step_suggestion": "State a target price and offer a volume exchange.",
+                "checklist_results": [{"item": "rewritten item", "satisfied": True}],
+                "knowledge_recommendations": [{"node_id": 3}],
+                "strategy_recommendations": [],
+                "learning_diagnostic": {"learner_stage": "developing"},
+                "simulation_observation": {"events": "not-a-list"},
+            }
+        ),
+        {"checklist": ["exact item"]},
+    )
+
+    assert candidate.score == 82
+    assert candidate.checklist_results == []
+    assert candidate.knowledge_recommendations == []
+    assert candidate.learning_diagnostic.confidence == 0.2
+    assert candidate.simulation_observation is not None
+    assert candidate.simulation_observation.events == []
+    assert set(degraded) == {
+        "checklist_results",
+        "knowledge_recommendations",
+        "learning_diagnostic",
+        "simulation_observation",
+    }
+
+
+def test_simulation_round_optional_failures_do_not_block_saved_dialogue(
+    client: TestClient,
+    curriculum_enrollment: None,
+    session_factory: sessionmaker[Session],
+    users: dict[str, object],
+) -> None:
+    del curriculum_enrollment
+    student = users["student"]
+    _unlock_representative_unit(session_factory, student.id)  # type: ignore[attr-defined]
+    client.app.state.settings.simulation_enabled = True
+    client.app.state.llm_provider = MalformedOptionalRoundProvider()
+    headers = _student_headers(client)
+    created = client.post(
+        "/api/v1/attempts",
+        headers={**headers, "Idempotency-Key": "simulation-degraded-round"},
+        json={
+            "unit_id": "chapter-3-section-1",
+            "difficulty": "standard",
+            "experience_mode": "simulation",
+        },
+    )
+    assert created.status_code == 201
+    attempt_id = created.json()["id"]
+
+    with client.stream(
+        "POST",
+        f"/api/v1/attempts/{attempt_id}/messages/stream",
+        headers=headers,
+        json={
+            "client_message_id": "simulation-degraded-round-message",
+            "content": "Market comparisons support USD 278 for a larger order.",
+        },
+    ) as response:
+        stream_body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert "event: simulation.turn.ready" in stream_body
+    assert "event: simulation.state.updated" in stream_body
+    recovered = client.get(f"/api/v1/attempts/{attempt_id}/simulation", headers=headers)
+    assert recovered.json()["latest_state"]["analysis_status"] == "ready"
+    assert recovered.json()["latest_state"]["revision"] == 1
+    with session_factory() as db:
+        stored = db.scalar(
+            select(RoundEvaluation).where(RoundEvaluation.attempt_id == uuid.UUID(attempt_id))
+        )
+        assert stored is not None
+        assert stored.learning_diagnostic["confidence"] == 0.2
+        assert stored.simulation_observation["events"] == []
+
+
 def test_same_public_history_with_different_confirmed_state_changes_behavior_fixture() -> None:
     provider = MockLLMProvider()
 
@@ -382,6 +500,8 @@ def test_simulation_mock_loop_is_idempotent_recoverable_and_teacher_visible(
     users: dict[str, object],
 ) -> None:
     del curriculum_enrollment
+    provider = RecordingMockProvider()
+    client.app.state.llm_provider = provider
     student = users["student"]
     _unlock_representative_unit(session_factory, student.id)  # type: ignore[attr-defined]
     client.app.state.settings.simulation_enabled = True
@@ -441,6 +561,23 @@ def test_simulation_mock_loop_is_idempotent_recoverable_and_teacher_visible(
     assert "event: message.delta" not in stream_body
     assert "event: simulation.state.updated" in stream_body
     assert "event: stream.closed" in stream_body
+    turn_request = next(
+        request
+        for request in provider.requests
+        if request.metadata.get("simulation_kind") == "turn"
+    )
+    turn_prompt = "\n".join(message.content for message in turn_request.messages)
+    assert '"schema_version":"simulation.turn.v1"' in turn_prompt
+    assert "Yours sincerely" not in turn_prompt
+    assert turn_request.max_output_tokens == 512
+    round_request = next(
+        request
+        for request in provider.requests
+        if request.metadata.get("evaluation_kind") == "round"
+    )
+    round_prompt = "\n".join(message.content for message in round_request.messages)
+    assert "simulation_observation 严格匹配" in round_prompt
+    assert "函电规范性" not in round_prompt
 
     recovered = client.get(f"/api/v1/attempts/{attempt_id}/simulation", headers=headers)
     recovered_body = recovered.json()

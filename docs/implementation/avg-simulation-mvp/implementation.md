@@ -39,7 +39,9 @@
 
 - 保持 scenario / conversation / evaluation 三用途；新增版本 1.0.0 的仿真 briefing、conversation、round、final 提示词。
 - conversation 先完成结构化响应、校验并原子保存 Message 与 Presentation，再发可播放事件；非法输出只做一次受约束纠正。
+- 仿真 conversation 不再拼接要求“称呼、署名、3—5 句”的旧 IM 邮件提示，只使用独立短台词提示、同一场景快照和公共历史；精确 JSON 形状写入提示，输出预算降为 512 tokens。
 - scenario 对结构化结果同样只做一次约束修复；仍失败时保留失败记录，客户端停留在准备页并允许使用新幂等键重新开始，不进入空白工作台。
+- 仿真逐轮评价使用独立口语评价提示；两次输出均不合规时仅降级无效的可选扩展，核心分数与反馈仍须通过 Schema，态势候选无效则为空而不是伪造。
 - round evaluation 产生带原话证据的观察候选；正式评价使用适配简短商务口语的 profile。
 - mock 全闭环通过。真实模型 runner 已准备，但未执行，详见 `known-issues.md`。
 

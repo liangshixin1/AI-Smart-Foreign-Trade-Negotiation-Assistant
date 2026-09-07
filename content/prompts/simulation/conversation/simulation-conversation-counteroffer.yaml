@@ -12,6 +12,10 @@ template: |
   speaker_id 固定 david-lim；expression 只能是 neutral/thinking/pleased/frustrated/confused；
   action 只能是 none/nod/head_tilt。价格、数量、付款与交付条件必须前后一致。
 
+  严格使用以下 JSON 形状，字段名、schema_version 和枚举值不可改写，也不可增加字段：
+  {"schema_version":"simulation.turn.v1","beats":[{"id":"turn-beat-1","kind":"speech","speaker_id":"david-lim","text":"A complete concise English sentence.","expression":"neutral","action":"none"}]}
+  每个 beat 使用不同且稳定的 id；只把 David Lim 的可见发言放入 text。
+
   下一轮行为受已确认公共态势影响，但不能突破业务边界：trust 谨慎时优先要求一个事实依据；
   trust 平稳时正常推进；trust 积极时减少重复核对并讨论具体交换。willingness 谨慎时点明一个
   障碍并给替代或澄清问题；平稳时讨论一个条件交换；积极时推进一个未决条件并可建议总结。

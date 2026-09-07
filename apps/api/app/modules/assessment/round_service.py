@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from app.integrations.llm.prompt_renderer import render_prompt
 from app.integrations.llm.structured_output import parse_structured_output
 from app.modules.assessment.diagnostic import bind_diagnostic_evidence
 from app.modules.assessment.models import RoundEvaluation
+from app.modules.assessment.round_payload_repair import salvage_simulation_round
 from app.modules.assessment.schemas import RoundEvaluationCandidate
 from app.modules.curriculum.models import TrainingUnit
 from app.modules.knowledge_graph.recommendation_service import GraphRecommendationService
@@ -25,6 +27,8 @@ from app.modules.training.adaptive_learning import round_diagnostic_extension
 from app.modules.training.invocations import invoke_and_record
 from app.modules.training.models import Attempt, Message
 from app.modules.training.repository import TrainingRepository
+
+logger = logging.getLogger(__name__)
 
 
 class RoundAssessmentService:
@@ -96,7 +100,17 @@ class RoundAssessmentService:
                 attempt.content_bindings["simulation_profile_id"],
                 attempt.content_bindings["simulation_profile_version"],
             )
-            prompt += "\n\n" + load_simulation_prompt("round")
+            prompt = render_prompt(
+                load_simulation_prompt("round"),
+                {
+                    "scenario_public_json": json.dumps(
+                        attempt.scenario.public_payload, ensure_ascii=False
+                    ),
+                    "latest_round_json": json.dumps(latest_round, ensure_ascii=False),
+                    "conversation_history": json.dumps(history, ensure_ascii=False),
+                    "rubric_summary": json.dumps(unit.rubric.dimensions, ensure_ascii=False),
+                },
+            )
             prompt_id = profile.round_prompt_id
             prompt_version = profile.round_prompt_version
         request = LLMRequest(
@@ -188,7 +202,29 @@ class RoundAssessmentService:
                 )
             except (LLMProviderError, ValueError):
                 if attempt_index == 1:
-                    raise
+                    if request.metadata.get("experience_mode") != "simulation":
+                        raise
+                    candidate, degraded = salvage_simulation_round(
+                        response.content, scenario_public
+                    )
+                    bind_diagnostic_evidence(candidate.learning_diagnostic, student_messages)
+                    try:
+                        recommendations = self.recommendations.validate_selection(
+                            graph_candidates,
+                            candidate.knowledge_recommendations,
+                            candidate.strategy_recommendations,
+                        )
+                    except ValueError:
+                        candidate.knowledge_recommendations = []
+                        candidate.strategy_recommendations = []
+                        recommendations = []
+                        degraded.append("recommendation_selection")
+                    logger.warning(
+                        "Simulation round optional fields degraded attempt_id=%s fields=%s",
+                        request.metadata["attempt_id"],
+                        ",".join(sorted(set(degraded))),
+                    )
+                    return response, candidate, recommendations
                 current_request = current_request.model_copy(
                     update={
                         "correlation_id": str(uuid.uuid4()),

@@ -74,15 +74,6 @@ class SimulationTurnService:
             for item in context.attempt.messages
             if item.status == "completed"
         ]
-        base_prompt = render_prompt(
-            context.unit.conversation_prompt.body,
-            {
-                "scenario_private_json": json.dumps(
-                    context.attempt.scenario.private_payload, ensure_ascii=False
-                ),
-                "conversation_history": json.dumps(history, ensure_ascii=False),
-            },
-        )
         simulation_prompt = render_prompt(
             load_simulation_prompt("conversation"),
             {
@@ -95,7 +86,10 @@ class SimulationTurnService:
                 "conversation_history": json.dumps(history, ensure_ascii=False),
             },
         )
-        messages = [LLMMessage(role="system", content=base_prompt + "\n\n" + simulation_prompt)]
+        # The published IM prompt requires an email salutation/signature and 3-5 sentences.
+        # Reusing it here conflicts with the concise structured AVG contract, so simulation
+        # uses its separately versioned prompt and the same bound scenario facts instead.
+        messages = [LLMMessage(role="system", content=simulation_prompt)]
         bound_version = context.attempt.content_bindings.get("knowledge_graph_version")
         graph_context = self.knowledge_context.conversation(
             context.unit, str(bound_version) if bound_version else None
@@ -114,6 +108,7 @@ class SimulationTurnService:
             correlation_id=str(uuid.uuid4()),
             messages=messages,
             json_output=True,
+            max_output_tokens=512,
             metadata={
                 "attempt_id": str(context.attempt.id),
                 "simulation_kind": "turn",
