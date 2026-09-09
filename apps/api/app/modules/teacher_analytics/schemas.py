@@ -70,6 +70,7 @@ class ImportResult(BaseModel):
 
 
 class AttemptSummary(BaseModel):
+    workspace_kind: str | None = None
     id: uuid.UUID
     unit_id: str
     unit_title: str

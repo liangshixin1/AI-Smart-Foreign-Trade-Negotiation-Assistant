@@ -27,10 +27,19 @@ class TrainingService:
         provider: LLMProvider,
         graph_store: GraphStore,
         simulation_enabled: bool = False,
+        document_correction_enabled: bool = False,
+        document_correction_skip_prerequisite: bool = False,
     ) -> None:
         self.db = db
         self.repository = TrainingRepository(db)
-        self.creation = AttemptCreationService(db, provider, graph_store, simulation_enabled)
+        self.creation = AttemptCreationService(
+            db,
+            provider,
+            graph_store,
+            simulation_enabled,
+            document_correction_enabled,
+            document_correction_skip_prerequisite,
+        )
         self.conversation = ConversationService(db, provider, graph_store)
         self.simulation_conversation = SimulationConversationService(db, provider, graph_store)
         self.submission = SubmissionService(db)

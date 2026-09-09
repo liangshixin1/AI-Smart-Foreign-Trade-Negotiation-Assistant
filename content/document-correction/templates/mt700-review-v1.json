@@ -1,0 +1,331 @@
+{
+  "schema_version": "lc.document.v1",
+  "document_type": "mt700_review_copy",
+  "document_number": "TRAINING-LC-2027-A",
+  "title": "DOCUMENTARY CREDIT ADVICE",
+  "watermark": "TRAINING SAMPLE / 训练样张",
+  "sections": [
+    {
+      "section_id": "credit",
+      "title": "MT700 · 信用证审核副本",
+      "fields": [
+        {
+          "field_id": "mt700-27",
+          "tag": "27",
+          "label": "Sequence of Total",
+          "value_type": "text",
+          "value": "1/1",
+          "display_value": "1/1",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-40a",
+          "tag": "40A",
+          "label": "Form of Credit",
+          "value_type": "enum",
+          "value": "IRREVOCABLE",
+          "display_value": "IRREVOCABLE",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-20",
+          "tag": "20",
+          "label": "Documentary Credit Number",
+          "value_type": "text",
+          "value": "TRAINING-LC-2027-A",
+          "display_value": "TRAINING-LC-2027-A",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-31c",
+          "tag": "31C",
+          "label": "Date of Issue",
+          "value_type": "date",
+          "value": "2027-03-05",
+          "display_value": "2027-03-05",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-40e",
+          "tag": "40E",
+          "label": "Applicable Rules",
+          "value_type": "text",
+          "value": "UCP LATEST VERSION",
+          "display_value": "UCP LATEST VERSION",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-50",
+          "tag": "50",
+          "label": "Applicant",
+          "value_type": "party",
+          "value": {
+            "name": "Shanghai Hanlin Trading Co., Ltd.",
+            "address": "Shanghai, China"
+          },
+          "display_value": "{\"name\": \"Shanghai Hanlin Trading Co., Ltd.\", \"address\": \"Shanghai, China\"}",
+          "items": [],
+          "inputs": [
+            "name",
+            "address"
+          ]
+        },
+        {
+          "field_id": "mt700-59",
+          "tag": "59",
+          "label": "Beneficiary",
+          "value_type": "party",
+          "value": {
+            "name": "NovaTech Display Systems Pte. Ltd.",
+            "address": "Singapore"
+          },
+          "display_value": "{\"name\": \"NovaTech Display Systems Pte. Ltd.\", \"address\": \"Singapore\"}",
+          "items": [],
+          "inputs": [
+            "name",
+            "address"
+          ]
+        },
+        {
+          "field_id": "mt700-32b",
+          "tag": "32B",
+          "label": "Currency and Amount",
+          "value_type": "currency_amount",
+          "value": {
+            "currency": "USD",
+            "amount": "282000.00"
+          },
+          "display_value": "{\"currency\": \"USD\", \"amount\": \"282000.00\"}",
+          "items": [],
+          "inputs": [
+            "currency",
+            "amount"
+          ]
+        },
+        {
+          "field_id": "mt700-41a",
+          "tag": "41A",
+          "label": "Available With / By",
+          "value_type": "text",
+          "value": "ANY BANK IN SINGAPORE BY PAYMENT AT SIGHT",
+          "display_value": "ANY BANK IN SINGAPORE BY PAYMENT AT SIGHT",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-43p",
+          "tag": "43P",
+          "label": "Partial Shipments",
+          "value_type": "enum",
+          "value": "ALLOWED",
+          "display_value": "ALLOWED",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-43t",
+          "tag": "43T",
+          "label": "Transshipment",
+          "value_type": "enum",
+          "value": "NOT ALLOWED",
+          "display_value": "NOT ALLOWED",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-44e",
+          "tag": "44E",
+          "label": "Port of Loading",
+          "value_type": "text",
+          "value": "Singapore",
+          "display_value": "Singapore",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-44f",
+          "tag": "44F",
+          "label": "Port of Discharge",
+          "value_type": "text",
+          "value": "Shanghai",
+          "display_value": "Shanghai",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-44c",
+          "tag": "44C",
+          "label": "Latest Shipment Date",
+          "value_type": "date",
+          "value": "2027-04-05",
+          "display_value": "2027-04-05",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-term-relation",
+          "tag": "31D + 48",
+          "label": "Expiry and Presentation Period (linked to 44C)",
+          "value_type": "field_relation",
+          "value": {
+            "expiry_date": "2027-05-01",
+            "period_days": 7,
+            "expiry_place": "Singapore"
+          },
+          "display_value": "{\"expiry_date\": \"2027-05-01\", \"period_days\": 7, \"expiry_place\": \"Singapore\"}",
+          "items": [],
+          "inputs": [
+            "expiry_date",
+            "period_days",
+            "expiry_place"
+          ]
+        },
+        {
+          "field_id": "mt700-45a",
+          "tag": "45A",
+          "label": "Description of Goods",
+          "value_type": "clause_list",
+          "value": "",
+          "display_value": "",
+          "items": [
+            {
+              "item_id": "mt700-45a-01",
+              "text": "NT-IM250 LED display modules; 880 pieces; USD 285.00 each; CIF Shanghai, Incoterms 2020",
+              "value_type": "goods_description",
+              "value": {
+                "product": "NT-IM250 LED display modules",
+                "quantity": 880,
+                "unit": "piece",
+                "unit_price": "285.00",
+                "incoterm": "CIF",
+                "place": "Shanghai",
+                "incoterms_version": "2020"
+              },
+              "inputs": [
+                "product",
+                "quantity",
+                "unit",
+                "unit_price",
+                "incoterm",
+                "place",
+                "incoterms_version"
+              ]
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-46a",
+          "tag": "46A",
+          "label": "Documents Required",
+          "value_type": "clause_list",
+          "value": "",
+          "display_value": "",
+          "items": [
+            {
+              "item_id": "mt700-46a-01",
+              "text": "Signed commercial invoice: 3 originals",
+              "value_type": "clause_list",
+              "value": {
+                "action": "retain",
+                "template": "",
+                "parameter": ""
+              },
+              "inputs": []
+            },
+            {
+              "item_id": "mt700-46a-02",
+              "text": "Packing list: 3 copies",
+              "value_type": "clause_list",
+              "value": {
+                "action": "retain",
+                "template": "",
+                "parameter": ""
+              },
+              "inputs": []
+            },
+            {
+              "item_id": "mt700-46a-03",
+              "text": "Full set clean on-board ocean bills of lading, freight prepaid, to order of issuing bank, notify applicant",
+              "value_type": "clause_list",
+              "value": {
+                "action": "retain",
+                "template": "",
+                "parameter": ""
+              },
+              "inputs": []
+            },
+            {
+              "item_id": "mt700-46a-04",
+              "text": "Insurance policy or certificate: 110% invoice value, USD, Institute Cargo Clauses (C)",
+              "value_type": "clause_list",
+              "value": {
+                "action": "retain",
+                "template": "",
+                "parameter": ""
+              },
+              "inputs": []
+            },
+            {
+              "item_id": "mt700-46a-05",
+              "text": "CERTIFICATE ISSUED AND SIGNED AT APPLICANT’S SOLE DISCRETION CONFIRMING SATISFACTORY GOODS BEFORE SHIPMENT",
+              "value_type": "clause_list",
+              "value": {
+                "action": "retain",
+                "template": "",
+                "parameter": ""
+              },
+              "inputs": []
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-47a",
+          "tag": "47A",
+          "label": "Additional Conditions",
+          "value_type": "text",
+          "value": "TRANSSHIPMENT VIA HONG KONG MUST NOT DELAY CONTRACTED DELIVERY",
+          "display_value": "TRANSSHIPMENT VIA HONG KONG MUST NOT DELAY CONTRACTED DELIVERY",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-49",
+          "tag": "49",
+          "label": "Confirmation Instructions",
+          "value_type": "text",
+          "value": "WITHOUT",
+          "display_value": "WITHOUT",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-71d",
+          "tag": "71D",
+          "label": "Charges",
+          "value_type": "text",
+          "value": "ISSUING BANK CHARGES FOR APPLICANT; OTHER CHARGES AS AGREED",
+          "display_value": "ISSUING BANK CHARGES FOR APPLICANT; OTHER CHARGES AS AGREED",
+          "items": [],
+          "inputs": []
+        },
+        {
+          "field_id": "mt700-78",
+          "tag": "78",
+          "label": "Instructions to Paying Bank",
+          "value_type": "text",
+          "value": "PAY AT SIGHT AGAINST A COMPLYING PRESENTATION",
+          "display_value": "PAY AT SIGHT AGAINST A COMPLYING PRESENTATION",
+          "items": [],
+          "inputs": []
+        }
+      ]
+    }
+  ]
+}

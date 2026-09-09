@@ -1,0 +1,108 @@
+{
+  "schema_version": "lc.answer.v1",
+  "variant_id": "standard-a",
+  "rules_version": "1.0.0",
+  "issues": [
+    {
+      "issue_id": "issue-mt700-59",
+      "target_ref": "mt700-59",
+      "expected": {
+        "name": "NovaTech Display Solutions Pte. Ltd.",
+        "address": "Singapore"
+      },
+      "source_fact_ref": "beneficiary.name",
+      "weight": 14,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-32b",
+      "target_ref": "mt700-32b",
+      "expected": {
+        "currency": "USD",
+        "amount": "228000.00"
+      },
+      "source_fact_ref": "amount.total",
+      "weight": 16,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-45a-01",
+      "target_ref": "mt700-45a-01",
+      "expected": {
+        "product": "NT-IM250 LED display modules",
+        "quantity": 800,
+        "unit": "piece",
+        "unit_price": "285.00",
+        "incoterm": "CIF",
+        "place": "Shanghai",
+        "incoterms_version": "2020"
+      },
+      "source_fact_ref": "goods.quantity",
+      "weight": 14,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-43p",
+      "target_ref": "mt700-43p",
+      "expected": "NOT ALLOWED",
+      "source_fact_ref": "shipment.partial_shipments",
+      "weight": 10,
+      "critical": false,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-43t",
+      "target_ref": "mt700-43t",
+      "expected": "ALLOWED",
+      "source_fact_ref": "shipment.transshipment",
+      "weight": 14,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-44c",
+      "target_ref": "mt700-44c",
+      "expected": "2027-04-15",
+      "source_fact_ref": "shipment.receipt_date",
+      "weight": 12,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-term-relation",
+      "target_ref": "mt700-term-relation",
+      "expected": {
+        "expiry_date": "2027-05-06",
+        "period_days": 21,
+        "expiry_place": "Singapore"
+      },
+      "source_fact_ref": "presentation.period_days",
+      "weight": 12,
+      "critical": true,
+      "category": "contract_mismatch"
+    },
+    {
+      "issue_id": "issue-mt700-46a-05",
+      "target_ref": "mt700-46a-05",
+      "expected": {
+        "action": "delete",
+        "template": "",
+        "parameter": ""
+      },
+      "source_fact_ref": "documents_required",
+      "weight": 8,
+      "critical": false,
+      "category": "unperformable"
+    }
+  ],
+  "protected_correct_refs": [
+    "mt700-50",
+    "mt700-40a",
+    "mt700-41a",
+    "mt700-44e",
+    "mt700-44f"
+  ]
+}

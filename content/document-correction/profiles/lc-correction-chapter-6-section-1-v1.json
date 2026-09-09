@@ -1,0 +1,13 @@
+{
+  "id": "lc-correction-chapter-6-section-1",
+  "version": "1.0.0",
+  "unit_key": "chapter-6-section-1",
+  "unit_version": "2.2.2",
+  "workspace_kind": "lc_correction",
+  "template_id": "mt700-review",
+  "template_version": "1.0.0",
+  "case_snapshot_version": "1.0.0",
+  "answer_rules_version": "1.0.0",
+  "variant_id": "standard-a",
+  "publication_status": "published"
+}

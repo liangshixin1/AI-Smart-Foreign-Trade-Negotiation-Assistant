@@ -29,15 +29,28 @@ class TrainingRecoveryService:
         provider: LLMProvider,
         graph_store: GraphStore,
         simulation_enabled: bool = False,
+        document_correction_enabled: bool = False,
+        document_correction_skip_prerequisite: bool = False,
     ) -> None:
         self.db = db
         self.repository = TrainingRepository(db)
-        self.creation = AttemptCreationService(db, provider, graph_store, simulation_enabled)
+        self.creation = AttemptCreationService(
+            db,
+            provider,
+            graph_store,
+            simulation_enabled,
+            document_correction_enabled,
+            document_correction_skip_prerequisite,
+        )
 
     def save_draft(
         self, student: User, attempt_id: uuid.UUID, data: DraftRequest
     ) -> AttemptResponse:
         attempt = owned_attempt(self.repository, student, attempt_id)
+        if attempt.content_bindings.get("workspace_kind") == "lc_correction":
+            from app.modules.document_correction.profile_service import error
+
+            raise error("structured_only", "请在信用证审改单中操作。")
         if attempt.status != "in_progress":
             raise AppError(
                 code="training.draft_not_allowed",
@@ -46,7 +59,10 @@ class TrainingRecoveryService:
             )
         draft = self.repository.draft(attempt.id)
         if draft is None:
-            draft = AttemptDraft(attempt_id=attempt.id, content=data.content)
+            draft = AttemptDraft(
+                attempt_id=attempt.id,
+                content=data.content,
+            )
             self.db.add(draft)
         else:
             draft.content = data.content
@@ -96,6 +112,7 @@ class TrainingRecoveryService:
             result.append(
                 AttemptHistoryItemResponse(
                     id=attempt.id,
+                    workspace_kind=attempt.content_bindings.get("workspace_kind"),
                     unit_id=unit.unit_key,
                     unit_title=unit.title,
                     training_mode=unit.training_mode,

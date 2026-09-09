@@ -13,7 +13,10 @@
     <ul v-else>
       <li v-for="item in items.slice(0, 5)" :key="item.id">
         <div>
-          <strong>{{ item.unit_title }}</strong>
+          <strong>{{ item.unit_title }}</strong
+          ><span v-if="item.training_mode === 'document_review'">{{
+            item.workspace_kind === 'lc_correction' ? '信用证审改模式' : '旧版文本审阅'
+          }}</span>
           <span>{{ statusLabel(item.status) }} · {{ formatDate(item.updated_at) }}</span>
         </div>
         <b v-if="item.overall_score !== null">{{ Math.round(item.overall_score) }} 分</b>

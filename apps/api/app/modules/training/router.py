@@ -12,6 +12,7 @@ from app.integrations.knowledge_graph.base import GraphStore
 from app.integrations.llm.base import LLMProvider
 from app.modules.assessment.service import AssessmentService
 from app.modules.auth.dependencies import Principal, require_roles
+from app.modules.document_correction.schemas import SubmitInput
 from app.modules.training.recovery_service import TrainingRecoveryService
 from app.modules.training.schemas import (
     AttemptHistoryItemResponse,
@@ -30,14 +31,26 @@ student_required = require_roles("student")
 def _service(request: Request, db: Session) -> TrainingService:
     provider: LLMProvider = request.app.state.llm_provider
     graph_store: GraphStore = request.app.state.graph_store
-    return TrainingService(db, provider, graph_store, request.app.state.settings.simulation_enabled)
+    return TrainingService(
+        db,
+        provider,
+        graph_store,
+        request.app.state.settings.simulation_enabled,
+        request.app.state.settings.document_correction_enabled,
+        request.app.state.settings.document_correction_skip_prerequisite,
+    )
 
 
 def _recovery(request: Request, db: Session) -> TrainingRecoveryService:
     provider: LLMProvider = request.app.state.llm_provider
     graph_store: GraphStore = request.app.state.graph_store
     return TrainingRecoveryService(
-        db, provider, graph_store, request.app.state.settings.simulation_enabled
+        db,
+        provider,
+        graph_store,
+        request.app.state.settings.simulation_enabled,
+        request.app.state.settings.document_correction_enabled,
+        request.app.state.settings.document_correction_skip_prerequisite,
     )
 
 
@@ -135,8 +148,24 @@ def submit_attempt(
     principal: Annotated[Principal, Depends(student_required)],
     db: Annotated[Session, Depends(get_db)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8)],
+    payload: SubmitInput | None = None,
 ) -> AttemptResponse:
     training = _service(request, db)
+    current = training.get_attempt(principal.user, attempt_id)
+    if current.workspace_kind == "lc_correction":
+        from app.modules.document_correction.grading_service import submit
+        from app.modules.document_correction.profile_service import error
+
+        if payload is None:
+            raise error("revision_required", "提交需要当前已保存版本。", 422)
+        return submit(
+            db,
+            principal.user,
+            attempt_id,
+            idempotency_key,
+            payload.expected_revision,
+            request.app.state.settings.document_correction_enabled,
+        )
     attempt, submission = training.begin_submission(principal.user, attempt_id, idempotency_key)
     if attempt.status in {"completed", "evaluation_failed"}:
         return training.get_attempt(principal.user, attempt.id)

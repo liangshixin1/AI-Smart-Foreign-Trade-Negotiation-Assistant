@@ -16,10 +16,15 @@ router = APIRouter(prefix="/api/v1", tags=["curriculum"])
 
 @router.get("/courses/current/map", response_model=CourseMapResponse)
 def current_map(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[Principal, Depends(require_roles("student"))],
 ) -> CourseMapResponse:
-    return CurriculumService(CurriculumRepository(db)).get_map(principal.user)
+    return CurriculumService(
+        CurriculumRepository(db),
+        document_correction_enabled=request.app.state.settings.document_correction_enabled,
+        document_correction_skip_prerequisite=request.app.state.settings.document_correction_skip_prerequisite,
+    ).get_map(principal.user)
 
 
 @router.get("/units/{unit_id}", response_model=UnitDetailResponse)
@@ -30,5 +35,8 @@ def unit_detail(
     principal: Annotated[Principal, Depends(require_roles("student"))],
 ) -> UnitDetailResponse:
     return CurriculumService(
-        CurriculumRepository(db), request.app.state.settings.simulation_enabled
+        CurriculumRepository(db),
+        request.app.state.settings.simulation_enabled,
+        request.app.state.settings.document_correction_enabled,
+        request.app.state.settings.document_correction_skip_prerequisite,
     ).get_unit(principal.user, unit_id)

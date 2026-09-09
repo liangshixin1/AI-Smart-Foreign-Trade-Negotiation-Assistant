@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.modules.classrooms.models import Classroom, Enrollment
 from app.modules.curriculum.models import Chapter, CourseVersion, TrainingUnit
-from app.modules.progress.models import ProgressRecord
-from app.modules.training.models import Attempt
 
 
 class CurriculumRepository:
@@ -56,22 +54,6 @@ class CurriculumRepository:
     def unit_statuses(
         self, student_id: uuid.UUID, course_version_id: uuid.UUID
     ) -> tuple[dict[uuid.UUID, uuid.UUID], dict[uuid.UUID, tuple[str, uuid.UUID]]]:
-        completed_rows = self.db.execute(
-            select(ProgressRecord.unit_id, ProgressRecord.completed_attempt_id).where(
-                ProgressRecord.student_id == student_id,
-                ProgressRecord.course_version_id == course_version_id,
-            )
-        )
-        completed: dict[uuid.UUID, uuid.UUID] = {
-            row.unit_id: row.completed_attempt_id for row in completed_rows
-        }
-        attempts = self.db.scalars(
-            select(Attempt)
-            .where(
-                Attempt.student_id == student_id,
-                Attempt.course_version_id == course_version_id,
-            )
-            .order_by(Attempt.created_at.asc())
-        )
-        latest = {attempt.unit_id: (attempt.status, attempt.id) for attempt in attempts}
-        return completed, latest
+        from app.modules.curriculum.continuity import projected_statuses
+
+        return projected_statuses(self.db, student_id, course_version_id)

@@ -92,6 +92,7 @@ class TeacherAnalyticsService:
                     unit_title=unit.title,
                     status=attempt.status,
                     experience_mode=attempt.experience_mode,
+                    workspace_kind=attempt.content_bindings.get("workspace_kind"),
                     overall_score=evaluation.overall_score if evaluation else None,
                     created_at=attempt.created_at,
                     completed_at=attempt.completed_at,

@@ -15,6 +15,7 @@ from app.integrations.knowledge_graph import GraphStore, build_graph_store
 from app.integrations.llm import LLMProvider, build_llm_provider
 from app.modules.auth.router import router as auth_router
 from app.modules.curriculum.router import router as curriculum_router
+from app.modules.document_correction.router import router as document_router
 from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.progress.router import router as progress_router
 from app.modules.simulation.router import student_router as simulation_student_router
@@ -81,6 +82,7 @@ def create_app(
     application.include_router(curriculum_router)
     application.include_router(knowledge_graph_router)
     application.include_router(training_router)
+    application.include_router(document_router)
     application.include_router(simulation_student_router)
     application.include_router(progress_router)
     application.include_router(teacher_router)

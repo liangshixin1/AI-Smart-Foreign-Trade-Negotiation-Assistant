@@ -66,6 +66,8 @@ def present_attempt(
                     evidence=[
                         EvidenceResponse(
                             message_id=evidence.message_id,
+                            source_type=evidence.source_type,
+                            source_id=evidence.source_id,
                             quote=evidence.quote,
                             reason=evidence.reason,
                         )
@@ -76,6 +78,7 @@ def present_attempt(
             ],
         )
     return AttemptResponse(
+        workspace_kind=attempt.content_bindings.get("workspace_kind"),
         id=attempt.id,
         unit_id=unit.unit_key,
         unit_title=unit.title,

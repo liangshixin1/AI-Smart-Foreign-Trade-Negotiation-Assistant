@@ -18,8 +18,19 @@
         </ul>
       </section>
       <section>
-        <h3>评价维度</h3>
-        <ul>
+        <template v-if="unit.workspace_kind === 'lc_correction'"
+          ><h3>信用证审改模式 · 通关规则</h3>
+          <p>本证含8处不符点。原证保持只读，提交的是改证申请草案。</p>
+          <p>
+            定位30%、修改50%、依据20%；误报每项扣3分，错误修改正确重大字段额外扣5分，总扣分最多15分。
+          </p>
+          <p>总分至少80分、无重大遗漏、未错误修改正确重大字段且全部已提交项结构完整，才判通过。</p>
+          <p v-if="!unit.document_correction_enabled">
+            信用证审改模式尚未开放，请联系教师。
+          </p></template
+        >
+        <h3 v-else>评价维度</h3>
+        <ul v-if="unit.workspace_kind !== 'lc_correction'">
           <li v-for="dimension in unit.rubric_dimensions" :key="dimension.key">
             {{ dimension.label }}（{{ Math.round(dimension.weight * 100) }}%）
           </li>
@@ -53,7 +64,11 @@
       </p>
       <button
         type="button"
-        :disabled="starting || unit.status === 'locked'"
+        :disabled="
+          starting ||
+          unit.status === 'locked' ||
+          (unit.workspace_kind === 'lc_correction' && !unit.document_correction_enabled)
+        "
         @click="start(difficulty, experienceMode)"
       >
         {{ starting ? '正在生成实战场景…' : startLabel }}
@@ -87,9 +102,17 @@ const modeLabels: Record<string, string> = {
   business_email: '商务邮件',
   document_review: '单证审阅',
 }
-const modeLabel = computed(() => modeLabels[unit.value?.training_mode ?? ''] ?? '实战训练')
+const modeLabel = computed(() =>
+  unit.value?.workspace_kind === 'lc_correction'
+    ? '信用证审改模式'
+    : (modeLabels[unit.value?.training_mode ?? ''] ?? '实战训练'),
+)
 const startLabel = computed(() =>
-  experienceMode.value === 'simulation' ? '进入情境演出' : '生成场景并进入局面简报',
+  unit.value?.workspace_kind === 'lc_correction'
+    ? '进入信用证审改工作台'
+    : experienceMode.value === 'simulation'
+      ? '进入情境演出'
+      : '生成场景并进入局面简报',
 )
 const { start, starting, startError } = useStartAttempt(String(route.params.unitId))
 watch(unit, (next) => {

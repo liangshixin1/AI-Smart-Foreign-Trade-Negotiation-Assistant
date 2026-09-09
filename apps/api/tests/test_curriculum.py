@@ -84,7 +84,7 @@ def test_student_can_read_current_map_and_unit(
     course_map = client.get("/api/v1/courses/current/map", headers=headers)
     assert course_map.status_code == 200
     body = course_map.json()
-    assert body["course_version"] == "2.2.1-beta.22"
+    assert body["course_version"] == "2.2.1-beta.23"
     assert body["total_units"] == 20
     assert body["chapters"][0]["units"][0]["id"] == "chapter-0-section-1"
     assert any(
@@ -102,6 +102,10 @@ def test_student_can_read_current_map_and_unit(
     assert unit.status_code == 200
     assert unit.json()["training_mode"] == "negotiation"
     assert len(unit.json()["rubric_dimensions"]) == 5
+
+    lc_unit = client.get("/api/v1/units/chapter-6-section-1", headers=headers)
+    assert lc_unit.status_code == 200
+    assert lc_unit.json()["status"] == "locked"
 
     locked_attempt = client.post(
         "/api/v1/attempts",

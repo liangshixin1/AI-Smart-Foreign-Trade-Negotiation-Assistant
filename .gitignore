@@ -80,3 +80,6 @@ artifacts/
 # Vite and framework caches
 .vite/
 .cache/
+
+# Local research manuscripts; never publish with application source
+*论文*

@@ -1,5 +1,9 @@
 <template>
-  <RoleWorkspaceLayout title="训练评价" description="先看结论，再回到证据和下一步行动。">
+  <LcCorrectionWorkspace
+    v-if="attempt?.workspace_kind === 'lc_correction'"
+    :attempt-id="attempt.id"
+  />
+  <RoleWorkspaceLayout v-else title="训练评价" description="先看结论，再回到证据和下一步行动。">
     <p v-if="loading">正在加载正式评价…</p>
     <section v-else-if="attempt?.status === 'evaluation_failed'" class="failure" role="alert">
       <h2>评价生成失败，提交内容没有丢失</h2>
@@ -30,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import LcCorrectionWorkspace from '@/features/document-correction/components/LcCorrectionWorkspace.vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import RoleWorkspaceLayout from '@/app/layouts/RoleWorkspaceLayout.vue'

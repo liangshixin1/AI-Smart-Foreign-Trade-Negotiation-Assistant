@@ -64,6 +64,8 @@ def client(
         access_token_ttl_seconds=3600,
         refresh_token_ttl_seconds=7200,
         llm_provider="mock",
+        document_correction_enabled=False,
+        document_correction_skip_prerequisite=False,
     )
     with TestClient(create_app(settings=settings, session_factory=session_factory)) as test_client:
         yield test_client

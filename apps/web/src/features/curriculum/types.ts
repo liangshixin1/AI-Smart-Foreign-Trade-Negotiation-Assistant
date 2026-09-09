@@ -32,6 +32,8 @@ export interface RubricDimension {
 }
 
 export interface UnitDetail {
+  workspace_kind?: string | null
+  document_correction_enabled?: boolean
   id: string
   title: string
   description: string

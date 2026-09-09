@@ -1,0 +1,39 @@
+{
+  "status": "phase_a_pending_teaching_review",
+  "milestone": "Milestone 2",
+  "baseline_commit": "cca01db4120eae316971741b4bbfb33ce9508566",
+  "initial_git_status": "clean",
+  "database_head": "20260907_0017",
+  "old_6_1_attempts": {
+    "in_progress_chat": 1
+  },
+  "listeners": [
+    5174,
+    8000
+  ],
+  "simulation_enabled": true,
+  "document_correction_enabled_default": false,
+  "browser_observations": [
+    "Initial page reported expired session",
+    "Subsequent screenshot rendered course route and 30% progress"
+  ],
+  "validation": {
+    "targeted_tests_passed": 9,
+    "ruff": "passed",
+    "require_approved_exit_code": 1,
+    "require_approved_error": "document.case_pending_review"
+  },
+  "not_completed": [
+    "teaching approval",
+    "error manifest",
+    "workbench",
+    "0018 migration",
+    "persistence",
+    "grading",
+    "learning support",
+    "teacher replay",
+    "DeepSeek verification",
+    "full QA",
+    "release"
+  ]
+}

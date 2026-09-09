@@ -40,6 +40,10 @@ class StreamContextBuilder:
 
     def prepare(self, student: User, attempt_id: uuid.UUID, data: MessageRequest) -> StreamContext:
         attempt = owned_attempt(self.repository, student, attempt_id)
+        if attempt.content_bindings.get("workspace_kind") == "lc_correction":
+            from app.modules.document_correction.profile_service import error
+
+            raise error("structured_only", "请在信用证审改单中操作。")
         if attempt.status != "in_progress":
             raise AppError(
                 code="training.message_not_allowed",

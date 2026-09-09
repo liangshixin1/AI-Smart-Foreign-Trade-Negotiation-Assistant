@@ -15,7 +15,15 @@ from app.modules.simulation.profile_service import SimulationProfileService
 
 
 class CurriculumService:
-    def __init__(self, repository: CurriculumRepository, simulation_enabled: bool = False) -> None:
+    def __init__(
+        self,
+        repository: CurriculumRepository,
+        simulation_enabled: bool = False,
+        document_correction_enabled: bool = False,
+        document_correction_skip_prerequisite: bool = False,
+    ) -> None:
+        self.document_correction_enabled = document_correction_enabled
+        self.document_correction_skip_prerequisite = document_correction_skip_prerequisite
         self.repository = repository
         self.simulation_profiles = SimulationProfileService(simulation_enabled)
 
@@ -36,7 +44,10 @@ class CurriculumService:
         }
 
         def status_for_unit(unit: TrainingUnit) -> str:
+            from app.modules.document_correction.profile_service import is_published
+
             unit_id = unit.id
+            lc_correction = is_published(unit.unit_key, unit.version)
             if unit_id in completed:
                 return "completed"
             latest = latest_attempts.get(unit_id)
@@ -47,7 +58,11 @@ class CurriculumService:
                 return "evaluation_failed"
             if attempt_status == "in_progress":
                 return "in_progress"
-            if any(item not in completed_keys for item in unit.prerequisite_unit_ids):
+            if any(item not in completed_keys for item in unit.prerequisite_unit_ids) and not (
+                lc_correction
+                and self.document_correction_enabled
+                and self.document_correction_skip_prerequisite
+            ):
                 return "locked"
             return "available"
 
@@ -104,6 +119,9 @@ class CurriculumService:
             if item.id in completed
         }
         latest = latest_attempts.get(unit.id)
+        from app.modules.document_correction.profile_service import is_published
+
+        lc_correction = is_published(unit.unit_key, unit.version)
         if unit.id in completed:
             status = "completed"
         elif latest and latest[0] in {
@@ -113,11 +131,18 @@ class CurriculumService:
             "evaluation_failed",
         }:
             status = latest[0]
-        elif any(item not in completed_keys for item in unit.prerequisite_unit_ids):
+        elif any(item not in completed_keys for item in unit.prerequisite_unit_ids) and not (
+            lc_correction
+            and self.document_correction_enabled
+            and self.document_correction_skip_prerequisite
+        ):
             status = "locked"
         else:
             status = "available"
+        correction = lc_correction
         return UnitDetailResponse(
+            workspace_kind="lc_correction" if correction else None,
+            document_correction_enabled=self.document_correction_enabled,
             id=unit.unit_key,
             title=unit.title,
             description=unit.description,

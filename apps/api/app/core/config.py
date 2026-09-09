@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=60, ge=5, le=180)
     llm_max_retries: int = Field(default=1, ge=0, le=3)
     simulation_enabled: bool = False
+    document_correction_enabled: bool = False
+    document_correction_skip_prerequisite: bool = False
     knowledge_graph_provider: Literal["neo4j", "memory", "disabled"] = "disabled"
     neo4j_uri: str | None = None
     neo4j_username: str | None = None

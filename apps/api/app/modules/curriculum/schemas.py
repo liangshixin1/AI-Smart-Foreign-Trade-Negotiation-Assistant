@@ -39,6 +39,8 @@ class RubricDimensionResponse(BaseModel):
 
 
 class UnitDetailResponse(BaseModel):
+    workspace_kind: str | None = None
+    document_correction_enabled: bool = False
     id: str
     title: str
     description: str

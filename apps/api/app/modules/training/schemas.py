@@ -92,7 +92,9 @@ class RoundEvaluationResponse(BaseModel):
 
 
 class EvidenceResponse(BaseModel):
-    message_id: uuid.UUID
+    message_id: uuid.UUID | None
+    source_type: str = "message"
+    source_id: str | None = None
     quote: str
     reason: str
 
@@ -123,6 +125,7 @@ class EvaluationResponse(BaseModel):
 
 
 class AttemptResponse(BaseModel):
+    workspace_kind: str | None = None
     id: uuid.UUID
     unit_id: str
     unit_title: str
@@ -143,6 +146,7 @@ class AttemptResponse(BaseModel):
 
 
 class AttemptHistoryItemResponse(BaseModel):
+    workspace_kind: str | None = None
     id: uuid.UUID
     unit_id: str
     unit_title: str

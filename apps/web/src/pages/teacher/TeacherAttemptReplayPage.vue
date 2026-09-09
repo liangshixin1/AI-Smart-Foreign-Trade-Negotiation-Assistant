@@ -6,8 +6,21 @@
     <RouterLink to="/teacher">← 返回班级总览</RouterLink>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <template v-if="replay">
+      <LcCorrectionWorkspace
+        v-if="replay.attempt.workspace_kind === 'lc_correction'"
+        :attempt-id="replay.attempt.id"
+        teacher
+      />
       <p class="mode-badge">
-        {{ replay.attempt.experience_mode === 'simulation' ? '仿真模式' : '对话模式' }}
+        {{
+          replay.attempt.workspace_kind === 'lc_correction'
+            ? '信用证审改模式'
+            : replay.attempt.training_mode === 'document_review'
+              ? '旧版文本审阅'
+              : replay.attempt.experience_mode === 'simulation'
+                ? '仿真模式'
+                : '对话模式'
+        }}
       </p>
       <dl class="provenance">
         <div>
@@ -108,6 +121,7 @@
 </template>
 
 <script setup lang="ts">
+import LcCorrectionWorkspace from '@/features/document-correction/components/LcCorrectionWorkspace.vue'
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import RoleWorkspaceLayout from '@/app/layouts/RoleWorkspaceLayout.vue'

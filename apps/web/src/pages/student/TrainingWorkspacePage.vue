@@ -1,5 +1,10 @@
 <template>
-  <div class="page-shell">
+  <LcCorrectionWorkspace
+    v-if="attempt?.workspace_kind === 'lc_correction'"
+    :key="attempt.id"
+    :attempt-id="attempt.id"
+  />
+  <div v-else class="page-shell">
     <header class="topbar">
       <div>
         <RouterLink to="/student">退出训练</RouterLink>
@@ -71,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import LcCorrectionWorkspace from '@/features/document-correction/components/LcCorrectionWorkspace.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 

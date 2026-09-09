@@ -188,13 +188,9 @@ class TrainingRepository:
         )
 
     def completed_unit_keys(self, student_id: uuid.UUID, course_version_id: uuid.UUID) -> set[str]:
+        from app.modules.curriculum.continuity import projected_statuses
+
+        completed, _ = projected_statuses(self.db, student_id, course_version_id)
         return set(
-            self.db.scalars(
-                select(TrainingUnit.unit_key)
-                .join(ProgressRecord, ProgressRecord.unit_id == TrainingUnit.id)
-                .where(
-                    ProgressRecord.student_id == student_id,
-                    ProgressRecord.course_version_id == course_version_id,
-                )
-            )
+            self.db.scalars(select(TrainingUnit.unit_key).where(TrainingUnit.id.in_(completed)))
         )

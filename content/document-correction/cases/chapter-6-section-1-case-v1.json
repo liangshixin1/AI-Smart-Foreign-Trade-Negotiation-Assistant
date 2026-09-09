@@ -1,0 +1,326 @@
+{
+  "schema_version": "lc.case.v1",
+  "case_id": "chapter-6-section-1-case-a",
+  "case_snapshot_version": "1.0.0",
+  "review_status": "approved",
+  "reviewed_by": "教学负责人（本任务用户）",
+  "reviewed_at": "2026-09-08",
+  "facts": [
+    {
+      "fact_id": "contract_number",
+      "value": "NT-SC-2027-0118",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "applicant.name",
+      "value": "Shanghai Hanlin Trading Co., Ltd.",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "beneficiary.name",
+      "value": "NovaTech Display Solutions Pte. Ltd.",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.product",
+      "value": "NT-IM250 LED display modules",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.quantity",
+      "value": 800,
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.unit",
+      "value": "piece",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "amount.currency",
+      "value": "USD",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "amount.unit_price",
+      "value": "285.00",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "amount.total",
+      "value": "228000.00",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.incoterm",
+      "value": "CIF",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.incoterm_place",
+      "value": "Shanghai",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "goods.incoterms_version",
+      "value": "2020",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "payment.method",
+      "value": "100% irrevocable documentary credit at sight",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "shipment.days_after_receipt",
+      "value": 40,
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml"
+      ]
+    },
+    {
+      "fact_id": "shipment.partial_shipments",
+      "value": "NOT ALLOWED",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml"
+      ]
+    },
+    {
+      "fact_id": "shipment.transshipment",
+      "value": "ALLOWED",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml"
+      ]
+    },
+    {
+      "fact_id": "shipment.transshipment_via",
+      "value": "Hong Kong",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml"
+      ]
+    },
+    {
+      "fact_id": "shipment.transshipment_condition",
+      "value": "Must not delay the contracted delivery",
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml"
+      ]
+    },
+    {
+      "fact_id": "contract_only.added_services",
+      "value": [
+        "One-year spare parts package",
+        "Remote technical support"
+      ],
+      "status": "approved",
+      "source_refs": [
+        "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+        "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+        "content/prompts/conversation/conversation-chapter-6-section-1.yaml"
+      ]
+    },
+    {
+      "fact_id": "party_address_scope",
+      "value": "Use Singapore / Shanghai, China as locality only; do not invent street addresses; assess beneficiary name only",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "shipment.receipt_date",
+      "value": "2027-03-06",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "document.issue_date",
+      "value": "2027-03-05",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "shipment.latest_date",
+      "value": "2027-04-15",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "presentation.period_days",
+      "value": 21,
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "presentation.expiry_date",
+      "value": "2027-05-06",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "presentation.expiry_place",
+      "value": "Singapore",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "shipment.ports",
+      "value": {
+        "loading": "Singapore",
+        "discharge": "Shanghai"
+      },
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "documents_required",
+      "value": [
+        "Signed commercial invoice: 3 originals",
+        "Packing list: 3 copies",
+        "Full set clean on-board ocean bills of lading, freight prepaid, to order of issuing bank, notify applicant",
+        "Insurance policy or certificate: 110% invoice value, USD, Institute Cargo Clauses (C)"
+      ],
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "contract_only.warranty",
+      "value": "Do not put warranty, spare-parts or remote-support certification requirements in the LC",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    },
+    {
+      "fact_id": "student_role",
+      "value": "Buyer-side trade documentation reviewer; compare the seller-received LC copy with fixed contract and draft amendment instructions",
+      "status": "approved",
+      "source_refs": [
+        "docs/work-orders/lc-correction-mvp/teaching-approval.md"
+      ]
+    }
+  ],
+  "confirmed_sources": [
+    {
+      "path": "content/prompts/conversation/conversation-chapter-4-section-1.yaml",
+      "sha256": "2d77e5096d90bf193fd7d4dd5beaffa7a7c338115d5bb5b76435317f500e11bf"
+    },
+    {
+      "path": "content/prompts/conversation/conversation-chapter-4-section-2.yaml",
+      "sha256": "241977b4b1aeb74b19916ecee8df2ce0745451599c10a461eaa7fdcc3403d33f"
+    },
+    {
+      "path": "content/prompts/conversation/conversation-chapter-5-section-2.yaml",
+      "sha256": "59388f47b464b553d5c8d7648c859377ba4e1adc1269520a3161803907344ee3"
+    },
+    {
+      "path": "content/prompts/conversation/conversation-chapter-6-section-1.yaml",
+      "sha256": "14fce36a5c185500eb19786a1736e6b2e6791ef8e563460fcd6643275d1a2063"
+    },
+    {
+      "path": "docs/work-orders/lc-correction-mvp/teaching-approval.md",
+      "sha256": "5ff3526938fe5da4ad06417b3dbdb2c1f923eee2fd7c43ca589912fedb9f595c"
+    }
+  ],
+  "pending_review": []
+}

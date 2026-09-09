@@ -55,7 +55,9 @@ export interface GraphRecommendation {
 
 export interface RoundEvaluation {
   id: string
-  student_message_id: string
+  student_message_id: string | null
+  source_type?: string
+  source_id?: string | null
   assistant_message_id: string
   status: string
   score: number
@@ -102,6 +104,7 @@ export interface EvaluationResult {
 }
 
 export interface Attempt {
+  workspace_kind?: string | null
   id: string
   unit_id: string
   unit_title: string
@@ -128,6 +131,7 @@ export interface Attempt {
 }
 
 export interface AttemptHistoryItem {
+  workspace_kind?: string | null
   id: string
   unit_id: string
   unit_title: string

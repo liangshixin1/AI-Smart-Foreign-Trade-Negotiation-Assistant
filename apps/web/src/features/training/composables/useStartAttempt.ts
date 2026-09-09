@@ -61,7 +61,11 @@ export function useStartAttempt(unitId: string) {
         startError.value = '本次场景生成未完成，请重新开始；你的课程进度不会受影响。'
         return
       }
-      await router.push({ name: 'attempt-briefing', params: { attemptId: attempt.id } })
+      await router.push({
+        name:
+          attempt.workspace_kind === 'lc_correction' ? 'training-workspace' : 'attempt-briefing',
+        params: { attemptId: attempt.id },
+      })
     } catch (error: unknown) {
       startError.value = error instanceof ApiError ? error.message : '无法开始训练，请稍后重试。'
       if (error instanceof ApiError && error.body.retryable) {

@@ -4,11 +4,11 @@ sort_order: 6
 units:
 - id: chapter-6-section-1
   title: 信用证审核与改证
-  description: 应对卖方的审证与改证要求，区分合理与不合理，据理力争。
+  description: 核对合同与信用证审核副本，标记不符点并形成改证申请草案。
   learning_objectives:
-  - 正确区分合理与不合理的改证要求
-  - 配合必要改证（如 transshipment allowed、合理装期/交单期）
-  - 对不合理要求据理力争
+  - 对照合同与场景事实识别信用证中的不符点
+  - 提出结构完整、依据明确的改证申请草案
+  - 核对主体、金额、装运、单据及期限关系，避免重大遗漏
   training_mode: document_review
   prerequisite_unit_ids:
   - chapter-5-section-2
@@ -27,7 +27,7 @@ units:
   - UCP 600
   - 单证相符
   sort_order: 0
-  version: 2.1.0
+  version: 2.2.2
   publication_status: published
 - id: chapter-6-section-2
   title: 交单结汇与装运通知

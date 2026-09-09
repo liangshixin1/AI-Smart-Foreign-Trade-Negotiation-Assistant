@@ -74,7 +74,11 @@ class CompetencyEvidence(Base):
     dimension_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("evaluation_dimensions.id", ondelete="CASCADE"), index=True
     )
-    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), index=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"), index=True)
+    source_type: Mapped[str] = mapped_column(
+        String(40), default="message", server_default="message"
+    )
+    source_id: Mapped[str | None] = mapped_column(String(120))
     quote: Mapped[str] = mapped_column(Text)
     reason: Mapped[str] = mapped_column(Text)
     dimension: Mapped[EvaluationDimension] = relationship(back_populates="evidence")

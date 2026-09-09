@@ -43,7 +43,11 @@ class AttemptCreationService:
         provider: LLMProvider,
         graph_store: GraphStore,
         simulation_enabled: bool = False,
+        document_correction_enabled: bool = False,
+        document_correction_skip_prerequisite: bool = False,
     ) -> None:
+        self.document_correction_enabled = document_correction_enabled
+        self.document_correction_skip_prerequisite = document_correction_skip_prerequisite
         self.db = db
         self.provider = provider
         self.repository = TrainingRepository(db)
@@ -100,19 +104,34 @@ class AttemptCreationService:
         profile = None
         if data.experience_mode == "simulation":
             profile = self.simulation_profiles.require_available(unit.unit_key, unit.training_mode)
+        from app.modules.document_correction.profile_service import error, is_published
+
+        lc_correction = is_published(unit.unit_key, unit.version)
         completed_keys = self.repository.completed_unit_keys(
             student.id, unit.chapter.course_version_id
         )
         missing_prerequisites = [
             item for item in unit.prerequisite_unit_ids if item not in completed_keys
         ]
-        if missing_prerequisites:
+        if missing_prerequisites and not (
+            lc_correction
+            and self.document_correction_enabled
+            and self.document_correction_skip_prerequisite
+        ):
             raise AppError(
                 code="training.prerequisite_incomplete",
                 message="请先完成该小节的先修训练。",
                 status_code=409,
                 details={"missing_unit_ids": missing_prerequisites},
             )
+        from app.modules.document_correction.creation_service import create as create_document
+
+        if lc_correction:
+            if not self.document_correction_enabled:
+                raise error("disabled", "信用证审改模式尚未开放，请联系教师。")
+            if not idempotency_key:
+                raise error("idempotency_required", "创建审证训练需要稳定的操作编号。", 422)
+            return create_document(self.db, student, unit, data, idempotency_key, request_hash)
         graph_context = self.knowledge_context.scenario(unit)
         content_bindings = {
             "course_version": unit.chapter.course_version.version,
