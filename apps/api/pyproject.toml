@@ -1,3 +1,6 @@
+# [导读] 用途：声明 API 包信息、依赖和相关开发工具配置。
+# [导读] 为什么：成员需使用一致的依赖约束，才能复现类型检查、测试与服务启动。
+# [导读] 提醒：调整版本会改变运行环境，本次导读未修改任何依赖或工具选项。
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

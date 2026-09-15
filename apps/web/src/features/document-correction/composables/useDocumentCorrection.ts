@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+ * 用途：管理信用证批注草稿、自动保存、版本冲突与正式提交。
+ * 为什么与边界：原证保持只读；按用户和训练隔离本地恢复数据，固定操作编号与期望版本用于重试去重和冲突识别。网络失败不能直接判定服务器未保存。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/features/auth/stores/auth'
 import { ApiError } from '@/shared/api/http'
@@ -25,6 +31,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
   let timer: ReturnType<typeof setTimeout> | undefined
   const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
   const writable = computed(() => ready.value && session.value && !session.value.read_only)
+  // [导读] 按用户与训练编号保存本地草稿、脏字段和待确认操作，刷新后还能对账；教师模式不写本地草稿。
   function persist() {
     if (teacher) return
     try {
@@ -36,6 +43,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
       error.value = '浏览器无法保留本地草稿，请保持页面打开并完成保存。'
     }
   }
+  // [导读] 读取服务器批注，但不覆盖仍为 dirty 的本地字段；服务端只读时改用冻结记录。
   async function reload() {
     error.value = ''
     try {
@@ -55,6 +63,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
       error.value = e instanceof ApiError ? e.message : '单证暂无法载入，请检查连接后重试。'
     }
   }
+  // [导读] 复制编辑值并标为待保存，立即保留本地副本，再用 650 毫秒防抖减少连续写请求。
   function edit(a: Annotation) {
     drafts.value[a.target_ref] = clone(a)
     if (!dirty.value.includes(a.target_ref)) dirty.value.push(a.target_ref)
@@ -65,6 +74,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
       void save()
     }, 650)
   }
+  // [导读] 只在可写状态为尚未标记的字段建立草稿，初始拟改值复制自原证而不改原证。
   function mark(target: Target) {
     if (!writable.value) return
     if (!drafts.value[target.ref])
@@ -76,6 +86,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
         optional_note: '',
       })
   }
+  // [导读] 逐条提交固定操作编号与期望版本；请求期间再次编辑的字段继续保留为 dirty，冲突时停止并等待用户对账。
   async function save(): Promise<boolean> {
     if (busy.value || !session.value || !writable.value || state.value === '版本冲突') return false
     busy.value = true
@@ -122,10 +133,12 @@ export function useDocumentCorrection(id: string, teacher = false) {
       busy.value = false
     }
   }
+  // [导读] 先读取服务器版本，再尝试提交本地待确认与待保存操作；不能只依据上次网络错误推断服务器没保存。
   async function reconcile() {
     await reload()
     if (pending.value || dirty.value.length) await save()
   }
+  // [导读] 由 keepLocal 明确选择保留草稿或采用服务器版本，再基于最新修订号保存。
   async function resolve(keepLocal: boolean) {
     await reload()
     if (!session.value) return
@@ -140,6 +153,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
     persist()
     await save()
   }
+  // [导读] 先保存既有改动，再用带版本和操作编号的删除请求，防止删除与自动保存相互覆盖。
   async function remove(ref: string) {
     if (!(await save()) || !session.value || !drafts.value[ref]) return
     pending.value = {
@@ -151,6 +165,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
     persist()
     await save()
   }
+  // [导读] 先确认草稿保存成功，再冻结当前 revision；网络错误后提示重新读取结果，避免重复猜测提交状态。
   async function submit(): Promise<boolean> {
     if (!(await save()) || !session.value) return false
     busy.value = true
@@ -168,6 +183,7 @@ export function useDocumentCorrection(id: string, teacher = false) {
   function onOnline() {
     void reconcile()
   }
+  // [导读] 离开前保存本地恢复信息；仍有待确认操作时触发浏览器离开提醒，不保证网络保存已经完成。
   function beforeUnload(event: BeforeUnloadEvent) {
     persist()
     if (dirty.value.length || pending.value) {

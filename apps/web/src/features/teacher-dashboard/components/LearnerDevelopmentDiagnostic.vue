@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：学情是学习活动与训练评价的汇总；轮次是一次学生发言及对应反馈，回放用于核对历史证据。
+用途：展示学习者发展诊断，帮助教师查看当前表现、支持需求与建议。
+逻辑：数据来自传入的 rounds 与 finalDiagnostic；把训练支持利用情况和维度证据组织成可展开的诊断内容，避免从显示层反推新成绩。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：教师应按真实证据理解学生发展，诊断标签不等于学生的固定能力或性格。
+[/组件导读] -->
 <template>
   <section class="diagnostic-panel" aria-labelledby="diagnostic-title">
     <header>
@@ -98,9 +105,11 @@ const dimensionLabels: Record<DiagnosticDimensionKey, string> = {
   self_regulation: '自主调节',
 }
 
+// [导读] 将诊断维度映射为中文，保持各轮与正式诊断使用同一含义。
 function dimensionLabel(key: DiagnosticDimensionKey): string {
   return dimensionLabels[key]
 }
+// [导读] 将发展阶段代码转为教学文案；阶段来自已有诊断，不在展示层重新推断。
 function stageLabel(value: LearningDiagnostic['learner_stage']): string {
   return {
     foundation: '基础形成',
@@ -109,6 +118,7 @@ function stageLabel(value: LearningDiagnostic['learner_stage']): string {
     advanced: '高阶迁移',
   }[value]
 }
+// [导读] 将所需支持方式转为中文，便于教师区分示范、引导与独立应对。
 function supportLabel(value: LearningDiagnostic['support_level']): string {
   return {
     explicit_model: '示范支持',
@@ -117,6 +127,7 @@ function supportLabel(value: LearningDiagnostic['support_level']): string {
     independent: '独立应对',
   }[value]
 }
+// [导读] 将观察到的谈判风格转成文案；尚无充分证据时保留尚待观察。
 function styleLabel(value: LearningDiagnostic['negotiation_style']): string {
   return {
     cautious: '谨慎型',
@@ -127,6 +138,7 @@ function styleLabel(value: LearningDiagnostic['negotiation_style']): string {
     unclear: '尚待观察',
   }[value]
 }
+// [导读] 将知识掌握状态转为文案，保留尚未观察，避免把缺少证据当成未掌握。
 function masteryLabel(value: LearningDiagnostic['knowledge_mastery'][number]['status']): string {
   return {
     not_observed: '尚未观察',

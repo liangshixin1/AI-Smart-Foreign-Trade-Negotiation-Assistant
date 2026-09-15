@@ -1,3 +1,13 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 将模型观察到的原话证据转换为确定性态势变化; 按事件规则、去重键和条款依赖决
+# [导读] 定接受或拒绝, 不能让模型直接决定指标数值。
+# [导读] 结构: AcceptedRuleEvent、RuleComputation、metric、initial_state、apply_observation、
+# [导读] _event_r
+# [导读] ejection、_updated_ledger、_updated_milestones。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import re
@@ -81,6 +91,7 @@ def initial_state(profile: SimulationProfile) -> SimulationStateResponse:
     )
 
 
+# [导读] 根据可核验原话接受事件, 再更新条款、里程碑和态势; 重复事件不能累计加分。
 def apply_observation(
     previous: SimulationStateResponse,
     observation: SimulationObservationCandidate,
@@ -136,6 +147,7 @@ def apply_observation(
     return RuleComputation(state=state, accepted=accepted, rejected=rejected)
 
 
+# [导读] 集中判断证据、置信度和规则条件不满足的原因, 让被拒绝的变化也能解释。
 def _event_rejection(
     candidate: StateEventCandidate,
     profile: SimulationProfile,
@@ -163,6 +175,7 @@ def _event_rejection(
     return None
 
 
+# [导读] 根据本轮有效观察及条款版本更新共识账本; 条款依赖变化时需避免沿用已经失效的同意。
 def _updated_ledger(
     previous: list[dict[str, object]],
     observation: SimulationObservationCandidate,
@@ -230,6 +243,7 @@ def _updated_ledger(
     return [ledger[key] for key in profile.required_term_keys]
 
 
+# [导读] 根据本轮有效证据更新里程碑状态; 展示进展必须能对应到原话依据。
 def _updated_milestones(
     previous: list[MilestoneResponse],
     observation: SimulationObservationCandidate,

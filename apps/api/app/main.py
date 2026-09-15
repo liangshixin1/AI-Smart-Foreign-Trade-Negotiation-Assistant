@@ -1,3 +1,8 @@
+# [导读] 用途: 组装 FastAPI 应用、依赖、路由、跨域策略和统一错误处理。
+# [导读] 为什么: 集中创建应用便于测试替换数据库、模型与图存储, 而无需连接真实服务。
+# [导读] 结构: HealthResponse、create_app。
+# [导读] 提醒: CORS 只允许配置中的来源及请求头, 当前不用跨域 Cookie; 携带 Authorization
+# [导读] 的请求仍须经过鉴权。健康接口只报告进程, 不代表所有外部服务可用。
 from __future__ import annotations
 
 import uuid
@@ -31,6 +36,7 @@ class HealthResponse(BaseModel):
     service: str
 
 
+# [导读] 集中组装依赖, 允许测试注入替身; 跨域白名单与身份校验是两道不同边界。
 def create_app(
     settings: Settings | None = None,
     session_factory: sessionmaker[Session] | None = None,
@@ -67,6 +73,7 @@ def create_app(
         ],
     )
 
+    # [导读] 将请求编号贯穿响应, 便于将前端报错与后端日志对应; 异步下编号保存在本次 request 上。
     @application.middleware("http")
     async def request_context(request: Request, call_next):  # type: ignore[no-untyped-def]
         request.state.request_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))

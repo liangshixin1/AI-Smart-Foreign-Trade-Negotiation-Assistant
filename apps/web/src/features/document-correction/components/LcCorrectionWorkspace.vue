@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+用途：信用证审改总工作台，组织合同简报、原证、审改单、学习支持和结果对照。
+逻辑：useDocumentCorrection 管理草稿、保存和版本冲突；本组件维护标签页与选中字段，再把操作交给该状态模块或后端接口。教师查看能力由 teacher 参数传入。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 CorrectionEditor、Mt700ReviewCopy、ContractBriefPanel、CorrectionResultCompare；状态入口 useDocumentCorrection、useAuthStore、useRouter。
+为什么：原证、学生意见和评分分开，才能保留证据与旧训练回放；保存冲突交给专用状态模块对账。
+[/组件导读] -->
 <template>
   <main class="lc-workspace">
     <header class="toolbar">
@@ -234,12 +242,14 @@ const targetMap = computed(() => {
   return map
 })
 const selected = computed(() => targetMap.value[selectedRef.value])
+// [导读] 记录当前字段，必要时建立批注草稿，然后切换到审改单供编辑。
 function focusTarget(ref: string) {
   selectedRef.value = ref
   const target = targetMap.value[ref]
   if (target) mark(target)
   tab.value = '审改单'
 }
+// [导读] 根据字段是否已有草稿、草稿是否完整以及只读状态，生成标记按钮文案。
 function marker(ref: string) {
   const index = Object.keys(drafts.value).indexOf(ref)
   return index < 0
@@ -248,10 +258,12 @@ function marker(ref: string) {
       : '标记疑点'
     : `${String(index + 1)} · 已标记${dirtyLabel(ref)}`
 }
+// [导读] 这里只检查问题类型与依据是否填写，不判断改证答案是否正确。
 function dirtyLabel(ref: string) {
   const a = drafts.value[ref]
   return a?.issue_category && a.evidence_ref ? '' : ' · 待填写'
 }
+// [导读] 将选中、已标记和评分结果中的漏找状态转换成模板使用的 CSS 类。
 function markClass(ref: string) {
   const result = session.value?.result?.issue_results.find((i) => i.target_ref === ref)
   return {
@@ -260,6 +272,7 @@ function markClass(ref: string) {
     missed: result && !result.located,
   }
 }
+// [导读] 先保存再做结构检查；返回的格式完整提示不代表答案正确。
 async function check() {
   if (!(await save())) return
   const response = await api().check()
@@ -267,9 +280,11 @@ async function check() {
     ? Object.values(response.errors).flat().join('；')
     : '已标记项目格式完整；此检查不判断答案对错。'
 }
+// [导读] 提交成功后关闭预览，提交过程及成绩读取由状态模块完成。
 async function confirmSubmit() {
   if (await submit()) preview.value = false
 }
+// [导读] 请求个性化讲评后重新对账；讲评失败只设置提示，确定性成绩仍由原评分结果提供。
 async function feedback() {
   try {
     await api().feedback()
@@ -278,6 +293,7 @@ async function feedback() {
     error.value = '个性化讲评暂不可用，确定性成绩不受影响。'
   }
 }
+// [导读] 用新的请求编号创建重练记录，跳转并重载页面以使用新训练上下文。
 async function retry() {
   if (!auth.accessToken) return
   try {
@@ -292,6 +308,7 @@ async function retry() {
     error.value = '重练暂不可用，请重试。'
   }
 }
+// [导读] 按当前字段和提示层级请求学习支持；失败时显示可继续核对的备用说明。
 async function hint(level: number) {
   try {
     const result = await request<{ text: string }>(

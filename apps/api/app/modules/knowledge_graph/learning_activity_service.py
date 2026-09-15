@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 记录节点浏览与学习完成事件; 以客户端事件编号去重, 并核对节点属于当前或训练
+# [导读] 绑定的图谱版本。
+# [导读] 结构: KnowledgeLearningActivityService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -7,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.integrations.knowledge_graph.base import GraphStore, StoredGraph
 from app.modules.auth.models import User
-from app.modules.knowledge_graph.consumption_service import KNOWLEDGE_NODE_TYPES
+from app.modules.knowledge_graph.content_service import CONTENT_NODE_TYPES
 from app.modules.knowledge_graph.repository import KnowledgeGraphRepository
 from app.modules.knowledge_graph.schemas import LearningActivityRequest, LearningActivityResponse
 from app.modules.training.models import Attempt
@@ -21,6 +29,7 @@ class KnowledgeLearningActivityService:
         self.graph_store = graph_store
         self.repository = KnowledgeGraphRepository(db)
 
+    # [导读] 先按客户端事件编号查重, 再校验节点及训练归属; 同一次网络重试不应重复累计学习事件。
     def record(
         self,
         student: User,
@@ -36,12 +45,10 @@ class KnowledgeLearningActivityService:
         attempt = self._attempt(student.id, payload.attempt_id)
         graph = self._graph_for(attempt)
         node = next((item for item in graph.nodes if str(item.get("stable_key")) == node_key), None)
-        if node is None or str(node.get("type")) not in (
-            KNOWLEDGE_NODE_TYPES | {"NegotiationStrategy"}
-        ):
+        if node is None or str(node.get("type")) not in CONTENT_NODE_TYPES:
             raise AppError(
                 code="knowledge_graph.learning_node_not_found",
-                message="该知识或策略不属于当前图谱版本。",
+                message="该学习节点不属于当前图谱版本。",
                 status_code=404,
             )
         if payload.event_type == "completed":

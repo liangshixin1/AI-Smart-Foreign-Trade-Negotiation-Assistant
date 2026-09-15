@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：把教师学情数据切换为综合表现、局面风险、知识掌握或教学缺口视图。
+逻辑：四种视图共用同一图谱，通过 mode 改变 insightOverlay 的解释与高亮；空图保留 insights 中的版本信息。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 KnowledgeGraphPhaseView；状态入口 useTeacherKnowledgeGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="teacher-graph">
     <p v-if="loading" class="state">正在加载图谱学情视图…</p>
@@ -71,6 +79,7 @@ const modeDescription = computed(
     })[mode.value],
 )
 
+// [导读] 提供节点和连线均为空的合法图结构，让加载完成前的派生计算也能安全读取这些字段。
 function emptyGraph() {
   return {
     graph_version: props.insights.graph_version,

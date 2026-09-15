@@ -1,3 +1,7 @@
+# [导读] 用途: 根据配置选择 Neo4j、内存或不可用图存储。
+# [导读] 为什么: 把环境差异集中在工厂函数, 业务代码无需自行判断数据库种类。
+# [导读] 结构: build_graph_store。
+# [导读] 提醒: 内存实现适合测试, 进程重启会丢失内容; 不可用实现用于明确报告服务状态。
 from __future__ import annotations
 
 from app.core.config import Settings

@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：展示当前训练固定的现象、知识、策略和分层提示，供学生随时查阅。
+逻辑：把评价推荐按节点编号建立索引，用来突出重点；揭示和使用提示通过事件交给上层记录，评价推荐不会改写支持库。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useRoute。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="support-library" aria-labelledby="support-library-title">
     <header class="library-heading">
@@ -175,15 +183,18 @@ const recommendationsById = computed(
   () => new Map(props.recommendations.map((item) => [item.node_id, item])),
 )
 
+// [导读] 按节点编号从预建 Map 读取推荐，避免每次模板渲染都遍历推荐数组。
 function recommendationFor(nodeId: string): SupportRecommendation | undefined {
   return recommendationsById.value.get(nodeId)
 }
 
+// [导读] 只接受字符串类型的节点属性，缺失或类型不符时返回备用文本。
 function propertyText(node: KnowledgeGraphNode, key: string, fallback = ''): string {
   const value = node.properties[key]
   return typeof value === 'string' ? value : fallback
 }
 
+// [导读] 按给定字段顺序寻找第一条非空说明，以兼容不同版本的节点属性。
 function propertyFirst(node: KnowledgeGraphNode, keys: string[], fallback: string): string {
   for (const key of keys) {
     const value = propertyText(node, key)
@@ -192,6 +203,7 @@ function propertyFirst(node: KnowledgeGraphNode, keys: string[], fallback: strin
   return fallback
 }
 
+// [导读] 优先按标准知识分类显示中文，否则兼容旧版 resource_type 属性。
 function knowledgeTypeLabel(node: KnowledgeGraphNode): string {
   const labels: Record<string, string> = {
     Concept: '概念',
@@ -205,6 +217,7 @@ function knowledgeTypeLabel(node: KnowledgeGraphNode): string {
   return labels[node.knowledge_type ?? ''] ?? propertyText(node, 'resource_type', '知识资源')
 }
 
+// [导读] 构造学习页地址，同时携带来源、返回位置及当前上下文；这样学习后可以回到原来的训练或评价。
 function learningRoute(nodeId: string) {
   return {
     path: `/student/knowledge/${encodeURIComponent(nodeId)}`,

@@ -1,3 +1,14 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途: 定义该业务的请求、响应和结构化校验模型。
+# [导读] 为什么: 用字段类型、枚举和校验器限定接口契约; 数据库模型与公开响应不同, 新增字段时要检
+# [导读] 查是否泄漏内部信息。
+# [导读] 结构: ScenarioPublic、ScenarioPrivate、ScenarioCandidate、CreateAttemptRequest、
+# [导读] MessageRequ
+# [导读] est、DraftRequest、MessageResponse、ChecklistAssessmentResponse。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import uuid

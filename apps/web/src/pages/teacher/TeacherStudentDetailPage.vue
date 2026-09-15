@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：教师查看单个学生的学习进度、能力证据、知识概况与训练列表。
+逻辑：按路由 studentId 请求个人详情，知识分析由独立组合函数加载；训练记录链接通向单次训练回放。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoleWorkspaceLayout；状态入口 useAuthStore、useRoute、useKnowledgeInsights。
+为什么：把页面组合与数据处理分开，方便沿调用关系定位问题；页面显示成功需以实际请求结果为准。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout title="学生学情详情" description="从风险结论追溯到每一次真实训练。">
     <RouterLink to="/teacher">← 返回班级总览</RouterLink>
@@ -91,9 +99,11 @@ const {
   error: knowledgeError,
   load: loadKnowledgeInsights,
 } = useKnowledgeInsights('student', () => studentId)
+// [导读] 将接口日期转换为中文界面使用的日期文本；具体是否保留时间由本函数的格式选项决定。
 function formatDate(value: string) {
   return new Date(value).toLocaleString('zh-CN')
 }
+// [导读] 把接口状态码映射为面向使用者的中文文案；未知值按函数中的兜底分支处理。
 function statusLabel(status: string) {
   return { in_progress: '进行中', evaluating: '评价中', completed: '已完成' }[status] ?? status
 }

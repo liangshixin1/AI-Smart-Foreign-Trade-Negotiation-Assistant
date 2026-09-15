@@ -1,3 +1,10 @@
+# [导读] 所属业务: 教师班级管理、学情统计与训练回放。
+# [导读] 业务名词: 学情是学生学习和训练的证据汇总; Replay 是历史训练回放; Enrollment 用来证明学
+# [导读] 生属于哪个班级。
+# [导读] 用途与原因: 按正式评价维度和引用证据汇总能力趋势; 使用结构化分数及证据数量, 不从自由文
+# [导读] 本猜测能力。
+# [导读] 结构: competency_summaries。
+# [导读] 提醒: 教师身份不是查看全部学生的权限; 查询应保留班级归属、成员有效状态及相应课程范围。
 from __future__ import annotations
 
 import uuid
@@ -15,6 +22,7 @@ from app.modules.teacher_analytics.schemas import (
 from app.modules.training.models import Attempt
 
 
+# [导读] 按学生范围与课程版本汇总评价维度和证据数, 避免连接多条证据时把单个维度错误重复累计。
 def competency_summaries(
     db: Session,
     *,

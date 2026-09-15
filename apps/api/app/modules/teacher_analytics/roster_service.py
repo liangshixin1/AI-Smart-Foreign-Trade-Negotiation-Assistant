@@ -1,3 +1,10 @@
+# [导读] 所属业务: 教师班级管理、学情统计与训练回放。
+# [导读] 业务名词: 学情是学生学习和训练的证据汇总; Replay 是历史训练回放; Enrollment 用来证明学
+# [导读] 生属于哪个班级。
+# [导读] 用途与原因: 处理学生新增、批量导入、编辑和移出班级; 导入先检查整批重复与既有账号冲突,
+# [导读] 再统一提交, 避免只导入半份名单。
+# [导读] 结构: RosterService。
+# [导读] 提醒: 教师身份不是查看全部学生的权限; 查询应保留班级归属、成员有效状态及相应课程范围。
 from __future__ import annotations
 
 import uuid
@@ -26,6 +33,7 @@ class RosterService:
         self.db.commit()
         return student_item(self.db, user, classroom.course_version_id)
 
+    # [导读] 先验证整批重复和已有账号冲突, 再统一添加并提交; 避免一半成功一半失败的名册。
     def import_all(self, classroom_id: uuid.UUID, rows: list[StudentCreate]) -> list[StudentItem]:
         classroom = self._classroom(classroom_id)
         self._ensure_available(rows)
@@ -34,6 +42,8 @@ class RosterService:
         self.db.commit()
         return [student_item(self.db, user, classroom.course_version_id) for user in users]
 
+    # [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+    # [导读] rollback 撤销已提交记录。
     def update(
         self, classroom_id: uuid.UUID, student_id: uuid.UUID, data: StudentUpdate
     ) -> StudentItem:
@@ -60,6 +70,7 @@ class RosterService:
         classroom = self._classroom(classroom_id)
         return student_item(self.db, user, classroom.course_version_id)
 
+    # [导读] 修改成员关系使学生移出班级, 保留账号与历史训练, 便于审计。
     def remove(self, classroom_id: uuid.UUID, student_id: uuid.UUID) -> None:
         self._enrolled_student(classroom_id, student_id)
         enrollment = self.db.scalar(
@@ -72,6 +83,7 @@ class RosterService:
             enrollment.left_at = datetime.now(UTC)
         self.db.commit()
 
+    # [导读] 同时检查批内与数据库内邮箱、学号冲突, 出错时在实际批量创建前拒绝。
     def _ensure_available(self, rows: list[StudentCreate]) -> None:
         emails = [str(row.email).lower() for row in rows]
         student_nos = [row.student_no for row in rows]
@@ -99,6 +111,8 @@ class RosterService:
             raise RuntimeError("Student role is missing")
         return role
 
+    # [导读] 此处 flush 使新增对象可被后续 SQL 引用, 但尚未持久提交; 需沿调用方确认最终 commit
+    # [导读] 或失败回滚。
     def _add(self, classroom_id: uuid.UUID, data: StudentCreate, role: Role) -> User:
         user = User(
             email=str(data.email).lower(),

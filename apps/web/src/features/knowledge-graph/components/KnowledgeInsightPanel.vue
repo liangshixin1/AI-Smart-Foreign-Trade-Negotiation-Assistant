@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：教师学情面板，汇总证据覆盖情况、知识薄弱项及现象统计。
+逻辑：先判断是否已有训练或学习证据，再截取重点条目并组合教师分析图；重试通过 retry 事件交给父页面。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 TeacherKnowledgeAnalyticsGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="insights" aria-labelledby="knowledge-insight-title">
     <header>
@@ -140,6 +148,7 @@ const hasEvidence = computed(
 const visibleKnowledge = computed(() => props.insights?.knowledge_insights.slice(0, 8) ?? [])
 const visiblePhenomena = computed(() => props.insights?.phenomenon_insights.slice(0, 7) ?? [])
 
+// [导读] 把知识分类代码转换成中文；缺失或未知分类显示通用名称。
 function typeLabel(type: string | null): string {
   return (
     {

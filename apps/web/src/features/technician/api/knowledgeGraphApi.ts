@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：变更集是待评审的图谱改动；发布版是通过评审后可读取的图数据，模型配置按生成场景、对话和评价分用途。
+ * 用途：封装本业务的后端接口路径、请求参数和响应类型。
+ * 为什么与边界：请求集中便于保持前后端契约一致；调用成功与业务完成可能不同，需检查返回状态，失败由调用方展示或重试。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { request } from '@/shared/api/http'
 import type {
   GraphChangeSet,
@@ -26,7 +32,7 @@ export const knowledgeGraphApi = {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'X-File-Name': encodeURIComponent(file.name),
-          'X-Template-Version': '3.0',
+          'X-Template-Version': '3.1',
         },
         body: file,
       },

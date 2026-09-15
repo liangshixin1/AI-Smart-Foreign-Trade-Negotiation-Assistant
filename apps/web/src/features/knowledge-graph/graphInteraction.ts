@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+ * 用途：实现鼠标近邻选择、焦点范围与移动走廊的几何判断。
+ * 为什么与边界：图形节点密集时需要控制聚焦接管，避免鼠标经过另一节点就闪烁；返回的是交互范围，不是新的知识关系。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import type { Core, NodeSingular } from 'cytoscape'
 
 import type { KnowledgeGraphNode, KnowledgeGraphView } from './types'

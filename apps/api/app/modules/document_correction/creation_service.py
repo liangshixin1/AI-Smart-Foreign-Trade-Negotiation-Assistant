@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 为信用证专用训练建立原证、案例、答案和规则的版本快照; 之后重放不应受源文件
+# [导读] 更新影响。
+# [导读] 结构: create。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -15,6 +23,7 @@ from app.modules.training.schemas import AttemptResponse, CreateAttemptRequest
 from app.modules.training.state import transition
 
 
+# [导读] 将原证、案例和答案资料固化到本次训练, 后续评分与教师回放都读取同一套依据。
 def create(
     db: Session,
     student: User,

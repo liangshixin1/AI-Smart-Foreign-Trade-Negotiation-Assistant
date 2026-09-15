@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：访问令牌用于接口身份验证；Attempt 是一次训练记录，角色分学生、教师和技术人员。
+ * 用途：定义页面路由与角色守卫。
+ * 为什么与边界：先恢复浏览器会话再检查页面角色；本地状态仅控制导航，不代替后端令牌和资源归属校验。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '@/features/auth/stores/auth'
@@ -100,6 +106,7 @@ export const router = createRouter({
   ],
 })
 
+// [导读] 守卫只控制页面导航；缓存中的身份和角色不能替代每个后端接口的鉴权与归属检查。
 router.beforeEach((to) => {
   const auth = useAuthStore()
   auth.hydrate()

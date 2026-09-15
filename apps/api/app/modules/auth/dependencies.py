@@ -1,3 +1,9 @@
+# [导读] 所属业务: 登录与角色授权。
+# [导读] 业务名词: Principal 是已校验的当前访问者; AuthSession 是登录令牌对应的服务端会话。
+# [导读] 用途与原因: 从 Bearer 令牌还原登录会话, 再检查有效期、撤销状态和角色; 让接口无需各自重
+# [导读] 复实现认证。
+# [导读] 结构: Principal、current_principal、require_roles。
+# [导读] 提醒: 角色通过只说明可使用这一类接口; 学生归属和教师班级范围仍需在业务查询中核对。
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -27,6 +33,7 @@ class Principal:
     roles: frozenset[str]
 
 
+# [导读] 先校验令牌对应会话, 再检查撤销、到期和账号状态; 客户端声称的角色不能作为身份依据。
 def current_principal(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
@@ -56,6 +63,7 @@ def current_principal(
     )
 
 
+# [导读] 生成可复用的角色依赖; 这是角色级门槛, 资源是否属于当前学生或教师还需业务查询限制。
 def require_roles(*allowed_roles: str) -> Callable[[Principal], Principal]:
     def authorize(
         principal: Annotated[Principal, Depends(current_principal)],

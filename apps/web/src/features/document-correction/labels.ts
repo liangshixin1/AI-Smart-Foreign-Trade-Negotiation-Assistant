@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+ * 用途：将信用证事实编号、输入项和值转换为中文显示。
+ * 为什么与边界：编号用于证据关联，中文名称用于阅读；显示改名不能直接改合同事实编号。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 export function display(value: unknown): string {
   if (value === null || value === undefined) return '未填写'
   if (Array.isArray(value)) return value.map(display).join('；')

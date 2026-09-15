@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练；仿真用逐段台词和角色演出呈现谈判，态势是根据原话证据计算的状态。
+用途：以逐段文字演出或摘要方式呈现仿真开场简报。
+逻辑：index 决定当前段落，useTypewriter 负责逐字显示；读到末段转入摘要，replay 从首段重播，enter 事件交给父页面进入训练。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 CharacterStage；状态入口 useTypewriter。
+为什么：演出显示与已保存训练数据分开，浏览器动画不能充当消息保存或态势计算的成功回执。
+[/组件导读] -->
 <template>
   <section v-if="!summaryMode" class="briefing-player" aria-labelledby="briefing-title">
     <header>
@@ -56,13 +64,16 @@ const text = computed(() => current.value?.rendered_text ?? '')
 const { visibleText, typing, reveal } = useTypewriter(text, speed)
 const atEnd = computed(() => index.value >= props.briefing.length - 1)
 
+// [导读] 未到末段时推进一段，到末段后切到摘要模式。
 function next(): void {
   if (atEnd.value) summaryMode.value = true
   else index.value += 1
 }
+// [导读] 直接显示摘要，保留原始简报供之后重播。
 function skip(): void {
   summaryMode.value = true
 }
+// [导读] 把段落索引和摘要状态重置，重新播放开场简报。
 function replay(): void {
   index.value = 0
   summaryMode.value = false

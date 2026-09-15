@@ -1,3 +1,10 @@
+# [导读] 所属业务: 版本化课程与小节。
+# [导读] 业务名词: TrainingUnit 是课程小节; Rubric 是评价维度及权重; PromptTemplate 是发给模型的
+# [导读] 指令模板。
+# [导读] 用途与原因: 读取并校验课程 YAML 后导入课程、提示词与评价量规; 以版本组织内容, 避免覆盖
+# [导读] 旧训练所依据的教学标准。
+# [导读] 结构: _read_yaml、CurriculumImporter。
+# [导读] 提醒: 旧训练绑定旧课程版本; 更新课程时应创建新版本, 不要直接改写历史训练的版本关联。
 from __future__ import annotations
 
 import hashlib
@@ -38,6 +45,8 @@ class CurriculumImporter:
         self.root = content_root
         self.repository = ContentImportRepository(db)
 
+    # [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+    # [导读] rollback 撤销已提交记录。
     def import_slice(self) -> CourseVersion:
         course_file = CourseFile.model_validate(_read_yaml(self.root / "curriculum/course.yaml"))
         chapter_files = [

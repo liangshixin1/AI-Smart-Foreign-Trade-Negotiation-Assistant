@@ -1,3 +1,11 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 将规则计算的态势、接受或拒绝事件及版本快照落库; 保留重放所需证据, 并显式区
+# [导读] 分待分析、失败与就绪。
+# [导读] 结构: SimulationStateService、_term_version。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import uuid
@@ -49,6 +57,7 @@ class SimulationStateService:
             session.analysis_status = "failed"
             self.db.commit()
 
+    # [导读] 沿训练绑定的配置版本应用本地规则, 保存状态快照和事件, 重试时避免对同轮重复累计。
     def process(self, attempt: Attempt, evaluation: RoundEvaluation) -> SimulationStateResponse:
         session = self.repository.session(attempt.id)
         snapshot = self.repository.latest_snapshot(attempt.id)

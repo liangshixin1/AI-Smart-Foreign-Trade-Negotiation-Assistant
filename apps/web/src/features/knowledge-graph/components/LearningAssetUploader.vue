@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：让教师选择或移除节点的视频、PPTX 附件，并在上传前提示格式与大小问题。
+逻辑：文件选择后先做后缀和大小检查，再发送 upload 事件；删除经本地确认后发送 remove，真正的网络操作在上层。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：浏览器检查让错误尽早可见，但不能替代后端文件验证；本组件不把选中文件误当成上传成功。
+[/组件导读] -->
 <template>
   <section class="uploader" :class="{ populated: asset }">
     <header>
@@ -66,11 +73,13 @@ const helper = computed(() =>
     : '仅 PPTX，最大 30 MB；旧版 PPT 请先另存为 PPTX',
 )
 
+// [导读] 把文件字节数换算为 KB 或 MB，供上传信息展示。
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+// [导读] 读取文件后清空输入以支持重复选择；通过后缀和大小检查才发送 upload 事件。
 function selectFile(event: Event): void {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -91,6 +100,7 @@ function selectFile(event: Event): void {
   emit('upload', props.kind, file)
 }
 
+// [导读] 结束本地确认状态，再把当前附件类型发送给上层执行删除。
 function remove(): void {
   confirming.value = false
   emit('remove', props.kind)

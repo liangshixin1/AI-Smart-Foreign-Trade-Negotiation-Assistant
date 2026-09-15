@@ -1,3 +1,13 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 验证仿真台词长度、格式、产品事实和私有信息边界; 模型结构正确也可能违反场景
+# [导读] 约束, 必须继续做语义检查。
+# [导读] 结构: english_word_count、canonical_text、validate_turn、validate_opening、
+# [导读] parse_turn_outpu
+# [导读] t。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import json
@@ -33,6 +43,7 @@ def canonical_text(beats: list[SimulationBeat]) -> str:
     return "\n".join(beat.text.strip() for beat in beats)
 
 
+# [导读] 除结构外再限制台词长度、格式、商品事实和私有信息, 防止模型输出破坏场景边界。
 def validate_turn(candidate: SimulationTurnCandidate) -> str:
     total = 0
     for beat in candidate.beats:
@@ -58,6 +69,7 @@ def validate_opening(candidate: SimulationTurnCandidate) -> str:
     return validate_turn(candidate)
 
 
+# [导读] 校验仿真台词 JSON, 并兼容本函数明确支持的响应形状; 不能把任意文本直接作为已验证演出。
 def parse_turn_output(content: str) -> SimulationTurnCandidate:
     try:
         payload = json.loads(content)

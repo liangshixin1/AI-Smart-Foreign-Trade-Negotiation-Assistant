@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：训练开始前展示局面简报，并按体验模式提供文字或仿真开场。
+逻辑：根据路由中的训练编号恢复训练和仿真数据；用户确认进入后跳到工作台，工作台模式选择由目标训练页完成。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoleWorkspaceLayout、KnowledgeGraphPhaseView、BriefingPlayer；状态入口 useRoute、useRouter、useAttempt、useSimulationSession、useAttemptScaffold、useStudentKnowledgeGraph、useStudentKnowledgeInsights。
+为什么：先让学生理解公开局面再作答；图谱与简报来自该次训练，不能把新发布内容当作历史开场。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout title="局面简报" description="先建立今天的谈判地图，再进入实时对话。">
     <p v-if="pageLoading" class="state">正在还原本场局面…</p>
@@ -52,7 +60,7 @@
         :overlay="overlay"
         eyebrow="今日局面地图"
         title="完整流程中，本场训练位于哪里"
-        description="完整九阶段保持原位；清晰节点是本场重点，红色外圈提示来自既往训练的关注项。"
+        description="完整阶段地图保持原位；清晰节点是本场重点，红色外圈提示来自既往训练的关注项。"
         size="large"
         content-base="/student/knowledge/"
       />
@@ -106,6 +114,7 @@ const overlay = computed(() =>
       },
 )
 
+// [导读] 沿当前 attemptId 进入工作台，复用已有场景记录而不是再次创建训练。
 async function enterWorkspace(): Promise<void> {
   await router.push({ name: 'training-workspace', params: { attemptId } })
 }

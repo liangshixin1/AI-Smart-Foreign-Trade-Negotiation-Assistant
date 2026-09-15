@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：学生、教师和技术人员共用的页面外框，提供导航、用户信息与退出入口。
+逻辑：从当前路径推导角色及首页链接；退出先清理登录状态，再用 replace 跳回登录页。默认插槽承载各业务页面。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useAuthStore、useRoute、useRouter。
+为什么：将角色导航和退出集中，避免各页面出现不同的身份与导航体验；后端仍独立鉴权。
+[/组件导读] -->
 <template>
   <div class="shell">
     <a class="skip-link" href="#workspace-content">跳至主要内容</a>
@@ -56,6 +64,7 @@ const roleLabel = computed(() =>
 const graphPath = computed(() =>
   role.value === 'technician' ? null : `${homePath.value}/knowledge-graph`,
 )
+// [导读] 先执行退出；无论接口是否报错，都在 finally 中返回登录页。
 async function signOut(): Promise<void> {
   try {
     await auth.logout()

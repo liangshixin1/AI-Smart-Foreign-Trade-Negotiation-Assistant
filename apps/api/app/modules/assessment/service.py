@@ -1,3 +1,11 @@
+# [导读] 所属业务: 逐轮反馈与正式评价。
+# [导读] 业务名词: RoundEvaluation 是一轮对话后的反馈; Evaluation 是正式总评; Rubric 是评分维度
+# [导读] 与权重约定。
+# [导读] 用途与原因: 基于冻结提交生成正式评价并更新完成进度; 失败保留提交, 允许之后重新评价而无
+# [导读] 需重做训练。
+# [导读] 结构: AssessmentService。
+# [导读] 提醒: 模型输出必须经过结构和原话证据校验; 逐轮建议不直接替代正式提交后的成绩与课程进度
+# [导读] 。
 from __future__ import annotations
 
 import json
@@ -33,6 +41,8 @@ class AssessmentService:
         self.provider = provider
         self.repository = TrainingRepository(db)
 
+    # [导读] 只对冻结提交运行正式评价, 按量规权重计算结果并保存证据; 校验失败记为可恢复的评价失
+    # [导读] 败。
     def evaluate(self, student: User, attempt: Attempt, submission: Submission) -> AttemptResponse:
         if attempt.status != "evaluating":
             raise AppError(

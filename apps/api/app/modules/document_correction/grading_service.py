@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 按期望版本冻结审改单, 写入提交、评分、证据与进度; 这些相关记录在同一提交边
+# [导读] 界保存, 避免成绩与通关不同步。
+# [导读] 结构: submit。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 import uuid
@@ -22,6 +30,7 @@ from app.modules.training.schemas import AttemptResponse
 from app.modules.training.state import transition
 
 
+# [导读] 核对归属和版本后冻结批注, 用本地规则算分, 并在同一事务保存成绩、证据和通过时的进度。
 def submit(
     db: Session, student: User, attempt_id: uuid.UUID, key: str, revision: int, enabled: bool
 ) -> AttemptResponse:

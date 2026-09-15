@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：教师编辑节点学习内容的页面，包含标题、摘要、Markdown、发布状态与媒体附件。
+逻辑：useTeacherLearningContent 管理表单和请求；视频与 PPTX 分别接入上传组件和预览区，节点编号随路由提供给状态模块。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoleWorkspaceLayout、LearningAssetUploader、LearningMediaGallery、KnowledgeNodeContextGraph；状态入口 useRoute、useTeacherLearningContent。
+为什么：正文表单与附件操作分开，上传后的元数据更新不能直接覆盖仍未保存的文字草稿。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout
     title="教学内容编辑"
@@ -79,7 +87,7 @@ import { useTeacherLearningContent } from '@/features/knowledge-graph/composable
 
 const route = useRoute()
 const { content, form, loading, saving, message, reload, save, uploadAsset, deleteAsset } =
-  useTeacherLearningContent(String(route.params.nodeId))
+  useTeacherLearningContent(() => String(route.params.nodeId))
 const videoAsset = computed(
   () => content.value?.assets.find((asset) => asset.kind === 'video') ?? null,
 )

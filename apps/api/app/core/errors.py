@@ -1,3 +1,8 @@
+# [导读] 用途: 将业务错误、参数校验错误和未捕获异常统一成 API 错误结构。
+# [导读] 为什么: 统一错误代码与 request_id, 前端才能稳定区分可重试失败与权限或输入问题。
+# [导读] 结构: AppError、_payload、register_error_handlers。
+# [导读] 提醒: 对外响应与内部异常详情应分开; 不要在错误消息中加入密钥、对手底牌或其他学生的信息
+# [导读] 。
 from __future__ import annotations
 
 import logging

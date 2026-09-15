@@ -1,3 +1,11 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 集中读取仿真演出、态势快照及事件, 并用数据库条件更新申请生成租约; 租约是有
+# [导读] 期限的生成占用, 防止并发轮次重复生成。
+# [导读] 结构: SimulationRepository。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import uuid
@@ -77,6 +85,8 @@ class SimulationRepository:
             )
         )
 
+    # [导读] 用单条条件 UPDATE 申请两分钟生成租约, 只有空闲或过期才能取得; 提交后其他请求才能看
+    # [导读] 到占用。
     def claim_generation(self, attempt_id: uuid.UUID, owner: str) -> bool:
         now = datetime.now(UTC)
         result = self.db.execute(
@@ -99,6 +109,7 @@ class SimulationRepository:
         self.db.commit()
         return claimed_owner == owner
 
+    # [导读] 按 owner 条件释放租约, 防止迟到的旧任务清掉新任务已经取得的占用。
     def release_generation(self, attempt_id: uuid.UUID, owner: str) -> None:
         self.db.execute(
             update(SimulationSession)

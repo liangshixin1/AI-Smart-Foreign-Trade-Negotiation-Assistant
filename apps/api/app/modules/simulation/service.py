@@ -1,3 +1,11 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 提供学生与教师仿真读取及单独补做分析; 先检查训练归属, 重试分析复用已保存台
+# [导读] 词。
+# [导读] 结构: SimulationService。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import uuid
@@ -57,6 +65,7 @@ class SimulationService:
             )
         return self._read(attempt)
 
+    # [导读] 从已保存演出还原分析上下文; 补做评价和态势, 不再次请求生成对手台词。
     def retry_analysis(
         self, student: User, attempt_id: uuid.UUID, assistant_message_id: uuid.UUID
     ) -> SimulationResponse:

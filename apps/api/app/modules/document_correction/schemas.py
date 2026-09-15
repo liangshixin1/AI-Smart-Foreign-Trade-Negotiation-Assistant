@@ -1,3 +1,14 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途: 定义该业务的请求、响应和结构化校验模型。
+# [导读] 为什么: 用字段类型、枚举和校验器限定接口契约; 数据库模型与公开响应不同, 新增字段时要检
+# [导读] 查是否泄漏内部信息。
+# [导读] 结构: StrictModel、Clause、DocumentField、DocumentSection、Document、AnnotationInput、
+# [导读] Revisio
+# [导读] nInput、SubmitInput。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 from typing import Any, Literal

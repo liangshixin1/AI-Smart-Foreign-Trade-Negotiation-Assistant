@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：课程由章节和小节组成；小节是训练入口，一次实际作答会形成独立的 Attempt（训练记录）。
+用途：展示课程名称、已完成小节数和总体进度。
+逻辑：进度由 completedUnits / totalUnits 计算并四舍五入；总数为零时显示零，避免除零。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：课程路线与训练记录分开，才能保留重复练习历史并按前置要求开放小节。
+[/组件导读] -->
 <template>
   <section class="progress" aria-label="课程进度">
     <div>

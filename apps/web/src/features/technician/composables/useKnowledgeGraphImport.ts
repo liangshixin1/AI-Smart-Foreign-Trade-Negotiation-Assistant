@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：变更集是待评审的图谱改动；发布版是通过评审后可读取的图数据，模型配置按生成场景、对话和评价分用途。
+ * 用途：组织图谱模板下载、导入、校验、评审、发布与回滚的页面状态。
+ * 为什么与边界：变更集是待审的图谱改动，发布才影响可读取版本；重复上传可能恢复已有结果，应按服务端状态恢复预览。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { onMounted, ref } from 'vue'
 
 import { knowledgeGraphApi } from '@/features/technician/api/knowledgeGraphApi'
@@ -39,6 +45,7 @@ export function useKnowledgeGraphImport() {
     return auth.accessToken
   }
 
+  // [导读] 统一管理异步动作的忙碌与错误状态，finally 确保失败后按钮不会永久锁定。
   async function run(action: () => Promise<void>): Promise<void> {
     busy.value = true
     message.value = ''
@@ -61,6 +68,7 @@ export function useKnowledgeGraphImport() {
     })
   }
 
+  // [导读] 恢复导入任务后按服务端状态决定能否读取变更集，避免把校验失败当作可发布。
   async function upload(file: File): Promise<void> {
     await run(async () => {
       job.value = await knowledgeGraphApi.upload(token(), file)
@@ -100,6 +108,7 @@ export function useKnowledgeGraphImport() {
     })
   }
 
+  // [导读] 等待后端发布完成才更新本地状态；审批通过并不等于图存储已写入。
   async function publish(): Promise<void> {
     const current = changeSet.value
     if (!current) return
@@ -111,6 +120,7 @@ export function useKnowledgeGraphImport() {
     })
   }
 
+  // [导读] 等待后端回滚后将本地变更集恢复为可审批后发布状态，界面状态不能先行冒充成功。
   async function rollback(): Promise<void> {
     const current = activePublication.value
     if (!current) return

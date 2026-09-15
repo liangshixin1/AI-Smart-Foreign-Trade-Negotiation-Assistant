@@ -1,3 +1,9 @@
+# [导读] 用途: 从环境变量和环境文件构造受校验的运行配置。
+# [导读] 为什么: 统一入口让数据库、鉴权和三个模型用途共享配置约束; SecretStr 减少普通打印时泄漏
+# [导读] 密钥的风险。
+# [导读] 结构: Settings、get_settings。
+# [导读] 提醒: get_settings 有进程内缓存, 修改环境文件不会自动刷新已经缓存的 Settings; 不要把
+# [导读] SecretStr 当作绝不会泄漏的加密存储。
 from __future__ import annotations
 
 from functools import lru_cache
@@ -49,6 +55,7 @@ class Settings(BaseSettings):
     neo4j_database: str = "neo4j"
     neo4j_connection_timeout_seconds: float = Field(default=5, ge=1, le=30)
 
+    # [导读] 三种用途必须都有不同凭据, 避免模型用途隔离配置遗漏后直到调用时才失败。
     @model_validator(mode="after")
     def validate_deepseek_agents(self) -> Settings:
         if self.llm_provider != "deepseek":
@@ -68,6 +75,8 @@ class Settings(BaseSettings):
         return self
 
 
+# [导读] 缓存配置以免每次请求重读环境; 运行中改文件后需清缓存或重建配置, 并更新已经持有旧对象的
+# [导读] 依赖。
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

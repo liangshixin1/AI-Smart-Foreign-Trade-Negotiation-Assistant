@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：在学生评价页切换逐轮回放与知识缺口视图。
+逻辑：分别加载本次训练的支持库和图谱，再按轮次与视图模式生成 overlay；知识缺口依据明确评价证据，不能把普通灰色节点解释为不会。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 KnowledgeGraphPhaseView；状态入口 useAttemptScaffold、useStudentKnowledgeGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="evaluation-graph">
     <p v-if="loading || graphLoading" class="state">正在还原完整训练轨迹…</p>
@@ -105,7 +113,7 @@ const overlay = computed(() =>
 const activeEvaluation = computed(() => props.evaluations[activeRoundIndex.value])
 const description = computed(() =>
   viewMode.value === 'replay'
-    ? '完整九阶段保持原位；橙色是当前轮次，较淡路径是此前轮次，点击节点可回到学习内容。'
+    ? '完整阶段地图保持原位；橙色是当前轮次，较淡路径是此前轮次，点击节点可回到学习内容。'
     : '只把评价证据明确标记为误用、未采用或必须缺失的节点作为缺口；其他灰色节点不等于不会。',
 )
 
@@ -116,6 +124,7 @@ watch(
   },
 )
 
+// [导读] 并行重新读取支持库和图谱，避免只刷新其中一份后继续使用旧数据。
 async function reloadAll(): Promise<void> {
   await Promise.all([reload(), reloadGraph()])
 }

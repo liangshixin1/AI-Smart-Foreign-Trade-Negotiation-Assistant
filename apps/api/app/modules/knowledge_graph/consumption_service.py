@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 按当前发布版或训练绑定版本提供图谱、支持关系和基础学情; 历史训练优先沿其绑
+# [导读] 定版本读取。
+# [导读] 结构: KnowledgeGraphConsumptionService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -58,6 +66,7 @@ class KnowledgeGraphConsumptionService:
     def student_graph(self) -> GraphViewResponse:
         return self.teacher_graph()
 
+    # [导读] 把当前学生编号加入训练查询, 不因知道训练编号而允许越权。
     def student_attempt_graph(
         self, student_id: uuid.UUID, attempt_id: uuid.UUID
     ) -> GraphViewResponse:
@@ -72,6 +81,7 @@ class KnowledgeGraphConsumptionService:
             )
         return self._view(self._graph_for_attempt(attempt), TEACHER_VISIBLE_NODE_TYPES)
 
+    # [导读] 通过有效班级成员关系限定教师可见训练, 角色检查不能替代这一步。
     def teacher_attempt_graph(
         self, teacher_id: uuid.UUID, attempt_id: uuid.UUID
     ) -> GraphViewResponse:
@@ -377,6 +387,7 @@ class KnowledgeGraphConsumptionService:
             )
         return graph
 
+    # [导读] 优先读取训练冻结的图谱版本; 仅无绑定的旧记录按现有兼容分支使用当前图。
     def _graph_for_attempt(self, attempt: Attempt) -> StoredGraph:
         bound_version = attempt.content_bindings.get("knowledge_graph_version")
         if bound_version:
@@ -407,6 +418,7 @@ class KnowledgeGraphConsumptionService:
             edge_count=len(edges),
         )
 
+    # [导读] 只在展示响应合并短名覆盖, 原始图谱属性仍供模型使用, 避免教师改名改变谈判逻辑。
     def node_responses(
         self, graph_version: str, items: list[dict[str, object]]
     ) -> list[GraphNodeResponse]:

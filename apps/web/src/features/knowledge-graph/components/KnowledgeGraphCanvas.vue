@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：封装 Cytoscape 图形引擎，负责知识图的绘制、缩放、节点选择和鼠标聚焦。
+逻辑：数据转图元、布局坐标、样式和交互规则分别委托给同目录上层的工具模块；本组件管理图实例、计时器和浏览器观察器，在卸载时释放资源。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：底图、布局和高亮层分开，才能切换学习阶段而不把历史证据误写成图谱事实；浏览器资源需成对创建与释放。
+[/组件导读] -->
 <template>
   <div class="canvas-shell" :class="`mode-${mode}`">
     <div ref="container" class="canvas" role="img" :aria-label="ariaLabel" />
@@ -64,9 +71,10 @@ const TAKEOVER_DELAY_MS = 180
 
 const ariaLabel = computed(
   () =>
-    `${props.mode === 'teaching' ? '九阶段教学地图' : '知识关系全景'}，共 ${String(props.graph.node_count)} 个节点、${String(props.graph.edge_count)} 条关系。可缩放并选择节点查看详情。`,
+    `${props.mode === 'teaching' ? '阶段教学地图' : '知识关系全景'}，共 ${String(props.graph.node_count)} 个节点、${String(props.graph.edge_count)} 条关系。可缩放并选择节点查看详情。`,
 )
 
+// [导读] 创建图实例并绑定点击、悬停、空白区域近邻选择和缩放事件；实例依赖已挂载的容器。
 function createInstance(): void {
   if (!container.value) return
   instance = cytoscape({
@@ -133,6 +141,7 @@ function createInstance(): void {
   core.on('zoom', updateSemanticZoom)
 }
 
+// [导读] 鼠标离开画布时取消临时聚焦，恢复父组件指定的选中节点。
 function clearProximityFocus(): void {
   cancelPendingFocus()
   proximityNodeId = null
@@ -140,6 +149,7 @@ function clearProximityFocus(): void {
   applyFocus(props.selectedNodeId)
 }
 
+// [导读] 区分可立即聚焦的相邻节点与需延迟接管的节点，减少鼠标移动时的高亮跳动。
 function requestProximityFocus(nodeId: string): void {
   if (nodeId === proximityNodeId) {
     cancelPendingFocus()
@@ -156,6 +166,7 @@ function requestProximityFocus(nodeId: string): void {
   schedulePendingFocus(nodeId)
 }
 
+// [导读] 清除旧的延迟任务，记录新的近邻焦点并更新图元样式。
 function activateProximityFocus(nodeId: string): void {
   cancelPendingFocus()
   proximityNodeId = nodeId
@@ -163,6 +174,7 @@ function activateProximityFocus(nodeId: string): void {
   applyFocus(nodeId)
 }
 
+// [导读] 为新的候选节点安排短延迟；到时仍是同一候选才激活，避免过期任务抢走焦点。
 function schedulePendingFocus(nodeId: string): void {
   if (pendingNodeId === nodeId && pendingFocusTimer !== null) return
   cancelPendingFocus()
@@ -177,6 +189,7 @@ function schedulePendingFocus(nodeId: string): void {
   }, TAKEOVER_DELAY_MS)
 }
 
+// [导读] 清除待触发的计时器及候选编号，供切换节点、重绘和卸载时复用。
 function cancelPendingFocus(): void {
   const ownerWindow = container.value?.ownerDocument.defaultView
   if (pendingFocusTimer !== null && ownerWindow) ownerWindow.clearTimeout(pendingFocusTimer)
@@ -184,6 +197,7 @@ function cancelPendingFocus(): void {
   pendingNodeId = null
 }
 
+// [导读] 将新数据转换成图元并批量替换；随后运行布局、恢复聚焦，并仅对本轮新增重点播放强调效果。
 function syncGraph(): void {
   if (!instance) createInstance()
   if (!instance) return
@@ -220,6 +234,7 @@ function syncGraph(): void {
   previousRevision = props.overlay?.revision ?? ''
 }
 
+// [导读] 使用预先计算的坐标排布图元，并按视图模式设置留白；遵从减少动画的系统偏好。
 function runLayout(): void {
   if (!instance) return
   if (props.mode === 'teaching') {
@@ -248,12 +263,14 @@ function runLayout(): void {
   nextFrame(updateSemanticZoom)
 }
 
+// [导读] 保存适应画布后的缩放比例，作为标签显示阈值的参考。
 function captureSemanticBaseZoom(): void {
   if (!instance) return
   semanticBaseZoom = instance.zoom()
   updateSemanticZoom()
 }
 
+// [导读] 根据当前缩放与基准比例控制细节标签，避免远景中知识名称挤在一起。
 function updateSemanticZoom(): void {
   if (!instance) return
   const zoom = instance.zoom()
@@ -267,6 +284,7 @@ function updateSemanticZoom(): void {
   if (zoom >= threshold) semanticNodes.addClass('show-label')
 }
 
+// [导读] 短暂强调新进入当前轮次的节点；首次展示和减少动画模式不触发该效果。
 function pulseNewNodes(nodeIds: Set<string>): void {
   if (!instance || reducedMotion || !nodeIds.size || previousRevision === '') return
   if (highlightTimer !== null) {
@@ -282,6 +300,7 @@ function pulseNewNodes(nodeIds: Set<string>): void {
     }, 520) ?? null
 }
 
+// [导读] 先清除旧焦点，再保留目标节点及相关关系的亮度；全景模式采用渐进关系范围。
 function applyFocus(nodeId: string | null | undefined): void {
   if (!instance) return
   const all = instance.elements()
@@ -319,6 +338,7 @@ function applyFocus(nodeId: string | null | undefined): void {
   node.addClass('is-focused')
 }
 
+// [导读] 围绕画布中心按倍数缩放，避免按钮缩放时视图中心突然移动。
 function zoomBy(factor: number): void {
   if (!instance) return
   instance.zoom({
@@ -326,11 +346,13 @@ function zoomBy(factor: number): void {
     renderedPosition: { x: instance.width() / 2, y: instance.height() / 2 },
   })
 }
+// [导读] 让全部图元适应画布范围，并更新标签显示所依据的缩放基准。
 function fit(): void {
   instance?.fit(undefined, 64)
   captureSemanticBaseZoom()
 }
 
+// [导读] 将回调交给容器所属窗口的下一帧，等待浏览器布局完成后再处理图形。
 function nextFrame(callback: () => void): void {
   container.value?.ownerDocument.defaultView?.requestAnimationFrame(callback)
 }

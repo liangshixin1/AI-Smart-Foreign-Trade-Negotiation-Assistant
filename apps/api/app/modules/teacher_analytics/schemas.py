@@ -1,3 +1,13 @@
+# [导读] 所属业务: 教师班级管理、学情统计与训练回放。
+# [导读] 业务名词: 学情是学生学习和训练的证据汇总; Replay 是历史训练回放; Enrollment 用来证明学
+# [导读] 生属于哪个班级。
+# [导读] 用途: 定义该业务的请求、响应和结构化校验模型。
+# [导读] 为什么: 用字段类型、枚举和校验器限定接口契约; 数据库模型与公开响应不同, 新增字段时要检
+# [导读] 查是否泄漏内部信息。
+# [导读] 结构: ClassroomItem、ClassroomOverview、StudentItem、StudentCreate、StudentUpdate、
+# [导读] ImportStu
+# [导读] dentsRequest、ImportResult、AttemptSummary。
+# [导读] 提醒: 教师身份不是查看全部学生的权限; 查询应保留班级归属、成员有效状态及相应课程范围。
 from __future__ import annotations
 
 import uuid

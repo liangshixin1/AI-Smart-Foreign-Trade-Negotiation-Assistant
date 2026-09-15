@@ -1,3 +1,10 @@
+# [导读] 所属业务: 版本化课程与小节。
+# [导读] 业务名词: TrainingUnit 是课程小节; Rubric 是评价维度及权重; PromptTemplate 是发给模型的
+# [导读] 指令模板。
+# [导读] 用途与原因: 把兼容旧版本的完成证据投影到当前课程显示, 以延续进度; 保留旧记录的原始版本
+# [导读] 绑定。
+# [导读] 结构: compatible_unit_ids、projected_statuses。
+# [导读] 提醒: 旧训练绑定旧课程版本; 更新课程时应创建新版本, 不要直接改写历史训练的版本关联。
 """Project compatible historical evidence without rewriting its version bindings."""
 
 from __future__ import annotations

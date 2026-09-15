@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：变更集是待评审的图谱改动；发布版是通过评审后可读取的图数据，模型配置按生成场景、对话和评价分用途。
+用途：技术人员导入教学图谱的操作面板，覆盖模板下载、校验、预览、评审、发布与回滚。
+逻辑：useKnowledgeGraphImport 管理各阶段请求和状态；本组件选择文件、呈现问题所在表格位置，并把按钮操作委托给该模块。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 TeachingPreviewPanel；状态入口 useKnowledgeGraphImport。
+为什么：将导入、评审和发布状态分开，避免把文件上传成功误当作教学内容已经对学生生效。
+[/组件导读] -->
 <template>
   <section class="panel" aria-labelledby="kg-import-title">
     <header class="hero">
@@ -7,7 +15,7 @@
         <p>系统隐藏 Neo4j 建模复杂度；本周演示环境只发布经人工批准的变更集。</p>
       </div>
       <button type="button" class="secondary" :disabled="busy" @click="downloadTemplate">
-        下载专家原始图谱 3.0 模板
+        下载专家原始源表（导入后生成十阶段）
       </button>
     </header>
 
@@ -19,7 +27,10 @@
     <div class="upload-card">
       <label>
         <strong>选择教学案例表</strong>
-        <span>支持专家原始 8-Sheet 图谱 3.0 `.xlsx`，最大 5 MB；2.1/2.0 仍可由接口兼容导入。</span>
+        <span
+          >上传专家原始 8-Sheet 源表，按 PI 3.1 生成十阶段图谱，拆分投诉与索赔理赔。最大 5
+          MB；历史版本仍可由接口导入。</span
+        >
         <input type="file" accept=".xlsx" :disabled="busy" @change="selectFile" />
       </label>
       <button type="button" class="primary" :disabled="!file || busy" @click="uploadSelected">
@@ -161,24 +172,30 @@ const {
   rollback,
 } = useKnowledgeGraphImport()
 
+// [导读] 保存用户选中的首个文件供上传按钮使用。
 function selectFile(event: Event): void {
   const input = event.target as HTMLInputElement
   file.value = input.files?.[0] ?? null
 }
+// [导读] 确认已有选中文件后，把读取和校验流程交给导入状态模块。
 function uploadSelected(): void {
   if (file.value) void upload(file.value)
 }
+// [导读] 读取变更摘要中的计数，缺失时用零供界面显示。
 function count(key: string): number {
   return changeSet.value?.summary[key] ?? 0
 }
+// [导读] 将错误代码和表格位置组成渲染键，帮助 Vue 区分不同校验问题。
 function issueKey(issue: ValidationIssue): string {
   return `${issue.code}-${issue.sheet_name}-${String(issue.row_number)}-${issue.column_name ?? ''}`
 }
+// [导读] 把工作表、行号和列名组合成可回到原 Excel 定位的说明。
 function location(issue: ValidationIssue): string {
   const row = issue.row_number ? ` 第 ${String(issue.row_number)} 行` : ''
   const column = issue.column_name ? `，“${issue.column_name}”` : ''
   return `${issue.sheet_name}${row}${column}`
 }
+// [导读] 把接口状态码映射为面向使用者的中文文案；未知值按函数中的兜底分支处理。
 function statusLabel(status: string): string {
   return (
     {

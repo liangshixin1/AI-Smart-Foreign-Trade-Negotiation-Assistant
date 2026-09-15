@@ -1,3 +1,12 @@
+# [导读] 所属业务: 逐轮反馈与正式评价。
+# [导读] 业务名词: RoundEvaluation 是一轮对话后的反馈; Evaluation 是正式总评; Rubric 是评分维度
+# [导读] 与权重约定。
+# [导读] 用途: 定义该业务的数据库实体、关联和约束。
+# [导读] 为什么: 唯一约束、外键与状态字段共同表达持久化规则; 修改模型需要新增数据库迁移, 不能只
+# [导读] 改类定义。
+# [导读] 结构: Evaluation、EvaluationDimension、CompetencyEvidence、RoundEvaluation。
+# [导读] 提醒: 模型输出必须经过结构和原话证据校验; 逐轮建议不直接替代正式提交后的成绩与课程进度
+# [导读] 。
 from __future__ import annotations
 
 import uuid

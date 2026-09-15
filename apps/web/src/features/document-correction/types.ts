@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+ * 用途：定义本业务或运行环境的 TypeScript 类型。
+ * 为什么与边界：类型帮助调用方理解字段约定，但编译后的接口数据仍需后端验证；类型断言不会自动清理或验证真实响应。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 export type Value = string | number | Record<string, string | number> | null
 export interface Target {
   ref: string

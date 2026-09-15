@@ -1,3 +1,15 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途: 定义该业务的数据库实体、关联和约束。
+# [导读] 为什么: 唯一约束、外键与状态字段共同表达持久化规则; 修改模型需要新增数据库迁移, 不能只
+# [导读] 改类定义。
+# [导读] 结构: KnowledgeImportJob、KnowledgeWorkbookAsset、KnowledgeValidationIssue、
+# [导读] KnowledgeGraph
+# [导读] ChangeSet、KnowledgeGraphKnowledgeType、KnowledgeGraphStageSnapshot、KnowledgeGraphPhen
+# [导读] omenonSnapshot、KnowledgeGraphKnowledgePointSnapshot。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid

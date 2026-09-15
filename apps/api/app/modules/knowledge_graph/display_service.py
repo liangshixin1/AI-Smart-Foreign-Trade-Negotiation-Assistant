@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 以独立覆盖记录保存或恢复教师短名; 使用显示修订号检测冲突, 不修改图谱原始事
+# [导读] 实和模型提示内容。
+# [导读] 结构: DisplayNode、KnowledgeNodeDisplayService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -36,6 +44,7 @@ class KnowledgeNodeDisplayService:
         self.graph_store = graph_store
         self.repository = KnowledgeGraphRepository(db)
 
+    # [导读] 校验图谱版本与显示修订号后写独立覆盖记录, 防止教师同时编辑相互覆盖。
     def update(
         self,
         node_key: str,
@@ -80,6 +89,7 @@ class KnowledgeNodeDisplayService:
         self.repository.refresh(override)
         return self._response(node, override)
 
+    # [导读] 删除显示覆盖以恢复默认短名; 仍需核对期望修订号, 恢复也可能与他人编辑冲突。
     def restore(
         self,
         node_key: str,
@@ -161,6 +171,7 @@ class KnowledgeNodeDisplayService:
             base_short_label=base_short_label,
         )
 
+    # [导读] 捕获提交时的并发约束失败并回滚, 转换成用户可理解的刷新重试提示。
     def _commit_or_conflict(self) -> None:
         try:
             self.repository.commit()

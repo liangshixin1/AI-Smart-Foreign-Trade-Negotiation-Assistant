@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：教师查看学生单次训练的场景、完整对话、知识证据、仿真态势与正式评价。
+逻辑：按路由训练编号请求 replay；selectedRoundId 连接对话轮次选择与证据图，信用证训练使用教师查看模式的专用工作台。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 LcCorrectionWorkspace、RoleWorkspaceLayout、EvaluationResultView、LearnerDevelopmentDiagnostic、ConversationTimeline、ScenarioBrief、TeacherAttemptKnowledgeGraph；状态入口 useAuthStore、useRoute。
+为什么：回放需显示当时的版本、消息和评价，不能为了适应新界面重新生成旧对话。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout
     title="训练证据回放"

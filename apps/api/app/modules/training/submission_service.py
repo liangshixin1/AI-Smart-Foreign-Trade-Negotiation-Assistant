@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 冻结正式提交的消息、场景和版本绑定, 并启动评价状态; 同一提交键可重放结果,
+# [导读] 不同键不能重复提交同一训练。
+# [导读] 结构: SubmissionService。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import uuid
@@ -20,6 +28,8 @@ class SubmissionService:
         self.db = db
         self.repository = TrainingRepository(db)
 
+    # [导读] 冻结已完成消息、场景摘要和版本绑定; 仿真生成租约仍有效时拒绝提交, 避免少冻结一轮内
+    # [导读] 容。
     def begin(
         self, student: User, attempt_id: uuid.UUID, idempotency_key: str
     ) -> tuple[Attempt, Submission]:
@@ -104,6 +114,7 @@ class SubmissionService:
         self.db.commit()
         return attempt, submission
 
+    # [导读] 只允许有冻结提交的失败评价重新进入 evaluating, 不能绕过正式提交流程。
     def retry_evaluation(self, student: User, attempt_id: uuid.UUID) -> tuple[Attempt, Submission]:
         attempt = owned_attempt(self.repository, student, attempt_id)
         submission = self.repository.submission(attempt.id)

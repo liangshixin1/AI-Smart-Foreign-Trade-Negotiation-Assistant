@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：展示节点摘要、属性、相邻节点及学习内容入口，教师还可编辑节点短名。
+逻辑：按节点类型选择摘要字段并隐藏重复或过长属性；保存与恢复短名事件携带节点编号和期望版本，实际写入由上层处理。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 NodeShortNameEditor。
+为什么：不同节点字段不同，统一筛选摘要避免直接铺出整份内部属性；修订号使并发编辑可被后端发现。
+[/组件导读] -->
 <template>
   <div v-if="node" class="backdrop" role="presentation" @click.self="emit('close')">
     <section
@@ -201,19 +209,26 @@ const hasLearningContent = computed(
   () =>
     Boolean(props.contentBase) &&
     Boolean(
-      props.node && ['knowledge_point', 'knowledge_resource', 'strategy'].includes(props.node.type),
+      props.node &&
+      ['stage', 'phenomenon', 'knowledge_point', 'knowledge_resource', 'strategy'].includes(
+        props.node.type,
+      ),
     ),
 )
 
+// [导读] 查表取得节点类型的中文名称。
 function typeLabel(type: KnowledgeNodeType): string {
   return TYPE_LABELS[type]
 }
+// [导读] 优先使用已知属性的中文名称，未知字段保留原键名便于定位数据。
 function propertyLabel(key: string): string {
   return PROPERTY_LABELS[key] ?? key
 }
+// [导读] 把短名和期望版本随保存事件传给上层；期望版本用于后端识别并发修改。
 function forwardDisplaySave(shortNameZh: string, expectedRevision: number): void {
   if (props.node) emit('save-display', props.node.id, shortNameZh, expectedRevision)
 }
+// [导读] 将恢复默认短名的请求及期望版本传给上层，由上层执行实际保存。
 function forwardDisplayRestore(expectedRevision: number): void {
   if (props.node) emit('restore-display', props.node.id, expectedRevision)
 }

@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：通过 VueOfficePptx 在学习页面预览受控的 PPTX 附件。
+逻辑：useLearningAssetFile 负责鉴权下载并提供二进制数据和临时地址；本组件维护渲染成功或失败状态并提供重试入口。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useLearningAssetFile。
+为什么：文件读取与文稿渲染分开，才能区分无权下载、网络失败和 PPTX 渲染失败。
+[/组件导读] -->
 <template>
   <section class="viewer">
     <header>

@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 在开始 SSE 前校验权限、消息幂等性并持久化消息上下文; 已完成回复直接重放, 仿
+# [导读] 真新轮次需先取得生成租约。
+# [导读] 结构: StreamContext、StreamContextBuilder。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import json
@@ -38,6 +46,8 @@ class StreamContextBuilder:
         self.repository = TrainingRepository(db)
         self.knowledge_context = KnowledgeContextProvider(db, graph_store)
 
+    # [导读] 在响应流开始前检查归属、消息编号冲突和生成租约; 先保存学生消息, 使模型失败后仍可恢
+    # [导读] 复。
     def prepare(self, student: User, attempt_id: uuid.UUID, data: MessageRequest) -> StreamContext:
         attempt = owned_attempt(self.repository, student, attempt_id)
         if attempt.content_bindings.get("workspace_kind") == "lc_correction":

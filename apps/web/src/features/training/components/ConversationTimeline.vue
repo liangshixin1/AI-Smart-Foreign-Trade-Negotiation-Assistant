@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+用途：展示对话消息及对应轮次反馈，并在教师回放时支持选择轮次。
+逻辑：按 assistant_message_id 将反馈关联到消息；监听内容变化控制滚动，阅读旧消息时不会因同一条流式增量强制滚到底部。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoundFeedbackCard。
+为什么：流式消息会频繁变长；跟随开关使更新与回看旧消息可以同时成立。
+[/组件导读] -->
 <template>
   <div class="timeline-shell">
     <div ref="timelineElement" class="timeline" aria-live="polite" @scroll.passive="handleScroll">
@@ -69,10 +77,12 @@ const contentSignature = computed(() =>
     .join('|'),
 )
 
+// [导读] 用距底部小于 96 像素判断用户是否还在阅读最新消息。
 function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 96
 }
 
+// [导读] 依据滚动位置更新自动跟随开关和跳到最新消息按钮。
 function handleScroll(): void {
   const element = timelineElement.value
   if (!element) return
@@ -81,6 +91,7 @@ function handleScroll(): void {
   showJumpButton.value = !nearBottom
 }
 
+// [导读] 滚动到底部并恢复跟随；系统偏好减少动画时采用即时滚动。
 function scrollToLatest(behavior: ScrollBehavior): void {
   const element = timelineElement.value
   if (!element) return
@@ -92,6 +103,7 @@ function scrollToLatest(behavior: ScrollBehavior): void {
   showJumpButton.value = false
 }
 
+// [导读] 响应用户主动跳到最新消息的操作，重新启用跟随。
 function jumpToLatest(): void {
   scrollToLatest('smooth')
 }
@@ -109,9 +121,11 @@ onMounted(async () => {
   scrollToLatest('auto')
 })
 
+// [导读] 用助手消息编号关联轮次评价，避免把反馈挂到另一轮消息上。
 function feedbackFor(messageId: string): RoundEvaluation | undefined {
   return props.evaluations.find((item) => item.assistant_message_id === messageId)
 }
+// [导读] 仅在启用轮次选择且编号有效时发出事件，普通训练显示不触发教师回放联动。
 function selectRound(roundId: string | undefined): void {
   if (props.selectableRounds && roundId) emit('select-round', roundId)
 }

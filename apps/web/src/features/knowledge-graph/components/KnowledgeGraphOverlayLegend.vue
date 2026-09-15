@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：说明知识图中的颜色和标记含义。
+逻辑：依据 audience 区分教师与学生文案，依据 phase 区分回放等使用场景；这些标记的实际计算在 graphOverlay 等模块完成。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <div class="legend" :aria-label="audience === 'teacher' ? '教师图谱图例' : '学生图谱图例'">
     <template v-if="phase === 'briefing'">

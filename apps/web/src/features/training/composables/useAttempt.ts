@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+ * 用途：管理一次训练的加载、草稿、消息流、提交及重试。
+ * 为什么与边界：幂等键是同一次操作的稳定编号；断网后复用它避免重复学生消息。模型回复失败与正式提交失败分开处理。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { onMounted, ref, shallowRef } from 'vue'
 
 import { useAuthStore } from '@/features/auth/stores/auth'
@@ -27,6 +33,7 @@ export function useAttempt(attemptId: string) {
   const pendingMessage = ref<{ content: string; id: string } | null>(readPendingMessage())
   const latestStreamEvent = shallowRef<TrainingStreamEvent | null>(null)
 
+  // [导读] 从服务器恢复记录和草稿；失败保留明确错误，finally 释放加载状态。
   async function reload(): Promise<void> {
     if (!auth.accessToken) return
     loading.value = true
@@ -42,6 +49,7 @@ export function useAttempt(attemptId: string) {
     }
   }
 
+  // [导读] 复用未完成同内容消息的编号；只在收到完整回复成功信号后清理待发送记录和草稿。
   async function send(content: string): Promise<boolean> {
     if (!auth.accessToken || sending.value) return false
     sending.value = true
@@ -78,6 +86,7 @@ export function useAttempt(attemptId: string) {
     }
   }
 
+  // [导读] 按事件类型和消息编号增量更新本次训练，避免把流片段或评价挂到其他轮次。
   function applyStreamEvent(event: TrainingStreamEvent, studentContent: string): void {
     latestStreamEvent.value = event
     if (!attempt.value) return
@@ -133,6 +142,7 @@ export function useAttempt(attemptId: string) {
     return attempt.value?.messages.find((item) => item.id === messageId)
   }
 
+  // [导读] 读取断网前未完成的消息及其编号，先校验数据形状再用于重试。
   function readPendingMessage(): { content: string; id: string } | null {
     try {
       const raw = localStorage.getItem(pendingStorageKey)
@@ -154,6 +164,7 @@ export function useAttempt(attemptId: string) {
     return null
   }
 
+  // [导读] 在等待服务器前保留重试所需内容和编号；浏览器存储不可用时仍依赖服务端与草稿恢复。
   function savePendingMessage(value: { content: string; id: string }): void {
     try {
       localStorage.setItem(pendingStorageKey, JSON.stringify(value))
@@ -170,6 +181,7 @@ export function useAttempt(attemptId: string) {
     }
   }
 
+  // [导读] 正式提交会冻结训练；异常后重新读取服务器状态，避免用本地猜测覆盖真实提交结果。
   async function submit(): Promise<boolean> {
     if (!auth.accessToken || submitting.value) return false
     submitting.value = true
@@ -186,6 +198,7 @@ export function useAttempt(attemptId: string) {
     }
   }
 
+  // [导读] 只补做当前训练的失败评价，保持学生已提交的内容不变。
   async function retry(): Promise<boolean> {
     if (!auth.accessToken || submitting.value) return false
     submitting.value = true
@@ -202,6 +215,7 @@ export function useAttempt(attemptId: string) {
     }
   }
 
+  // [导读] 创建关联旧记录的新训练，返回新编号给页面导航；旧成绩仍可回放。
   async function retryTraining(): Promise<string | null> {
     if (!auth.accessToken || submitting.value) return null
     submitting.value = true

@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：角色分学生、教师和技术人员；访问令牌用于调用接口，刷新令牌用于在登录有效期内换取新令牌。
+ * 用途：验证浏览器保存的登录会话数据形状。
+ * 为什么与边界：localStorage 可能含旧版本或损坏内容，不能把 JSON 解析成功当作有效身份；有效期仍需服务端确认。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import type { PersistedAuth, UserRole, UserSummary } from '@/features/auth/types'
 
 const ROLES: readonly UserRole[] = ['student', 'teacher', 'technician']

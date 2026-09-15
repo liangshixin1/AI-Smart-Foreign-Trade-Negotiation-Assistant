@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：变更集是待评审的图谱改动；发布版是通过评审后可读取的图数据，模型配置按生成场景、对话和评价分用途。
+用途：技术人员维护场景生成、模拟对话和评价三类模型配置的面板。
+逻辑：挂载时读取配置并填表；保存仅在密钥输入非空时提交对应密钥字段，测试按钮按用途调用后端连接测试。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useAuthStore。
+为什么：空密钥输入表示未提供新值；只有非空字段才发送，防止保存普通配置时意外清空凭据。
+[/组件导读] -->
 <template>
   <section class="llm-panel" aria-labelledby="llm-config-title">
     <div>
@@ -66,6 +74,7 @@ const form = reactive<Required<ConfigInput>>({
   conversation_api_key: '',
   evaluation_api_key: '',
 })
+// [导读] 带登录令牌读取现有配置，并将各用途的模型名回填到表单。
 async function load(): Promise<void> {
   if (!auth.accessToken) return
   try {
@@ -80,6 +89,7 @@ async function load(): Promise<void> {
     show(error, true)
   }
 }
+// [导读] 组装配置请求；密钥留空时不提交该字段，避免把留空误当成覆盖现有密钥。
 async function save(): Promise<void> {
   if (!auth.accessToken) return
   try {
@@ -100,6 +110,7 @@ async function save(): Promise<void> {
     show(error, true)
   }
 }
+// [导读] 按用途调用连接测试，并展示所用模型及测试返回的 token 数量。
 async function test(purpose: string): Promise<void> {
   if (!auth.accessToken) return
   try {
@@ -112,6 +123,7 @@ async function test(purpose: string): Promise<void> {
     show(error, true)
   }
 }
+// [导读] 统一把异常或普通结果转换为提示文案，并设置成功或失败样式。
 function show(value: unknown, isError: boolean): void {
   message.value = value instanceof Error ? value.message : String(value)
   failed.value = isError

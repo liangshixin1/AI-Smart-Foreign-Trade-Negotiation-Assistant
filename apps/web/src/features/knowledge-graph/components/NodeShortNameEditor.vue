@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：供教师编辑节点显示短名或恢复默认名称。
+逻辑：本地草稿校验长度和非法字符后，发出包含 display_revision 的保存事件；节点或版本变化会重置编辑状态，版本冲突由外层请求处理。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：名称是展示属性，保存应携带版本而不是盲目覆盖；失败时由父级显示原因。
+[/组件导读] -->
 <template>
   <section class="editor" aria-label="图谱显示名称维护">
     <div v-if="!editing" class="read-state">
@@ -85,22 +92,26 @@ const validationError = computed(() => {
   return ''
 })
 
+// [导读] 从当前短名初始化草稿，清除上次提交标记并打开编辑区。
 function startEditing(): void {
   draft.value = props.node.short_label
   submitted.value = false
   editing.value = true
 }
+// [导读] 丢弃本次本地编辑，恢复传入的短名并关闭确认状态。
 function cancel(): void {
   draft.value = props.node.short_label
   editing.value = false
   confirmingRestore.value = false
   submitted.value = false
 }
+// [导读] 校验通过且内容有变化才发送保存事件，同时附上当前显示版本。
 function save(): void {
   if (validationError.value || !hasChanges.value) return
   submitted.value = true
   emit('save', normalized.value, props.node.display_revision ?? 0)
 }
+// [导读] 发出恢复默认名称的事件并附上版本，实际结果由外层更新的 node 返回。
 function restore(): void {
   submitted.value = true
   emit('restore', props.node.display_revision ?? 0)

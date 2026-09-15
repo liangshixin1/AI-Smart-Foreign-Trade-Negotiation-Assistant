@@ -1,3 +1,11 @@
+# [导读] 所属业务: 逐轮反馈与正式评价。
+# [导读] 业务名词: RoundEvaluation 是一轮对话后的反馈; Evaluation 是正式总评; Rubric 是评分维度
+# [导读] 与权重约定。
+# [导读] 用途与原因: 把学习诊断引用绑定到真实学生消息, 并在缺少终结诊断时聚合已校验的逐轮诊断;
+# [导读] 防止虚构学习证据。
+# [导读] 结构: bind_diagnostic_evidence、resolve_final_learning_diagnostic。
+# [导读] 提醒: 模型输出必须经过结构和原话证据校验; 逐轮建议不直接替代正式提交后的成绩与课程进度
+# [导读] 。
 from __future__ import annotations
 
 from typing import Literal
@@ -15,6 +23,7 @@ LearnerStage = Literal["foundation", "developing", "competent", "advanced"]
 SupportLevel = Literal["explicit_model", "guided_choice", "implicit_prompt", "independent"]
 
 
+# [导读] 只允许引用已有学生消息中的真实片段, 防止诊断形成无法回放核实的虚构依据。
 def bind_diagnostic_evidence(
     diagnostic: LearningDiagnosticCandidate, student_messages: list[Message]
 ) -> None:
@@ -33,6 +42,7 @@ def bind_diagnostic_evidence(
                 evidence.quote = fallback.content[:600]
 
 
+# [导读] 优先用完整终结诊断, 否则聚合已校验逐轮诊断; 兼容缺失情况而不凭空新增原话证据。
 def resolve_final_learning_diagnostic(
     candidate: EvaluationCandidate,
     round_evaluations: list[RoundEvaluation],

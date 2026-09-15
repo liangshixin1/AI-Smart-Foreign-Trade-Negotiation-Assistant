@@ -1,3 +1,9 @@
+# [导读] 用途: 把版本化节点和关系写入 Neo4j, 并按版本读取。
+# [导读] 为什么: 稳定编号与版本组成节点身份; 写入使用事务和受控类型映射, 保持不同版本的图可追踪
+# [导读] 。
+# [导读] 结构: _json、_decode、Neo4jGraphStore。
+# [导读] 提醒: 这里的图事务与 SQL 数据库事务不共享提交边界; 跨库发布的补偿逻辑在
+# [导读] review_service.py。动态标签和关系类型必须来自白名单。
 from __future__ import annotations
 
 import json

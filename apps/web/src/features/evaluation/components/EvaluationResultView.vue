@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：正式评价在训练确认提交后形成；维度是评分方面，证据是支撑结论的学生原话或审改记录。
+用途：组织正式评价的综合结论、能力雷达图、维度得分和引用证据。
+逻辑：evaluation 是完整输入；较长证据先截取摘要，用户可展开原文。此处只展示结果，不重新计算评分。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 EvaluationRadarChart。
+为什么：评价结论必须能回到具体维度和证据，而不是只显示一个没有依据的总分。
+[/组件导读] -->
 <template>
   <article class="result">
     <header class="verdict">
@@ -87,10 +95,12 @@ defineProps<{ evaluation: EvaluationResult }>()
 
 const compactLimit = 180
 
+// [导读] 判断证据是否超过折叠阈值，供摘要显示和展开入口共用。
 function isLongQuote(quote: string): boolean {
   return quote.length > compactLimit
 }
 
+// [导读] 短证据完整显示；长证据截取前段并附省略号，完整原文仍由展开区展示。
 function compactQuote(quote: string): string {
   if (!isLongQuote(quote)) return quote
   return `${quote.slice(0, compactLimit).trimEnd()}…`

@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：统一的学生训练路由页面，选择文字、仿真或信用证审改工作台。
+逻辑：useAttempt 管理消息、草稿和提交；仿真数据由 useSimulationSession 补充。根据训练模式分发组件，提交后按服务端状态进入评价页。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 LcCorrectionWorkspace、AutosaveIndicator、DocumentReviewWorkspace、EmailWorkspace、NegotiationWorkspace、SubmitAttemptDialog；状态入口 useRoute、useRouter、useAttempt、useSimulationSession。
+为什么：多个训练界面共用同一训练记录生命周期；把消息和正式提交集中，避免模式切换形成不同成绩口径。
+[/组件导读] -->
 <template>
   <LcCorrectionWorkspace
     v-if="attempt?.workspace_kind === 'lc_correction'"
@@ -145,12 +153,14 @@ watch(latestStreamEvent, (event) => {
   if (event?.type === 'simulation.state.updated') applyState(event.data)
 })
 
+// [导读] 复用通用消息发送，确认成功后重新读取仿真会话以同步演出与态势。
 async function sendSimulationMessage(content: string): Promise<boolean> {
   const completed = await send(content)
   if (completed) await reloadSimulation()
   return completed
 }
 
+// [导读] 等待提交结果后关闭确认框；完成或评价失败均进入评价页展示后续状态。
 async function confirmSubmit(): Promise<void> {
   const completed = await submit()
   showSubmitDialog.value = false

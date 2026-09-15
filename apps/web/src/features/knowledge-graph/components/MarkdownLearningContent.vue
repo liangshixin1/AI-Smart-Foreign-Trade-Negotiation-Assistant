@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：将简化 Markdown 正文显示为标题、段落、引用和列表行。
+逻辑：逐行识别有限的前缀，再由 Vue 文本插值渲染；它不是完整 Markdown 解析器，不把输入当作任意 HTML 执行。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：有限语法配合文本插值，避免把教师正文当作可执行 HTML；需要更多语法时应扩展解析规则并验证安全边界。
+[/组件导读] -->
 <template>
   <article class="markdown-content">
     <template v-for="(block, index) in blocks" :key="`${block.kind}-${String(index)}`">

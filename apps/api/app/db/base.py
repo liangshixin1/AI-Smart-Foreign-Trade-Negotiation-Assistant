@@ -1,3 +1,7 @@
+# [导读] 用途: 定义 SQLAlchemy 模型共用的声明基类。
+# [导读] 为什么: 共用一份 metadata 使迁移工具能汇总所有已导入的数据表定义。
+# [导读] 结构: Base。
+# [导读] 提醒: 新增模型还需检查迁移环境是否导入, 只有 Python 类存在不代表数据库已建表。
 from sqlalchemy.orm import DeclarativeBase
 
 

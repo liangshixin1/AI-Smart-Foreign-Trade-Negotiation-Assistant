@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+用途：展示训练目标检查结果及相关知识支持。
+逻辑：取最新一轮评价并按检查项建立索引，将每项目标映射为满足、缺失或待评价；支持提示的操作事件向上转发。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 LiveKnowledgeCompass。
+为什么：展示组件共用训练状态，避免各界面各自修改完成或评价结果；状态是否可操作由后端再次核对。
+[/组件导读] -->
 <template>
   <aside class="checklist" aria-label="训练任务清单">
     <section>
@@ -77,16 +85,19 @@ const latestResults = computed(
   () => new Map(latestEvaluation.value?.checklist_results.map((result) => [result.item, result])),
 )
 
+// [导读] 尚无该项目评价时标为待评价；已有结果时才区分满足或缺失。
 function stateFor(item: string): 'satisfied' | 'missing' | 'pending' {
   const result = latestResults.value.get(item)
   if (!result) return 'pending'
   return result.satisfied ? 'satisfied' : 'missing'
 }
 
+// [导读] 复用 stateFor 的判断映射图标，使图标和状态含义一致。
 function iconFor(item: string): string {
   return { satisfied: '✓', missing: '!', pending: '·' }[stateFor(item)]
 }
 
+// [导读] 取最新评价中的解释；尚无解释时提示发送一轮内容后再进行预审。
 function rationaleFor(item: string): string {
   return latestResults.value.get(item)?.rationale ?? '发送一轮内容后，由评价 Agent 自动预审。'
 }

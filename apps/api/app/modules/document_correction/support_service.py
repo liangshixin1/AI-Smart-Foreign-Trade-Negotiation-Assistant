@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 按提示层级提供审证学习支持并记录使用情况; 提示与答案评分是独立职责, 不能把
+# [导读] 提示访问当成通关。
+# [导读] 结构: HintInput、hint。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 from typing import Any
@@ -22,6 +30,8 @@ class HintInput(StrictModel):
     event_type: str = "revealed"
 
 
+# [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+# [导读] rollback 撤销已提交记录。
 def hint(db: Session, graph_store: GraphStore, attempt: Attempt, data: HintInput) -> dict[str, Any]:
     session = AnnotationService(db).session(attempt.id)
     by_ref = targets(session.document_snapshot)

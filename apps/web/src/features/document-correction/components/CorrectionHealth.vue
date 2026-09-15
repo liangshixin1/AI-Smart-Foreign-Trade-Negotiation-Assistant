@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+用途：在技术人员工作区展示信用证审改功能的环境检查结果。
+逻辑：挂载时调用受认证保护的状态接口，读取功能开关、数据库迁移和配置准备情况；失败时显示连接提示。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useAuthStore。
+为什么：把原证、批注和成绩分开，才能解释每项改证依据；可编辑状态仍需后端校验。
+[/组件导读] -->
 <template>
   <section>
     <h2>信用证审改模式 · 环境状态</h2>
@@ -29,6 +37,7 @@ const status = ref<{
   profile_ready: boolean
   missing_tables: string[]
 } | null>(null)
+// [导读] 读取技术人员的环境状态接口；捕获连接错误并转成界面提示。
 async function load() {
   try {
     status.value = await request(

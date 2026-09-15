@@ -1,3 +1,10 @@
+# [导读] 所属业务: 版本化课程与小节。
+# [导读] 业务名词: TrainingUnit 是课程小节; Rubric 是评价维度及权重; PromptTemplate 是发给模型的
+# [导读] 指令模板。
+# [导读] 用途与原因: 计算当前课程路线、小节详情和前置解锁状态; 将版本投影与实际训练记录组合, 保
+# [导读] 证页面状态有数据依据。
+# [导读] 结构: CurriculumService。
+# [导读] 提醒: 旧训练绑定旧课程版本; 更新课程时应创建新版本, 不要直接改写历史训练的版本关联。
 from __future__ import annotations
 
 from app.core.errors import AppError

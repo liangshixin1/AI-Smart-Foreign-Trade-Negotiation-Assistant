@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：将图谱转换成可逐级展开的文字目录，辅助阅读阶段、现象与知识关系。
+逻辑：先计算节点所属阶段，再按现象的直接邻居收集知识和策略，最后按类型与中文短名排序；选择时发送节点编号。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <details class="outline">
     <summary>使用文字目录浏览图谱</summary>
@@ -93,6 +100,7 @@ const groups = computed(() => {
     }))
 })
 
+// [导读] 从现象的直接连线收集知识邻居，再分类型排序，构成目录中的一个现象分组。
 function phenomenonGroup(phenomenon: KnowledgeGraphNode, byId: Map<string, KnowledgeGraphNode>) {
   const relatedIds = new Set<string>()
   props.graph.edges.forEach((edge) => {
@@ -112,22 +120,27 @@ function phenomenonGroup(phenomenon: KnowledgeGraphNode, byId: Map<string, Knowl
   return { node: phenomenon, types, knowledgeCount: knowledgeNodes.length }
 }
 
+// [导读] 判断节点是否属于知识点、旧版知识资源或策略，供目录过滤。
 function isKnowledgeNode(node: KnowledgeGraphNode): boolean {
   return ['knowledge_point', 'knowledge_resource', 'strategy'].includes(node.type)
 }
+// [导读] 优先使用节点的知识分类；旧数据依次退回策略类型、属性分类或通用资源。
 function knowledgeType(node: KnowledgeGraphNode): string {
   if (node.knowledge_type) return node.knowledge_type
   if (node.type === 'strategy') return 'Strategy'
   const propertyType = node.properties.KnowledgeTypeCode ?? node.properties.Type
   return typeof propertyType === 'string' && propertyType ? propertyType : 'Resource'
 }
+// [导读] 将分类转成固定排序位置；未知分类排在已知分类之后。
 function typeOrder(type: string): number {
   const index = TYPE_ORDER.indexOf(type)
   return index === -1 ? TYPE_ORDER.length : index
 }
+// [导读] 按中文短名比较两个节点，用于目录内的稳定阅读顺序。
 function compareLabels(left: KnowledgeGraphNode, right: KnowledgeGraphNode): number {
   return left.short_label.localeCompare(right.short_label, 'zh-CN')
 }
+// [导读] 把分类转换为知识或策略的样式标记，不改变节点本身的类型。
 function knowledgeMarker(node: KnowledgeGraphNode): string {
   return knowledgeType(node) === 'Strategy' ? 'strategy' : 'knowledge'
 }

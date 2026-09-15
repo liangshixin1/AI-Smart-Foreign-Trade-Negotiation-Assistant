@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：从多轮评价推荐中整理最多六项后续学习入口。
+逻辑：按 node_id 去重累计出现次数，再按频次、最近轮次和置信度排序；跳转携带训练编号、评价来源和返回地址。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useRoute。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section v-if="items.length" class="learning-path" aria-labelledby="learning-path-title">
     <header>
@@ -59,6 +67,7 @@ const items = computed(() => {
     .slice(0, 6)
 })
 
+// [导读] 构造学习页地址，同时携带来源、返回位置及当前上下文；这样学习后可以回到原来的训练或评价。
 function learningRoute(nodeId: string) {
   return {
     path: `/student/knowledge/${encodeURIComponent(nodeId)}`,

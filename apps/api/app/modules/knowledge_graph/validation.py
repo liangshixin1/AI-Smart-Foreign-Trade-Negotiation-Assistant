@@ -1,3 +1,13 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 检查旧版教师工作簿中的字段、唯一编号、引用与教学完整性; 把错误定位到表格后
+# [导读] 再交给教师修正。
+# [导读] 结构: _issue、_validate_cells、_validate_unique_ids、_validate_references、
+# [导读] _validate_teachi
+# [导读] ng_completeness、validate_teacher_workbook。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 from collections import defaultdict

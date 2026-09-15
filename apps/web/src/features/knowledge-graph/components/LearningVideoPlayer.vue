@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：使用 Video.js 播放节点上传的视频。
+逻辑：先由 useLearningAssetFile 获取带权限校验的文件，再等待 video 元素出现后创建或更新播放器；卸载时 dispose，释放播放器资源。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useLearningAssetFile。
+为什么：受控附件需先经过鉴权下载；播放器持有事件和 DOM 资源，离开页面时必须释放。
+[/组件导读] -->
 <template>
   <section class="viewer">
     <header>

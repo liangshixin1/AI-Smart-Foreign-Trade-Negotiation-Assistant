@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：课程由章节和小节组成；小节是训练入口，一次实际作答会形成独立的 Attempt（训练记录）。
+用途：按章节展示课程小节、解锁状态以及继续训练入口。
+逻辑：根据小节状态和 active_attempt_id 选择准备页、训练页或评价页；锁定项由模板区别呈现。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：课程路线与训练记录分开，才能保留重复练习历史并按前置要求开放小节。
+[/组件导读] -->
 <template>
   <section class="roadmap" aria-labelledby="roadmap-title">
     <h2 id="roadmap-title">课程路线</h2>
@@ -52,6 +59,7 @@ import type { UnitMapItem } from '@/features/curriculum/types'
 
 defineProps<{ chapters: ChapterMapItem[] }>()
 
+// [导读] 把接口状态码映射为面向使用者的中文文案；未知值按函数中的兜底分支处理。
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     available: '可开始',
@@ -64,6 +72,7 @@ function statusLabel(status: string): string {
   return labels[status] ?? status
 }
 
+// [导读] 没有训练记录时去准备页；已完成或评价失败时去评价页，其他状态继续当前训练。
 function unitTarget(unit: UnitMapItem): string {
   if (!unit.active_attempt_id) return `/student/units/${unit.id}`
   if (unit.status === 'completed' || unit.status === 'evaluation_failed') {

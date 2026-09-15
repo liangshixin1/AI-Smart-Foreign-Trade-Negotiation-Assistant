@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：变更集是待评审的图谱改动；发布版是通过评审后可读取的图数据，模型配置按生成场景、对话和评价分用途。
+用途：预览图谱导入结果中的教学案例与教学内容。
+逻辑：本地 selectedId 决定展示案例；cases 更新后若原选择不存在，则退回第一项，避免显示失效的案例。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：将导入、评审和发布状态分开，避免把文件上传成功误当作教学内容已经对学生生效。
+[/组件导读] -->
 <template>
   <section v-if="cases.length" class="preview" aria-labelledby="teaching-preview-title">
     <header>

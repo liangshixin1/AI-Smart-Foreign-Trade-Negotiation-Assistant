@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：角色分学生、教师和技术人员；访问令牌用于调用接口，刷新令牌用于在登录有效期内换取新令牌。
+用途：收集邮箱或学号与密码，并显示登录中的状态及错误。
+逻辑：输入保存在本地 ref 中；点击提交时向父页面发送 submit 事件，真正的认证请求由父页面处理。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：输入、会话和导航分层，便于处理认证失败；前端角色判断只管理界面，后端才是权限依据。
+[/组件导读] -->
 <template>
   <form class="login-form" @submit.prevent="submit">
     <div class="field">
@@ -45,6 +52,7 @@ const emit = defineEmits<{
 const identifier = ref('')
 const password = ref('')
 
+// [导读] 正在提交时直接返回，防止重复触发；否则把两项输入一次性交给父页面。
 function submit(): void {
   if (props.submitting) return
   emit('submit', { identifier: identifier.value, password: password.value })

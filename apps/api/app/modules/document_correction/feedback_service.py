@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 在确定性评分后请求并校验个性化讲评; 将成绩与模型文字分开, 使讲评失败不改变
+# [导读] 通关结果。
+# [导读] 结构: parse_feedback、feedback。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 import json
@@ -14,6 +22,7 @@ from app.modules.document_correction.schemas import Feedback
 from app.modules.training.invocations import invoke_and_record
 
 
+# [导读] 校验模型讲评结构与允许内容; 讲评文字不能替代已经保存的本地评分结论。
 def parse_feedback(raw: str) -> Feedback:
     def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result = {}
@@ -31,6 +40,7 @@ def parse_feedback(raw: str) -> Feedback:
     return Feedback.model_validate(payload)
 
 
+# [导读] 在确定性结果基础上生成补充讲评; 模型服务不可用时保留成绩及可恢复状态。
 def feedback(db: Session, provider: LLMProvider, attempt_id: uuid.UUID) -> dict[str, Any]:
     session = db.get(CorrectionSession, attempt_id)
     result = db.get(CorrectionResult, attempt_id)

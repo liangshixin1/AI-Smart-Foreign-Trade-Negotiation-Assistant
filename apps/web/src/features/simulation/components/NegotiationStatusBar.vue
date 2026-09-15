@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练；仿真用逐段台词和角色演出呈现谈判，态势是根据原话证据计算的状态。
+用途：展示仿真谈判态势、里程碑与可展开的原话证据。
+逻辑：读取后端给出的 state，统计已具备证据的里程碑并转换状态文案；重试分析通过 retry 事件由父组件执行。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：演出显示与已保存训练数据分开，浏览器动画不能充当消息保存或态势计算的成功回执。
+[/组件导读] -->
 <template>
   <section class="status-wrap" aria-label="本局谈判态势">
     <div class="metrics">
@@ -56,6 +63,7 @@ const expanded = ref(false)
 const evidenced = computed(
   () => props.state.milestones.filter((item) => item.status === 'evidenced').length,
 )
+// [导读] 将谨慎、平稳和积极三个后端状态转换为中文。
 function bandLabel(band: 'cautious' | 'steady' | 'positive'): string {
   return { cautious: '谨慎', steady: '平稳', positive: '积极' }[band]
 }

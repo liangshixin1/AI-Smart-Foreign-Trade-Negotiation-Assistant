@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：训练过程中的知识罗盘，把最新推荐标到完整流程图上。
+逻辑：加载本次训练对应图谱，结合固定支持库和轮次评价生成高亮；学习跳转保留训练编号、来源和返回位置。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 KnowledgeGraphPhaseView；状态入口 useRoute、useStudentKnowledgeGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="live-support" aria-label="训练知识罗盘">
     <p v-if="loading" class="state">正在定位当前谈判阶段…</p>
@@ -76,10 +84,12 @@ const description = computed(() =>
     : '完整流程以低细节显示，首轮反馈后点亮当前位置。',
 )
 
+// [导读] 根据图谱节点的知识分类判断是否标注跨文化提示。
 function isIntercultural(nodeId: string): boolean {
   return graph.value?.nodes.find((node) => node.id === nodeId)?.knowledge_type === 'Cross-cultural'
 }
 
+// [导读] 将评价推荐中的运用状态转成中文提示，缺失时按下一步建议呈现。
 function stateLabel(state?: string): string {
   return (
     {
@@ -93,6 +103,7 @@ function stateLabel(state?: string): string {
   )
 }
 
+// [导读] 构造学习页地址，同时携带来源、返回位置及当前上下文；这样学习后可以回到原来的训练或评价。
 function learningRoute(nodeId: string) {
   return {
     path: `/student/knowledge/${encodeURIComponent(nodeId)}`,

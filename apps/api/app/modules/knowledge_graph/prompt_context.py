@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 把固定图谱版本中的相关知识整理为模型上下文; 图谱辅助读取失败可按现有分支降
+# [导读] 级, 不能冒充已有完整图谱支持。
+# [导读] 结构: KnowledgePromptContext、KnowledgeContextProvider。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import json

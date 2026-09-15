@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：教师班级首页，提供学情概览、知识分析、学生筛选和名册维护。
+逻辑：读取第一个可用班级后并行加载概览与学生，再加载知识学情；筛选排序只处理当前快照，新增、导入、修改和移出通过后端接口完成。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoleWorkspaceLayout；状态入口 useAuthStore、useKnowledgeInsights。
+为什么：班级身份是名册与学情的共同范围；前端筛选只改显示，正式成员关系仍由后端决定。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout
     title="教师教学工作区"
@@ -229,6 +237,7 @@ const filteredStudents = computed(() => {
     )
   })
 })
+// [导读] 先确定当前班级，再并行读取概览与名册，并刷新知识学情。
 async function load() {
   if (!auth.accessToken) return
   try {
@@ -245,6 +254,7 @@ async function load() {
     error.value = e instanceof Error ? e.message : '加载失败'
   }
 }
+// [导读] 提交新增学生表单，成功后清空输入并重新读取班级数据。
 async function createStudent() {
   if (!auth.accessToken || !classroom.value) return
   try {
@@ -255,6 +265,7 @@ async function createStudent() {
     error.value = e instanceof Error ? e.message : '新增失败'
   }
 }
+// [导读] 按当前四列 CSV 约定读取名册，转换为学生对象后交给后端逐行校验；不支持字段内部逗号。
 async function importCsv(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file || !auth.accessToken || !classroom.value) return
@@ -276,16 +287,19 @@ async function importCsv(event: Event) {
     error.value = e instanceof Error ? e.message : '导入失败'
   }
 }
+// [导读] 确认移出后调用班级接口，再刷新名册；这里只移出当前班级。
 async function removeStudent(id: string) {
   if (!auth.accessToken || !classroom.value || !confirmAction('确认将该学生移出班级？')) return
   await teacherApi.remove(auth.accessToken, classroom.value.id, id)
   await load()
 }
+// [导读] 把选中学生的可编辑信息复制到编辑表单。
 function startEdit(student: Student) {
   editingId.value = student.id
   editForm.display_name = student.display_name
   editForm.email = student.email
 }
+// [导读] 将编辑表单提交到指定学生记录，成功后关闭编辑并刷新。
 async function saveStudent(id: string) {
   if (!auth.accessToken || !classroom.value) return
   try {
@@ -296,6 +310,7 @@ async function saveStudent(id: string) {
     error.value = e instanceof Error ? e.message : '更新失败'
   }
 }
+// [导读] 将接口日期转换为中文界面使用的日期文本；具体是否保留时间由本函数的格式选项决定。
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleDateString('zh-CN') : '无训练'
 }

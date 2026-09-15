@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 按事件顺序发送消息增量、最终台词和评价结果; 对话、分析与图谱证据分开处理,
+# [导读] 辅助失败不抹掉已完成对话。
+# [导读] 结构: _round_payload、StreamingConversationService。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import logging
@@ -54,6 +62,7 @@ class StreamingConversationService:
     def prepare(self, student: User, attempt_id: uuid.UUID, data: MessageRequest) -> StreamContext:
         return self.context_builder.prepare(student, attempt_id, data)
 
+    # [导读] 先推开始事件, 再处理增量、完整台词和评价; 只有完整回复落库后才发完成事件。
     def events(self, context: StreamContext) -> Iterator[str]:
         assistant = context.assistant_message
         yield sse_event(
@@ -150,6 +159,7 @@ class StreamingConversationService:
             yield sse_event("round_evaluation.completed", _round_payload(evaluation))
         yield sse_event("stream.closed", {"status": "completed"})
 
+    # [导读] 把演出就绪和分析结果分成独立事件, 台词已保存但分析失败时显式通知前端。
     def _simulation_events(self, context: StreamContext) -> Iterator[str]:
         service = SimulationTurnService(self.db, self.provider, self.graph_store)
         yield sse_event(
@@ -211,6 +221,7 @@ class StreamingConversationService:
         )
         yield sse_event("stream.closed", {"status": "completed_with_analysis_error"})
 
+    # [导读] 重发已保存回复, 缺少评价时只补评价, 避免浏览器重试导致第二次对手发言。
     def _replay(self, context: StreamContext) -> Iterator[str]:
         assistant = context.assistant_message
         yield sse_event(
@@ -258,6 +269,7 @@ class StreamingConversationService:
             yield sse_event("round_evaluation.completed", _round_payload(evaluation))
         yield sse_event("stream.closed", {"status": "replayed"})
 
+    # [导读] 图谱证据写入失败时回滚该辅助写入并记录原因, 不破坏此前已提交的对话。
     def _record_graph_evidence(self, context: StreamContext, evaluation: RoundEvaluation) -> None:
         try:
             GraphLearningEvidenceService(self.db, self.graph_store).record(

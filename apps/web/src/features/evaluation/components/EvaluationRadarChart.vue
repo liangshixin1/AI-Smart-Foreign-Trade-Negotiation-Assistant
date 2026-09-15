@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：正式评价在训练确认提交后形成；维度是评分方面，证据是支撑结论的学生原话或审改记录。
+用途：用 SVG 雷达图展示正式评价中的各维度分数。
+逻辑：把维度序号换算成圆周角度，再把百分制得分换算成半径比例；网格、分数多边形和无障碍说明由同一份 dimensions 生成。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：评价结论必须能回到具体维度和证据，而不是只显示一个没有依据的总分。
+[/组件导读] -->
 <template>
   <figure class="radar" :aria-label="chartLabel">
     <svg v-if="dimensions.length >= 3" viewBox="0 0 260 260" role="img">
@@ -45,6 +52,7 @@ interface Point {
   y: number
 }
 
+// [导读] 按维度序号均分圆周，按 ratio 缩放半径，用正弦余弦得到 SVG 坐标。
 function pointAt(index: number, ratio: number): Point {
   const angle = -Math.PI / 2 + (Math.PI * 2 * index) / props.dimensions.length
   return {
@@ -53,10 +61,12 @@ function pointAt(index: number, ratio: number): Point {
   }
 }
 
+// [导读] 将坐标数组转换为 SVG points 属性需要的字符串，保留一位小数。
 function pointsToString(points: Point[]): string {
   return points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ')
 }
 
+// [导读] 在相同半径比例上为每个维度取点，生成一圈雷达网格。
 function gridPoints(ratio: number): string {
   return pointsToString(props.dimensions.map((_, index) => pointAt(index, ratio)))
 }

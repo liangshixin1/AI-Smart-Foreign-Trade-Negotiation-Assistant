@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 以纯本地规则规范化拟改值并计算定位、修改、依据得分和误报扣分; 相同快照输入
+# [导读] 可重复得到相同结果。
+# [导读] 结构: targets、number、normalize、complete、same、grade。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 import re
@@ -20,6 +28,7 @@ def targets(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
+# [导读] 只接受约定的普通十进制格式, 先验证再转换 Decimal; 防止科学计数法等未支持形式混入答案。
 def number(value: Any, integer: bool = False) -> Decimal:
     raw = str(value).strip()
     if not re.fullmatch(r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?", raw):
@@ -30,6 +39,8 @@ def number(value: Any, integer: bool = False) -> Decimal:
     return result
 
 
+# [导读] 按字段业务类型规范化日期、金额、主体等输入; 金额用 Decimal, 避免浮点误差或格式差异影响
+# [导读] 评分。
 def normalize(kind: str, value: Any) -> Any:
     if kind == "currency_amount":
         if set(value) != {"currency", "amount"} or value["currency"] not in {
@@ -109,6 +120,7 @@ def normalize(kind: str, value: Any) -> Any:
     return " ".join(value.split()).casefold()
 
 
+# [导读] 检查已标记项目的类型、依据和拟改值是否完整; 这是格式检查, 不泄露标准答案或判断得分。
 def complete(annotation: dict[str, Any], target: dict[str, Any], fact_ids: set[str]) -> list[str]:
     errors = []
     if annotation.get("issue_category") not in {
@@ -127,6 +139,7 @@ def complete(annotation: dict[str, Any], target: dict[str, Any], fact_ids: set[s
     return errors
 
 
+# [导读] 将两边按相同字段规则规范化再比较, 减少大小写和无意义空格导致的误判。
 def same(kind: str, actual: Any, expected: Any) -> bool:
     try:
         return bool(normalize(kind, actual) == normalize(kind, expected))
@@ -134,6 +147,8 @@ def same(kind: str, actual: Any, expected: Any) -> bool:
         return False
 
 
+# [导读] 按固定答案逐项算定位、拟改与依据分, 再扣误报分; 通过还需无重大漏点、无损害正确重大字段
+# [导读] 且填写完整。
 def grade(
     document: dict[str, Any],
     answers: dict[str, Any],

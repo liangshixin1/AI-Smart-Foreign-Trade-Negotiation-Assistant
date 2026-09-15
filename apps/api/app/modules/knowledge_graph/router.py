@@ -1,3 +1,14 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途: 提供该业务的 HTTP 入口并注入身份、数据库及服务依赖。
+# [导读] 为什么: 接口层尽量只做请求转接和响应组装, 使业务规则能在服务层复用; 调整参数时需同步前
+# [导读] 端 API 与 schemas。
+# [导读] 结构: _graph_store、_services、_job_response、_is_technician、download_template、
+# [导读] upload_work
+# [导读] book、import_detail、validation_issues。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -74,6 +85,8 @@ def _is_technician(principal: Principal) -> bool:
     return "technician" in principal.roles
 
 
+# [导读] 承接 GET /templates/teacher-case/latest; 身份来自依赖注入, 业务归属限制仍由下方查询或服
+# [导读] 务核对, 不能相信客户端传入的用户编号。
 @router.get("/templates/teacher-case/latest")
 def download_template(_: Contributor) -> FileResponse:
     return FileResponse(
@@ -83,13 +96,15 @@ def download_template(_: Contributor) -> FileResponse:
     )
 
 
+# [导读] 承接 POST /imports; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不能相信客户
+# [导读] 端传入的用户编号。
 @router.post("/imports", response_model=ImportJobResponse, status_code=201)
 async def upload_workbook(
     request: Request,
     principal: Contributor,
     db: Annotated[Session, Depends(get_db)],
     x_file_name: Annotated[str, Header(alias="X-File-Name")] = "teacher-case.xlsx",
-    x_template_version: Annotated[str, Header(alias="X-Template-Version")] = "3.0",
+    x_template_version: Annotated[str, Header(alias="X-Template-Version")] = "3.1",
 ) -> ImportJobResponse:
     content_length = int(request.headers.get("Content-Length", "0") or 0)
     if content_length > 5 * 1024 * 1024:
@@ -109,6 +124,8 @@ async def upload_workbook(
     return _job_response(job, idempotent)
 
 
+# [导读] 承接 GET /imports/{job_id}; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不能
+# [导读] 相信客户端传入的用户编号。
 @router.get("/imports/{job_id}", response_model=ImportJobResponse)
 def import_detail(
     job_id: uuid.UUID,
@@ -123,6 +140,8 @@ def import_detail(
     return _job_response(job)
 
 
+# [导读] 承接 GET /imports/{job_id}/issues; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对
+# [导读] , 不能相信客户端传入的用户编号。
 @router.get("/imports/{job_id}/issues", response_model=list[ValidationIssueResponse])
 def validation_issues(
     job_id: uuid.UUID,
@@ -138,6 +157,8 @@ def validation_issues(
     ]
 
 
+# [导读] 承接 GET /imports/{job_id}/change-set; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.get("/imports/{job_id}/change-set", response_model=GraphChangeSetResponse)
 def import_change_set(
     job_id: uuid.UUID,
@@ -152,6 +173,8 @@ def import_change_set(
     return GraphChangeSetResponse.model_validate(change_set)
 
 
+# [导读] 承接 GET /imports/{job_id}/teaching-preview; 身份来自依赖注入, 业务归属限制仍由下方查询
+# [导读] 或服务核对, 不能相信客户端传入的用户编号。
 @router.get("/imports/{job_id}/teaching-preview", response_model=list[dict[str, object]])
 def teaching_preview(
     job_id: uuid.UUID,
@@ -166,6 +189,9 @@ def teaching_preview(
     return change_set.teaching_preview
 
 
+# [导读] 承接 POST /change-sets/{change_set_id}/submit-review; 身份来自依赖注入, 业务归属限制仍
+# [导读] 由下方查询或服务核对, 不能相信客户
+# [导读] 端传入的用户编号。
 @router.post("/change-sets/{change_set_id}/submit-review", response_model=GraphChangeSetResponse)
 def submit_review(
     change_set_id: uuid.UUID,
@@ -185,6 +211,9 @@ def submit_review(
     )
 
 
+# [导读] 承接 POST
+# [导读] /change-sets/{change_set_id}/decision; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.post("/change-sets/{change_set_id}/decision", response_model=GraphChangeSetResponse)
 def decide_change_set(
     change_set_id: uuid.UUID,
@@ -200,6 +229,9 @@ def decide_change_set(
     )
 
 
+# [导读] 承接 POST
+# [导读] /change-sets/{change_set_id}/publish; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.post("/change-sets/{change_set_id}/publish", response_model=PublicationResponse)
 def publish_change_set(
     change_set_id: uuid.UUID,
@@ -213,6 +245,8 @@ def publish_change_set(
     )
 
 
+# [导读] 承接 GET /publications/active; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不
+# [导读] 能相信客户端传入的用户编号。
 @router.get("/publications/active", response_model=PublicationResponse | None)
 def active_publication(
     _: Technician, db: Annotated[Session, Depends(get_db)]
@@ -221,6 +255,9 @@ def active_publication(
     return PublicationResponse.model_validate(publication) if publication else None
 
 
+# [导读] 承接 POST
+# [导读] /publications/{publication_id}/rollback; 身份来自依赖注入, 业务归属限制仍由下方查询或服
+# [导读] 务核对, 不能相信客户端传入的用户编号。
 @router.post("/publications/{publication_id}/rollback", response_model=PublicationResponse)
 def rollback_publication(
     publication_id: uuid.UUID,
@@ -243,6 +280,9 @@ def rollback_publication(
     )
 
 
+# [导读] 承接 GET
+# [导读] /student/attempts/{attempt_id}/scaffolds; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.get(
     "/student/attempts/{attempt_id}/scaffolds",
     response_model=StudentScaffoldResponse,
@@ -258,6 +298,9 @@ def student_scaffolds(
     )
 
 
+# [导读] 承接 POST /student/attempts/{attempt_id}/scaffold-events; 身份来自依赖注入, 业务归属限
+# [导读] 制仍由下方查询或服务核对, 不能
+# [导读] 相信客户端传入的用户编号。
 @router.post(
     "/student/attempts/{attempt_id}/scaffold-events",
     response_model=ScaffoldInteractionResponse,
@@ -275,6 +318,8 @@ def record_scaffold_event(
     )
 
 
+# [导读] 承接 GET /teacher/graph; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不能相信
+# [导读] 客户端传入的用户编号。
 @router.get("/teacher/graph", response_model=GraphViewResponse)
 def teacher_graph(
     request: Request,
@@ -284,6 +329,8 @@ def teacher_graph(
     return KnowledgeGraphConsumptionService(db, _graph_store(request)).teacher_graph()
 
 
+# [导读] 承接 GET /student/graph; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不能相信
+# [导读] 客户端传入的用户编号。
 @router.get("/student/graph", response_model=GraphViewResponse)
 def student_graph(
     request: Request,
@@ -293,6 +340,9 @@ def student_graph(
     return KnowledgeGraphConsumptionService(db, _graph_store(request)).student_graph()
 
 
+# [导读] 承接 GET
+# [导读] /student/attempts/{attempt_id}/graph; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.get("/student/attempts/{attempt_id}/graph", response_model=GraphViewResponse)
 def student_attempt_graph(
     attempt_id: uuid.UUID,
@@ -305,6 +355,9 @@ def student_attempt_graph(
     )
 
 
+# [导读] 承接 GET
+# [导读] /teacher/attempts/{attempt_id}/graph; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.get("/teacher/attempts/{attempt_id}/graph", response_model=GraphViewResponse)
 def teacher_attempt_graph(
     attempt_id: uuid.UUID,
@@ -317,6 +370,8 @@ def teacher_attempt_graph(
     )
 
 
+# [导读] 承接 PUT /teacher/nodes/{node_key}/display; 身份来自依赖注入, 业务归属限制仍由下方查询
+# [导读] 或服务核对, 不能相信客户端传入的用户编号。
 @router.put(
     "/teacher/nodes/{node_key}/display",
     response_model=NodeDisplayMutationResponse,
@@ -333,6 +388,9 @@ def update_node_display(
     )
 
 
+# [导读] 承接 POST
+# [导读] /teacher/nodes/{node_key}/display/restore; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.post(
     "/teacher/nodes/{node_key}/display/restore",
     response_model=NodeDisplayMutationResponse,
@@ -349,6 +407,8 @@ def restore_node_display(
     )
 
 
+# [导读] 承接 GET /student/me/insights; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不
+# [导读] 能相信客户端传入的用户编号。
 @router.get("/student/me/insights", response_model=TeacherKnowledgeInsightsResponse)
 def own_knowledge_insights(
     request: Request,
@@ -358,6 +418,9 @@ def own_knowledge_insights(
     return KnowledgeGraphInsightsService(db, _graph_store(request)).own(principal.user.id)
 
 
+# [导读] 承接 GET /teacher/classrooms/{classroom_id}/insights; 身份来自依赖注入, 业务归属限制仍
+# [导读] 由下方查询或服务核对, 不能相信客户
+# [导读] 端传入的用户编号。
 @router.get(
     "/teacher/classrooms/{classroom_id}/insights",
     response_model=TeacherKnowledgeInsightsResponse,
@@ -373,6 +436,9 @@ def classroom_knowledge_insights(
     )
 
 
+# [导读] 承接 GET
+# [导读] /teacher/students/{student_id}/insights; 身份来自依赖注入, 业务归属限制仍由下方查询或服
+# [导读] 务核对, 不能相信客户端传入的用户编号。
 @router.get(
     "/teacher/students/{student_id}/insights",
     response_model=TeacherKnowledgeInsightsResponse,

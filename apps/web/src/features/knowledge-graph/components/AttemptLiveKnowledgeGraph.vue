@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：把本次训练的固定支持库与最新一轮评价组合成局部知识图。
+逻辑：graphFromScaffold 生成底图，attemptRoundOverlay 生成高亮层，再交给 ContextKnowledgeGraph 展示。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 ContextKnowledgeGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <ContextKnowledgeGraph
     :graph="graph"

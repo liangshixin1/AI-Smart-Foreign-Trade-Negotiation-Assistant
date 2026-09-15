@@ -1,3 +1,10 @@
+# [导读] 所属业务: 教师班级管理、学情统计与训练回放。
+# [导读] 业务名词: 学情是学生学习和训练的证据汇总; Replay 是历史训练回放; Enrollment 用来证明学
+# [导读] 生属于哪个班级。
+# [导读] 用途与原因: 在教师班级权限范围内读取学生详情与单次训练回放; 历史证据标签按各自图谱版本
+# [导读] 还原。
+# [导读] 结构: TeacherAnalyticsService。
+# [导读] 提醒: 教师身份不是查看全部学生的权限; 查询应保留班级归属、成员有效状态及相应课程范围。
 from __future__ import annotations
 
 import uuid
@@ -120,6 +127,8 @@ class TeacherAnalyticsService:
             ),
         )
 
+    # [导读] 通过教师拥有的有效班级关系校验访问, 再组装历史快照、对话与证据, 避免仅凭训练编号访
+    # [导读] 问。
     def attempt_replay(self, attempt_id: uuid.UUID) -> AttemptReplay:
         attempt = self.db.scalar(
             select(Attempt)
@@ -195,6 +204,7 @@ class TeacherAnalyticsService:
             simulation=simulation,
         )
 
+    # [导读] 按每条历史证据的 graph_version 读取标签, 不能统一用当前图谱重新解释旧证据。
     def _present_graph_evidence(
         self, evidence: list[GraphLearningEvidence]
     ) -> list[GraphLearningEvidenceResponse]:

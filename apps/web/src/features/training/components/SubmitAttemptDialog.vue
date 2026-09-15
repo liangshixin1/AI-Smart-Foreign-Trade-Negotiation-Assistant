@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+用途：正式提交训练前的确认对话框。
+逻辑：监听 open 与原生 dialog 元素的就绪状态，在 DOM 更新后调用 showModal/close；提交进行中阻止关闭，确认仅发出 confirm。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：正式提交会冻结训练，需独立确认；提交期间不关闭确认流程，避免误认为请求已取消。
+[/组件导读] -->
 <template>
   <dialog
     ref="dialog"
@@ -42,6 +49,7 @@ watch(
 watch(dialog, (element) => {
   if (element && props.open && !element.open) element.showModal()
 })
+// [导读] 提交未结束时阻止关闭，避免用户误以为提交流程已经取消。
 function requestClose(): void {
   if (!props.submitting) emit('close')
 }

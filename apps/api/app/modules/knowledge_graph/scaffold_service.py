@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 从训练绑定图谱生成固定学习支持库并记录提示使用; Scaffold 的内容由教学数据决
+# [导读] 定, 模型只选择关注项。
+# [导读] 结构: KnowledgeScaffoldService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -87,6 +95,8 @@ class KnowledgeScaffoldService:
             ],
         )
 
+    # [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+    # [导读] rollback 撤销已提交记录。
     def record_event(
         self,
         student: User,

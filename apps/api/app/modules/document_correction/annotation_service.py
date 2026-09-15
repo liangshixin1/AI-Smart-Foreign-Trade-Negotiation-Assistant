@@ -1,3 +1,11 @@
+# [导读] 所属业务: 信用证结构化审改。
+# [导读] 业务名词: 信用证是银行按约定单据付款的承诺; MT700 是本项目采用的信用证报文样式; 批注是
+# [导读] 学生提出的改证意见。
+# [导读] 用途与原因: 按字段管理改证批注与操作日志; 利用期望版本及操作摘要, 分别防止并发覆盖和重
+# [导读] 复请求产生不同结果。
+# [导读] 结构: AnnotationService。
+# [导读] 提醒: 原证与标准答案以快照保存; 学生只改批注。成绩由版本化本地规则计算, 模型仅生成额外
+# [导读] 讲评。
 from __future__ import annotations
 
 import uuid
@@ -47,6 +55,7 @@ class AnnotationService:
             )
         ]
 
+    # [导读] 从快照构造响应; 只有教师分支附带答案规则和操作记录, 学生响应不能包含这些字段。
     def present(self, attempt_id: uuid.UUID, teacher: bool = False) -> dict[str, Any]:
         item = self.session(attempt_id)
         try:
@@ -91,6 +100,7 @@ class AnnotationService:
             ]
         return payload
 
+    # [导读] 只验证学生已经标记的项目是否填全, 不能据此提示未找到的标准不符点。
     def completeness(self, attempt_id: uuid.UUID) -> dict[str, Any]:
         item = self.session(attempt_id)
         by_ref = targets(item.document_snapshot)
@@ -104,6 +114,8 @@ class AnnotationService:
             "revision": item.revision,
         }
 
+    # [导读] 相同操作编号先比较摘要; 新操作用 expected_revision 条件更新抢占版本, 再将批注与操作
+    # [导读] 回执一起提交。
     def mutate(
         self,
         attempt_id: uuid.UUID,

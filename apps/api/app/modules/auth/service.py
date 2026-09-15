@@ -1,3 +1,8 @@
+# [导读] 所属业务: 登录与角色授权。
+# [导读] 业务名词: Principal 是已校验的当前访问者; AuthSession 是登录令牌对应的服务端会话。
+# [导读] 用途与原因: 协调登录、刷新和退出, 并轮换令牌; 失效或撤销会话不能继续换取新令牌。
+# [导读] 结构: role_codes、user_summary、_is_expired、AuthService。
+# [导读] 提醒: 角色通过只说明可使用这一类接口; 学生归属和教师班级范围仍需在业务查询中核对。
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -34,6 +39,7 @@ class AuthService:
         self.repository = repository
         self.settings = settings
 
+    # [导读] 对账号不存在、禁用与密码错误返回同类失败, 减少账号枚举; 校验通过才建立会话。
     def login(self, identifier: str, password: str) -> TokenPairResponse:
         user = self.repository.get_user_by_identifier(identifier)
         if (
@@ -48,6 +54,7 @@ class AuthService:
             )
         return self._create_session(user)
 
+    # [导读] 刷新前检查旧会话, 再同时轮换两类令牌并提交; 旧令牌不能无限复用。
     def refresh(self, refresh_token: str) -> TokenPairResponse:
         now = datetime.now(UTC)
         token_hash = hash_token(refresh_token, self.settings.auth_token_pepper)
@@ -72,11 +79,14 @@ class AuthService:
             user=user_summary(auth_session.user),
         )
 
+    # [导读] 撤销服务端会话, 已有撤销时间时保持原值, 使重复退出安全。
     def logout(self, auth_session: AuthSession) -> None:
         if auth_session.revoked_at is None:
             auth_session.revoked_at = datetime.now(UTC)
             self.repository.commit()
 
+    # [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+    # [导读] rollback 撤销已提交记录。
     def _create_session(self, user: User) -> TokenPairResponse:
         now = datetime.now(UTC)
         auth_session = AuthSession(
@@ -96,6 +106,7 @@ class AuthService:
             user=user_summary(user),
         )
 
+    # [导读] 分别生成访问和刷新令牌, 仅保存摘要与有效期; 明文只在本次响应返回。
     def _rotate_tokens(self, auth_session: AuthSession, now: datetime) -> tuple[str, str]:
         access_token = new_token()
         refresh_token = new_token()

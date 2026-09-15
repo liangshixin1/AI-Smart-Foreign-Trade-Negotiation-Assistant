@@ -1,3 +1,7 @@
+# [导读] 用途: 标识本目录为可导入的 Python 包。
+# [导读] 为什么: 以目录组织应用、基础设施和业务边界, 便于调用方使用明确的导入路径。
+# [导读] 结构: 集中导出本包公共接口, 具体实现见被导入文件。
+# [导读] 提醒: 包导入可能被迁移工具和测试同时使用, 避免在此增加网络请求或数据库写入。
 from app.integrations.llm.base import LLMProvider
 from app.integrations.llm.factory import build_llm_provider
 

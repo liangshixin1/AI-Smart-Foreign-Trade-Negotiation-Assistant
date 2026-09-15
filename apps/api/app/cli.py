@@ -1,3 +1,8 @@
+# [导读] 用途: 提供开发账号、课程内容和班级的初始化命令。
+# [导读] 为什么: 把初始化做成可显式运行的命令, 避免每次启动服务都自动写入测试数据。
+# [导读] 结构: seed_dev_users、import_curriculum、ensure_dev_curriculum、seed_dev_classroom、
+# [导读] main。
+# [导读] 提醒: 这些命令会写数据库; 先核对环境与目标库, 示例用户和开发密码不能作为正式人员数据。
 from __future__ import annotations
 
 import argparse
@@ -20,6 +25,8 @@ DEV_USERS = (
 )
 
 
+# [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+# [导读] rollback 撤销已提交记录。
 def seed_dev_users() -> None:
     settings = get_settings()
     if settings.app_env == "production":
@@ -85,6 +92,8 @@ def ensure_dev_curriculum(content_root: Path) -> None:
     import_curriculum(content_root)
 
 
+# [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+# [导读] rollback 撤销已提交记录。
 def seed_dev_classroom() -> None:
     settings = get_settings()
     if settings.app_env == "production":

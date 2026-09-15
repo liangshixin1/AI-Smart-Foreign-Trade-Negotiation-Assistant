@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：课程由章节和小节组成；小节是训练入口，一次实际作答会形成独立的 Attempt（训练记录）。
+ * 用途：从当前路由读取小节详情与训练准备信息。
+ * 为什么与边界：小节编号和实际训练编号不同，先获取小节约束再创建训练，避免在准备页自行推导后端规则。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/features/auth/stores/auth'

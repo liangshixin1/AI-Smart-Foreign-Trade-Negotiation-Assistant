@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 创建训练、绑定课程和图谱版本, 并校验生成场景; 用幂等请求识别网络重试, 避免
+# [导读] 同一次点击产生多条训练。
+# [导读] 结构: AttemptCreationService。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import json
@@ -55,6 +63,7 @@ class AttemptCreationService:
         self.simulation_profiles = SimulationProfileService(simulation_enabled)
         self.simulation_repository = SimulationRepository(db)
 
+    # [导读] 先识别幂等创建与前置条件, 再建立版本绑定和场景快照; 失败记录保留而不冒充训练完成。
     def create(
         self, student: User, data: CreateAttemptRequest, idempotency_key: str | None = None
     ) -> AttemptResponse:
@@ -261,6 +270,7 @@ class AttemptCreationService:
         self.db.commit()
         return present_attempt(attempt, unit, None, repository=self.repository)
 
+    # [导读] 无效结构最多修复重试一次, 复用同一 Attempt; 避免为一次生成失败新增第二条训练。
     def _validated_scenario(self, request: LLMRequest) -> tuple[LLMResponse, ScenarioCandidate]:
         """Retry one malformed scenario without duplicating the Attempt."""
 

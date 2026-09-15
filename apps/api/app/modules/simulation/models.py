@@ -1,3 +1,14 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途: 定义该业务的数据库实体、关联和约束。
+# [导读] 为什么: 唯一约束、外键与状态字段共同表达持久化规则; 修改模型需要新增数据库迁移, 不能只
+# [导读] 改类定义。
+# [导读] 结构: AttemptCreationRequest、SimulationSession、SimulationTurnPresentation、
+# [导读] SimulationSta
+# [导读] teEvent、SimulationStateSnapshot。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import uuid

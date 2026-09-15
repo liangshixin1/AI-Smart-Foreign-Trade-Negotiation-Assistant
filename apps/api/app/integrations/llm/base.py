@@ -1,3 +1,9 @@
+# [导读] 用途: 定义模型请求、响应、流片段、用量和供应商错误的公共协议。
+# [导读] 为什么: 上层只依赖 LLMProvider, 便于更换供应商并记录一致的调用审计。
+# [导读] 结构: LLMMessage、LLMRequest、LLMUsage、LLMResponse、LLMStreamChunk、LLMProviderError、
+# [导读] LLMPro
+# [导读] vider。
+# [导读] 提醒: LLM 指大语言模型; 结构符合协议不意味着业务事实正确, 输出仍需各业务模块校验。
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -56,6 +62,8 @@ class LLMProviderError(Exception):
 
 
 class LLMProvider(Protocol):
+    # [导读] 按统一请求协议返回完整模型响应; 调用方仍需校验业务字段, 测试替身也不能被当成真实模
+    # [导读] 型结果。
     def complete(self, request: LLMRequest) -> LLMResponse: ...
 
     def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]: ...

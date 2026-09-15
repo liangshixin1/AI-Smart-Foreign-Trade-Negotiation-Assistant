@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+ * 用途：读取本次训练的固定支持库，并记录查看或使用提示的行为。
+ * 为什么与边界：失败重试保留同一客户端事件编号，成功后才移除，避免重复计数；提示记录与模型评价是两类证据。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { onMounted, ref } from 'vue'
 
 import { useAuthStore } from '@/features/auth/stores/auth'
@@ -27,6 +33,7 @@ export function useAttemptScaffold(attemptId: string) {
     }
   }
 
+  // [导读] 提示和事件类型共同定位一次待确认操作，失败保留编号用于重试，成功后才删除去重键。
   async function recordEvent(hint: ScaffoldHint, eventType: ScaffoldEventType): Promise<void> {
     if (!auth.accessToken || interactingHintId.value) return
     const key = `${hint.id}:${eventType}`

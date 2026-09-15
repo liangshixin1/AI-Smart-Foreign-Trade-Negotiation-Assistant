@@ -1,3 +1,14 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 承接节点正文、附件及学习事件 HTTP 请求; 学生和教师的内容可见性不同, 必须保
+# [导读] 留各入口的角色校验。
+# [导读] 结构: _graph_store、student_learning_asset、teacher_learning_asset、
+# [导读] upload_teacher_learnin
+# [导读] g_asset、delete_teacher_learning_asset、student_learning_content、record_student_learni
+# [导读] ng_activity、teacher_learning_contents。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 from typing import Annotated, Literal, cast
@@ -30,6 +41,9 @@ def _graph_store(request: Request) -> GraphStore:
     return cast(GraphStore, request.app.state.graph_store)
 
 
+# [导读] 承接 GET
+# [导读] /student/content/{node_key}/assets/{kind}; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.get("/student/content/{node_key}/assets/{kind}")
 def student_learning_asset(
     node_key: str,
@@ -44,6 +58,9 @@ def student_learning_asset(
     return learning_asset_response(asset)
 
 
+# [导读] 承接 GET
+# [导读] /teacher/content/{node_key}/assets/{kind}; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.get("/teacher/content/{node_key}/assets/{kind}")
 def teacher_learning_asset(
     node_key: str,
@@ -58,6 +75,9 @@ def teacher_learning_asset(
     return learning_asset_response(asset)
 
 
+# [导读] 承接 PUT
+# [导读] /teacher/content/{node_key}/assets/{kind}; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.put("/teacher/content/{node_key}/assets/{kind}", response_model=LearningContentResponse)
 async def upload_teacher_learning_asset(
     node_key: str,
@@ -81,6 +101,9 @@ async def upload_teacher_learning_asset(
     )
 
 
+# [导读] 承接 DELETE
+# [导读] /teacher/content/{node_key}/assets/{kind}; 身份来自依赖注入, 业务归属限制仍由下方查询或
+# [导读] 服务核对, 不能相信客户端传入的用户编号。
 @router.delete("/teacher/content/{node_key}/assets/{kind}", response_model=LearningContentResponse)
 def delete_teacher_learning_asset(
     node_key: str,
@@ -92,6 +115,8 @@ def delete_teacher_learning_asset(
     return KnowledgeContentService(db, _graph_store(request)).delete_asset(node_key, kind)
 
 
+# [导读] 承接 GET /student/content/{node_key}; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.get("/student/content/{node_key}", response_model=LearningContentResponse)
 def student_learning_content(
     node_key: str,
@@ -102,6 +127,9 @@ def student_learning_content(
     return KnowledgeContentService(db, _graph_store(request)).detail(node_key, student=True)
 
 
+# [导读] 承接 POST
+# [导读] /student/content/{node_key}/activities; 身份来自依赖注入, 业务归属限制仍由下方查询或服
+# [导读] 务核对, 不能相信客户端传入的用户编号。
 @router.post(
     "/student/content/{node_key}/activities",
     response_model=LearningActivityResponse,
@@ -119,6 +147,8 @@ def record_student_learning_activity(
     )
 
 
+# [导读] 承接 GET /teacher/content; 身份来自依赖注入, 业务归属限制仍由下方查询或服务核对, 不能相
+# [导读] 信客户端传入的用户编号。
 @router.get("/teacher/content", response_model=list[LearningContentResponse])
 def teacher_learning_contents(
     request: Request,
@@ -128,6 +158,8 @@ def teacher_learning_contents(
     return KnowledgeContentService(db, _graph_store(request)).list_for_teacher()
 
 
+# [导读] 承接 GET /teacher/content/{node_key}; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.get("/teacher/content/{node_key}", response_model=LearningContentResponse)
 def teacher_learning_content(
     node_key: str,
@@ -138,6 +170,8 @@ def teacher_learning_content(
     return KnowledgeContentService(db, _graph_store(request)).detail(node_key, student=False)
 
 
+# [导读] 承接 PUT /teacher/content/{node_key}; 身份来自依赖注入, 业务归属限制仍由下方查询或服务
+# [导读] 核对, 不能相信客户端传入的用户编号。
 @router.put("/teacher/content/{node_key}", response_model=LearningContentResponse)
 def update_teacher_learning_content(
     node_key: str,

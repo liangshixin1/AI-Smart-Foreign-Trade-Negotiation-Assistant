@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+用途：文字训练共用布局，组合场景简报、对话时间线、输入框和目标辅助区。
+逻辑：管理简报折叠与移动端面板切换，调用 useAttemptScaffold 加载支持库；不同训练模式通过属性配置标题与输入提示。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 ConversationTimeline、MessageComposer、ScenarioBrief、TrainingChecklist；状态入口 useAttemptScaffold。
+为什么：展示组件共用训练状态，避免各界面各自修改完成或评价结果；状态是否可操作由后端再次核对。
+[/组件导读] -->
 <template>
   <main :class="['workspace', `mobile-${mobilePanel}`, { 'brief-collapsed': briefCollapsed }]">
     <nav class="mobile-panels" aria-label="训练面板">

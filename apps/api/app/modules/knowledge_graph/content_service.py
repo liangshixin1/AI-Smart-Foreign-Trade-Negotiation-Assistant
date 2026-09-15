@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 按图谱版本和节点保存正文与媒体附件; 学生内容读取必须过滤草稿, 文件上传还需
+# [导读] 验证大小、后缀和实际文件结构。
+# [导读] 结构: KnowledgeContentService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -22,7 +30,7 @@ from app.modules.knowledge_graph.schemas import (
     LearningContentUpdateRequest,
 )
 
-CONTENT_NODE_TYPES = KNOWLEDGE_NODE_TYPES | {"NegotiationStrategy"}
+CONTENT_NODE_TYPES = KNOWLEDGE_NODE_TYPES | {"NegotiationStrategy", "Stage", "Phenomenon"}
 AssetKind = Literal["video", "slides"]
 ASSET_MAX_BYTES = {"video": 100 * 1024 * 1024, "slides": 30 * 1024 * 1024}
 VIDEO_TYPES = {
@@ -42,6 +50,7 @@ class KnowledgeContentService:
         graph = self.consumption._active_graph()
         return [self._response(graph, node, student=False) for node in self._content_nodes(graph)]
 
+    # [导读] 按版本和节点读取内容; 学生遇到草稿返回不存在, 避免暴露未发布正文。
     def detail(self, node_key: str, *, student: bool) -> LearningContentResponse:
         graph = self.consumption._active_graph()
         node = self._require_node(graph, node_key)
@@ -54,6 +63,7 @@ class KnowledgeContentService:
             )
         return response
 
+    # [导读] 以 graph_version 与 node_key 查找编辑记录, 防止同名节点或新图版本覆盖另一份内容。
     def update(
         self,
         node_key: str,
@@ -85,6 +95,7 @@ class KnowledgeContentService:
         self.db.refresh(overlay)
         return self._response(graph, node, student=False)
 
+    # [导读] 先验证附件实际结构, 再按版本、节点和种类保存; 不能只相信客户端 MIME 类型。
     def upload_asset(
         self,
         node_key: str,
@@ -124,6 +135,7 @@ class KnowledgeContentService:
         self.db.commit()
         return self._response(graph, node, student=False)
 
+    # [导读] 按当前版本、节点与附件种类删除, 缺失明确报错; 不要扩大到同编号旧版本附件。
     def delete_asset(self, node_key: str, kind: AssetKind) -> LearningContentResponse:
         graph = self.consumption._active_graph()
         node = self._require_node(graph, node_key)
@@ -138,6 +150,7 @@ class KnowledgeContentService:
         self.db.commit()
         return self._response(graph, node, student=False)
 
+    # [导读] 学生读取附件前复核正文发布状态, 防止知道下载地址就能访问草稿媒体。
     def asset_binary(
         self, node_key: str, kind: AssetKind, *, student: bool
     ) -> KnowledgeContentAsset:
@@ -191,6 +204,7 @@ class KnowledgeContentService:
             )
         return responses
 
+    # [导读] 后缀仅作第一道判断, 继续核对文件签名或 PPTX 压缩包结构及大小, 降低伪装文件风险。
     @staticmethod
     def _validate_asset(kind: AssetKind, filename: str, content: bytes) -> tuple[str, str]:
         safe_name = Path(filename.replace("\\", "/")).name.strip()
@@ -264,7 +278,7 @@ class KnowledgeContentService:
         if node is None:
             raise AppError(
                 code="knowledge_graph.content_not_found",
-                message="找不到该知识或策略内容。",
+                message="找不到该节点的学习内容。",
                 status_code=404,
             )
         return node
@@ -295,6 +309,8 @@ class KnowledgeContentService:
         properties = raw if isinstance(raw, dict) else {}
         title = str(
             properties.get("Title")
+            or properties.get("StageNameZH")
+            or properties.get("PhenomenonNameZH")
             or properties.get("KnowledgeNameZH")
             or properties.get("ResourceName")
             or properties.get("StrategyName")
@@ -303,10 +319,18 @@ class KnowledgeContentService:
             or node_key
         )
         default_status = (
-            "published" if properties.get("translation_status") == "reviewed" else "draft"
+            "published"
+            if properties.get("translation_status") == "reviewed"
+            and node.get("type") not in {"Stage", "Phenomenon"}
+            else "draft"
         )
         status = str(properties.get("ContentStatus", default_status))
-        summary = str(properties.get("Summary") or properties.get("DefinitionZH") or "")
+        summary = str(
+            properties.get("Summary")
+            or properties.get("DefinitionZH")
+            or properties.get("DescriptionZH")
+            or ""
+        )
         markdown_body = str(properties.get("MarkdownContent") or "")
         if not markdown_body and summary:
             markdown_body = f"## {title}\n\n{summary}"

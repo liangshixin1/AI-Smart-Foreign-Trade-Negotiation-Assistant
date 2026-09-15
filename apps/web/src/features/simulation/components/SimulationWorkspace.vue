@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练；仿真用逐段台词和角色演出呈现谈判，态势是根据原话证据计算的状态。
+用途：仿真训练总界面，组合角色舞台、逐段对话、输入框、态势栏和学习支持。
+逻辑：接收外层传入的训练与仿真会话；草稿双向绑定，发送委托给 sendMessage。若对方台词尚未读完，首次发送先展开全文并提示阅读。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 TrainingKnowledgeScaffold、BriefingPlayer、CharacterStage、DialogueBox、NegotiationStatusBar、SimulationTranscript；状态入口 useAttemptScaffold。
+为什么：演出只是已保存台词的呈现，消息发送和态势计算在外层及后端；输入法合成事件不能触发误发送。
+[/组件导读] -->
 <template>
   <main class="simulation-workspace">
     <NegotiationStatusBar
@@ -126,11 +134,13 @@ const latestRecommendations = computed(
   () => props.attempt.round_evaluations.at(-1)?.recommendations ?? [],
 )
 
+// [导读] 切换支持面板；打开时展示当前台词段的全文，便于对照台词查看提示。
 function toggleSupport(): void {
   showSupport.value = !showSupport.value
   if (showSupport.value) dialogue.value?.showAll()
 }
 
+// [导读] 先检查可发送条件；台词未读完时只展开当前段并提示，再次提交才调用外部发送函数。
 async function submitReply(): Promise<void> {
   if (!canSend.value) return
   if (dialogue.value && !dialogue.value.complete) {
@@ -142,6 +152,7 @@ async function submitReply(): Promise<void> {
   await props.sendMessage(draft.value.trim())
 }
 
+// [导读] 忽略输入法合成及带修饰键的回车，只将普通回车作为提交动作。
 function handleComposerKeydown(event: KeyboardEvent): void {
   if (event.isComposing || event.key === 'Process') return
   if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {

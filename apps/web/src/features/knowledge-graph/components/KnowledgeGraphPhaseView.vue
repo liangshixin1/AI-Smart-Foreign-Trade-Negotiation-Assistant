@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：在训练、评价和学情页面复用完整阶段图的外框。
+逻辑：接收底图与高亮层，维护选中节点并通知父组件；画布、图例与详情弹窗共用同一节点选择状态。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 GraphNodeDialog、KnowledgeGraphCanvas、KnowledgeGraphOverlayLegend。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="phase-view" :class="[`phase-${overlay.phase ?? 'profile'}`, `size-${size}`]">
     <header class="phase-header">
@@ -95,6 +103,7 @@ watch(
   },
 )
 
+// [导读] 同步本地选中状态，并把节点编号发送给需要联动的父组件。
 function selectNode(nodeId: string): void {
   selectedId.value = nodeId
   emit('select', nodeId)

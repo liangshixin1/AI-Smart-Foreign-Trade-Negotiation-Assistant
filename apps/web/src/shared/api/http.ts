@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：访问令牌用于接口身份验证；Attempt 是一次训练记录，角色分学生、教师和技术人员。
+ * 用途：提供带 Bearer 令牌的 JSON 和二进制请求及统一错误解析。
+ * 为什么与边界：跨域需要后端允许来源和请求头；TypeScript 泛型只做静态约定，不会在运行时验证成功响应。附件文件名读取还受响应头暴露策略限制。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 export interface ApiErrorBody {
   code: string
   message: string
@@ -39,12 +45,14 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
   )
 }
 
+// [导读] 只把符合后端错误结构的响应转成 ApiError，其他响应保留通用失败，避免信任不完整错误字段。
 async function throwApiError(response: Response): Promise<never> {
   const payload: unknown = await response.json().catch(() => null)
   if (isErrorEnvelope(payload)) throw new ApiError(response.status, payload.error)
   throw new Error(`Unexpected API error (${String(response.status)})`)
 }
 
+// [导读] 保留调用方自定义头，为 JSON 字符串补默认类型；204 不解析正文，其他错误按统一信封处理。
 export async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -65,6 +73,7 @@ export async function request<T>(
   return payload as T
 }
 
+// [导读] 带身份下载二进制资源；浏览器跨域读取文件名还需后端暴露相应响应头。
 export async function requestBlob(
   path: string,
   accessToken: string,

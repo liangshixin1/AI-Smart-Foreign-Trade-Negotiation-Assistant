@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：供教师查看学生查看提示、使用提示及图谱评价证据的记录。
+逻辑：从 interactions 统计交互次数，从 evidence 读取标签和证据；学习内容链接按节点编号编码，避免特殊字符破坏地址。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="evidence" aria-labelledby="graph-evidence-title">
     <header>
@@ -73,12 +80,15 @@ const revealCount = computed(
 const useCount = computed(
   () => props.interactions.filter((item) => item.event_type === 'used').length,
 )
+// [导读] 把接口时间格式化为中文本地日期和时间，方便按时间核对证据。
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN')
 }
+// [导读] 优先采用这条历史证据保存的节点标签；缺失时保留编号用于追溯。
 function labelFor(item: GraphLearningEvidence, nodeId: string): string {
   return item.node_labels[nodeId] ?? nodeId
 }
+// [导读] 对节点编号进行 URL 编码后拼接教师内容地址，避免特殊字符被当成路径分隔符。
 function contentRoute(nodeId: string): string {
   return `/teacher/knowledge-content/${encodeURIComponent(nodeId)}`
 }

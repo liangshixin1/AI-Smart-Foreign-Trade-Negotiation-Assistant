@@ -1,3 +1,11 @@
+# [导读] 所属业务: 技术人员的模型运行配置。
+# [导读] 业务名词: 模型按场景生成、对话、评价三种用途分别配置; 连接测试用于确认后端可调用相应用
+# [导读] 途的模型。
+# [导读] 用途与原因: 构造脱敏模型配置响应并更新环境文件; 写入时保留未涉及配置, 不能把接口展示的
+# [导读] 脱敏值当成真实密钥回写。
+# [导读] 结构: present_config、update_env。
+# [导读] 提醒: 密钥是后端秘密, 接口展示只能使用脱敏状态; 保存环境文件后还需更新进程中的配置和模
+# [导读] 型实例。
 from __future__ import annotations
 
 import os
@@ -52,6 +60,8 @@ def present_config(settings: Settings) -> LLMConfigResponse:
     )
 
 
+# [导读] 仅替换传入的配置项并保留其他环境内容; 调用方应同步刷新运行对象, 磁盘保存不等于进程已生
+# [导读] 效。
 def update_env(settings: Settings, data: LLMConfigUpdate, path: Path = API_ENV_FILE) -> Settings:
     def secret(new: SecretStr | None, current: SecretStr | None) -> str:
         selected = new if new is not None else current

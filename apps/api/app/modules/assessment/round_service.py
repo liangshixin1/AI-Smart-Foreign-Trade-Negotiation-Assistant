@@ -1,3 +1,11 @@
+# [导读] 所属业务: 逐轮反馈与正式评价。
+# [导读] 业务名词: RoundEvaluation 是一轮对话后的反馈; Evaluation 是正式总评; Rubric 是评分维度
+# [导读] 与权重约定。
+# [导读] 用途与原因: 生成逐轮反馈, 校验目标清单、知识候选和原话引用后入库; 重试修复评价结构, 不
+# [导读] 重复生成对话。
+# [导读] 结构: RoundAssessmentService。
+# [导读] 提醒: 模型输出必须经过结构和原话证据校验; 逐轮建议不直接替代正式提交后的成绩与课程进度
+# [导读] 。
 from __future__ import annotations
 
 import json
@@ -38,6 +46,7 @@ class RoundAssessmentService:
         self.recommendations = GraphRecommendationService(db, graph_store)
         self.repository = TrainingRepository(db)
 
+    # [导读] 从固定教学清单和知识候选生成逐轮评价, 校验后才持久化, 防止模型更改任务标准。
     def evaluate(
         self,
         attempt: Attempt,
@@ -179,6 +188,7 @@ class RoundAssessmentService:
         self.db.commit()
         return evaluation
 
+    # [导读] 结构或业务校验失败时有限重试, 只修复本轮评价, 不重生成台词。
     def _validated_candidate(
         self,
         request: LLMRequest,
@@ -245,6 +255,7 @@ class RoundAssessmentService:
             return response, candidate, recommendations
         raise RuntimeError("Round evaluation validation retry was exhausted")
 
+    # [导读] 要求目标清单与场景完全对应, 模型只能判断是否满足, 不能增加或删除要求。
     @staticmethod
     def _validate_checklist(
         candidate: RoundEvaluationCandidate, scenario_public: dict[str, object]

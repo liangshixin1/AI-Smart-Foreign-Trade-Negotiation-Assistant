@@ -1,3 +1,8 @@
+# [导读] 用途: 数据库迁移修订。Alembic 是本项目管理表结构版本的工具。
+# [导读] 本次变更: 增加信用证审改会话、批注、操作日志和确定性结果, 支持版本冲突检测和成绩回放。
+# [导读] 为什么: models.py 改动不会自动更新旧数据库, 必须沿修订链升级才能匹配应用代码。
+# [导读] 结构: revision 与 down_revision 标识顺序; upgrade 升级, downgrade 定义反向操作。
+# [导读] 提醒: 迁移涉及真实数据库; 降级可能删除表或列, 不能当作无损撤销。
 """Versioned LC review sessions and immutable operation/result evidence."""
 
 import sqlalchemy as sa
@@ -10,6 +15,7 @@ branch_labels = None
 depends_on = None
 
 
+# [导读] 沿本修订执行表结构升级; 保留 revision 链使成员可从旧库顺序升级。
 def upgrade():
     with op.batch_alter_table("competency_evidence") as batch:
         batch.alter_column("message_id", existing_type=sa.Uuid(), nullable=True)
@@ -75,6 +81,7 @@ def upgrade():
     )
 
 
+# [导读] 按反向顺序撤销本修订结构; 涉及 drop 时会丢失相应数据, 不能当作无损撤销。
 def downgrade():
     count = (
         op.get_bind()

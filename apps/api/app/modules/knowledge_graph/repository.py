@@ -1,3 +1,12 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途: 封装该业务使用的查询和持久化操作。
+# [导读] 为什么: 把 SQL 查询集中便于核对过滤范围; 保持用户、课程版本及状态条件, flush 不代表
+# [导读] commit, 事务归属要沿调用方确认。
+# [导读] 结构: _row_hash、KnowledgeGraphRepository。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import hashlib
@@ -27,7 +36,7 @@ from app.modules.knowledge_graph.models import (
 )
 from app.modules.knowledge_graph.types import ImportIssue, ParsedWorkbookData
 from app.modules.knowledge_graph.v3_contract import EXPERT_V3_KNOWLEDGE_TYPES
-from app.modules.knowledge_graph.v3_extensions import V3_SCENARIOS
+from app.modules.knowledge_graph.v3_extensions import V3_SCENARIOS, V3ScenarioBinding
 
 
 def _row_hash(row: dict[str, object]) -> str:
@@ -57,6 +66,8 @@ class KnowledgeGraphRepository:
     def get_import(self, job_id: uuid.UUID) -> KnowledgeImportJob | None:
         return self.db.get(KnowledgeImportJob, job_id)
 
+    # [导读] 此处 flush 使新增对象可被后续 SQL 引用, 但尚未持久提交; 需沿调用方确认最终 commit
+    # [导读] 或失败回滚。
     def add_import(
         self,
         *,
@@ -112,6 +123,8 @@ class KnowledgeGraphRepository:
             )
         )
 
+    # [导读] 此处 flush 使新增对象可被后续 SQL 引用, 但尚未持久提交; 需沿调用方确认最终 commit
+    # [导读] 或失败回滚。
     def add_change_set(
         self,
         job_id: uuid.UUID,
@@ -140,6 +153,7 @@ class KnowledgeGraphRepository:
         change_set_id: uuid.UUID,
         data: ParsedWorkbookData,
         translations: dict[str, list[dict[str, object]]],
+        scenarios: tuple[V3ScenarioBinding, ...] = V3_SCENARIOS,
     ) -> None:
         """持久化不可变专家事实和独立翻译/平台绑定, 便于审计与回滚。"""
 
@@ -221,7 +235,7 @@ class KnowledgeGraphRepository:
                             translation_status="reviewed",
                         )
                     )
-        for scenario in V3_SCENARIOS:
+        for scenario in scenarios:
             self.db.add(
                 KnowledgeGraphScenarioStageBinding(
                     change_set_id=change_set_id,

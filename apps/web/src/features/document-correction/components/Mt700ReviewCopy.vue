@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+用途：按 MT700 风格展示只读信用证样张，并允许选择字段查看或标记疑点。
+逻辑：document 提供原证，marker/classes 由父组件决定标记文案和颜色；点击仅发出 select，不在此处改写原证。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：审核是在原证上定位问题、另提改证意见，直接改原证会丢掉评分和回放依据。
+[/组件导读] -->
 <template>
   <div class="document-paper">
     <header class="document-heading">
@@ -76,6 +83,7 @@ defineProps<{
   classes: (ref: string) => object
 }>()
 defineEmits<{ select: [string] }>()
+// [导读] 把原证的空值、普通值及金额或期限对象转换成样张文本；只格式化，不改变原数据。
 function documentValue(value: Value): string {
   if (value === null) return '—'
   if (typeof value !== 'object') return String(value)

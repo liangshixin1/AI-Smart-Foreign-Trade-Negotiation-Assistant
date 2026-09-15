@@ -1,3 +1,11 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 把会话、演出与态势记录整理成前端响应; 显式组装公开字段, 避免将内部配置或私
+# [导读] 有信息整包返回。
+# [导读] 结构: present_simulation。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 from sqlalchemy.orm import Session

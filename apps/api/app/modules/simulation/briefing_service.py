@@ -1,3 +1,12 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 根据公开场景生成开场简报并验证事实引用; 模型失败时使用受控备用简报, 避免展
+# [导读] 示对手私有底牌。
+# [导读] 结构: SimulationBriefingService、_validate_fact_refs、_validate_public_claims、
+# [导读] _fallback。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import json
@@ -36,6 +45,8 @@ class SimulationBriefingService:
         self.db = db
         self.provider = provider
 
+    # [导读] 此处 flush 使新增对象可被后续 SQL 引用, 但尚未持久提交; 需沿调用方确认最终 commit
+    # [导读] 或失败回滚。
     def create(
         self, attempt: Attempt, unit: TrainingUnit, profile: SimulationProfile
     ) -> SimulationSession:

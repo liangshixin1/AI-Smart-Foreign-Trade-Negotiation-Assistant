@@ -1,3 +1,7 @@
+# [导读] 用途: 用内存字典实现图存储协议, 供测试或明确配置的内存模式使用。
+# [导读] 为什么: 读写时复制图数据, 避免调用者修改返回值时意外改变已保存的版本。
+# [导读] 结构: MemoryGraphStore。
+# [导读] 提醒: 这是进程内数据, 不具备持久化能力; 不可据此宣称 Neo4j 发布流程已通过真实环境验证。
 from __future__ import annotations
 
 from copy import deepcopy

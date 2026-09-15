@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 处理非流式学生发言、对手回复和轮次反馈; 先保存学生输入, 使外部模型失败时仍
+# [导读] 可恢复。
+# [导读] 结构: ConversationService。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import json
@@ -30,6 +38,8 @@ class ConversationService:
         self.repository = TrainingRepository(db)
         self.knowledge_context = KnowledgeContextProvider(db, graph_store)
 
+    # [导读] 此操作内部会提交数据库会话; 调用方需把该提交视为事务边界, 后续失败不能靠一次外层
+    # [导读] rollback 撤销已提交记录。
     def send(self, student: User, attempt_id: uuid.UUID, data: MessageRequest) -> AttemptResponse:
         attempt = owned_attempt(self.repository, student, attempt_id)
         if attempt.content_bindings.get("workspace_kind") == "lc_correction":

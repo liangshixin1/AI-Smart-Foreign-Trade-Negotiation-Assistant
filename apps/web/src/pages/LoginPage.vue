@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：登录页面，组合品牌介绍、登录表单和登录后的角色跳转。
+逻辑：认证操作交给 auth store；成功后跳到对应角色首页，表单只负责收集输入和呈现提交状态。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 LoginForm；状态入口 useAuthStore、useRouter。
+为什么：把页面组合与数据处理分开，方便沿调用关系定位问题；页面显示成功需以实际请求结果为准。
+[/组件导读] -->
 <template>
   <main class="login-page">
     <section class="intro" aria-labelledby="platform-title">
@@ -36,6 +44,7 @@ const router = useRouter()
 const submitting = ref(false)
 const errorMessage = ref('')
 
+// [导读] 等待认证成功后按角色跳转；无论成功失败都在 finally 清除提交状态，避免表单一直锁定。
 async function handleLogin(credentials: { identifier: string; password: string }): Promise<void> {
   submitting.value = true
   errorMessage.value = ''

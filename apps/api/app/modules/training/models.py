@@ -1,3 +1,14 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途: 定义该业务的数据库实体、关联和约束。
+# [导读] 为什么: 唯一约束、外键与状态字段共同表达持久化规则; 修改模型需要新增数据库迁移, 不能只
+# [导读] 改类定义。
+# [导读] 结构: Attempt、AttemptDraft、AttemptRetry、ScenarioSnapshot、Message、Submission、
+# [导读] AttemptEven
+# [导读] t、LLMInvocation。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import uuid

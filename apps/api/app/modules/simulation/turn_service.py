@@ -1,3 +1,11 @@
+# [导读] 所属业务: 带角色演出和态势的谈判仿真。
+# [导读] 业务名词: Simulation 是逐段台词演出的训练体验; Presentation 是已保存的演出; State 是按
+# [导读] 证据计算的谈判态势。
+# [导读] 用途与原因: 生成并保存演出, 再运行逐轮评价与态势分析; 写入前后核对生成租约, 过期调用结
+# [导读] 果不能覆盖新轮次。
+# [导读] 结构: AnalysisResult、SimulationTurnService。
+# [导读] 提醒: 台词、逐轮评价与态势是不同结果; 分析失败不应丢掉已保存台词, 重试需尊重训练绑定的
+# [导读] 配置和规则版本。
 from __future__ import annotations
 
 import json
@@ -52,6 +60,7 @@ class SimulationTurnService:
         self.state = SimulationStateService(db)
         self.knowledge_context = KnowledgeContextProvider(db, graph_store)
 
+    # [导读] 优先重放已保存演出; 新生成前后检查租约所有权, 过期模型结果不能回写会话。
     def generate(self, context: StreamContext) -> SimulationPresentationResponse:
         existing = self.repository.presentation_for_message(context.assistant_message.id)
         if context.replay:
@@ -196,6 +205,7 @@ class SimulationTurnService:
         self.db.commit()
         return self.present(presentation, canonical)
 
+    # [导读] 复用已有评价或重新分析已保存台词, 将图谱证据和态势处理拆开, 允许独立补做失败分析。
     def analyze(self, context: StreamContext) -> AnalysisResult:
         assistant = context.assistant_message
         evaluation = self.training_repository.round_evaluation_for_assistant(assistant.id)
@@ -218,6 +228,7 @@ class SimulationTurnService:
             return AnalysisResult(evaluation, None, category)
         return AnalysisResult(evaluation, state, None)
 
+    # [导读] 记录本轮生成失败并释放本任务负责的状态, 保留学生已保存消息供恢复。
     def fail(self, context: StreamContext, exc: Exception) -> None:
         context.assistant_message.status = "failed"
         context.assistant_message.failure_code = (

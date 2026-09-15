@@ -1,3 +1,7 @@
+# [导读] 用途: 在图存储未启用或配置不足时提供明确失败的适配器。
+# [导读] 为什么: 保持 GraphStore 接口形状, 让调用方通过统一错误路径展示不可用状态。
+# [导读] 结构: GraphStoreUnavailable、UnavailableGraphStore。
+# [导读] 提醒: 不要把这种失败替换成空图并当作真实无数据, 否则会掩盖部署或连接问题。
 from __future__ import annotations
 
 from typing import Never

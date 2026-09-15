@@ -1,3 +1,13 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 编译专家图谱并合并中文翻译和平台场景绑定; 英文专家事实、翻译与平台扩展分开,
+# [导读] 便于审计来源。
+# [导读] 结构: load_translation_payload、_translations、_row_properties、
+# [导读] compile_expert_workbook_v3
+# [导读] 。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import json
@@ -7,7 +17,7 @@ from pathlib import Path
 from app.modules.knowledge_graph.compiler import GraphBuilder
 from app.modules.knowledge_graph.schemas import CompiledGraph
 from app.modules.knowledge_graph.types import ParsedWorkbookData
-from app.modules.knowledge_graph.v3_extensions import V3_SCENARIOS
+from app.modules.knowledge_graph.v3_extensions import V3_SCENARIOS, V3ScenarioBinding
 
 COMPILER_VERSION_V3 = "expert-fact-compiler/3.1"
 
@@ -36,11 +46,21 @@ def _row_properties(row: dict[str, object], *fields: str) -> dict[str, object]:
 def compile_expert_workbook_v3(
     data: ParsedWorkbookData,
     active_keys: set[str] | None = None,
+    *,
+    translation_payload: dict[str, list[dict[str, object]]] | None = None,
+    scenarios: tuple[V3ScenarioBinding, ...] = V3_SCENARIOS,
 ) -> CompiledGraph:
     """编译专家事实层, 并叠加课程场景与可撤除提示, 不改变专家分类。"""
 
     builder = GraphBuilder(active_keys or set())
-    translations = _translations()
+    translations = (
+        {
+            group: {str(item["id"]): item for item in items}
+            for group, items in translation_payload.items()
+        }
+        if translation_payload is not None
+        else _translations()
+    )
     stages: dict[str, str] = {}
     phenomena: dict[str, str] = {}
     knowledge: dict[str, str] = {}
@@ -131,7 +151,7 @@ def compile_expert_workbook_v3(
         )
 
     scenario_keys: dict[str, str] = {}
-    for scenario in V3_SCENARIOS:
+    for scenario in scenarios:
         scenario_id = scenario["id"]
         stage_id = scenario["stage_id"]
         key = builder.node(
@@ -195,7 +215,7 @@ def compile_expert_workbook_v3(
         str(row["Knowledge ID"]): str(row["Type"]) for row in data.sheets["03_L3_Knowledge"]
     }
     preview: list[dict[str, object]] = []
-    for scenario in V3_SCENARIOS:
+    for scenario in scenarios:
         stage_id = scenario["stage_id"]
         phenomenon_ids = set(scenario["phenomenon_ids"])
         linked_ids = {
@@ -245,7 +265,7 @@ def compile_expert_workbook_v3(
             "teacher_edge_count": len(phenomena)
             + len(edge_rows)
             + len(scenario_keys)
-            + sum(len(scenario["phenomenon_ids"]) for scenario in V3_SCENARIOS),
+            + sum(len(scenario["phenomenon_ids"]) for scenario in scenarios),
             "new_node_count": sum(node["change_type"] == "new" for node in nodes),
             "reused_node_count": sum(node["change_type"] == "reused" for node in nodes),
             "conflict_count": 0,

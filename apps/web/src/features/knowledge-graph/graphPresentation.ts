@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+ * 用途：统一节点归属阶段、显示标签及视图模式等呈现规则。
+ * 为什么与边界：将不同图谱版本的显示兼容集中处理，避免画布和目录对同一节点给出不同归属。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import type { KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeGraphView } from './types'
 
 export type GraphViewMode = 'teaching' | 'panorama' | 'context'
@@ -23,17 +29,11 @@ export function relationshipLabel(type: string): string {
   )
 }
 
-const STAGE_GRID: GraphPosition[] = [
-  { x: 360, y: 270 },
-  { x: 980, y: 270 },
-  { x: 1600, y: 270 },
-  { x: 1600, y: 760 },
-  { x: 980, y: 760 },
-  { x: 360, y: 760 },
-  { x: 360, y: 1250 },
-  { x: 980, y: 1250 },
-  { x: 1600, y: 1250 },
-]
+function stageGridPosition(index: number): GraphPosition {
+  const row = Math.floor(index / 3)
+  const column = row % 2 === 0 ? index % 3 : 2 - (index % 3)
+  return { x: 360 + column * 620, y: 270 + row * 490 }
+}
 
 export function stageIdForNode(node: KnowledgeGraphNode): string | null {
   if (node.type === 'stage') {
@@ -110,7 +110,7 @@ export function teachingPositions(graph: KnowledgeGraphView): Map<string, GraphP
   const focused = stages.length === 1
 
   stages.forEach((stage, stageIndex) => {
-    const center = focused ? { x: 600, y: 430 } : (STAGE_GRID[stageIndex] ?? { x: 980, y: 760 })
+    const center = focused ? { x: 600, y: 430 } : stageGridPosition(stageIndex)
     positions.set(stage.id, center)
     const children = graph.nodes.filter(
       (node) => node.id !== stage.id && assignments.get(node.id) === stage.id,

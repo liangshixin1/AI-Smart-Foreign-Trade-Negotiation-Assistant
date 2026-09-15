@@ -1,3 +1,8 @@
+# [导读] 用途: 数据库迁移修订。Alembic 是本项目管理表结构版本的工具。
+# [导读] 本次变更: 增加草稿和重练关联等恢复数据, 断开页面后仍能继续训练或回看旧记录。
+# [导读] 为什么: models.py 改动不会自动更新旧数据库, 必须沿修订链升级才能匹配应用代码。
+# [导读] 结构: revision 与 down_revision 标识顺序; upgrade 升级, downgrade 定义反向操作。
+# [导读] 提醒: 迁移涉及真实数据库; 降级可能删除表或列, 不能当作无损撤销。
 """Add attempt drafts and idempotent retry records.
 
 Revision ID: 20260716_0005
@@ -16,6 +21,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# [导读] 沿本修订执行表结构升级; 保留 revision 链使成员可从旧库顺序升级。
 def upgrade() -> None:
     op.create_table(
         "attempt_drafts",
@@ -46,6 +52,7 @@ def upgrade() -> None:
     )
 
 
+# [导读] 按反向顺序撤销本修订结构; 涉及 drop 时会丢失相应数据, 不能当作无损撤销。
 def downgrade() -> None:
     op.drop_table("attempt_retries")
     op.drop_table("attempt_drafts")

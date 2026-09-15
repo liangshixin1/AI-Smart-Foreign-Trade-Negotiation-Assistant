@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 推动变更集评审、批准、发布和回滚; 图数据库与 SQL 库没有共同事务, 因此发布失
+# [导读] 败需要显式补偿恢复。
+# [导读] 结构: KnowledgeReviewService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -25,6 +33,7 @@ class KnowledgeReviewService:
             )
         return change_set
 
+    # [导读] 仅允许通过校验的变更集进入评审, 重复提交已在评审的记录直接返回。
     def submit_review(
         self, change_set: KnowledgeGraphChangeSet, actor_id: uuid.UUID
     ) -> KnowledgeGraphChangeSet:
@@ -45,6 +54,7 @@ class KnowledgeReviewService:
         self.repository.refresh(change_set)
         return change_set
 
+    # [导读] 记录审批人、时间及驳回原因, 使发布依据可追踪; 决定本身不等于已发布图谱。
     def decide(
         self,
         change_set: KnowledgeGraphChangeSet,
@@ -82,6 +92,8 @@ class KnowledgeReviewService:
         self.repository.refresh(change_set)
         return change_set
 
+    # [导读] 先写图存储, 再提交 SQL 发布记录; SQL 失败时停用新图并恢复旧图, 这是跨库补偿而非分布
+    # [导读] 式原子事务。
     def publish(
         self, change_set: KnowledgeGraphChangeSet, actor_id: uuid.UUID
     ) -> KnowledgeGraphPublication:
@@ -121,6 +133,7 @@ class KnowledgeReviewService:
                 message="只有已批准的变更集才能发布。",
                 status_code=409,
             )
+        previous = self.repository.active_publication()
         graph_version = f"demo-{utc_now():%Y%m%d%H%M%S}-{str(change_set.id)[:8]}"
         try:
             self.graph_store.publish(
@@ -148,26 +161,46 @@ class KnowledgeReviewService:
                 status_code=503,
                 retryable=True,
             ) from exc
-        publication = self.repository.add_publication(
-            change_set,
-            actor_id,
-            graph_version,
-            self.graph_store.backend_name,
-        )
-        change_set.status = "published"
-        job = self.repository.get_import(change_set.import_job_id)
-        if job:
-            job.status = "published"
-        self.repository.audit(actor_id, "graph.published", "publication", publication.id)
         try:
+            publication = self.repository.add_publication(
+                change_set,
+                actor_id,
+                graph_version,
+                self.graph_store.backend_name,
+            )
+            change_set.status = "published"
+            job = self.repository.get_import(change_set.import_job_id)
+            if job:
+                job.status = "published"
+            self.repository.db.flush()
+            self.repository.audit(actor_id, "graph.published", "publication", publication.id)
+            from app.modules.knowledge_graph.pi_migration import carry_pi_content
+            from app.modules.knowledge_graph.pi_stages import PI_COMPILER_VERSION
+
+            if change_set.compiler_version == PI_COMPILER_VERSION:
+                details = carry_pi_content(self.repository.db, previous, publication)
+                self.repository.db.flush()
+                self.repository.audit(
+                    actor_id,
+                    "pi.stages_migrated",
+                    "publication",
+                    publication.id,
+                    details,
+                )
             self.repository.commit()
         except Exception:
-            # Cancel Neo4j activation if the relational audit commit fails.
+            self.repository.db.rollback()
             self.graph_store.deactivate(graph_version)
+            if previous is not None:
+                nodes = previous.graph_payload.get("nodes", [])
+                relationships = previous.graph_payload.get("relationships", [])
+                if isinstance(nodes, list) and isinstance(relationships, list):
+                    self.graph_store.publish(previous.graph_version, nodes, relationships)
             raise
         self.repository.refresh(publication)
         return publication
 
+    # [导读] 恢复前一份图并更新发布状态与审计; 只允许回滚当前激活版本, 避免覆盖更晚发布。
     def rollback(
         self, publication: KnowledgeGraphPublication, actor_id: uuid.UUID
     ) -> KnowledgeGraphPublication:

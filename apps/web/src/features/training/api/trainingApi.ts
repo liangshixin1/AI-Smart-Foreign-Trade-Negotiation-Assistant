@@ -1,3 +1,9 @@
+/* [组件导读]
+ * 业务名词：Attempt 是一次训练记录；场景是本次任务与约束，逐轮反馈是单轮建议，正式评价在确认提交后形成。
+ * 用途：封装本业务的后端接口路径、请求参数和响应类型。
+ * 为什么与边界：请求集中便于保持前后端契约一致；调用成功与业务完成可能不同，需检查返回状态，失败由调用方展示或重试。
+ * 结构：先看导出的类型或函数，再沿其调用的 API、工具与返回状态理解数据流。
+ * [/组件导读] */
 import { request } from '@/shared/api/http'
 
 import type { Attempt, AttemptHistoryItem, RoundEvaluation } from '../types'
@@ -115,6 +121,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+// [导读] 以空行分帧后提取事件和数据，检查事件版本；传输分块不保证与业务事件边界一致。
 export function parseTrainingStreamEvent(block: string): TrainingStreamEvent | null {
   const lines = block.replaceAll('\r\n', '\n').split('\n')
   const eventLine = lines.find((line) => line.startsWith('event:'))
@@ -128,6 +135,7 @@ export function parseTrainingStreamEvent(block: string): TrainingStreamEvent | n
   return { type, data } as TrainingStreamEvent
 }
 
+// [导读] 保留未完整的数据块并用流式解码拼接；只在实际收到 message.completed 后返回消息成功。
 export async function streamAttemptMessage(
   accessToken: string,
   attemptId: string,

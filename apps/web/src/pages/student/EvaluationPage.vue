@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：学生正式评价页，组织加载、失败重试、评价内容和后续学习入口。
+逻辑：useAttempt 提供训练与重试动作；重新评价沿用当前记录，重新训练会创建新记录并跳转到新的训练编号。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 LcCorrectionWorkspace、RoleWorkspaceLayout、EvaluationResultView、EvaluationLearningPath、EvaluationKnowledgeGraph；状态入口 useRoute、useRouter、useAttempt。
+为什么：把页面组合与数据处理分开，方便沿调用关系定位问题；页面显示成功需以实际请求结果为准。
+[/组件导读] -->
 <template>
   <LcCorrectionWorkspace
     v-if="attempt?.workspace_kind === 'lc_correction'"
@@ -49,10 +57,12 @@ const { attempt, loading, submitting, error, reload, retry, retryTraining } = us
   String(route.params.attemptId),
 )
 
+// [导读] 调用当前训练的评价重试，结果更新由 useAttempt 管理。
 async function retryAndRefresh(): Promise<void> {
   await retry()
 }
 
+// [导读] 创建新的重练记录；仅在拿到新编号后跳转，保留旧训练可供回放。
 async function startRetry(): Promise<void> {
   const createdId = await retryTraining()
   if (createdId) await router.push(`/student/attempts/${createdId}`)

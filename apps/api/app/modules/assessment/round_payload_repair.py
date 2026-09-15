@@ -1,3 +1,13 @@
+# [导读] 所属业务: 逐轮反馈与正式评价。
+# [导读] 业务名词: RoundEvaluation 是一轮对话后的反馈; Evaluation 是正式总评; Rubric 是评分维度
+# [导读] 与权重约定。
+# [导读] 用途与原因: 在仿真评价重试后仍存在可选扩展格式错误时保留有效核心反馈; 降级必须可识别,
+# [导读] 不能伪装成完整分析。
+# [导读] 结构: PayloadAdapter、salvage_simulation_round、_repair_list_field、_trim_core_text、
+# [导读] _fallb
+# [导读] ack_diagnostic。
+# [导读] 提醒: 模型输出必须经过结构和原话证据校验; 逐轮建议不直接替代正式提交后的成绩与课程进度
+# [导读] 。
 from __future__ import annotations
 
 import json
@@ -23,6 +33,7 @@ class PayloadAdapter(Protocol):
     def validate_python(self, object: object) -> object: ...
 
 
+# [导读] 只在核心反馈有效时修复可选扩展, 并记录降级原因; 错误的态势扩展不能伪装成完整成功。
 def salvage_simulation_round(
     content: str, scenario_public: dict[str, object]
 ) -> tuple[RoundEvaluationCandidate, list[str]]:

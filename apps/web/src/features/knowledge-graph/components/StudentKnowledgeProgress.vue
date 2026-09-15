@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：在学生首页展示知识学习概况及值得优先学习的条目。
+逻辑：从学情数据中筛出需关注或被推荐的知识，最多展示四项；组合个人知识图，并通过带 profile 来源的链接进入学习。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 StudentKnowledgeProfileGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="progress" aria-labelledby="student-knowledge-progress-title">
     <header>
@@ -63,6 +71,7 @@ const focusItems = computed(() =>
     .slice(0, 4),
 )
 
+// [导读] 构造学习页地址，同时携带来源、返回位置及当前上下文；这样学习后可以回到原来的训练或评价。
 function learningRoute(nodeId: string) {
   return {
     path: `/student/knowledge/${encodeURIComponent(nodeId)}`,
@@ -70,6 +79,7 @@ function learningRoute(nodeId: string) {
   }
 }
 
+// [导读] 将知识分类转换为中文标签，未知分类保留原值。
 function typeLabel(type: string): string {
   return (
     {

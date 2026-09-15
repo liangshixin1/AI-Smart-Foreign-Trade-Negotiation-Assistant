@@ -1,3 +1,10 @@
+# [导读] 用途: 将统一模型协议转换成 DeepSeek HTTP 请求和流式响应。
+# [导读] 为什么: 分别按场景、对话、评价用途选择凭据与模型, 并将供应商失败转成项目统一错误。
+# [导读] 结构: _ResponseMessage、_Choice、_Usage、_CompletionResponse、_StreamDelta、
+# [导读] _StreamChoice、_S
+# [导读] treamResponse、DeepSeekProvider。
+# [导读] 提醒: 使用同步 HTTP 与迭代器; 超时、重试和流结束标记均会影响上层判断。已输出增量后不能
+# [导读] 简单从头重试并拼接, 否则会重复台词。
 from __future__ import annotations
 
 import json
@@ -78,6 +85,8 @@ class DeepSeekProvider:
             )
         return secret.get_secret_value(), model
 
+    # [导读] 按统一请求协议返回完整模型响应; 调用方仍需校验业务字段, 测试替身也不能被当成真实模
+    # [导读] 型结果。
     def complete(self, request: LLMRequest) -> LLMResponse:
         api_key, model = self._credentials(request.purpose)
         payload: dict[str, object] = {

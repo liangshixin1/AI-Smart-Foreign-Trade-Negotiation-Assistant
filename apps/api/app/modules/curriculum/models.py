@@ -1,3 +1,12 @@
+# [导读] 所属业务: 版本化课程与小节。
+# [导读] 业务名词: TrainingUnit 是课程小节; Rubric 是评价维度及权重; PromptTemplate 是发给模型的
+# [导读] 指令模板。
+# [导读] 用途: 定义该业务的数据库实体、关联和约束。
+# [导读] 为什么: 唯一约束、外键与状态字段共同表达持久化规则; 修改模型需要新增数据库迁移, 不能只
+# [导读] 改类定义。
+# [导读] 结构: Course、CourseVersion、TrainingTemplate、PromptTemplate、Rubric、Chapter、
+# [导读] TrainingUnit。
+# [导读] 提醒: 旧训练绑定旧课程版本; 更新课程时应创建新版本, 不要直接改写历史训练的版本关联。
 from __future__ import annotations
 
 import uuid

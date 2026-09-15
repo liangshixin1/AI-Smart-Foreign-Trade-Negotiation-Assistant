@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：教师查看单次训练时，用图谱回放每轮评价对应的学习证据。
+逻辑：selectedRoundId 与父页面双向同步，replayOverlay 根据当前轮次生成高亮；尚未选择时默认采用最后一条证据。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 KnowledgeGraphPhaseView；状态入口 useTeacherKnowledgeGraph。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="attempt-graph">
     <p v-if="loading" class="state">正在还原本次训练的图谱证据链…</p>
@@ -78,11 +86,13 @@ watch(
   { immediate: true },
 )
 
+// [导读] 解释历史证据使用的映射方式；未知方式保留原始值以便追踪。
 function mappingLabel(value: string): string {
   return value === 'fixed_candidates_llm_selected'
     ? '固定图谱候选 + 评价 Agent 选择'
     : `映射方式：${value}`
 }
+// [导读] 提供节点和连线均为空的合法图结构，让加载完成前的派生计算也能安全读取这些字段。
 function emptyGraph() {
   return { graph_version: '', nodes: [], edges: [], node_count: 0, edge_count: 0 }
 }

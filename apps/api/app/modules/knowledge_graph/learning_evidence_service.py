@@ -1,3 +1,11 @@
+# [导读] 所属业务: 教学知识图谱、学习内容与证据。
+# [导读] 业务名词: 图谱用节点与关系表达阶段、商务现象、知识点和策略; Scaffold 是本次训练固定的学
+# [导读] 习支持库。
+# [导读] 用途与原因: 把逐轮评价推荐与学生原话关联为学习证据; 一轮评价的证据需可追溯到固定图谱版
+# [导读] 本, 不能发布新图后重新猜测映射。
+# [导读] 结构: GraphLearningEvidenceService。
+# [导读] 提醒: graph_version 与 node_key 一起定位内容; 显示短名不等于稳定编号, 历史证据不能随当
+# [导读] 前图谱重写。
 from __future__ import annotations
 
 import uuid
@@ -19,6 +27,8 @@ class GraphLearningEvidenceService:
         self.db = db
         self.consumption = KnowledgeGraphConsumptionService(db, graph_store)
 
+    # [导读] 按轮次评价定位既有证据, 并沿训练绑定版本保存推荐关系, 避免重试或新图发布改变历史事
+    # [导读] 实。
     def record(
         self,
         attempt: Attempt,

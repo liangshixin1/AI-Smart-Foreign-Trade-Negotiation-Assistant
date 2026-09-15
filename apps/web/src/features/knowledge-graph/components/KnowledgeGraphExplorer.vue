@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：学生和教师共用的图谱浏览器，提供阶段、节点类型、知识分类与文字搜索筛选。
+逻辑：先由 computed 生成筛选子图，再交给画布和文字目录；底图仍传给布局计算。节点详情及教师短名编辑通过弹窗和事件连接。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 GraphNodeDialog、KnowledgeGraphCanvas、KnowledgeGraphOutline。
+为什么：筛选只生成展示子图，保留原图可用于稳定布局和恢复筛选；显示短名编辑不改变节点身份。
+[/组件导读] -->
 <template>
   <section class="explorer">
     <header class="toolbar">
@@ -256,27 +264,33 @@ const neighbors = computed(() => {
   return props.graph.nodes.filter((node) => ids.has(node.id)).slice(0, 16)
 })
 
+// [导读] 只保留两个端点都在所选节点集合中的边，同时重算数量，避免筛选后产生悬空连线。
 function graphFromNodes(nodes: KnowledgeGraphNode[]): KnowledgeGraphView {
   const ids = new Set(nodes.map((node) => node.id))
   const edges = props.graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target))
   return { ...props.graph, nodes, edges, node_count: nodes.length, edge_count: edges.length }
 }
+// [导读] 合并短名、全名和字符串属性并统一大小写，供搜索匹配。
 function searchableText(node: KnowledgeGraphNode): string {
   const properties = Object.values(node.properties)
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
   return [node.short_label, node.label, properties].join(' ').toLocaleLowerCase('zh-CN')
 }
+// [导读] 统计某种节点类型的数量，供筛选器决定是否显示及标注数量。
 function countFor(type: KnowledgeNodeType): number {
   return props.graph.nodes.filter((node) => node.type === type).length
 }
+// [导读] 把有效阶段顺序格式化为两位数字；无有效顺序时显示占位符。
 function stageOrder(node: KnowledgeGraphNode): string {
   const order = stageSequence(node)
   return Number.isFinite(order) && order < 100 ? String(order).padStart(2, '0') : '—'
 }
+// [导读] 把短名和期望版本随保存事件传给上层；期望版本用于后端识别并发修改。
 function forwardDisplaySave(nodeId: string, shortNameZh: string, expectedRevision: number): void {
   emit('save-display', nodeId, shortNameZh, expectedRevision)
 }
+// [导读] 将恢复默认短名的请求及期望版本传给上层，由上层执行实际保存。
 function forwardDisplayRestore(nodeId: string, expectedRevision: number): void {
   emit('restore-display', nodeId, expectedRevision)
 }

@@ -1,3 +1,11 @@
+# [导读] 所属业务: 一次训练从创建到提交的生命周期。
+# [导读] 业务名词: Attempt 是一次训练记录; Scenario 是该次训练的场景; Submission 是正式提交时冻
+# [导读] 结的内容快照。
+# [导读] 用途与原因: 为普通与流式模型调用保存开始、完成、失败和用量记录; 模型出错也能追踪调用及
+# [导读] 所用提示词版本。
+# [导读] 结构: invoke_and_record、stream_and_record。
+# [导读] 提醒: 重练创建新 Attempt, 重试评价沿用原提交; 场景 private 部分是对手底牌, 不得放入学生
+# [导读] 响应。
 from __future__ import annotations
 
 import uuid
@@ -16,6 +24,8 @@ from app.integrations.llm.base import (
 from app.modules.training.models import LLMInvocation
 
 
+# [导读] 先提交调用开始记录, 再调用外部模型; 成功或失败分别落库, 因此外层事务不能假定此调用完全
+# [导读] 可回滚。
 def invoke_and_record(db: Session, provider: LLMProvider, request: LLMRequest) -> LLMResponse:
     invocation = LLMInvocation(
         attempt_id=uuid.UUID(request.metadata["attempt_id"]),
@@ -47,6 +57,8 @@ def invoke_and_record(db: Session, provider: LLMProvider, request: LLMRequest) -
     return response
 
 
+# [导读] 边迭代边累计供应商与用量信息, 正常结束后才标完成; yield 暂停执行, 不能把返回迭代器当作
+# [导读] 调用已完成。
 def stream_and_record(
     db: Session, provider: LLMProvider, request: LLMRequest
 ) -> Iterator[LLMStreamChunk]:

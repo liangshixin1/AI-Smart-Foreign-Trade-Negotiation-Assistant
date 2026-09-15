@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练记录；学生负责练习，教师查看所属班级学情，技术人员维护平台运行配置。
+用途：开始训练前展示小节目标、规则，并让学生选择难度和支持的体验方式。
+逻辑：useUnitDetail 读取小节，useStartAttempt 创建训练；若当前小节不支持选中的体验方式，监听器将其切回文字模式。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 RoleWorkspaceLayout；状态入口 useUnitDetail、useRoute、useStartAttempt。
+为什么：把页面组合与数据处理分开，方便沿调用关系定位问题；页面显示成功需以实际请求结果为准。
+[/组件导读] -->
 <template>
   <RoleWorkspaceLayout title="训练准备" description="开始前先确认目标、任务模式和评价方式。">
     <p v-if="loading">正在加载小节…</p>

@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：图谱把业务阶段、商务现象、知识点和策略连成关系；Scaffold 是某次训练固定的学习支持库，overlay 是证据高亮层。
+用途：共用的局部知识图容器，组合标题、画布、图例和节点详情弹窗。
+逻辑：graph 决定节点与连线，overlay 决定证据高亮；选中节点保存在本地，并从边集合查找直接邻居供弹窗浏览。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：子组件 GraphNodeDialog、KnowledgeGraphCanvas、KnowledgeGraphOverlayLegend。
+为什么：把图谱事实、证据高亮和界面选择分开，便于按版本回放；颜色或浏览行为不能自动证明学生已经掌握。
+[/组件导读] -->
 <template>
   <section class="context-graph" :class="`size-${size}`">
     <header>

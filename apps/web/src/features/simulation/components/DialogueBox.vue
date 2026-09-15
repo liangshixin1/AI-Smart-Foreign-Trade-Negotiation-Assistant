@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练；仿真用逐段台词和角色演出呈现谈判，态势是根据原话证据计算的状态。
+用途：呈现当前仿真轮次中的逐段对话，并提供键盘推进与全部显示。
+逻辑：useDialoguePlayback 管理段落和打字效果；对父组件暴露播放完成状态、当前表情和动作，用于同步角色舞台。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useSimulationAssets、useDialoguePlayback。
+为什么：演出显示与已保存训练数据分开，浏览器动画不能充当消息保存或态势计算的成功回执。
+[/组件导读] -->
 <template>
   <section class="dialogue" aria-labelledby="speaker-name" tabindex="0" @keydown="handleKeydown">
     <header>
@@ -47,6 +55,7 @@ const { currentBeat, visibleText, typing, complete, speed, advance, showAll } = 
   toRef(props, 'turn'),
 )
 
+// [导读] 仅处理对话框自身的回车或空格，忽略输入法组合输入，防止误推进。
 function handleKeydown(event: KeyboardEvent): void {
   if (event.target !== event.currentTarget || event.isComposing) return
   if (event.key === 'Enter' || event.key === ' ') {

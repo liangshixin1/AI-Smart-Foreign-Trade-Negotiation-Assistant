@@ -1,3 +1,11 @@
+<!-- [组件导读]
+业务名词：Attempt 是一次训练；仿真用逐段台词和角色演出呈现谈判，态势是根据原话证据计算的状态。
+用途：显示仿真场景背景及与角色表情、动作对应的立绘。
+逻辑：图片地址来自 useSimulationAssets；表情图加载失败先退回 neutral，仍失败再显示替代内容，表情变化会重置失败状态。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+阅读线索：状态入口 useSimulationAssets。
+为什么：演出显示与已保存训练数据分开，浏览器动画不能充当消息保存或态势计算的成功回执。
+[/组件导读] -->
 <template>
   <section class="stage" :class="`action-${action}`" aria-label="商务会谈场景">
     <img
@@ -47,6 +55,7 @@ const labels: Record<SimulationExpression, string> = {
 }
 const expressionLabel = computed(() => labels[selectedExpression.value])
 
+// [导读] 非默认表情失败时先尝试默认立绘；默认图也失败才进入图片替代状态。
 function handlePortraitError(): void {
   if (selectedExpression.value !== 'neutral') selectedExpression.value = 'neutral'
   else portraitFailed.value = true

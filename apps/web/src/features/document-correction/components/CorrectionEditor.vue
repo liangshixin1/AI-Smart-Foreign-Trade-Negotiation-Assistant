@@ -1,3 +1,10 @@
+<!-- [组件导读]
+业务名词：信用证是银行按约定单据付款的承诺；MT700 是本项目的信用证报文样式；批注是学生提出的改证意见。
+用途：编辑选中信用证字段的改证意见，包括问题类型、合同依据与拟改值。
+逻辑：根据目标字段的数据类型选择输入控件；通过 edit 事件传出新对象，save/remove/close 交由外层工作台处理。
+结构：template 描述页面结构；script setup 声明输入、状态和事件；style 定义外观。
+为什么：把原证、批注和成绩分开，才能解释每项改证依据；可编辑状态仍需后端校验。
+[/组件导读] -->
 <template>
   <section aria-label="改证意见编辑器" class="editor">
     <header>
@@ -143,12 +150,15 @@ const enumValues = computed(() =>
     ? ['IRREVOCABLE', 'REVOCABLE']
     : ['ALLOWED', 'NOT ALLOWED', 'CONDITIONAL'],
 )
+// [导读] 从原生输入事件中读取字符串值，供各输入控件复用。
 function val(event: Event) {
   return (event.target as HTMLInputElement).value
 }
+// [导读] 复制现有批注后替换指定字段，再发出 edit，避免直接修改父组件传入的对象。
 function change(key: string, value: unknown) {
   emit('edit', { ...props.annotation, [key]: value })
 }
+// [导读] 编辑拟改值中的一个子字段，保留该复合值中其余已填写内容。
 function part(key: string, value: string) {
   change('proposed_value', { ...objectValue.value, [key]: value })
 }

@@ -1,3 +1,7 @@
+# [导读] 用途: 构造测试数据库、应用、登录用户及模型替身等公共夹具。
+# [导读] 为什么: 测试共享准备方式但保持数据隔离, 避免真实模型调用和真实业务数据影响结果。
+# [导读] 结构: pytest.fixture 函数提供资源; yield 之后负责相应清理。测试文件通过参数名引用夹具。
+# [导读] 提醒: 夹具作用域决定共享多久; 改变数据库或账号的 scope 可能使测试互相污染。
 from __future__ import annotations
 
 from collections.abc import Generator

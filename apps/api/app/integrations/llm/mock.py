@@ -1,3 +1,7 @@
+# [导读] 用途: 为测试和本地演示生成固定形状的场景、对话与评价响应。
+# [导读] 为什么: 可预测输出让测试验证业务状态、解析和持久化, 避免依赖网络与模型随机性。
+# [导读] 结构: MockLLMProvider、_mock_learning_diagnostic。
+# [导读] 提醒: 模拟得分和诊断仅服务测试, 不是实际学生表现, 也不能替代真实模型验收。
 from __future__ import annotations
 
 import json
@@ -14,6 +18,8 @@ from app.integrations.llm.base import (
 class MockLLMProvider:
     """Deterministic local provider for tests and interface development."""
 
+    # [导读] 按统一请求协议返回完整模型响应; 调用方仍需校验业务字段, 测试替身也不能被当成真实模
+    # [导读] 型结果。
     def complete(self, request: LLMRequest) -> LLMResponse:
         if request.metadata.get("simulation_kind") == "briefing":
             content = json.dumps(
