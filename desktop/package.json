@@ -1,0 +1,64 @@
+{
+  "name": "foreign-trade-expert",
+  "productName": "外贸谈判专家体验版",
+  "version": "0.1.0",
+  "private": true,
+  "description": "外贸谈判教学平台 Windows 专家体验版",
+  "author": "Negotiation Lab",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "inject": "electron . --inject-credentials",
+    "test": "node --test *.test.cjs",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "cn.negotiation.expert",
+    "asar": true,
+    "files": [
+      "*.cjs",
+      "inject.html",
+      "inject.js",
+      "package.json",
+      "!*.test.cjs",
+      "public-settings.html",
+      "public-settings.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/desktop-backend/negotiation-backend",
+        "to": "backend"
+      },
+      {
+        "from": "../build/desktop-credential",
+        "to": "credential"
+      }
+    ],
+    "directories": {
+      "output": "../release/windows-x64"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ForeignTradeExpert-${version}-win-${arch}-setup.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": "always",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

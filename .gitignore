@@ -83,3 +83,13 @@ artifacts/
 
 # Local research manuscripts; never publish with application source
 *论文*
+
+# Private expert builds and generated release kits
+private-release/
+release/
+**/demo-credential.json
+
+# Public build products and locally encrypted user credentials
+public-release/
+**/ai-settings.enc
+**/ai-settings.enc.tmp

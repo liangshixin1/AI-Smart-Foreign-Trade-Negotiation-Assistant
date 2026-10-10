@@ -1,0 +1,19 @@
+{
+  "arch": "arm64",
+  "platform": "darwin",
+  "time": "2026-10-10T07:31:27.234Z",
+  "status": "PASS",
+  "mode": "mock",
+  "edition": "public",
+  "stages": 10,
+  "checks": [
+    "backend-ready",
+    "frontend-loaded",
+    "renderer-isolated",
+    "student-button-navigation",
+    "synthetic-student-login",
+    "public-settings-isolated",
+    "invalid-key-rejected"
+  ],
+  "stage": "complete"
+}

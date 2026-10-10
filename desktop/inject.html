@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>维护者：三条临时 Key 私有注入</title>
+<style>body{font:16px system-ui;max-width:680px;margin:32px auto;color:#123e35}label{display:block;margin:18px 0}input{display:block;width:95%;padding:10px;margin-top:6px}input[type=checkbox]{display:inline;width:auto}button{padding:12px 24px;background:#004d40;color:white;border:0;border-radius:8px}p{line-height:1.7}</style>
+<h1>生成私有打包凭据</h1>
+<p>仅由维护者操作。此文件含真实 Key，不可提交到 Git 或放进公共测试包。内置 Key 可被提取；审核后须在 DeepSeek 平台逐条撤销。</p>
+<form id="form">
+<label>情境生成 Key<input name="scenario" type="password" autocomplete="off" required></label>
+<label>谈判对话 Key<input name="conversation" type="password" autocomplete="off" required></label>
+<label>结果评估 Key<input name="evaluation" type="password" autocomplete="off" required></label>
+<label>账户可用模型<input name="model" placeholder="请核对供应商账户中的模型名称" required></label>
+<label>到期时间（带时区）<input name="expires_at" placeholder="2026-10-30T23:59:59+08:00" required></label>
+<label><input name="budget_confirmed" type="checkbox" required>已确认专用 Key、预算及审核后撤销负责人</label>
+<button>选择私有目录并保存</button></form><p id="status" role="status"></p>
+<script src="inject.js"></script></html>

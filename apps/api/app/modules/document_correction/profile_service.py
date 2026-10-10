@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -17,9 +16,10 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.resources import resource_root
 from app.modules.document_correction.schemas import Document
 
-ROOT = Path(__file__).resolve().parents[5] / "content/document-correction"
+ROOT = resource_root() / "content/document-correction"
 UNIT_KEY = "chapter-6-section-1"
 UNIT_VERSION = "2.2.2"
 

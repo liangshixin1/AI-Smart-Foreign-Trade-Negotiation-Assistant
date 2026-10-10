@@ -6,9 +6,11 @@
 为什么：页面由路由统一选择，避免在根组件重复维护角色与业务分支。
 [/组件导读] -->
 <template>
+  <ExpertPanel />
   <RouterView />
 </template>
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import ExpertPanel from '@/features/desktop/ExpertPanel.vue'
 </script>

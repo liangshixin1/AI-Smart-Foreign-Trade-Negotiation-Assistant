@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from pathlib import Path
 
+from app.core.resources import resource_root
 from app.modules.knowledge_graph.compiler import GraphBuilder
 from app.modules.knowledge_graph.schemas import CompiledGraph
 from app.modules.knowledge_graph.types import ParsedWorkbookData
@@ -24,7 +24,7 @@ COMPILER_VERSION_V3 = "expert-fact-compiler/3.1"
 
 def load_translation_payload() -> dict[str, list[dict[str, object]]]:
     path = (
-        Path(__file__).resolve().parents[5]
+        resource_root()
         / "content/knowledge-graph/translations/expert-v3-zh.json"
     )
     payload: dict[str, list[dict[str, object]]] = json.loads(path.read_text(encoding="utf-8"))

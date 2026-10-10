@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import unquote
 
@@ -21,6 +20,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.resources import resource_root
 from app.db.session import get_db
 from app.integrations.knowledge_graph.base import GraphStore
 from app.modules.auth.dependencies import Principal, require_roles
@@ -55,7 +55,7 @@ Technician = Annotated[Principal, Depends(require_roles("technician"))]
 Student = Annotated[Principal, Depends(require_roles("student"))]
 Teacher = Annotated[Principal, Depends(require_roles("teacher"))]
 TEMPLATE_PATH = (
-    Path(__file__).resolve().parents[5]
+    resource_root()
     / "content"
     / "knowledge-graph"
     / "templates"

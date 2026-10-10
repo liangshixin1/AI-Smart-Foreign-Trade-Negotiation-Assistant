@@ -11,14 +11,14 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
 import yaml
 
 from app.core.errors import AppError
+from app.core.resources import resource_root
 from app.modules.simulation.schemas import SimulationProfile
 
-CONTENT_ROOT = Path(__file__).resolve().parents[5] / "content"
+CONTENT_ROOT = resource_root() / "content"
 PROFILE_PATH = CONTENT_ROOT / "simulation/profiles/price-counteroffer-v1.yaml"
 PROMPT_ROOT = CONTENT_ROOT / "prompts/simulation"
 

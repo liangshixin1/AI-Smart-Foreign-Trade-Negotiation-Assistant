@@ -10,6 +10,25 @@
 
 项目以 [MIT License](./LICENSE) 开源，公开仓库为 [liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant)。重构前版本已冻结在 [`legacy/`](./legacy/LEGACY_NOTICE.md)，不作为当前运行时依赖。
 
+## Windows 公开体验版 v0.2.0
+
+这是供教学体验与反馈使用的 **Pre-release**，不是校园生产部署版。
+
+- 下载入口：[GitHub Releases](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant/releases)。选择 `ForeignTradePublic-0.2.0-win-x64-setup.exe`，不需要安装 Python、Node 或 Docker。
+- **不内置任何 API Key**。首次打开填写自己的 DeepSeek Key 和模型 API 名称，测试连接后保存并重启；一条 Key 供情境、对话、评价三个任务使用。费用由用户账户承担。
+- 顶部菜单“体验版 → 配置 AI / 更换 Key”可更换或删除 Key。Key 通过系统账户加密保存在本机，不发给项目组；联网练习内容会发送至 DeepSeek 官方接口。
+- 无 Key 时明确显示样例模式；可浏览课程与图谱。点击“学生体验”或“教师体验”进入合成体验班，关卡开放，不使用真实学生数据。
+- 学习数据位于 `%APPDATA%\ForeignTradePublic`，与专家版独立。卸载保留数据；可在卸载前通过界面删除 Key。
+- 安装、对话、评价、图谱及 Key 保存重启、更换、删除已完成 Windows ARM 环境下的 x64 仿真验证。原生 Windows x64 尚未单独验证；未签名，系统可能显示未知发布者。
+
+详见[用户指南](docs/handoff/windows-public/USER-GUIDE.md)、[构建与验收](docs/handoff/windows-public/README.md)和[发布说明](docs/handoff/windows-public/RELEASE-NOTES-v0.2.0.md)。请只分发公开版，禁止上传含项目组临时 Key 的专家私有安装包。
+
+当前知识图谱采用十阶段分类；课程仍按九章、二十个训练单元组织。服务器模式支持 Neo4j，桌面版使用独立 SQLite 图存储。普通服务器配置的三 Key 规则与公开桌面版的单 Key 配置不同。
+
+## 历史工程里程碑
+
+以下为 2026 年 9 月 9 日的历史记录，其中九阶段统计和三 Key 配置不是公开桌面版的当前口径。
+
 截至 **2026年9月9日（北京时间）**，项目达到 **Milestone 2-0909：知识图谱、AVG 仿真与 6-1 信用证审改 MVP 的内测版**。本版本在既有谈判训练闭环之上，新增 6-1 的 MT700 风格信用证审核副本、字段级改证申请、版本化事实与确定性评分，同时保留原 IM/AVG 训练体验。信用证核心流程不依赖模型；个性化讲评仍可降级到本地反馈，真实模型样本联调不作为核心通关前置条件。
 
 ## 里程碑快照

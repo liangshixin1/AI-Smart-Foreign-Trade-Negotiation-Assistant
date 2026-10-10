@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; form-action 'none'">
+<title>配置 AI</title><style>
+body{font:16px system-ui;max-width:640px;margin:30px auto;padding:0 24px;color:#173f37;background:#f6faf8;line-height:1.7}h1{font-size:26px}label{display:block;margin:18px 0}input{box-sizing:border-box;width:100%;padding:12px;font-size:16px;border:1px solid #a5bbb5;border-radius:6px}button{padding:10px 16px;margin:5px;border:0;border-radius:6px;background:#004d40;color:white;font-size:15px}button:disabled{opacity:.5}#status{white-space:pre-wrap}small{color:#49645e}
+</style><h1>配置自己的 DeepSeek Key</h1>
+<p>一条 Key 用于情境生成、谈判对话和结果评价。请求直接发送至 DeepSeek 官方接口，费用由你的账户承担；练习内容会随请求发送。</p>
+<p id="current"></p>
+<form id="form"><label>API Key<input id="key" type="password" autocomplete="off" required placeholder="输入新的 Key（已保存的 Key 不回显）"></label>
+<label>模型 API 名称<input id="model" value="deepseek-flash" required maxlength="100"></label>
+<button type="button" id="test">测试连接</button><button type="submit">保存并重启应用</button><button type="button" id="remove">删除 Key 并重启</button></form>
+<p id="status" role="status"></p><small>Key 使用当前系统账户的加密能力保存在本机，不上传至项目组。不配置 Key 时可浏览课程与明确标识的样例模式。保存或删除前请结束当前练习；重启保留历史记录。测试连接会发出一个小请求并可能计费。</small>
+<script src="public-settings.js"></script></html>
