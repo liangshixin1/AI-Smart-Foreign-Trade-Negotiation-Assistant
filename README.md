@@ -15,7 +15,7 @@
 
 这是供教学体验与反馈使用的 **Pre-release**，不是校园生产部署版。
 
-- 下载入口：[GitHub Releases](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant/releases)。选择 `ForeignTradePublic-0.2.0-win-x64-setup.exe`，不需要安装 Python、Node 或 Docker。
+- 下载入口：[GitHub Releases](https://github.com/liangshixin1/AI-Smart-Foreign-Trade-Negotiation-Assistant/releases/tag/v0.2.0)。选择 `ForeignTradePublic-0.2.0-win-x64-setup.exe`，不需要安装 Python、Node 或 Docker。
 - **不内置任何 API Key**。首次打开填写自己的 DeepSeek Key 和模型 API 名称，测试连接后保存并重启；一条 Key 供情境、对话、评价三个任务使用。费用由用户账户承担。
 - 顶部菜单“体验版 → 配置 AI / 更换 Key”可更换或删除 Key。Key 通过系统账户加密保存在本机，不发给项目组；联网练习内容会发送至 DeepSeek 官方接口。
 - 无 Key 时明确显示样例模式；可浏览课程与图谱。点击“学生体验”或“教师体验”进入合成体验班，关卡开放，不使用真实学生数据。
