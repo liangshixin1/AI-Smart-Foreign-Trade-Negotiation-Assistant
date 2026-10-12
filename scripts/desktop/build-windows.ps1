@@ -1,6 +1,8 @@
 ﻿param([string]$CredentialFile = "", [switch]$Public)
 if ($Public -and $CredentialFile) { throw "Public build cannot accept credentials." }
 $ErrorActionPreference = 'Stop'
+# Use UTF-8 for Python child processes regardless of the Windows display language.
+$env:PYTHONUTF8 = '1'
 Set-StrictMode -Version Latest
 $Root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Set-Location $Root
